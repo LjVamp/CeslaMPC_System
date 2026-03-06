@@ -424,7 +424,7 @@ export default function CanteenVisitor({ navigation }) {
   );
 }
 
-// ─── STYLES ───────────────────────────────────────────────────────────────────
+// ──────────────── STYLES ──────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex:1 },
 
