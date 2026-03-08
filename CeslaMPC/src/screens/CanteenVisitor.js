@@ -6,7 +6,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Animated, StatusBar,
-  useWindowDimensions, Platform, TextInput,
+  useWindowDimensions, Platform, TextInput, Modal, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts } from 'expo-font';
@@ -31,8 +31,8 @@ const MENU_ITEMS = [
   { id:'12', name:'Mixed Nuts',      cat:'Junk Foods', price:35,  stock:30, emoji:'🥜' },
 ];
 
-// ─── FOOD CARD (Web style — matches screenshot) ───────────────────────────────
-const FoodCard = ({ item, qty, onAdd, onRemove }) => (
+// ─── FOOD CARD — static Add To Cart only, no inline qty ───────────────────────
+const FoodCard = ({ item, onAdd }) => (
   <View style={styles.foodCard}>
     {Platform.OS === 'web' ? (
       <LinearGradient
@@ -40,141 +40,271 @@ const FoodCard = ({ item, qty, onAdd, onRemove }) => (
         start={{x:0,y:0}} end={{x:0,y:1}}
         style={styles.foodCardInner}
       >
-        <FoodCardBody item={item} qty={qty} onAdd={onAdd} onRemove={onRemove} />
+        <FoodCardBody item={item} onAdd={onAdd} />
       </LinearGradient>
     ) : (
       <View style={[styles.foodCardInner, { backgroundColor:'rgba(225,238,248,0.85)' }]}>
-        <FoodCardBody item={item} qty={qty} onAdd={onAdd} onRemove={onRemove} />
+        <FoodCardBody item={item} onAdd={onAdd} />
       </View>
     )}
   </View>
 );
 
-const FoodCardBody = ({ item, qty, onAdd, onRemove }) => (
+const FoodCardBody = ({ item, onAdd }) => (
   <>
-    {/* Emoji circle */}
     <View style={styles.emojiCircle}>
       <Text style={styles.emojiText}>{item.emoji}</Text>
     </View>
     <Text style={styles.itemName}>{item.name}</Text>
     <Text style={styles.itemStock}>Stock: {item.stock}</Text>
     <Text style={styles.itemPrice}>₱{item.price}.00</Text>
-
-    {qty > 0 ? (
-      <View style={styles.qtyRow}>
-        <TouchableOpacity style={styles.qtyMinus} onPress={onRemove}>
-          <Text style={styles.qtyMinusText}>−</Text>
-        </TouchableOpacity>
-        <Text style={styles.qtyNum}>{qty}</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={onAdd}>
-          <Text style={styles.addBtnText}>Add To Cart</Text>
-        </TouchableOpacity>
-      </View>
-    ) : (
-      <TouchableOpacity style={styles.addBtn} onPress={onAdd}>
-        <Text style={styles.addBtnText}>Add To Cart</Text>
-      </TouchableOpacity>
-    )}
+    <TouchableOpacity style={styles.addBtn} onPress={onAdd}>
+      <Text style={styles.addBtnText}>Add To Cart</Text>
+    </TouchableOpacity>
   </>
 );
 
+// ─── RECEIPT MODAL ────────────────────────────────────────────────────────────
+const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) => {
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(60)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fadeAnim,  { toValue:1, duration:280, useNativeDriver:true }),
+        Animated.spring(slideAnim, { toValue:0, tension:70, friction:12, useNativeDriver:true }),
+      ]).start();
+    } else {
+      fadeAnim.setValue(0);
+      slideAnim.setValue(60);
+    }
+  }, [visible]);
+
+  if (!orderData) return null;
+  const { items, total, amountPaid, change, orderNo, time } = orderData;
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      <Animated.View style={[styles.receiptOverlay, { opacity: fadeAnim }]}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+        <Animated.View
+          ref={receiptViewRef}
+          style={[styles.receiptCard, { transform:[{ translateY: slideAnim }] }]}
+          {...(Platform.OS === 'web' ? { 'data-receipt-card': 'true' } : {})}
+        >
+
+          {/* Jagged top edge */}
+          <View style={styles.receiptJaggedTop}>
+            {Array.from({ length: 18 }).map((_,i) => (
+              <View key={i} style={styles.receiptJaggedTriangle} />
+            ))}
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+            {/* Header */}
+            <View style={styles.receiptHeader}>
+              <Text style={styles.receiptShopName}>🍽️  CLIMBS CANTEEN</Text>
+              <Text style={styles.receiptShopSub}>Canteen Ordering System</Text>
+              <View style={styles.receiptDividerDashed} />
+              <Text style={styles.receiptMeta}>Order No.: #{orderNo}</Text>
+              <Text style={styles.receiptMeta}>{time}</Text>
+              <Text style={styles.receiptMeta}>Type: Walk-in / Visitor</Text>
+              <View style={styles.receiptDividerDashed} />
+            </View>
+
+            {/* Items */}
+            <View style={{ paddingHorizontal: 20 }}>
+              <View style={styles.receiptItemHeader}>
+                <Text style={[styles.receiptItemHCol, { flex:1 }]}>ITEM</Text>
+                <Text style={[styles.receiptItemHCol, { width:32, textAlign:'center' }]}>QTY</Text>
+                <Text style={[styles.receiptItemHCol, { width:64, textAlign:'right' }]}>AMOUNT</Text>
+              </View>
+              <View style={styles.receiptDividerSolid} />
+              {items.map(({ item, qty }) => (
+                <View key={item.id} style={styles.receiptItemRow}>
+                  <Text style={[styles.receiptItemText, { flex:1 }]} numberOfLines={1}>
+                    {item.emoji} {item.name}
+                  </Text>
+                  <Text style={[styles.receiptItemText, { width:32, textAlign:'center' }]}>{qty}</Text>
+                  <Text style={[styles.receiptItemText, { width:64, textAlign:'right' }]}>
+                    ₱{(item.price * qty).toFixed(2)}
+                  </Text>
+                </View>
+              ))}
+              <View style={styles.receiptDividerSolid} />
+
+              {/* Totals */}
+              <View style={styles.receiptTotalRow}>
+                <Text style={styles.receiptTotalLabel}>TOTAL</Text>
+                <Text style={styles.receiptTotalValue}>₱ {total.toFixed(2)}</Text>
+              </View>
+              <View style={styles.receiptTotalRow}>
+                <Text style={styles.receiptSubTotalLabel}>Cash</Text>
+                <Text style={styles.receiptSubTotalValue}>₱ {parseFloat(amountPaid || 0).toFixed(2)}</Text>
+              </View>
+              <View style={styles.receiptTotalRow}>
+                <Text style={styles.receiptSubTotalLabel}>Change</Text>
+                <Text style={[styles.receiptSubTotalValue, { color: change < 0 ? '#e74c3c' : '#27ae60' }]}>
+                  ₱ {change.toFixed(2)}
+                </Text>
+              </View>
+
+              <View style={styles.receiptDividerDashed} />
+              <Text style={styles.receiptThankYou}>Thank you for your order! 🙏</Text>
+              <Text style={styles.receiptFooter}>— CLIMBS Canteen © 2025 —</Text>
+            </View>
+          </ScrollView>
+
+          {/* Jagged bottom edge */}
+          <View style={styles.receiptJaggedBottom}>
+            {Array.from({ length: 18 }).map((_,i) => (
+              <View key={i} style={styles.receiptJaggedTriangleBottom} />
+            ))}
+          </View>
+
+          {/* Action buttons */}
+          <View style={styles.receiptActions}>
+            <TouchableOpacity style={styles.receiptCloseBtn} onPress={onClose}>
+              <Text style={styles.receiptCloseBtnText}>✕  Close</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.receiptPrintBtn} onPress={onPrint}>
+              <LinearGradient
+                colors={['#1a3a6b','#2c5282']}
+                start={{x:0,y:0}} end={{x:1,y:0}}
+                style={styles.receiptPrintBtnGrad}
+              >
+                <Text style={styles.receiptPrintBtnText}>⬇️  Download as Image</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+};
+
 // ─── CART PANEL ───────────────────────────────────────────────────────────────
-const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, isWide }) => {
+const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWide, hideTitle, lastOrder, onShowReceipt }) => {
   const [amountPaid, setAmountPaid] = useState('');
+
   const total = Object.values(cart).reduce((s,{item,qty}) => s + item.price * qty, 0);
   const change = parseFloat(amountPaid || 0) - total;
   const cartItems = Object.values(cart).filter(i => i.qty > 0);
 
+  const handlePlaceOrder = () => {
+    if (cartItems.length === 0) return;
+    const orderNo = Math.floor(1000 + Math.random() * 9000);
+    const now = new Date();
+    const time = now.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
+      + '  ' + now.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit' });
+    onPlaceOrder({ items: cartItems, total, amountPaid, change, orderNo, time });
+    setAmountPaid('');
+  };
+
   return (
     <View style={[styles.cartPanel, !isWide && styles.cartPanelMobile]}>
-      {/* CART title */}
-      <Text style={styles.cartPanelTitle}>CART</Text>
+      {!hideTitle && <Text style={styles.cartPanelTitle}>CART</Text>}
 
-      {/* Items list */}
-      <View style={styles.cartItemsBox}>
-        {cartItems.length === 0 ? (
-          <Text style={styles.cartEmpty}>Cart is empty.</Text>
-        ) : (
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 200 }}>
-            {cartItems.map(({ item, qty }) => (
-              <View key={item.id} style={styles.cartRow}>
-                <Text style={styles.cartRowEmoji}>{item.emoji}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cartRowName} numberOfLines={1}>{item.name}</Text>
-                  <Text style={styles.cartRowSub}>x{qty}  ₱{item.price * qty}</Text>
+        {/* Items list */}
+        <View style={styles.cartItemsBox}>
+          {cartItems.length === 0 ? (
+            <Text style={styles.cartEmpty}>Cart is empty.</Text>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 200 }}>
+              {cartItems.map(({ item, qty }) => (
+                <View key={item.id} style={styles.cartRow}>
+                  <Text style={styles.cartRowEmoji}>{item.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cartRowName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.cartRowSub}>x{qty}  ₱{item.price * qty}</Text>
+                  </View>
+                  <View style={styles.cartRowQty}>
+                    <TouchableOpacity style={styles.cartQBtn} onPress={() => onRemove(item)}>
+                      <Text style={styles.cartQBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.cartQBtn, styles.cartQBtnAdd]} onPress={() => onAdd(item)}>
+                      <Text style={[styles.cartQBtnText, {color:'#fff'}]}>+</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <View style={styles.cartRowQty}>
-                  <TouchableOpacity style={styles.cartQBtn} onPress={() => onRemove(item)}>
-                    <Text style={styles.cartQBtnText}>−</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.cartQBtn, styles.cartQBtnAdd]} onPress={() => onAdd(item)}>
-                    <Text style={[styles.cartQBtnText, {color:'#fff'}]}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-        )}
+              ))}
+            </ScrollView>
+          )}
+        </View>
+
+        {/* Total */}
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Total :</Text>
+          <Text style={styles.totalValue}>₱ {total.toFixed(2)}</Text>
+        </View>
+
+        {/* Visitor note */}
+        <View style={styles.visitorNote}>
+          <Text style={styles.visitorNoteText}>👤 Ordering as Visitor — Cash Only</Text>
+        </View>
+
+        {/* Amount paid */}
+        <Text style={styles.amountLabel}>Amount Paid (₱)</Text>
+        <TextInput
+          style={styles.amountInput}
+          value={amountPaid}
+          onChangeText={setAmountPaid}
+          keyboardType="numeric"
+          placeholder="0.00"
+          placeholderTextColor="rgba(1,31,75,0.35)"
+        />
+
+        {/* Change */}
+        <View style={styles.changeRow}>
+          <Text style={styles.changeLabel}>Change :</Text>
+          <Text style={[styles.changeValue, { color: change < 0 ? '#e74c3c' : '#c9a84c' }]}>
+            ₱ {isNaN(change) ? '0.00' : change.toFixed(2)}
+          </Text>
+        </View>
+
+        {/* ── Place Order button — solid green, prominent ── */}
+        <TouchableOpacity
+          style={[styles.placeOrderBtn, cartItems.length === 0 && styles.placeOrderBtnDisabled]}
+          onPress={handlePlaceOrder}
+          activeOpacity={cartItems.length === 0 ? 1 : 0.80}
+        >
+          <LinearGradient
+            colors={cartItems.length > 0 ? ['#27ae60','#2ecc71'] : ['#aaa','#bbb']}
+            start={{x:0,y:0}} end={{x:1,y:0}}
+            style={styles.placeOrderGrad}
+          >
+            <Text style={styles.placeOrderIcon}>✅</Text>
+            <Text style={styles.placeOrderText}>Place Order</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* ── Clear cart button — solid red ── */}
+        <TouchableOpacity
+          style={styles.clearBtn}
+          onPress={onClear}
+          activeOpacity={0.80}
+        >
+          <Text style={styles.clearBtnIcon}>🗑️</Text>
+          <Text style={styles.clearBtnText}>Clear Cart</Text>
+        </TouchableOpacity>
+
+        {/* ── Print Receipt button — solid navy, enabled only after an order ── */}
+        <TouchableOpacity
+          style={[styles.printBtn, !lastOrder && { opacity: 0.45 }]}
+          onPress={lastOrder ? onShowReceipt : null}
+          activeOpacity={0.80}
+        >
+          <Text style={styles.printBtnIcon}>⬇️</Text>
+          <Text style={styles.printBtnText}>Download Receipt</Text>
+        </TouchableOpacity>
       </View>
-
-      {/* Total */}
-      <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>Total :</Text>
-        <Text style={styles.totalValue}>₱ {total.toFixed(2)}</Text>
-      </View>
-
-      {/* Visitor note */}
-      <View style={styles.visitorNote}>
-        <Text style={styles.visitorNoteText}>👤 Ordering as Visitor — Cash Only</Text>
-      </View>
-
-      {/* Amount paid */}
-      <Text style={styles.amountLabel}>Amount Paid (₱)</Text>
-      <TextInput
-        style={styles.amountInput}
-        value={amountPaid}
-        onChangeText={setAmountPaid}
-        keyboardType="numeric"
-        placeholder="0.00"
-        placeholderTextColor="rgba(1,31,75,0.35)"
-      />
-
-      {/* Change */}
-      <View style={styles.changeRow}>
-        <Text style={styles.changeLabel}>Change :</Text>
-        <Text style={[styles.changeValue, { color: change < 0 ? '#e74c3c' : '#c9a84c' }]}>
-          ₱ {isNaN(change) ? '0.00' : change.toFixed(2)}
-        </Text>
-      </View>
-
-      {/* Place Order */}
-      <TouchableOpacity
-        style={[styles.placeOrderBtn, cartItems.length === 0 && { opacity: 0.5 }]}
-        onPress={cartItems.length > 0 ? onOrder : null}
-      >
-        <Text style={styles.placeOrderText}>Place Order</Text>
-      </TouchableOpacity>
-
-      {/* Clear cart */}
-      <TouchableOpacity style={styles.clearBtn} onPress={onClear}>
-        <Text style={styles.clearBtnText}>Clear cart</Text>
-      </TouchableOpacity>
-
-      {/* Print receipt */}
-      <TouchableOpacity style={styles.printBtn}>
-        <Text style={styles.printBtnText}>Print Receipt</Text>
-      </TouchableOpacity>
-    </View>
   );
 };
 
 // ─── BOTTOM SHEET CART (Mobile) ───────────────────────────────────────────────
-const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, totalItems }) => {
+const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onPlaceOrder, lastOrder, onShowReceipt }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const [amountPaid, setAmountPaid] = useState('');
-  const total = Object.values(cart).reduce((s,{item,qty}) => s + item.price * qty, 0);
-  const change = parseFloat(amountPaid || 0) - total;
-  const cartItems = Object.values(cart).filter(i => i.qty > 0);
 
   useEffect(() => {
     Animated.spring(slideAnim, { toValue: 1, tension: 65, friction: 11, useNativeDriver: true }).start();
@@ -187,15 +317,19 @@ const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, tot
       <TouchableOpacity style={styles.sheetBackdrop} onPress={onClose} activeOpacity={1} />
       <Animated.View style={[styles.sheet, { transform:[{ translateY }] }]}>
         <View style={styles.sheetHandle} />
+        {/* Single CART header — no duplicate */}
         <View style={styles.sheetHeader}>
           <Text style={styles.cartPanelTitle}>CART</Text>
           <TouchableOpacity onPress={onClose} style={styles.sheetClose}>
-            <Text style={{ color:'#fff', fontSize:14 }}>✕</Text>
+            <Text style={{ color:'rgba(1,31,75,0.6)', fontSize:14 }}>✕</Text>
           </TouchableOpacity>
         </View>
+        {/* hideTitle=true so CartPanel doesn't render its own "CART" heading */}
         <CartPanel
           cart={cart} onAdd={onAdd} onRemove={onRemove}
           onClear={onClear} onOrder={onOrder} isWide={false}
+          hideTitle={true} onPlaceOrder={onPlaceOrder}
+          lastOrder={lastOrder} onShowReceipt={onShowReceipt}
         />
       </Animated.View>
     </View>
@@ -217,10 +351,13 @@ export default function CanteenVisitor({ navigation }) {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState({});
   const [cartOpen, setCartOpen] = useState(false);
+  const [receiptVisible, setReceiptVisible] = useState(false);
+  const [lastOrder, setLastOrder] = useState(null);
 
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
   const bodyFade = useRef(new Animated.Value(0)).current;
+  const receiptViewRef = useRef(null);
 
   useEffect(() => {
     Animated.parallel([
@@ -246,23 +383,129 @@ export default function CanteenVisitor({ navigation }) {
   const placeOrder = () => {
     setCartOpen(false);
     clearCart();
-    alert('Order placed! Thank you for ordering at CLIMBS Canteen.');
+  };
+
+  // Called by CartPanel after building order data
+  const handlePlaceOrder = (orderData) => {
+    setLastOrder(orderData);
+    setCartOpen(false);
+    clearCart();
+    setTimeout(() => setReceiptVisible(true), 300); // slight delay so sheet closes first on mobile
+  };
+
+  const handleShowReceipt = () => setReceiptVisible(true);
+
+  // ── Download receipt as file ──────────────────────────────────────────────
+  // Web  → generates an HTML receipt file and triggers browser download
+  // Mobile → saves a .txt receipt to device via expo-file-system + expo-sharing
+  // ── Download receipt as PNG image ─────────────────────────────────────────
+  // Web  → html2canvas captures the receipt card div → download as PNG
+  // Mobile → react-native-view-shot captures the View → expo-media-library saves to Gallery
+  const handlePrint = async () => {
+    if (!lastOrder) return;
+    const { orderNo } = lastOrder;
+    const filename = `CLIMBS_Receipt_${orderNo}`;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        // Dynamically load html2canvas from CDN if not already loaded
+        if (!window.html2canvas) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+        }
+        // Find the receipt card element by its data attribute
+        const el = document.querySelector('[data-receipt-card="true"]');
+        if (!el) { alert('Receipt not ready yet, please try again.'); return; }
+
+        const canvas = await window.html2canvas(el, {
+          scale: 3,           // high resolution
+          useCORS: true,
+          backgroundColor: '#fffef8',
+          logging: false,
+        });
+        const link = document.createElement('a');
+        link.download = `${filename}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      } catch (e) {
+        alert('Could not capture receipt image: ' + e.message);
+      }
+
+    } else {
+      // ── MOBILE: react-native-view-shot + expo-media-library ──
+      try {
+        const ViewShot   = require('react-native-view-shot');
+        const MediaLib   = require('expo-media-library');
+
+        // Request gallery permission
+        const { status } = await MediaLib.requestPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Please allow access to your gallery to save the receipt.');
+          return;
+        }
+
+        // Capture the receipt view ref
+        if (!receiptViewRef.current) {
+          Alert.alert('Error', 'Could not capture receipt. Please try again.');
+          return;
+        }
+
+        const uri = await ViewShot.captureRef(receiptViewRef.current, {
+          format: 'png',
+          quality: 1.0,
+          result: 'tmpfile',
+        });
+
+        const asset = await MediaLib.createAssetAsync(uri);
+        Alert.alert(
+          '✅ Saved to Gallery!',
+          `Receipt #${orderNo} saved as an image in your Photos/Gallery.`,
+          [{ text: 'OK' }]
+        );
+      } catch (e) {
+        Alert.alert('Error', 'Could not save receipt.\n\nMake sure react-native-view-shot and expo-media-library are installed.\n\n' + e.message);
+      }
+    }
   };
 
   const totalItems = Object.values(cart).reduce((s,{qty}) => s+qty, 0);
 
-  const filtered = MENU_ITEMS.filter(i =>
-    (activeCategory === 'All' || i.cat === activeCategory) &&
-    i.name.toLowerCase().includes(search.toLowerCase())
-  );
+  // ── Search: auto-switch category tab to where the result belongs ──
+  // When typing, find all matching items. If they all belong to one category,
+  // auto-switch that tab. If they span multiple categories, switch to 'All'.
+  const handleSearch = (text) => {
+    setSearch(text);
+    if (text.trim() === '') return; // cleared — leave category as-is
+    const matches = MENU_ITEMS.filter(i =>
+      i.name.toLowerCase().includes(text.toLowerCase())
+    );
+    if (matches.length === 0) return;
+    const cats = [...new Set(matches.map(i => i.cat))];
+    if (cats.length === 1) {
+      setActiveCategory(cats[0]); // all results in same category → switch there
+    } else {
+      setActiveCategory('All');   // results span multiple categories → show All
+    }
+  };
 
-  // Grid cols — matches screenshot: 6 cols on wide, 2-3 on mobile
+  const filtered = MENU_ITEMS.filter(i => {
+    const matchesSearch = i.name.toLowerCase().includes(search.toLowerCase());
+    if (search.trim() !== '') return matchesSearch; // show all matches when searching
+    return (activeCategory === 'All' || i.cat === activeCategory);
+  });
+
+  // Grid cols
   const CART_W  = isWide ? 230 : 0;
   const CAT_W   = isWide ? 170 : 0;
   const MARGIN  = isWide ? 40 : 0;
   const CENTER  = width - CAT_W - CART_W - MARGIN;
   const COLS    = isWide ? 6 : isSmall ? 2 : 3;
-  const GAP_C   = isWide ? 10 : 10;
+  const GAP_C   = 10;
   const CARD_W  = isWide
     ? Math.floor((CENTER - 24 - (COLS-1)*GAP_C) / COLS)
     : Math.floor((width - 32 - (COLS-1)*GAP_C) / COLS);
@@ -297,11 +540,11 @@ export default function CanteenVisitor({ navigation }) {
               Canteen Ordering System
             </Text>
             <View style={styles.visitorTag}>
-              <Text style={styles.visitorTagText}>🚶 VISITOR / WALK-IN</Text>
+              <Text style={styles.visitorTagText}>VISITOR / WALK-IN</Text>
             </View>
           </View>
 
-          {/* Hamburger / Cart icon */}
+          {/* Cart icon (mobile) */}
           <TouchableOpacity style={styles.backBtn} onPress={() => !isWide && setCartOpen(true)}>
             <Text style={{ color:'#fff', fontSize:18 }}>{isWide ? '≡' : '🛒'}</Text>
             {!isWide && totalItems > 0 && (
@@ -316,7 +559,7 @@ export default function CanteenVisitor({ navigation }) {
       {/* BODY */}
       <Animated.View style={[styles.body, { opacity: bodyFade }]}>
 
-        {/* LEFT — Categories */}
+        {/* LEFT — Categories (web only) */}
         {isWide && (
           <View style={styles.catPanel}>
             <Text style={styles.catPanelTitle}>CATEGORIES</Text>
@@ -336,10 +579,11 @@ export default function CanteenVisitor({ navigation }) {
 
         {/* CENTER — Search + Menu grid */}
         <View style={styles.centerPanel}>
+
           {/* Mobile category tabs */}
           {!isWide && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              style={{ flexGrow:0, marginBottom:8 }}
+              style={{ flexGrow:0, marginBottom:6 }}
               contentContainerStyle={{ paddingHorizontal:16, gap:8, paddingVertical:4 }}
             >
               {CATEGORIES.map(cat => (
@@ -353,22 +597,30 @@ export default function CanteenVisitor({ navigation }) {
             </ScrollView>
           )}
 
-          {/* Search + Label row */}
-          <View style={styles.menuTopRow}>
-            <Text style={styles.menuSectionLabel}>
-              {activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()}
-            </Text>
-            <View style={styles.searchBox}>
-              <Text style={styles.searchIcon}>🔍</Text>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search items..."
-                placeholderTextColor="rgba(1,31,75,0.40)"
-                value={search}
-                onChangeText={setSearch}
-              />
-            </View>
+          {/* ── Search bar — full width, compact ── */}
+          <View style={[styles.searchBox, isWide && { paddingVertical: 5 }]}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search items..."
+              placeholderTextColor="rgba(1,31,75,0.40)"
+              value={search}
+              onChangeText={handleSearch}
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => { setSearch(''); setActiveCategory('All'); }} style={{ paddingLeft:6 }}>
+                <Text style={{ color:'rgba(1,31,75,0.45)', fontSize:14, fontWeight:'700' }}>✕</Text>
+              </TouchableOpacity>
+            )}
           </View>
+
+          {/* Section label — shows "SEARCH RESULTS" when typing */}
+          <Text style={[styles.menuSectionLabel, { marginBottom:10 }]}>
+            {search.trim() !== ''
+              ? `RESULTS FOR "${search.toUpperCase()}"`
+              : activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()
+            }
+          </Text>
 
           {/* Menu grid */}
           <ScrollView showsVerticalScrollIndicator={false}
@@ -379,9 +631,7 @@ export default function CanteenVisitor({ navigation }) {
                 <View key={item.id} style={{ width: CARD_W }}>
                   <FoodCard
                     item={item}
-                    qty={cart[item.id]?.qty || 0}
                     onAdd={() => addToCart(item)}
-                    onRemove={() => removeFromCart(item)}
                   />
                 </View>
               ))}
@@ -392,11 +642,13 @@ export default function CanteenVisitor({ navigation }) {
           </ScrollView>
         </View>
 
-        {/* RIGHT — Cart (web only) */}
+        {/* RIGHT — Cart panel (web only) */}
         {isWide && (
           <CartPanel
             cart={cart} onAdd={addToCart} onRemove={removeFromCart}
             onClear={clearCart} onOrder={placeOrder} isWide={isWide}
+            hideTitle={false} onPlaceOrder={handlePlaceOrder}
+            lastOrder={lastOrder} onShowReceipt={handleShowReceipt}
           />
         )}
       </Animated.View>
@@ -407,11 +659,12 @@ export default function CanteenVisitor({ navigation }) {
           cart={cart} onAdd={addToCart} onRemove={removeFromCart}
           onClear={clearCart} onOrder={placeOrder}
           onClose={() => setCartOpen(false)}
-          totalItems={totalItems}
+          onPlaceOrder={handlePlaceOrder}
+          lastOrder={lastOrder} onShowReceipt={handleShowReceipt}
         />
       )}
 
-      {/* Mobile floating cart btn */}
+      {/* Mobile floating cart button */}
       {!isWide && totalItems > 0 && !cartOpen && (
         <TouchableOpacity style={styles.floatCart} onPress={() => setCartOpen(true)}>
           <LinearGradient colors={['#c9a84c','#e8c87a']} start={{x:0,y:0}} end={{x:1,y:0}}
@@ -420,11 +673,20 @@ export default function CanteenVisitor({ navigation }) {
           </LinearGradient>
         </TouchableOpacity>
       )}
+
+      {/* ── RECEIPT MODAL — rendered at root level so it works on both web & mobile ── */}
+      <ReceiptModal
+        visible={receiptVisible}
+        orderData={lastOrder}
+        onClose={() => setReceiptVisible(false)}
+        onPrint={handlePrint}
+        receiptViewRef={receiptViewRef}
+      />
     </View>
   );
 }
 
-// ──────────────── STYLES ──────────────────────────────────────────────────
+// ──────────────── STYLES ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex:1 },
 
@@ -450,13 +712,13 @@ const styles = StyleSheet.create({
   },
   headerGold: { fontFamily:'NotoSerif_700Bold_Italic', color:'#c9a84c', fontStyle:'italic' },
   visitorTag: {
-    marginTop:4, paddingHorizontal:12, paddingVertical:3,
-    borderRadius:20, backgroundColor:'rgba(46,204,113,0.25)',
-    borderWidth:1, borderColor:'rgba(46,204,113,0.50)',
+    marginTop:5, paddingHorizontal:14, paddingVertical:5,
+    borderRadius:20, backgroundColor:'rgba(255,255,255,0.18)',
+    borderWidth:1.5, borderColor:'rgba(255,255,255,0.60)',
   },
   visitorTagText: {
-    fontFamily:'GoogleSans_700Bold', fontSize:9,
-    color:'#2ecc71', letterSpacing:1.5, textTransform:'uppercase',
+    fontFamily:'GoogleSans_700Bold', fontSize:10,
+    color:'#ffffff', letterSpacing:1.8, textTransform:'uppercase',
   },
   cartDot: {
     position:'absolute', top:-2, right:-2,
@@ -468,7 +730,6 @@ const styles = StyleSheet.create({
   // Body layout
   body: {
     flex:1, flexDirection:'row', marginTop:12,
-    paddingHorizontal:0,
   },
 
   // LEFT — Categories panel
@@ -504,31 +765,31 @@ const styles = StyleSheet.create({
 
   // CENTER panel
   centerPanel: {
-    flex:1, paddingHorizontal:10, paddingRight:8,
+    flex:1, paddingHorizontal:12,
   },
-  menuTopRow: {
-    flexDirection:'row', alignItems:'center',
-    justifyContent:'space-between', marginBottom:12, gap:10,
-  },
-  menuSectionLabel: {
-    fontFamily:'GoogleSans_700Bold', fontSize:14,
-    color:'#011f4b', letterSpacing:2,
-  },
+
+  // ── FIX: Search bar — compact, full width, below tabs ──
   searchBox: {
     flexDirection:'row', alignItems:'center',
-    backgroundColor:'rgba(255,255,255,0.70)',
-    borderRadius:20, paddingHorizontal:14, paddingVertical:7,
-    borderWidth:1, borderColor:'rgba(255,255,255,0.85)',
-    flex:1, maxWidth:260,
+    backgroundColor:'rgba(255,255,255,0.72)',
+    borderRadius:12, paddingHorizontal:12, paddingVertical:8,
+    borderWidth:1, borderColor:'rgba(255,255,255,0.90)',
+    marginBottom:10,
     shadowColor:'#011f4b', shadowOpacity:0.07,
-    shadowRadius:8, shadowOffset:{width:0,height:2},
+    shadowRadius:6, shadowOffset:{width:0,height:2},
   },
   searchIcon: { fontSize:13, marginRight:6 },
   searchInput: {
     flex:1, fontFamily:'GoogleSans_400Regular',
     fontSize:13, color:'#011f4b',
+    paddingVertical:0,
   },
-  menuGrid: { paddingTop:4 },
+
+  menuSectionLabel: {
+    fontFamily:'GoogleSans_700Bold', fontSize:12,
+    color:'#011f4b', letterSpacing:2,
+  },
+  menuGrid: { paddingTop:2 },
   menuRow: { flexDirection:'row', flexWrap:'wrap' },
   emptyText: {
     fontFamily:'GoogleSans_400Regular', fontSize:13,
@@ -537,15 +798,17 @@ const styles = StyleSheet.create({
 
   // Mobile category tabs
   catTab: {
-    paddingHorizontal:16, paddingVertical:7, borderRadius:20,
+    width: 90,
+    paddingVertical:8, borderRadius:20,
     backgroundColor:'rgba(255,255,255,0.25)',
     borderWidth:1, borderColor:'rgba(255,255,255,0.45)',
+    alignItems:'center', justifyContent:'center',
   },
   catTabActive: { backgroundColor:'#304674', borderColor:'#c9a84c' },
-  catTabText: { fontFamily:'GoogleSans_500Medium', fontSize:12, color:'rgba(255,255,255,0.85)' },
+  catTabText: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(255,255,255,0.85)', textAlign:'center' },
   catTabTextActive: { fontFamily:'GoogleSans_700Bold', color:'#fff' },
 
-  // FOOD CARD
+  // FOOD CARD — no inline qty counter
   foodCard: {
     borderRadius:14, overflow:'hidden',
     shadowColor:'#011f4b', shadowOpacity:0.10,
@@ -580,18 +843,6 @@ const styles = StyleSheet.create({
   itemPrice: {
     fontFamily:'NotoSerif_700Bold', fontSize:14,
     color:'#c9a84c', fontWeight:'700', letterSpacing:0.3,
-  },
-  qtyRow: { flexDirection:'row', alignItems:'center', gap:6, marginTop:2 },
-  qtyMinus: {
-    width:28, height:28, borderRadius:14,
-    backgroundColor:'rgba(255,255,255,0.6)',
-    borderWidth:1, borderColor:'rgba(1,31,75,0.20)',
-    justifyContent:'center', alignItems:'center',
-  },
-  qtyMinusText: { fontSize:16, color:'#011f4b', fontWeight:'700', lineHeight:20 },
-  qtyNum: {
-    fontFamily:'GoogleSans_700Bold', fontSize:13,
-    color:'#011f4b', minWidth:16, textAlign:'center',
   },
   addBtn: {
     backgroundColor:'#1a3a6b', borderRadius:8,
@@ -697,30 +948,166 @@ const styles = StyleSheet.create({
     fontFamily:'NotoSerif_700Bold', fontSize:14,
   },
   placeOrderBtn: {
-    backgroundColor:'#27ae60', borderRadius:10,
-    paddingVertical:12, alignItems:'center',
-    shadowColor:'#27ae60', shadowOpacity:0.35,
-    shadowRadius:8, shadowOffset:{width:0,height:3}, elevation:4,
+    borderRadius: 12, overflow:'hidden',
+    shadowColor:'#27ae60', shadowOpacity:0.40,
+    shadowRadius:10, shadowOffset:{width:0,height:4}, elevation:6,
   },
+  placeOrderBtnDisabled: {
+    shadowColor:'transparent', shadowOpacity:0, elevation:0,
+  },
+  placeOrderGrad: {
+    flexDirection:'row', alignItems:'center', justifyContent:'center',
+    gap:8, paddingVertical:14,
+  },
+  placeOrderIcon: { fontSize:16 },
   placeOrderText: {
     fontFamily:'GoogleSans_700Bold', fontSize:14,
-    color:'#ffffff', fontWeight:'700',
+    color:'#ffffff', letterSpacing:0.5,
   },
   clearBtn: {
-    backgroundColor:'rgba(231,76,60,0.12)',
-    borderRadius:10, paddingVertical:9, alignItems:'center',
-    borderWidth:1, borderColor:'rgba(231,76,60,0.30)',
+    flexDirection:'row', alignItems:'center', justifyContent:'center',
+    gap:7, backgroundColor:'#e74c3c', borderRadius:12,
+    paddingVertical:12,
+    shadowColor:'#e74c3c', shadowOpacity:0.35,
+    shadowRadius:8, shadowOffset:{width:0,height:3}, elevation:4,
   },
+  clearBtnIcon: { fontSize:14 },
   clearBtnText: {
-    fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#e74c3c',
+    fontFamily:'GoogleSans_700Bold', fontSize:13,
+    color:'#fff', letterSpacing:0.3,
   },
   printBtn: {
-    backgroundColor:'rgba(201,168,76,0.12)',
-    borderRadius:10, paddingVertical:9, alignItems:'center',
-    borderWidth:1, borderColor:'rgba(201,168,76,0.35)',
+    flexDirection:'row', alignItems:'center', justifyContent:'center',
+    gap:7, backgroundColor:'#1a3a6b', borderRadius:12,
+    paddingVertical:12,
+    shadowColor:'#1a3a6b', shadowOpacity:0.35,
+    shadowRadius:8, shadowOffset:{width:0,height:3}, elevation:4,
   },
+  printBtnIcon: { fontSize:14 },
   printBtnText: {
-    fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#c9a84c',
+    fontFamily:'GoogleSans_700Bold', fontSize:13,
+    color:'#fff', letterSpacing:0.3,
+  },
+
+  // ── Receipt Modal ────────────────────────────────────────────────────────
+  receiptOverlay: {
+    flex:1, backgroundColor:'rgba(5,15,40,0.65)',
+    justifyContent:'center', alignItems:'center', padding:20,
+  },
+  receiptCard: {
+    width:'100%', maxWidth:380,
+    backgroundColor:'#fffef8',
+    borderRadius:4,
+    shadowColor:'#000', shadowOpacity:0.35,
+    shadowRadius:30, shadowOffset:{width:0,height:10}, elevation:20,
+    overflow:'hidden',
+    maxHeight:'90%',
+  },
+  receiptJaggedTop: {
+    flexDirection:'row', backgroundColor:'#98bad5',
+    height:16, overflow:'hidden',
+  },
+  receiptJaggedTriangle: {
+    flex:1, height:16,
+    backgroundColor:'#fffef8',
+    borderTopLeftRadius:8, borderTopRightRadius:8,
+  },
+  receiptJaggedBottom: {
+    flexDirection:'row', backgroundColor:'#fffef8',
+    height:16, overflow:'hidden',
+  },
+  receiptJaggedTriangleBottom: {
+    flex:1, height:16,
+    backgroundColor:'#98bad5',
+    borderTopLeftRadius:8, borderTopRightRadius:8,
+  },
+  receiptHeader: {
+    alignItems:'center', paddingTop:16, paddingHorizontal:20, paddingBottom:4,
+  },
+  receiptShopName: {
+    fontFamily:'NotoSerif_700Bold', fontSize:17,
+    color:'#1a2d4e', letterSpacing:1, textAlign:'center',
+  },
+  receiptShopSub: {
+    fontFamily:'GoogleSans_400Regular', fontSize:11,
+    color:'rgba(1,31,75,0.55)', marginTop:3, textAlign:'center',
+  },
+  receiptDividerDashed: {
+    width:'100%', borderBottomWidth:1,
+    borderColor:'rgba(1,31,75,0.18)', borderStyle:'dashed',
+    marginVertical:10,
+  },
+  receiptDividerSolid: {
+    height:1, backgroundColor:'rgba(1,31,75,0.15)', marginVertical:6,
+  },
+  receiptMeta: {
+    fontFamily:'GoogleSans_400Regular', fontSize:11,
+    color:'rgba(1,31,75,0.60)', textAlign:'center', lineHeight:17,
+  },
+  receiptItemHeader: {
+    flexDirection:'row', marginBottom:2,
+  },
+  receiptItemHCol: {
+    fontFamily:'GoogleSans_700Bold', fontSize:10,
+    color:'rgba(1,31,75,0.50)', letterSpacing:1,
+    textTransform:'uppercase',
+  },
+  receiptItemRow: {
+    flexDirection:'row', alignItems:'center', paddingVertical:5,
+    borderBottomWidth:1, borderColor:'rgba(1,31,75,0.06)',
+  },
+  receiptItemText: {
+    fontFamily:'GoogleSans_400Regular', fontSize:12, color:'#1a2d4e',
+  },
+  receiptTotalRow: {
+    flexDirection:'row', justifyContent:'space-between',
+    alignItems:'center', paddingVertical:3,
+  },
+  receiptTotalLabel: {
+    fontFamily:'GoogleSans_700Bold', fontSize:14, color:'#1a2d4e', letterSpacing:0.5,
+  },
+  receiptTotalValue: {
+    fontFamily:'NotoSerif_700Bold', fontSize:16, color:'#c9a84c',
+  },
+  receiptSubTotalLabel: {
+    fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.60)',
+  },
+  receiptSubTotalValue: {
+    fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(1,31,75,0.75)',
+  },
+  receiptThankYou: {
+    fontFamily:'NotoSerif_700Bold', fontSize:13,
+    color:'#1a2d4e', textAlign:'center', marginTop:12, marginBottom:4,
+  },
+  receiptFooter: {
+    fontFamily:'GoogleSans_400Regular', fontSize:10,
+    color:'rgba(1,31,75,0.40)', textAlign:'center', marginBottom:10,
+  },
+  receiptActions: {
+    flexDirection:'row', gap:10,
+    padding:16, borderTopWidth:1,
+    borderColor:'rgba(1,31,75,0.10)',
+    backgroundColor:'#fffef8',
+  },
+  receiptCloseBtn: {
+    flex:1, paddingVertical:12, borderRadius:10,
+    backgroundColor:'rgba(1,31,75,0.08)',
+    borderWidth:1, borderColor:'rgba(1,31,75,0.15)',
+    alignItems:'center', justifyContent:'center',
+  },
+  receiptCloseBtnText: {
+    fontFamily:'GoogleSans_700Bold', fontSize:13, color:'rgba(1,31,75,0.65)',
+  },
+  receiptPrintBtn: {
+    flex:2, borderRadius:10, overflow:'hidden',
+    shadowColor:'#1a3a6b', shadowOpacity:0.30,
+    shadowRadius:8, shadowOffset:{width:0,height:3}, elevation:4,
+  },
+  receiptPrintBtnGrad: {
+    paddingVertical:12, alignItems:'center', justifyContent:'center',
+  },
+  receiptPrintBtnText: {
+    fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff', letterSpacing:0.5,
   },
 
   // Bottom sheet
@@ -747,16 +1134,16 @@ const styles = StyleSheet.create({
   sheetHeader: {
     flexDirection:'row', alignItems:'center',
     justifyContent:'space-between',
-    paddingHorizontal:20, paddingBottom:8,
+    paddingHorizontal:20, paddingVertical:10,
     borderBottomWidth:1, borderColor:'rgba(1,31,75,0.10)',
   },
   sheetClose: {
     width:30, height:30, borderRadius:15,
-    backgroundColor:'rgba(1,31,75,0.10)',
+    backgroundColor:'rgba(1,31,75,0.08)',
     justifyContent:'center', alignItems:'center',
   },
 
-  // Float cart
+  // Floating cart button
   floatCart: {
     position:'absolute', bottom:24, left:24, right:24,
     borderRadius:30, shadowColor:'#c9a84c',

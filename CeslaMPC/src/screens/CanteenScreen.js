@@ -278,51 +278,45 @@ export default function CanteenScreen({ navigation }) {
         style={StyleSheet.absoluteFillObject}
       />
 
+      {/* ── HEADER — fixed, does not scroll ── */}
+      <Animated.View style={{
+        opacity: hdrFade,
+        transform: [{ translateY: hdrTrans }],
+        marginTop: Platform.OS === 'web' ? 16 : 50,
+        marginHorizontal: isWide ? 20 : isSmall ? 12 : 20,
+        zIndex: 100,
+      }}>
+        <View style={[styles.header, {
+          paddingHorizontal: isWide ? 40 : 16,
+          paddingVertical: isWide ? 18 : 10,
+        }]}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation && navigation.goBack()}
+          >
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+
+          <View style={styles.headerCenter}>
+            <Text style={[styles.headerH1, { fontSize: isWide ? 22 : isSmall ? 15 : 17 }]} numberOfLines={1} adjustsFontSizeToFit>
+              <Text style={styles.headerGold}>CLIMBS </Text>
+              Canteen Ordering System
+            </Text>
+            <Text style={[styles.headerSub, { fontSize: isWide ? 11 : 9 }]} numberOfLines={1} adjustsFontSizeToFit>
+              Select your account type to continue
+            </Text>
+          </View>
+
+          <View style={{ width: 40, flexShrink: 0 }} />
+        </View>
+      </Animated.View>
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces
       >
-        {/* ── HEADER
-            CSS: margin: 16px 20px 0; background: #304674;
-                 border-radius: 14px; padding: 16px 40px;
-                 border-bottom: 1px solid rgba(201,168,76,0.25)
-        ── */}
-        <Animated.View style={{
-          opacity: hdrFade,
-          transform: [{ translateY: hdrTrans }],
-          marginTop: Platform.OS === 'web' ? 16 : 50,
-          marginHorizontal: isWide ? 20 : isSmall ? 12 : 20,
-        }}>
-          <View style={[styles.header, {
-            paddingHorizontal: isWide ? 40 : 16,
-            paddingVertical: isWide ? 18 : 10,
-          }]}>
-            <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() => navigation && navigation.goBack()}
-            >
-              <Text style={styles.backIcon}>←</Text>
-            </TouchableOpacity>
-
-            <View style={styles.headerCenter}>
-              {/* h1: Playfair Display 800, "CLIMBS" in #c9a84c */}
-              <Text style={[styles.headerH1, { fontSize: isWide ? 22 : isSmall ? 15 : 17 }]} numberOfLines={1} adjustsFontSizeToFit>
-                <Text style={styles.headerGold}>CLIMBS </Text>
-                Canteen Ordering System
-              </Text>
-              {/* p: DM Sans 400, rgba(232,200,122,0.75) */}
-              <Text style={[styles.headerSub, { fontSize: isWide ? 11 : 9 }]} numberOfLines={1} adjustsFontSizeToFit>
-                Select your account type to continue
-              </Text>
-            </View>
-
-            {/* spacer: width 40px */}
-            <View style={{ width: 40, flexShrink: 0 }} />
-          </View>
-        </Animated.View>
-
         {/* ── MAIN ── */}
         <View style={[styles.main, { paddingHorizontal: PAD }]}>
 
@@ -380,7 +374,7 @@ export default function CanteenScreen({ navigation }) {
         <Animated.View style={[styles.footer, { opacity: ftFade }]}>
           <View style={styles.footerBorder} />
           <Text style={[styles.footerP, { fontSize: isWide ? 11 : 11 }]}>
-            CESLA Multi-Purpose Cooperative  •  Canteen Ordering System  •  2025
+            CESLA Multi-Purpose Cooperative  •  Canteen Ordering System  •  2026
           </Text>
         </Animated.View>
       </ScrollView>
@@ -497,7 +491,13 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   cardMobile: {
-    backgroundColor: 'rgba(178,203,222,0.45)',
+    backgroundColor: 'rgba(178,203,222,0.50)',
+    borderColor: 'rgba(255,255,255,0.55)',
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
   },
 
   // Badges

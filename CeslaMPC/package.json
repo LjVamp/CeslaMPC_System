@@ -16,8 +16,11 @@
     "@react-navigation/stack": "^7.8.4",
     "expo": "~55.0.4",
     "expo-clipboard": "~55.0.8",
+    "expo-document-picker": "~55.0.8",
     "expo-font": "~55.0.4",
+    "expo-image-picker": "~55.0.11",
     "expo-linear-gradient": "^55.0.8",
+    "expo-media-library": "~55.0.9",
     "expo-status-bar": "~55.0.4",
     "firebase": "^12.10.0",
     "react": "19.2.0",
@@ -26,6 +29,7 @@
     "react-native-safe-area-context": "^5.7.0",
     "react-native-screens": "^4.24.0",
     "react-native-svg": "^15.15.3",
+    "react-native-view-shot": "4.0.3",
     "react-native-web": "^0.21.0"
   },
   "private": true

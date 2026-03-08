@@ -13,8 +13,15 @@ import {
   Image,
   useWindowDimensions,
   Platform,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import {
   NotoSerif_700Bold,
@@ -25,6 +32,66 @@ import {
   GoogleSans_500Medium,
   GoogleSans_700Bold,
 } from '@expo-google-fonts/google-sans';
+
+// ── ADMIN ACCOUNTS ───────────────────────────────────────────────────────────
+// access array — which system screens this admin can open
+// 'all' means Super Admin, otherwise array of screen keys
+const ADMIN_ACCOUNTS = [
+  {
+    id: 'CESLA-ADM-001',
+    password: 'SuperAdmin@2026',
+    name: 'System Administrator',
+    role: 'Super Admin',
+    avatar: 'SA',
+    accent: '#c9a84c',
+    access: 'all',
+  },
+  {
+    id: 'CESLA-ADM-002',
+    password: 'CoopBilling#2026',
+    name: 'Cooperative & Billing Officer',
+    role: 'Coop & Billing Admin',
+    avatar: 'CB',
+    accent: '#6fa3f7',
+    access: ['ManageCoop', 'ManageBilling'],
+  },
+  {
+    id: 'CESLA-ADM-003',
+    password: 'CanteenMerch$003',
+    name: 'Canteen & Merchandise Officer',
+    role: 'Canteen & Merch Admin',
+    avatar: 'CM',
+    accent: '#f5a623',
+    access: ['ManageCanteen', 'ManageMerchandise'],
+  },
+  {
+    id: 'CESLA-ADM-004',
+    password: 'CoopAdmin!Only4',
+    name: 'Cooperative Administrator',
+    role: 'Coop Admin',
+    avatar: 'CA',
+    accent: '#2ecc71',
+    access: ['ManageCoop'],
+  },
+  {
+    id: 'CESLA-ADM-005',
+    password: 'Billing@Monitor5',
+    name: 'Billing Administrator',
+    role: 'Billing Admin',
+    avatar: 'BA',
+    accent: '#b47aff',
+    access: ['ManageBilling'],
+  },
+];
+
+// ── FEEDBACK TYPE → AUTO SUBJECT MAP ─────────────────────────────────────────
+const FEEDBACK_SUBJECTS = {
+  'General':    'General Feedback – CESLA MPC App',
+  'Bug Report': 'Bug Report – Something is not working properly',
+  'Suggestion': 'Suggestion – Feature or improvement idea',
+  'Complaint':  'Complaint – Issue I would like to report',
+  'Other':      'Other – Miscellaneous feedback',
+};
 
 const MODULES = [
   {
@@ -217,6 +284,27 @@ export default function HomeScreen({ navigation }) {
   const logoSize  = isSmall ? 48 : isWide ? 86 : 64;
   const titleSize = isSmall ? 13 : isWide ? 26 : 18;
 
+  const [settingsOpen,   setSettingsOpen]   = useState(false);
+  const [adminWarnOpen,  setAdminWarnOpen]  = useState(false);
+  const [adminLoginOpen, setAdminLoginOpen] = useState(false);
+  const [adminId,        setAdminId]        = useState('');
+  const [adminPw,        setAdminPw]        = useState('');
+  const [adminShowPw,    setAdminShowPw]    = useState(false);
+  const [adminError,     setAdminError]     = useState('');
+  const [adminLoading,   setAdminLoading]   = useState(false);
+  const [adminAttempts,  setAdminAttempts]  = useState(0);
+  const [adminLocked,    setAdminLocked]    = useState(false);
+  const [feedbackOpen,    setFeedbackOpen]    = useState(false);
+  const [feedbackName,    setFeedbackName]    = useState('');
+  const [feedbackEmail,   setFeedbackEmail]   = useState('');
+  const [feedbackSubject, setFeedbackSubject] = useState(FEEDBACK_SUBJECTS['General']);
+  const [feedbackText,    setFeedbackText]    = useState('');
+  const [feedbackType,    setFeedbackType]    = useState('General');
+  const [feedbackFiles,   setFeedbackFiles]   = useState([]);
+  const [feedbackSent,    setFeedbackSent]    = useState(false);
+  const [feedbackSending, setFeedbackSending] = useState(false);
+  const [feedbackError,   setFeedbackError]   = useState('');
+
   const hFade  = useRef(new Animated.Value(0)).current;
   const hTrans = useRef(new Animated.Value(-20)).current;
   const sFade  = useRef(new Animated.Value(0)).current;
@@ -273,51 +361,51 @@ export default function HomeScreen({ navigation }) {
         style={StyleSheet.absoluteFillObject}
       />
 
+      {/* ── HEADER — fixed, does not scroll ── */}
+      <Animated.View style={[
+        styles.header,
+        {
+          paddingTop: Platform.OS === 'web' ? 22 : 50,
+          paddingHorizontal: isWide ? PAD : 12,
+          justifyContent: isWide ? 'center' : 'space-between',
+          gap: isWide ? 16 : 0,
+          opacity: hFade,
+          transform: [{ translateY: hTrans }],
+        },
+      ]}>
+        {/* Left Logo */}
+        <Image
+          source={require('../../assets/CESLA_logo.png')}
+          style={{ width: logoSize, height: logoSize, borderRadius: logoSize / 2, flexShrink: 0 }}
+          resizeMode="contain"
+        />
+
+        {/* Center Title */}
+        <View style={styles.titleBlock}>
+          <Text style={[styles.titleH1, { fontSize: titleSize, lineHeight: titleSize * 1.35 }]}>
+            {'CESLA '}
+            <Text style={styles.titleBold}>Multi-Purpose</Text>
+            {' Cooperative'}
+          </Text>
+          <Text style={[styles.titleSub, { fontSize: isSmall ? 7 : isWide ? 10 : 8 }]}>
+            COMPREHENSIVE SYSTEM PORTAL  •  SINCE 1992
+          </Text>
+        </View>
+
+        {/* Right Logo */}
+        <Image
+          source={require('../../assets/CLIMBS_Logo.png')}
+          style={{ width: logoSize, height: logoSize, borderRadius: logoSize / 2, flexShrink: 0 }}
+          resizeMode="contain"
+        />
+      </Animated.View>
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces
       >
-        {/* ── HEADER ── */}
-        <Animated.View style={[
-          styles.header,
-          {
-            paddingTop: Platform.OS === 'web' ? 22 : 50,
-            paddingHorizontal: isWide ? PAD : 12,
-            justifyContent: isWide ? 'center' : 'space-between',
-            gap: isWide ? 16 : 0,
-            opacity: hFade,
-            transform: [{ translateY: hTrans }],
-          },
-        ]}>
-          {/* Left Logo */}
-          <Image
-            source={require('../../assets/CESLA_logo.png')}
-            style={{ width: logoSize, height: logoSize, borderRadius: logoSize / 2, flexShrink: 0 }}
-            resizeMode="contain"
-          />
-
-          {/* Center Title */}
-          <View style={styles.titleBlock}>
-            <Text style={[styles.titleH1, { fontSize: titleSize, lineHeight: titleSize * 1.35 }]}>
-              {'CESLA '}
-              <Text style={styles.titleBold}>Multi-Purpose</Text>
-              {' Cooperative'}
-            </Text>
-            <Text style={[styles.titleSub, { fontSize: isSmall ? 7 : isWide ? 10 : 8 }]}>
-              COMPREHENSIVE SYSTEM PORTAL  •  SINCE 1992
-            </Text>
-          </View>
-
-          {/* Right Logo */}
-          <Image
-            source={require('../../assets/CLIMBS_Logo.png')}
-            style={{ width: logoSize, height: logoSize, borderRadius: logoSize / 2, flexShrink: 0 }}
-            resizeMode="contain"
-          />
-        </Animated.View>
-
         {/* ── SECTION LABEL ── */}
         <Animated.View style={[
           styles.sectionLabel,
@@ -355,10 +443,710 @@ export default function HomeScreen({ navigation }) {
         ]}>
           <Text style={styles.footerLine}>────────── ୨ৎ ──────────</Text>
           <Text style={styles.footerText}>
-            Choose the service you would like to access  •  CESLA MPC © 2025
+            Choose the service you would like to access  •  CESLA MPC © 2026
           </Text>
+
+          {/* ⚙️ Settings button */}
+          <TouchableOpacity
+            style={styles.settingsBtn}
+            onPress={() => setSettingsOpen(true)}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.settingsIcon}>⚙️</Text>
+            <Text style={styles.settingsBtnText}>Settings</Text>
+          </TouchableOpacity>
         </Animated.View>
       </ScrollView>
+
+      {/* ══ SETTINGS MODAL ══ */}
+      <Modal
+        transparent
+        visible={settingsOpen}
+        animationType="fade"
+        onRequestClose={() => setSettingsOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={() => setSettingsOpen(false)}
+          />
+          <View style={styles.settingsCard}>
+            {/* Header */}
+            <View style={styles.settingsCardHeader}>
+              <Text style={styles.settingsCardTitle}>⚙️  Settings</Text>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setSettingsOpen(false)}
+              >
+                <Text style={styles.modalCloseTxt}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.settingsDivider} />
+
+            {/* Option 1 — Login as Administrator */}
+            <TouchableOpacity
+              style={styles.settingsOption}
+              activeOpacity={0.80}
+              onPress={() => {
+                setSettingsOpen(false);
+                setTimeout(() => setAdminWarnOpen(true), 200);
+              }}
+            >
+              <View style={[styles.settingsOptionIcon, { backgroundColor: 'rgba(201,168,76,0.15)', borderColor: 'rgba(201,168,76,0.40)' }]}>
+                <Text style={{ fontSize: 18 }}>🔒</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingsOptionLabel}>Login as Administrator</Text>
+                <Text style={styles.settingsOptionSub}>Access admin dashboard &amp; controls</Text>
+              </View>
+              <Text style={styles.settingsOptionArrow}>›</Text>
+            </TouchableOpacity>
+
+            {/* Option 2 — Send Feedback */}
+            <TouchableOpacity
+              style={styles.settingsOption}
+              activeOpacity={0.80}
+              onPress={() => {
+                setSettingsOpen(false);
+                setTimeout(() => setFeedbackOpen(true), 200);
+              }}
+            >
+              <View style={[styles.settingsOptionIcon, { backgroundColor: 'rgba(111,163,247,0.15)', borderColor: 'rgba(111,163,247,0.40)' }]}>
+                <Text style={{ fontSize: 18 }}>💬</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingsOptionLabel}>Send Feedback</Text>
+                <Text style={styles.settingsOptionSub}>Report issues or share suggestions</Text>
+              </View>
+              <Text style={styles.settingsOptionArrow}>›</Text>
+            </TouchableOpacity>
+
+            <View style={styles.settingsDivider} />
+            <Text style={styles.settingsVersion}>CESLA MPC System  •  v1.0.0</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══ ADMIN WARNING MODAL ══ */}
+      <Modal
+        transparent
+        visible={adminWarnOpen}
+        animationType="fade"
+        onRequestClose={() => setAdminWarnOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={() => setAdminWarnOpen(false)}
+          />
+          <View style={styles.warnCard}>
+            {/* Warning icon */}
+            <View style={styles.warnIconWrap}>
+              <Text style={{ fontSize: 36 }}>⚠️</Text>
+            </View>
+            <Text style={styles.warnTitle}>Restricted Access</Text>
+            <Text style={styles.warnBody}>
+              {'The '}
+              <Text style={styles.warnBold}>Administrator Portal</Text>
+              {' is strictly reserved for authorized CESLA cooperative administrators only.\n\nUnauthorized access attempts are logged and may result in disciplinary action.'}
+            </Text>
+
+            {/* Warning badge */}
+            <View style={styles.warnBadge}>
+              <Text style={styles.warnBadgeTxt}>🔐  FOR AUTHORIZED ADMINS ONLY</Text>
+            </View>
+
+            {/* Buttons */}
+            <View style={styles.warnBtnRow}>
+              <TouchableOpacity
+                style={styles.warnBtnCancel}
+                onPress={() => setAdminWarnOpen(false)}
+              >
+                <Text style={styles.warnBtnCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.warnBtnProceed}
+                onPress={() => {
+                  setAdminWarnOpen(false);
+                  setTimeout(() => setAdminLoginOpen(true), 200);
+                }}
+              >
+                <LinearGradient
+                  colors={['#c9a84c', '#e8c87a']}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={styles.warnBtnProceedGrad}
+                >
+                  <Text style={styles.warnBtnProceedTxt}>I am an Admin →</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══ ADMIN LOGIN MODAL ══ */}
+      <Modal
+        transparent
+        visible={adminLoginOpen}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!adminLoading) {
+            setAdminLoginOpen(false);
+            setAdminId(''); setAdminPw('');
+            setAdminError(''); setAdminShowPw(false);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={() => {
+              if (!adminLoading) {
+                setAdminLoginOpen(false);
+                setAdminId(''); setAdminPw('');
+                setAdminError(''); setAdminShowPw(false);
+              }
+            }}
+          />
+          <View style={styles.adminLoginCard}>
+
+            {/* Header */}
+            <View style={styles.settingsCardHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MaterialIcons name="admin-panel-settings" size={20} color="#c9a84c" />
+                <Text style={styles.settingsCardTitle}>Admin Login</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => {
+                  if (!adminLoading) {
+                    setAdminLoginOpen(false);
+                    setAdminId(''); setAdminPw('');
+                    setAdminError(''); setAdminShowPw(false);
+                  }
+                }}
+              >
+                <Text style={styles.modalCloseTxt}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.settingsDivider} />
+
+            <View style={{ padding: 18, gap: 14 }}>
+
+              {/* Warning badge */}
+              <View style={styles.adminWarnBadge}>
+                <MaterialIcons name="lock" size={11} color="#7a5c10" />
+                <Text style={styles.adminWarnBadgeTxt}>AUTHORIZED PERSONNEL ONLY</Text>
+              </View>
+
+              {/* Admin ID */}
+              <View>
+                <Text style={styles.adminFieldLabel}>ADMIN ID</Text>
+                <View style={[styles.adminFieldRow, adminError && styles.adminFieldRowError]}>
+                  <MaterialIcons name="badge" size={17} color="rgba(1,31,75,0.38)" style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.adminFieldInput}
+                    value={adminId}
+                    onChangeText={v => { setAdminId(v); setAdminError(''); }}
+                    placeholder="e.g. CESLA-ADM-001"
+                    placeholderTextColor="rgba(1,31,75,0.32)"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!adminLocked && !adminLoading}
+                  />
+                </View>
+              </View>
+
+              {/* Password */}
+              <View>
+                <Text style={styles.adminFieldLabel}>PASSWORD</Text>
+                <View style={[styles.adminFieldRow, adminError && styles.adminFieldRowError]}>
+                  <MaterialIcons name="lock-outline" size={17} color="rgba(1,31,75,0.38)" style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.adminFieldInput}
+                    value={adminPw}
+                    onChangeText={v => { setAdminPw(v); setAdminError(''); }}
+                    placeholder="Enter your password"
+                    placeholderTextColor="rgba(1,31,75,0.32)"
+                    secureTextEntry={!adminShowPw}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!adminLocked && !adminLoading}
+                    onSubmitEditing={() => {
+                      if (!adminLocked && !adminLoading) {
+                        // trigger login inline
+                      }
+                    }}
+                  />
+                  <TouchableOpacity onPress={() => setAdminShowPw(p => !p)} style={{ padding: 4 }}>
+                    <MaterialIcons
+                      name={adminShowPw ? 'visibility-off' : 'visibility'}
+                      size={17} color="rgba(1,31,75,0.38)"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Error */}
+              {adminError ? (
+                <View style={styles.adminErrorBox}>
+                  <MaterialIcons name={adminLocked ? 'block' : 'error-outline'} size={14} color={adminLocked ? '#c0392b' : '#e74c3c'} />
+                  <Text style={[styles.adminErrorTxt, adminLocked && { color: '#c0392b' }]}>{adminError}</Text>
+                </View>
+              ) : null}
+
+              {/* Attempt dots */}
+              {adminAttempts > 0 && !adminLocked && (
+                <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>
+                  {[1,2,3,4,5].map(i => (
+                    <View key={i} style={[
+                      styles.adminAttemptDot,
+                      { backgroundColor: i <= adminAttempts ? '#e74c3c' : 'rgba(1,31,75,0.12)' },
+                    ]} />
+                  ))}
+                </View>
+              )}
+
+              {/* Login button */}
+              <TouchableOpacity
+                style={[styles.adminLoginBtn, (adminLocked || adminLoading) && { opacity: 0.55 }]}
+                disabled={adminLocked || adminLoading}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (adminLocked || adminLoading) return;
+                  if (!adminId.trim()) { setAdminError('Please enter your Admin ID.'); return; }
+                  if (!adminPw.trim()) { setAdminError('Please enter your password.'); return; }
+
+                  setAdminLoading(true);
+                  setAdminError('');
+
+                  setTimeout(() => {
+                    const found = ADMIN_ACCOUNTS.find(
+                      a => a.id === adminId.trim() && a.password === adminPw
+                    );
+
+                    if (found) {
+                      setAdminLoading(false);
+                      setAdminAttempts(0);
+                      setAdminLoginOpen(false);
+                      setAdminId(''); setAdminPw('');
+                      setAdminError(''); setAdminShowPw(false);
+                      // Navigate to AdminScreen with admin data
+                      setTimeout(() => {
+                        if (navigation) navigation.navigate('AdminScreen', { admin: found });
+                      }, 150);
+                    } else {
+                      const newAttempts = adminAttempts + 1;
+                      setAdminAttempts(newAttempts);
+                      if (newAttempts >= 5) {
+                        setAdminLocked(true);
+                        setAdminError('Too many failed attempts. Access locked for 30 seconds.');
+                        setTimeout(() => {
+                          setAdminLocked(false);
+                          setAdminAttempts(0);
+                          setAdminError('');
+                        }, 30000);
+                      } else {
+                        const rem = 5 - newAttempts;
+                        setAdminError(`Invalid Admin ID or Password. ${rem} attempt${rem === 1 ? '' : 's'} remaining.`);
+                      }
+                      setAdminLoading(false);
+                    }
+                  }, 700);
+                }}
+              >
+                <LinearGradient
+                  colors={['#c9a84c', '#e8c87a']}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={styles.adminLoginBtnGrad}
+                >
+                  {adminLoading
+                    ? <ActivityIndicator color="#0d1b3e" />
+                    : <>
+                        <MaterialIcons name="login" size={16} color="#0d1b3e" />
+                        <Text style={styles.adminLoginBtnTxt}>Sign In as Admin</Text>
+                      </>
+                  }
+                </LinearGradient>
+              </TouchableOpacity>
+
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══ FEEDBACK MODAL ══ */}
+      <Modal
+        transparent
+        visible={feedbackOpen}
+        animationType="slide"
+        onRequestClose={() => {
+          if (!feedbackSending) {
+            setFeedbackOpen(false); setFeedbackSent(false);
+            setFeedbackName(''); setFeedbackEmail('');
+            setFeedbackSubject(FEEDBACK_SUBJECTS['General']); setFeedbackText('');
+            setFeedbackFiles([]); setFeedbackError('');
+            setFeedbackType('General');
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={() => {
+              if (!feedbackSending) {
+                setFeedbackOpen(false); setFeedbackSent(false);
+                setFeedbackName(''); setFeedbackEmail('');
+                setFeedbackSubject(FEEDBACK_SUBJECTS['General']); setFeedbackText('');
+                setFeedbackFiles([]); setFeedbackError('');
+                setFeedbackType('General');
+              }
+            }}
+          />
+          <View style={styles.feedbackCard}>
+            {/* Header */}
+            <View style={styles.settingsCardHeader}>
+              <Text style={styles.settingsCardTitle}>💬  Send Feedback</Text>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => {
+                  if (!feedbackSending) {
+                    setFeedbackOpen(false); setFeedbackSent(false);
+                    setFeedbackName(''); setFeedbackEmail('');
+                    setFeedbackSubject(''); setFeedbackText('');
+                    setFeedbackFiles([]); setFeedbackError('');
+                    setFeedbackType('General');
+                  }
+                }}
+              >
+                <Text style={styles.modalCloseTxt}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.settingsDivider} />
+
+            {feedbackSent ? (
+              /* ── SUCCESS STATE ── */
+              <View style={styles.feedbackSentWrap}>
+                <Text style={{ fontSize: 48, marginBottom: 12 }}>✅</Text>
+                <Text style={styles.feedbackSentTitle}>Feedback Sent!</Text>
+                <Text style={styles.feedbackSentSub}>
+                  {'Your message has been sent to\nbandiola.ledyjoy@gmail.com'}
+                </Text>
+              </View>
+            ) : (
+              /* ── FORM ── */
+              <ScrollView
+                style={{ maxHeight: 520 }}
+                contentContainerStyle={{ padding: 18, paddingTop: 10, gap: 12 }}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {/* Feedback Type pills */}
+                <View>
+                  <Text style={styles.feedbackLabel}>FEEDBACK TYPE</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                    {['General', 'Bug Report', 'Suggestion', 'Complaint', 'Other'].map(type => (
+                      <TouchableOpacity
+                        key={type}
+                        style={[styles.feedbackTypePill,
+                          feedbackType === type && styles.feedbackTypePillActive]}
+                        onPress={() => {
+                          setFeedbackType(type);
+                          setFeedbackSubject(FEEDBACK_SUBJECTS[type] || '');
+                        }}
+                      >
+                        <Text style={[styles.feedbackTypePillTxt,
+                          feedbackType === type && styles.feedbackTypePillTxtActive]}>
+                          {type}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                {/* Name */}
+                <View>
+                  <Text style={styles.feedbackLabel}>YOUR NAME</Text>
+                  <TextInput
+                    style={styles.feedbackField}
+                    value={feedbackName}
+                    onChangeText={setFeedbackName}
+                    placeholder="Enter your name"
+                    placeholderTextColor="rgba(1,31,75,0.35)"
+                  />
+                </View>
+
+                {/* Email */}
+                <View>
+                  <Text style={styles.feedbackLabel}>YOUR EMAIL (optional)</Text>
+                  <TextInput
+                    style={styles.feedbackField}
+                    value={feedbackEmail}
+                    onChangeText={setFeedbackEmail}
+                    placeholder="your@email.com"
+                    placeholderTextColor="rgba(1,31,75,0.35)"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                {/* Subject */}
+                <View>
+                  <Text style={styles.feedbackLabel}>SUBJECT <Text style={{ color: '#e74c3c' }}>*</Text></Text>
+                  <TextInput
+                    style={styles.feedbackField}
+                    value={feedbackSubject}
+                    onChangeText={setFeedbackSubject}
+                    placeholder="Auto-filled based on feedback type"
+                    placeholderTextColor="rgba(1,31,75,0.35)"
+                  />
+                </View>
+
+                {/* Message */}
+                <View>
+                  <Text style={styles.feedbackLabel}>MESSAGE <Text style={{ color: '#e74c3c' }}>*</Text></Text>
+                  <TextInput
+                    style={styles.feedbackInput}
+                    value={feedbackText}
+                    onChangeText={setFeedbackText}
+                    placeholder="Describe your issue, suggestion, or feedback in detail..."
+                    placeholderTextColor="rgba(1,31,75,0.35)"
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                </View>
+
+                {/* Attachments */}
+                <View>
+                  <Text style={styles.feedbackLabel}>ATTACHMENTS (optional)</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    {Platform.OS === 'web' ? (
+                      /* ── WEB: native HTML file input ── */
+                      <View style={styles.attachBtn}>
+                        <MaterialIcons name="attach-file" size={18} color="#2a5ba8" />
+                        <Text style={styles.attachBtnTxt}>Add Attachment</Text>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+                          style={{
+                            position: 'absolute', top: 0, left: 0,
+                            width: '100%', height: '100%',
+                            opacity: 0, cursor: 'pointer',
+                          }}
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files || []);
+                            if (files.length === 0) return;
+                            const newFiles = files.map(f => ({
+                              uri: URL.createObjectURL(f),
+                              name: f.name,
+                              type: f.type,
+                              isImage: f.type.startsWith('image/'),
+                              webFile: f,
+                            }));
+                            setFeedbackFiles(prev => [...prev, ...newFiles].slice(0, 5));
+                            e.target.value = '';
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      /* ── MOBILE: expo pickers via Action Sheet ── */
+                      <TouchableOpacity
+                        style={styles.attachBtn}
+                        onPress={() => {
+                          Alert.alert(
+                            'Add Attachment',
+                            'Choose the type of file to attach.',
+                            [
+                              {
+                                text: 'Photo / Image',
+                                onPress: async () => {
+                                  try {
+                                    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                                    if (status !== 'granted') {
+                                      Alert.alert('Permission needed', 'Please allow access to your photo library.');
+                                      return;
+                                    }
+                                    const result = await ImagePicker.launchImageLibraryAsync({
+                                      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                      allowsMultipleSelection: true,
+                                      quality: 0.7,
+                                      base64: true,
+                                    });
+                                    if (!result.canceled) {
+                                      const newFiles = result.assets.map(a => ({
+                                        uri: a.uri,
+                                        name: a.fileName || 'image.jpg',
+                                        type: a.type || 'image/jpeg',
+                                        base64: a.base64,
+                                        isImage: true,
+                                      }));
+                                      setFeedbackFiles(prev => [...prev, ...newFiles].slice(0, 5));
+                                    }
+                                  } catch (e) {
+                                    Alert.alert('Error', 'Could not open image picker.');
+                                  }
+                                },
+                              },
+                              {
+                                text: 'Document / File',
+                                onPress: async () => {
+                                  try {
+                                    const result = await DocumentPicker.getDocumentAsync({
+                                      type: '*/*',
+                                      multiple: true,
+                                      copyToCacheDirectory: true,
+                                    });
+                                    if (!result.canceled) {
+                                      const newFiles = result.assets.map(a => ({
+                                        uri: a.uri,
+                                        name: a.name,
+                                        type: a.mimeType || 'application/octet-stream',
+                                        isImage: false,
+                                      }));
+                                      setFeedbackFiles(prev => [...prev, ...newFiles].slice(0, 5));
+                                    }
+                                  } catch (e) {
+                                    Alert.alert('Error', 'Could not open document picker.');
+                                  }
+                                },
+                              },
+                              { text: 'Cancel', style: 'cancel' },
+                            ]
+                          );
+                        }}
+                      >
+                        <MaterialIcons name="attach-file" size={18} color="#2a5ba8" />
+                        <Text style={styles.attachBtnTxt}>Add Attachment</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {feedbackFiles.length > 0 && (
+                      <TouchableOpacity
+                        style={styles.attachClearBtn}
+                        onPress={() => setFeedbackFiles([])}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <MaterialIcons name="delete-outline" size={15} color="#c0392b" />
+                          <Text style={styles.attachClearTxt}>Clear All</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Attached files list */}
+                  {feedbackFiles.length > 0 && (
+                    <View style={styles.attachedList}>
+                      {feedbackFiles.map((f, i) => (
+                        <View key={i} style={styles.attachedItem}>
+                          <MaterialIcons name={f.isImage ? 'image' : 'insert-drive-file'} size={16} color="#2a5ba8" />
+                          <Text style={styles.attachedName} numberOfLines={1}>{f.name}</Text>
+                          <TouchableOpacity onPress={() => setFeedbackFiles(prev => prev.filter((_, j) => j !== i))}>
+                            <MaterialIcons name="close" size={14} color="#c0392b" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                      <Text style={styles.attachHint}>Max 5 files. Large files may be skipped by email service.</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Error */}
+                {feedbackError ? (
+                  <Text style={styles.feedbackErrorTxt}>{feedbackError}</Text>
+                ) : null}
+
+                {/* Send button */}
+                <TouchableOpacity
+                  style={[styles.feedbackSendBtn,
+                    (!feedbackSubject.trim() || !feedbackText.trim()) && { opacity: 0.45 }]}
+                  disabled={!feedbackSubject.trim() || !feedbackText.trim() || feedbackSending}
+                  onPress={async () => {
+                    if (!feedbackSubject.trim() || !feedbackText.trim()) return;
+                    setFeedbackSending(true);
+                    setFeedbackError('');
+                    try {
+                      // Build attachment list text
+                      const attachNames = feedbackFiles.length > 0
+                        ? feedbackFiles.map(f => f.name).join(', ')
+                        : 'None';
+
+                      // ─────────────────────────────────────────────────────
+                      // ⚠️  REPLACE these 3 values with your actual EmailJS IDs
+                      //    service_id  → EmailJS dashboard > Email Services
+                      //    template_id → EmailJS dashboard > Email Templates
+                      //    user_id     → EmailJS dashboard > Account > Public Key
+                      // ─────────────────────────────────────────────────────
+                      const payload = {
+                        service_id:  'service_ceslampc',   // ← YOUR Service ID here
+                        template_id: 'template_feedback',  // ← YOUR Template ID here
+                        user_id:     'yNW-knzcWspVbuQrr', // ✅ EmailJS Public Key
+                        template_params: {
+                          feedback_type:    feedbackType,
+                          from_name:        feedbackName.trim() || 'Anonymous User',
+                          from_email:       feedbackEmail.trim() || 'no-reply@ceslampc.app',
+                          subject:          `[CESLA MPC Feedback – ${feedbackType}] ${feedbackSubject.trim()}`,
+                          message:          feedbackText.trim(),
+                          attachments_note: attachNames,
+                          app_version:      'CESLA MPC v1.0.0',
+                          sent_at:          new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
+                        },
+                      };
+
+                      const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                      });
+
+                      if (res.status === 200) {
+                        setFeedbackSent(true);
+                        setFeedbackName(''); setFeedbackEmail('');
+                        setFeedbackSubject(''); setFeedbackText('');
+                        setFeedbackFiles([]); setFeedbackType('General');
+                        setFeedbackSubject(FEEDBACK_SUBJECTS['General']);
+                        setTimeout(() => {
+                          setFeedbackOpen(false);
+                          setFeedbackSent(false);
+                        }, 3000);
+                      } else {
+                        const errText = await res.text();
+                        setFeedbackError('Failed to send. Please try again. (' + res.status + ')');
+                      }
+                    } catch (e) {
+                      setFeedbackError('Network error. Check your connection and try again.');
+                    } finally {
+                      setFeedbackSending(false);
+                    }
+                  }}
+                >
+                  <LinearGradient
+                    colors={['#6fa3f7', '#4a85e8']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.feedbackSendGrad}
+                  >
+                    {feedbackSending
+                      ? <ActivityIndicator color="#fff" />
+                      : <Text style={styles.feedbackSendTxt}>Send Feedback  →</Text>
+                    }
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <Text style={styles.feedbackFooterNote}>
+                  CESLA MPC System Developers
+                </Text>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -372,6 +1160,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingBottom: 10,
+    zIndex: 100,
+    backgroundColor: 'transparent',
   },
   hdrCenter: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
   titleBlock: { alignItems: 'center', paddingHorizontal: 10, flexShrink: 1 },
@@ -420,7 +1210,13 @@ const styles = StyleSheet.create({
   },
   // Mobile-only: static rgba color instead of gradient — eliminates double-box bug
   cardMobile: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(178,203,222,0.50)',
+    borderColor: 'rgba(255,255,255,0.55)',
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
   },
 
   iconCircle: {
@@ -463,4 +1259,339 @@ const styles = StyleSheet.create({
   footer: { alignItems: 'center', marginTop: 44, paddingHorizontal: 20, paddingBottom: 20, gap: 6 },
   footerLine: { color: 'rgba(235,239,242,0.5)', fontSize: 11, letterSpacing: 1 },
   footerText: { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(235,239,242,0.5)', letterSpacing: 0.5, textAlign: 'center' },
+
+  // ── SETTINGS BUTTON ──
+  settingsBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 10, paddingHorizontal: 16, paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
+  },
+  settingsIcon: { fontSize: 14 },
+  settingsBtnText: {
+    fontFamily: 'GoogleSans_500Medium', fontSize: 12,
+    color: 'rgba(235,239,242,0.75)', letterSpacing: 0.5,
+  },
+
+  // ── SHARED MODAL OVERLAY ──
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(1,20,50,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+
+  // ── SETTINGS CARD ──
+  settingsCard: {
+    width: '100%', maxWidth: 380,
+    backgroundColor: 'rgba(220,232,242,0.97)',
+    borderRadius: 22,
+    paddingBottom: 20,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)',
+    shadowColor: '#011f4b', shadowOpacity: 0.25,
+    shadowRadius: 24, shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
+    overflow: 'hidden',
+  },
+  settingsCardHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14,
+  },
+  settingsCardTitle: {
+    fontFamily: 'NotoSerif_700Bold', fontSize: 17,
+    color: '#011f4b',
+  },
+  modalCloseBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(1,31,75,0.09)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  modalCloseTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 12,
+    color: 'rgba(1,31,75,0.55)',
+  },
+  settingsDivider: {
+    height: 1, backgroundColor: 'rgba(1,31,75,0.08)',
+    marginHorizontal: 0, marginBottom: 8,
+  },
+  settingsOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingHorizontal: 20, paddingVertical: 14,
+  },
+  settingsOptionIcon: {
+    width: 44, height: 44, borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center', alignItems: 'center',
+    flexShrink: 0,
+  },
+  settingsOptionLabel: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 14,
+    color: '#011f4b', marginBottom: 2,
+  },
+  settingsOptionSub: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 11,
+    color: 'rgba(1,31,75,0.55)',
+  },
+  settingsOptionArrow: {
+    fontSize: 22, color: 'rgba(1,31,75,0.30)',
+    fontWeight: '300',
+  },
+  settingsVersion: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 10,
+    color: 'rgba(1,31,75,0.35)', textAlign: 'center',
+    letterSpacing: 0.5, marginTop: 6,
+  },
+
+  // ── ADMIN WARNING CARD ──
+  warnCard: {
+    width: '100%', maxWidth: 380,
+    backgroundColor: 'rgba(220,232,242,0.97)',
+    borderRadius: 22, padding: 24,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)',
+    shadowColor: '#011f4b', shadowOpacity: 0.25,
+    shadowRadius: 24, shadowOffset: { width: 0, height: 6 },
+    elevation: 12, alignItems: 'center',
+  },
+  warnIconWrap: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: 'rgba(231,76,60,0.12)',
+    borderWidth: 2, borderColor: 'rgba(231,76,60,0.30)',
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 16,
+  },
+  warnTitle: {
+    fontFamily: 'NotoSerif_700Bold', fontSize: 20,
+    color: '#c0392b', marginBottom: 12, textAlign: 'center',
+  },
+  warnBody: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 13,
+    color: 'rgba(1,31,75,0.70)', textAlign: 'center',
+    lineHeight: 20, marginBottom: 16,
+  },
+  warnBold: {
+    fontFamily: 'GoogleSans_700Bold', color: '#011f4b',
+  },
+  warnBadge: {
+    backgroundColor: 'rgba(201,168,76,0.15)',
+    borderRadius: 10, borderWidth: 1,
+    borderColor: 'rgba(201,168,76,0.40)',
+    paddingHorizontal: 14, paddingVertical: 9,
+    marginBottom: 20, width: '100%', alignItems: 'center',
+  },
+  warnBadgeTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 11,
+    color: '#7a5c10', letterSpacing: 1.5,
+  },
+  warnBtnRow: {
+    flexDirection: 'row', gap: 10, width: '100%',
+  },
+  warnBtnCancel: {
+    flex: 1, paddingVertical: 13, borderRadius: 12,
+    backgroundColor: 'rgba(1,31,75,0.08)',
+    borderWidth: 1, borderColor: 'rgba(1,31,75,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  warnBtnCancelTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 13,
+    color: 'rgba(1,31,75,0.55)',
+  },
+  warnBtnProceed: {
+    flex: 2, borderRadius: 12, overflow: 'hidden',
+    shadowColor: '#c9a84c', shadowOpacity: 0.35,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  warnBtnProceedGrad: {
+    paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
+  },
+  warnBtnProceedTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 13,
+    color: '#0d1b3e',
+  },
+
+  // ── FEEDBACK CARD ──
+  feedbackCard: {
+    width: '100%', maxWidth: 420,
+    backgroundColor: 'rgba(220,232,242,0.97)',
+    borderRadius: 22,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)',
+    shadowColor: '#011f4b', shadowOpacity: 0.25,
+    shadowRadius: 24, shadowOffset: { width: 0, height: 6 },
+    elevation: 12, overflow: 'hidden',
+  },
+  feedbackLabel: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 10,
+    color: 'rgba(1,31,75,0.55)', letterSpacing: 1.5,
+    textTransform: 'uppercase', marginBottom: 6,
+  },
+  feedbackField: {
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
+    fontFamily: 'GoogleSans_400Regular', fontSize: 13,
+    color: '#011f4b',
+    borderWidth: 1.5, borderColor: 'rgba(200,215,230,0.80)',
+  },
+  feedbackInput: {
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 10, padding: 14,
+    fontFamily: 'GoogleSans_400Regular', fontSize: 13,
+    color: '#011f4b', minHeight: 95,
+    borderWidth: 1.5, borderColor: 'rgba(200,215,230,0.80)',
+  },
+  feedbackTypePill: {
+    paddingHorizontal: 14, paddingVertical: 7,
+    borderRadius: 20, borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderColor: 'rgba(255,255,255,0.70)',
+  },
+  feedbackTypePillActive: {
+    backgroundColor: '#304674', borderColor: '#c9a84c',
+  },
+  feedbackTypePillTxt: {
+    fontFamily: 'GoogleSans_500Medium', fontSize: 12,
+    color: 'rgba(1,31,75,0.65)',
+  },
+  feedbackTypePillTxtActive: {
+    fontFamily: 'GoogleSans_700Bold', color: '#fff',
+  },
+  attachBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 16, paddingVertical: 10,
+    borderRadius: 10, borderWidth: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.60)',
+    borderColor: 'rgba(111,163,247,0.45)',
+    position: 'relative', overflow: 'hidden',
+  },
+  // attachBtnIcon: not used — replaced by MaterialIcons component
+  attachBtnTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 13,
+    color: '#2a5ba8',
+  },
+  attachClearBtn: {
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: 10, borderWidth: 1.5,
+    backgroundColor: 'rgba(231,76,60,0.08)',
+    borderColor: 'rgba(231,76,60,0.35)',
+  },
+  attachClearTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 12,
+    color: '#c0392b',
+  },
+  attachedList: {
+    marginTop: 8, backgroundColor: 'rgba(255,255,255,0.50)',
+    borderRadius: 10, padding: 10, gap: 6,
+    borderWidth: 1, borderColor: 'rgba(200,215,230,0.60)',
+  },
+  attachedItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 4,
+  },
+  attachedName: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 11,
+    color: '#011f4b', flex: 1,
+  },
+  attachHint: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 10,
+    color: 'rgba(1,31,75,0.45)', marginTop: 4,
+  },
+  feedbackErrorTxt: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 12,
+    color: '#c0392b', textAlign: 'center',
+    backgroundColor: 'rgba(231,76,60,0.10)',
+    borderRadius: 8, padding: 10,
+    borderWidth: 1, borderColor: 'rgba(231,76,60,0.25)',
+  },
+  feedbackSendBtn: {
+    borderRadius: 12, overflow: 'hidden',
+    shadowColor: '#6fa3f7', shadowOpacity: 0.30,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  feedbackSendGrad: {
+    paddingVertical: 14, alignItems: 'center', justifyContent: 'center', minHeight: 48,
+  },
+  feedbackSendTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff',
+  },
+  feedbackFooterNote: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 10,
+    color: 'rgba(1,31,75,0.40)', textAlign: 'center',
+  },
+  feedbackSentWrap: {
+    alignItems: 'center', paddingVertical: 36, paddingHorizontal: 20,
+  },
+  feedbackSentTitle: {
+    fontFamily: 'NotoSerif_700Bold', fontSize: 22,
+    color: '#1a7a4a', marginBottom: 8,
+  },
+  feedbackSentSub: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 13,
+    color: 'rgba(1,31,75,0.60)', textAlign: 'center', lineHeight: 20,
+  },
+
+  // ── ADMIN LOGIN MODAL ──
+  adminLoginCard: {
+    width: '100%', maxWidth: 390,
+    backgroundColor: 'rgba(220,232,242,0.97)',
+    borderRadius: 22,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)',
+    shadowColor: '#011f4b', shadowOpacity: 0.25,
+    shadowRadius: 24, shadowOffset: { width: 0, height: 6 },
+    elevation: 12, overflow: 'hidden',
+  },
+  adminWarnBadge: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: 'rgba(201,168,76,0.15)',
+    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)',
+    paddingHorizontal: 14, paddingVertical: 8,
+  },
+  adminWarnBadgeTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 10,
+    color: '#7a5c10', letterSpacing: 1.5,
+  },
+  adminFieldLabel: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 10,
+    color: 'rgba(1,31,75,0.55)', letterSpacing: 1.5,
+    textTransform: 'uppercase', marginBottom: 6,
+  },
+  adminFieldRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 11, paddingHorizontal: 13, paddingVertical: 12,
+    borderWidth: 1.5, borderColor: 'rgba(200,215,230,0.80)',
+  },
+  adminFieldRowError: { borderColor: '#e74c3c' },
+  adminFieldInput: {
+    flex: 1, fontFamily: 'GoogleSans_400Regular',
+    fontSize: 13, color: '#011f4b',
+  },
+  adminErrorBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 7,
+    backgroundColor: 'rgba(231,76,60,0.10)',
+    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(231,76,60,0.28)',
+    padding: 11,
+  },
+  adminErrorTxt: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 12,
+    color: '#e74c3c', flex: 1, lineHeight: 17,
+  },
+  adminAttemptDot: {
+    width: 10, height: 10, borderRadius: 5,
+  },
+  adminLoginBtn: {
+    borderRadius: 12, overflow: 'hidden',
+    shadowColor: '#c9a84c', shadowOpacity: 0.35,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4,
+  },
+  adminLoginBtnGrad: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 8, paddingVertical: 14, minHeight: 48,
+  },
+  adminLoginBtnTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 14,
+    color: '#0d1b3e', letterSpacing: 0.3,
+  },
 });
