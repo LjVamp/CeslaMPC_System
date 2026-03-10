@@ -337,9 +337,144 @@ const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onP
 };
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
-export default function CanteenVisitor({ navigation }) {
+// ─── AD BANNER (2 slots, auto-swipe every 5s, swipeable) ─────────────────────
+const AdBanner = ({ isWide }) => {
+  const [current, setCurrent] = useState(0);
+  const scrollRef = useRef(null);
   const { width } = useWindowDimensions();
-  const isWide  = width >= 900;
+
+  const ADS = [
+    {
+      id: 1,
+      bg: ['#1a3a6b', '#2e5fa3'],
+      emoji: '🍽️',
+      title: 'Today\'s Special',
+      sub: 'Fresh meals served daily!',
+    },
+    {
+      id: 2,
+      bg: ['#7b3f00', '#c9a84c'],
+      emoji: '☕',
+      title: 'Merienda Promo',
+      sub: 'Snacks & drinks available!',
+    },
+  ];
+
+  // Auto-swipe every 5 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrent(prev => {
+        const next = (prev + 1) % ADS.length;
+        scrollRef.current?.scrollTo({ x: next * bannerW, animated: true });
+        return next;
+      });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const bannerW = isWide ? Math.min(width * 0.55, 700) : width - 64;
+
+  const handleScroll = (e) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / bannerW);
+    setCurrent(idx);
+  };
+
+  return (
+    <View style={adStyles.wrapper}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={handleScroll}
+        style={{ width: bannerW }}
+        contentContainerStyle={{ width: bannerW * ADS.length }}
+      >
+        {ADS.map((ad, i) => (
+          <LinearGradient
+            key={ad.id}
+            colors={ad.bg}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={[adStyles.slide, { width: bannerW }]}
+          >
+            <Text style={adStyles.adEmoji}>{ad.emoji}</Text>
+            <View>
+              <Text style={adStyles.adTitle}>{ad.title}</Text>
+              <Text style={adStyles.adSub}>{ad.sub}</Text>
+            </View>
+            <View style={adStyles.adBadge}>
+              <Text style={adStyles.adBadgeTxt}>AD</Text>
+            </View>
+          </LinearGradient>
+        ))}
+      </ScrollView>
+
+      {/* Dots indicator */}
+      <View style={adStyles.dots}>
+        {ADS.map((_, i) => (
+          <TouchableOpacity
+            key={i}
+            onPress={() => {
+              scrollRef.current?.scrollTo({ x: i * bannerW, animated: true });
+              setCurrent(i);
+            }}
+          >
+            <View style={[adStyles.dot, current === i && adStyles.dotActive]} />
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+};
+
+const adStyles = StyleSheet.create({
+  wrapper: {
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  slide: {
+    height: 130,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    gap: 14,
+    overflow: 'hidden',
+  },
+  adEmoji: { fontSize: 48 },
+  adTitle: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 18, color: '#fff',
+  },
+  adSub: {
+    fontFamily: 'GoogleSans_400Regular',
+    fontSize: 14, color: 'rgba(255,255,255,0.80)',
+  },
+  adBadge: {
+    position: 'absolute', top: 8, right: 10,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  adBadgeTxt: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 9, color: '#fff', letterSpacing: 1,
+  },
+  dots: {
+    flexDirection: 'row', gap: 6, marginTop: 6,
+  },
+  dot: {
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: 'rgba(1,31,75,0.20)',
+  },
+  dotActive: {
+    backgroundColor: '#c9a84c', width: 18,
+  },
+});
+
+
+export default function CanteenVisitor({ navigation }) {
+  const { width, height } = useWindowDimensions();
+  const isWide  = width >= 768;
   const isSmall = width < 400;
 
   const [fontsLoaded] = useFonts({
@@ -499,16 +634,14 @@ export default function CanteenVisitor({ navigation }) {
     return (activeCategory === 'All' || i.cat === activeCategory);
   });
 
-  // Grid cols
+  // Grid cols — COLS fixed per platform, CARD_W fills available space
   const CART_W  = isWide ? 230 : 0;
   const CAT_W   = isWide ? 170 : 0;
-  const MARGIN  = isWide ? 40 : 0;
-  const CENTER  = width - CAT_W - CART_W - MARGIN;
-  const COLS    = isWide ? 6 : isSmall ? 2 : 3;
+  const MARGIN  = isWide ? 80 : 32;
   const GAP_C   = 10;
-  const CARD_W  = isWide
-    ? Math.floor((CENTER - 24 - (COLS-1)*GAP_C) / COLS)
-    : Math.floor((width - 32 - (COLS-1)*GAP_C) / COLS);
+  const COLS    = Platform.OS === 'web' ? 5 : 2;
+  const AVAIL   = width - CAT_W - CART_W - MARGIN - 24;  // 24 = itemsPanel padding*2
+  const CARD_W  = Math.floor((AVAIL - (COLS - 1) * GAP_C) / COLS);
 
   return (
     <View style={styles.root}>
@@ -544,14 +677,9 @@ export default function CanteenVisitor({ navigation }) {
             </View>
           </View>
 
-          {/* Cart icon (mobile) */}
-          <TouchableOpacity style={styles.backBtn} onPress={() => !isWide && setCartOpen(true)}>
-            <Text style={{ color:'#fff', fontSize:18 }}>{isWide ? '≡' : '🛒'}</Text>
-            {!isWide && totalItems > 0 && (
-              <View style={styles.cartDot}>
-                <Text style={styles.cartDotText}>{totalItems}</Text>
-              </View>
-            )}
+          {/* Menu icon — same as Web, no cart icon */}
+          <TouchableOpacity style={styles.backBtn}>
+            <Text style={{ color:'#fff', fontSize:18 }}>≡</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -614,32 +742,38 @@ export default function CanteenVisitor({ navigation }) {
             )}
           </View>
 
-          {/* Section label — shows "SEARCH RESULTS" when typing */}
-          <Text style={[styles.menuSectionLabel, { marginBottom:10 }]}>
-            {search.trim() !== ''
-              ? `RESULTS FOR "${search.toUpperCase()}"`
-              : activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()
-            }
-          </Text>
+          {/* ── Ad Banner ── */}
+          <AdBanner isWide={isWide} />
 
-          {/* Menu grid */}
-          <ScrollView showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.menuGrid, { gap:10, paddingBottom:30 }]}
-          >
-            <View style={[styles.menuRow, { gap:10 }]}>
-              {filtered.map(item => (
-                <View key={item.id} style={{ width: CARD_W }}>
-                  <FoodCard
-                    item={item}
-                    onAdd={() => addToCart(item)}
-                  />
-                </View>
-              ))}
-              {filtered.length === 0 && (
-                <Text style={styles.emptyText}>No items found.</Text>
-              )}
-            </View>
-          </ScrollView>
+          {/* Items panel — scrollable */}
+          <View style={styles.itemsPanel}>
+            <Text style={styles.menuSectionLabel}>
+              {search.trim() !== ''
+                ? `RESULTS FOR "${search.toUpperCase()}"`
+                : activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()
+              }
+            </Text>
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+              style={{ height: height - (Platform.OS === 'web' ? 360 : 460) }}
+              contentContainerStyle={[styles.menuGrid, { gap:10, paddingBottom:20 }]}
+            >
+              <View style={[styles.menuRow, { gap:10 }]}>
+                {filtered.map(item => (
+                  <View key={item.id} style={{ width: CARD_W }}>
+                    <FoodCard
+                      item={item}
+                      onAdd={() => addToCart(item)}
+                    />
+                  </View>
+                ))}
+                {filtered.length === 0 && (
+                  <Text style={styles.emptyText}>No items found.</Text>
+                )}
+              </View>
+            </ScrollView>
+          </View>
         </View>
 
         {/* RIGHT — Cart panel (web only) */}
@@ -665,11 +799,16 @@ export default function CanteenVisitor({ navigation }) {
       )}
 
       {/* Mobile floating cart button */}
-      {!isWide && totalItems > 0 && !cartOpen && (
-        <TouchableOpacity style={styles.floatCart} onPress={() => setCartOpen(true)}>
-          <LinearGradient colors={['#c9a84c','#e8c87a']} start={{x:0,y:0}} end={{x:1,y:0}}
-            style={styles.floatCartGradient}>
-            <Text style={styles.floatCartText}>🛒  View Order  •  ₱{Object.values(cart).reduce((s,{item,qty})=>s+item.price*qty,0)}</Text>
+      {!isWide && (
+        <TouchableOpacity style={styles.floatCart} onPress={() => setCartOpen(true)} activeOpacity={0.85}>
+          <LinearGradient
+            colors={['#c9a84c','#e8c87a']}
+            start={{x:0,y:0}} end={{x:1,y:0}}
+            style={styles.floatCartGradient}
+          >
+            <Text style={styles.floatCartText}>
+              🛒  View Cart  {totalItems > 0 ? `(${totalItems})` : ''}  •  ₱{Object.values(cart).reduce((s,{item,qty}) => s+item.price*qty, 0).toFixed(2)}
+            </Text>
           </LinearGradient>
         </TouchableOpacity>
       )}
@@ -764,8 +903,14 @@ const styles = StyleSheet.create({
   },
 
   // CENTER panel
-  centerPanel: {
-    flex:1, paddingHorizontal:12,
+  centerPanel: { flex:1, paddingHorizontal:12, paddingBottom:16 },
+  itemsPanel: {
+    backgroundColor:'rgba(255,255,255,0.22)',
+    borderRadius:16,
+    borderWidth:1, borderColor:'rgba(255,255,255,0.40)',
+    padding:12,
+    marginTop:0,
+    overflow:'hidden',
   },
 
   // ── FIX: Search bar — compact, full width, below tabs ──
@@ -788,6 +933,10 @@ const styles = StyleSheet.create({
   menuSectionLabel: {
     fontFamily:'GoogleSans_700Bold', fontSize:12,
     color:'#011f4b', letterSpacing:2,
+    marginBottom:10,
+    paddingBottom:8,
+    borderBottomWidth:1,
+    borderColor:'rgba(1,31,75,0.10)',
   },
   menuGrid: { paddingTop:2 },
   menuRow: { flexDirection:'row', flexWrap:'wrap' },

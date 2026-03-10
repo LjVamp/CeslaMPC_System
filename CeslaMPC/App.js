@@ -6,6 +6,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import HomeScreen from './src/screens/HomeScreen';
 import CanteenScreen from './src/screens/CanteenScreen';
 import CanteenVisitor from './src/screens/CanteenVisitor';
+import MerchandiseScreen from './src/screens/MerchandiseScreen';
 import CoopScreen from './src/screens/CoopScreen';
 import AdminScreen from './src/screens/AdminScreen';
 import ManageCoopScreen from './src/screens/ManageCoopScreen';
@@ -36,7 +37,8 @@ export default function App() {
         <Stack.Screen name="ManageMerchandiseScreen"  component={ManageMerchandiseScreen} />
         <Stack.Screen name="ManageBillingScreen"      component={ManageBillingScreen} />
         <Stack.Screen name="CanteenScreen"        component={CanteenScreen} />
-        <Stack.Screen name="CanteenVisitorScreen" component={CanteenVisitor} />
+        <Stack.Screen name="CanteenVisitorScreen"  component={CanteenVisitor} />
+        <Stack.Screen name="MerchandiseScreen"       component={MerchandiseScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
