@@ -18,42 +18,79 @@ import * as ImagePicker from 'expo-image-picker';
 import { useCanteen } from '../context/CanteenContext';
 import { useFocusEffect } from '@react-navigation/native';
 
-// ─── FORCE VISIBLE SCROLLBARS ON WEB ─────────────────────────────────────────
+
+// WEB SCROLLBAR STYLING
 if (Platform.OS === 'web') {
-  const styleTag = document.createElement('style');
-  styleTag.innerHTML = `
-    /* Show scrollbars on all RN ScrollView containers */
-    div[style*="overflow"] {
-      scrollbar-width: thin !important;
-      scrollbar-color: rgba(26,58,107,0.45) rgba(255,255,255,0.20) !important;
+  const s = document.createElement('style');
+  s.textContent = `
+    .cesla-scroll {
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(26,58,107,0.50) rgba(255,255,255,0.20);
     }
-    div[style*="overflow"]::-webkit-scrollbar {
-      width: 7px !important;
-      height: 7px !important;
-    }
-    div[style*="overflow"]::-webkit-scrollbar-track {
-      background: rgba(255,255,255,0.20) !important;
-      border-radius: 4px !important;
-    }
-    div[style*="overflow"]::-webkit-scrollbar-thumb {
-      background: rgba(26,58,107,0.45) !important;
-      border-radius: 4px !important;
-    }
-    div[style*="overflow"]::-webkit-scrollbar-thumb:hover {
-      background: rgba(26,58,107,0.70) !important;
-    }
-    /* Ensure overflow is always visible, not hidden by RN web defaults */
-    .rn-scroll-content-container {
-      overflow-y: scroll !important;
-    }
+    .cesla-scroll::-webkit-scrollbar { width: 7px; display: block !important; }
+    .cesla-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.20); border-radius: 4px; }
+    .cesla-scroll::-webkit-scrollbar-thumb { background: rgba(26,58,107,0.50); border-radius: 4px; }
+    .cesla-scroll::-webkit-scrollbar-thumb:hover { background: rgba(26,58,107,0.80); }
+    .cesla-scroll-wrap { position: relative; flex: 1; min-height: 0; }
   `;
-  document.head.appendChild(styleTag);
+  document.head.appendChild(s);
 }
 
-// Helper: forces scrollbar visible on web by setting overflow-y to scroll
-const WEB_SCROLL = Platform.OS === 'web'
-  ? { overflowY: 'scroll', overflowX: 'hidden' }
-  : {};
+// WebScrollView — wraps content in a relative View so the absolute-fill scroll
+// div has a real height to overflow from. On native: normal ScrollView.
+const WebScrollView = ({ children, style, contentContainerStyle, horizontal, ...rest }) => {
+  if (Platform.OS !== 'web') {
+    return (
+      <ScrollView
+        style={style}
+        contentContainerStyle={contentContainerStyle}
+        horizontal={horizontal}
+        showsVerticalScrollIndicator
+        {...rest}
+      >
+        {children}
+      </ScrollView>
+    );
+  }
+  const flatContent = StyleSheet.flatten(contentContainerStyle) || {};
+  return (
+    <View style={{flex:1, minHeight:0, position:'relative'}}>
+      <div
+        className="cesla-scroll"
+        style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          overflowY: horizontal ? 'hidden' : 'auto',
+          overflowX: horizontal ? 'auto' : 'hidden',
+          display: 'flex',
+          flexDirection: horizontal ? 'row' : 'column',
+        }}
+      >
+        <div style={{
+          display: 'flex',
+          flexDirection: horizontal ? 'row' : 'column',
+          flexShrink: 0,
+          width: '100%',
+          gap: flatContent.gap ? `${flatContent.gap}px` : undefined,
+          padding: flatContent.padding ? `${flatContent.padding}px` : undefined,
+          paddingTop: flatContent.paddingTop ? `${flatContent.paddingTop}px` : undefined,
+          paddingBottom: `${flatContent.paddingBottom ?? 20}px`,
+          paddingLeft: flatContent.paddingHorizontal ? `${flatContent.paddingHorizontal}px` : (flatContent.paddingLeft ? `${flatContent.paddingLeft}px` : undefined),
+          paddingRight: flatContent.paddingHorizontal ? `${flatContent.paddingHorizontal}px` : (flatContent.paddingRight ? `${flatContent.paddingRight}px` : undefined),
+          minWidth: horizontal ? 'max-content' : undefined,
+          boxSizing: 'border-box',
+        }}>
+          {children}
+        </div>
+      </div>
+    </View>
+  );
+};
+
+const WEB_SCROLL = {};
+
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const emptyItem = () => ({
@@ -279,9 +316,8 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
           {search.length>0&&<TouchableOpacity onPress={()=>setSearch('')}><Text style={{color:'rgba(1,31,75,0.40)',fontWeight:'700'}}>✕</Text></TouchableOpacity>}
         </View>
 
-        {/* Items grid scrollbar */}
-        <ScrollView style={[{flex:1},WEB_SCROLL]} showsVerticalScrollIndicator
-          contentContainerStyle={{padding:8,gap:6,paddingBottom:20}}>
+        {/* Items grid */}
+        <WebScrollView style={{flex:1}} contentContainerStyle={{padding:8,gap:6,paddingBottom:20}}>
           {Array.from({length:Math.ceil(filtered.length/COLS)},(_,rowIdx)=>(
             <View key={rowIdx} style={{flexDirection:'row',gap:6}}>
               {filtered.slice(rowIdx*COLS,rowIdx*COLS+COLS).map(item=>(
@@ -299,7 +335,7 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
               {Array.from({length:COLS-filtered.slice(rowIdx*COLS,rowIdx*COLS+COLS).length}).map((_,i)=>(<View key={`e-${i}`} style={{flex:1}}/>))}
             </View>
           ))}
-        </ScrollView>
+        </WebScrollView>
       </View>
 
       {/* Cart side */}
@@ -308,7 +344,7 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
         <View style={cs.cartItemsBox}>
           {cartItems.length===0
             ? <Text style={cs.cartEmpty}>No items added yet</Text>
-            : <ScrollView showsVerticalScrollIndicator style={[{flex:1},WEB_SCROLL]}>
+            : <WebScrollView style={{flex:1}}>
                 {cartItems.map(({item,qty})=>(
                   <View key={item.id} style={cs.cartRow}>
                     <Text style={cs.cartEmoji}>{item.emoji}</Text>
@@ -323,7 +359,7 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
                     </View>
                   </View>
                 ))}
-              </ScrollView>
+              </WebScrollView>
           }
         </View>
         <View style={cs.totalRow}><Text style={cs.totalLbl}>TOTAL</Text><Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text></View>
@@ -480,8 +516,7 @@ const ManageMenuScreen = ({ items, categories, filtered, search, activeCategory,
         </View>
         <View style={{height:1,backgroundColor:'rgba(1,31,75,0.10)',marginBottom:8,marginHorizontal:8}}/>
         {/* FIX: showsVerticalScrollIndicator + flex:1 */}
-        <ScrollView showsVerticalScrollIndicator style={[{flex:1},WEB_SCROLL]}
-          contentContainerStyle={{padding:8,gap:Platform.OS==='web'?10:5,paddingBottom:20}}>
+        <WebScrollView style={{flex:1}} contentContainerStyle={{padding:8,gap:Platform.OS==='web'?10:5,paddingBottom:20}}>
           {filtered.length===0
             ? <Text style={mm.emptyTxt}>No items found.</Text>
             : Array.from({length:Math.ceil(filtered.length/COLS)},(_,rowIdx)=>(
@@ -511,7 +546,7 @@ const ManageMenuScreen = ({ items, categories, filtered, search, activeCategory,
               </View>
             ))
           }
-        </ScrollView>
+        </WebScrollView>
       </View>
     </View>
   );
@@ -564,7 +599,6 @@ const InventoryScreen = ({ items }) => {
   return (
     // FIX: flex:1 + minHeight:0 + overflow:'hidden'
     <View style={{flex:1,minHeight:0,overflow:'hidden',padding:14}}>
-      {/* Stat cards */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         style={{flexGrow:0,marginBottom:10}}
         contentContainerStyle={{gap:8,paddingVertical:2}}>
@@ -609,7 +643,7 @@ const InventoryScreen = ({ items }) => {
       </View>
 
       {/* Table rows — FIX: showsVerticalScrollIndicator */}
-      <ScrollView showsVerticalScrollIndicator style={[{flex:1,minHeight:0},WEB_SCROLL]}>
+      <WebScrollView style={{flex:1,minHeight:0}}>
         {sorted.map((item,idx)=>(
           <View key={item.id} style={[sub.tableRow,idx%2===0&&{backgroundColor:'rgba(255,255,255,0.35)'}]}>
             <Text style={[sub.tdCell,{flex:2,fontFamily:'GoogleSans_700Bold'}]} numberOfLines={1}>{item.emoji} {item.name}</Text>
@@ -629,7 +663,7 @@ const InventoryScreen = ({ items }) => {
             <Text style={sub.emptyTxt}>No items match "{search}"</Text>
           </View>
         )}
-      </ScrollView>
+      </WebScrollView>
     </View>
   );
 };
@@ -658,7 +692,7 @@ const OrderHistoryScreen = ({ orders }) => {
   const sorted = [...orders].reverse();
 
   return (
-    // FIX: flex:1 + minHeight:0
+    // flex:1 + minHeight:0; overflow visible on web
     <View style={{flex:1,minHeight:0,overflow:'hidden',padding:14}}>
       {/* Real-time date & time display */}
       <View style={hs.clockBox}>
@@ -670,8 +704,7 @@ const OrderHistoryScreen = ({ orders }) => {
       </View>
 
       {/* Orders list — FIX: showsVerticalScrollIndicator */}
-      <ScrollView showsVerticalScrollIndicator style={[{flex:1,minHeight:0},WEB_SCROLL]}
-        contentContainerStyle={{gap:8,paddingBottom:16}}>
+      <WebScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{gap:8,paddingBottom:16}}>
         {sorted.length===0
           ? <View style={sub.emptyBox}>
               <MaterialIcons name="history" size={48} color="rgba(1,31,75,0.15)"/>
@@ -701,7 +734,7 @@ const OrderHistoryScreen = ({ orders }) => {
             );
           })
         }
-      </ScrollView>
+      </WebScrollView>
     </View>
   );
 };
@@ -725,18 +758,18 @@ const EmployeeCreditsScreen = () => (
 const SalesReportScreen = ({ orders }) => {
   const currentYear = new Date().getFullYear();
   const startYear   = 2024;
-  // Generate years from startYear to currentYear (unlimited upward)
   const years = Array.from({length: currentYear - startYear + 1}, (_,i) => startYear + i).reverse();
 
-  const [year, setYear]           = useState(currentYear);
+  const [year,         setYear]         = useState(currentYear);
   const [yearDropdown, setYearDropdown] = useState(false);
+  const [selectedMonth,setSelectedMonth]= useState(null);
 
-  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const MONTH_FULL  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-  const doneOrders   = orders.filter(o=>o.status==='done');
-  const todayStr     = new Date().toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'});
+  const doneOrders = orders.filter(o=>o.status==='done');
+  const todayStr   = new Date().toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'});
 
-  // Today's figures
   const todayOrders  = doneOrders.filter(o=>o.time&&o.time.startsWith(todayStr));
   const todaySales   = todayOrders.reduce((s,o)=>s+Number(o.total),0);
   const todayCash    = todayOrders.filter(o=>!o.payment||o.payment==='cash').reduce((s,o)=>s+Number(o.total),0);
@@ -746,27 +779,168 @@ const SalesReportScreen = ({ orders }) => {
   const getMonthOrders = (monthIdx) => doneOrders.filter(o=>{
     if(!o.time) return false;
     try {
-      // Try parsing from our time string format e.g. "Mar 12, 2026  09:30 AM"
       const d = new Date(o.time);
       if(!isNaN(d.getTime())) return d.getFullYear()===year && d.getMonth()===monthIdx;
-      // fallback: check string contains month abbr and year
       return o.time.includes(MONTHS[monthIdx]) && o.time.includes(String(year));
     } catch { return false; }
   });
 
+  const getDailyBreakdown = (monthIdx) => {
+    const mo = getMonthOrders(monthIdx);
+    const dayMap = {};
+    mo.forEach(o => {
+      let dayKey = '';
+      try {
+        const d = new Date(o.time);
+        dayKey = !isNaN(d.getTime())
+          ? d.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})
+          : (o.time?.split('  ')[0] || 'Unknown');
+      } catch { dayKey = 'Unknown'; }
+      if (!dayMap[dayKey]) dayMap[dayKey] = [];
+      dayMap[dayKey].push(o);
+    });
+    return Object.entries(dayMap).sort((a,b)=>new Date(a[0])-new Date(b[0]));
+  };
+
   const monthlyTotals = MONTHS.map((_,i)=>getMonthOrders(i).reduce((s,o)=>s+Number(o.total),0));
   const maxMonth = Math.max(...monthlyTotals, 1);
 
-  // Top items
   const itemMap={};
   doneOrders.forEach(o=>(o.items||[]).forEach(i=>{const nm=i.item?.name||i.name||'Item';itemMap[nm]=(itemMap[nm]||0)+i.qty;}));
   const topItems=Object.entries(itemMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
-  return (
-    // FIX: flex:1 + minHeight:0 + overflow:'hidden'
-    <View style={{flex:1,minHeight:0,overflow:'hidden',padding:14}}>
+  const handlePrint = (idx) => {
+    if (Platform.OS !== 'web') { Alert.alert('Print','Use web version to print.'); return; }
+    const mo = getMonthOrders(idx);
+    const daily = getDailyBreakdown(idx);
+    const monthName = MONTH_FULL[idx] + ' ' + year;
+    const total  = mo.reduce((s,o)=>s+Number(o.total),0);
+    const cash   = mo.filter(o=>!o.payment||o.payment==='cash').reduce((s,o)=>s+Number(o.total),0);
+    const credit = mo.filter(o=>o.payment==='credit').reduce((s,o)=>s+Number(o.total),0);
+    const ew     = mo.filter(o=>o.payment==='gcash'||o.payment==='ewallet').reduce((s,o)=>s+Number(o.total),0);
+    const rows = daily.map(([day,dayOrders])=>{
+      const dt=dayOrders.reduce((s,o)=>s+Number(o.total),0);
+      const dc=dayOrders.filter(o=>!o.payment||o.payment==='cash').reduce((s,o)=>s+Number(o.total),0);
+      const dcr=dayOrders.filter(o=>o.payment==='credit').reduce((s,o)=>s+Number(o.total),0);
+      const dew=dayOrders.filter(o=>o.payment==='gcash'||o.payment==='ewallet').reduce((s,o)=>s+Number(o.total),0);
+      return `<tr><td>${day}</td><td>${dayOrders.length}</td><td>&#8369;${dc.toFixed(2)}</td><td>&#8369;${dcr.toFixed(2)}</td><td>&#8369;${dew.toFixed(2)}</td><td><strong>&#8369;${dt.toFixed(2)}</strong></td></tr>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html><head><title>CESLA Canteen - ${monthName}</title>
+<style>body{font-family:Arial,sans-serif;padding:32px;color:#1a2d4e}h1{color:#1a3a6b;margin-bottom:4px}.sub{color:#888;font-size:13px;margin-bottom:24px}.summary{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}.card{background:#f0f5f9;border-radius:10px;padding:14px 20px;min-width:120px}.card .val{font-size:18px;font-weight:bold;color:#1a3a6b}.card .lbl{font-size:11px;color:#888;margin-top:3px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#1a3a6b;color:#fff;padding:10px 12px;text-align:left;font-size:12px}td{padding:9px 12px;border-bottom:1px solid #e8eef4;font-size:13px}tr:nth-child(even) td{background:#f7fafc}tfoot td{font-weight:bold;background:#eef2f8;border-top:2px solid #1a3a6b}.gold{color:#c9a84c}@media print{body{padding:16px}}</style>
+</head><body>
+<h1>CESLA Canteen Sales Report</h1>
+<div class="sub">Monthly Report &mdash; ${monthName} &nbsp;|&nbsp; Printed: ${new Date().toLocaleString('en-PH')}</div>
+<div class="summary">
+  <div class="card"><div class="val">${mo.length}</div><div class="lbl">Total Orders</div></div>
+  <div class="card"><div class="val">&#8369;${cash.toFixed(2)}</div><div class="lbl">Cash</div></div>
+  <div class="card"><div class="val">&#8369;${credit.toFixed(2)}</div><div class="lbl">Credit</div></div>
+  <div class="card"><div class="val">&#8369;${ew.toFixed(2)}</div><div class="lbl">E-Wallet</div></div>
+  <div class="card"><div class="val gold">&#8369;${total.toFixed(2)}</div><div class="lbl">Total Sales</div></div>
+</div>
+<table><thead><tr><th>Date</th><th>Orders</th><th>Cash</th><th>Credit</th><th>E-Wallet</th><th>Total</th></tr></thead>
+<tbody>${rows}</tbody>
+<tfoot><tr><td>TOTAL</td><td>${mo.length}</td><td>&#8369;${cash.toFixed(2)}</td><td>&#8369;${credit.toFixed(2)}</td><td>&#8369;${ew.toFixed(2)}</td><td class="gold">&#8369;${total.toFixed(2)}</td></tr></tfoot>
+</table></body></html>`;
+    const win = window.open('','_blank');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(()=>win.print(), 600);
+  };
 
-      {/* Year selector — dropdown style */}
+  const MonthModal = () => {
+    if (!selectedMonth) return null;
+    const { idx, name } = selectedMonth;
+    const mo     = getMonthOrders(idx);
+    const daily  = getDailyBreakdown(idx);
+    const total  = mo.reduce((s,o)=>s+Number(o.total),0);
+    const cash   = mo.filter(o=>!o.payment||o.payment==='cash').reduce((s,o)=>s+Number(o.total),0);
+    const credit = mo.filter(o=>o.payment==='credit').reduce((s,o)=>s+Number(o.total),0);
+    const ew     = mo.filter(o=>o.payment==='gcash'||o.payment==='ewallet').reduce((s,o)=>s+Number(o.total),0);
+    return (
+      <Modal visible transparent animationType="fade" onRequestClose={()=>setSelectedMonth(null)}>
+        <View style={rp.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={()=>setSelectedMonth(null)} activeOpacity={1}/>
+          <View style={rp.modalCard}>
+            <View style={rp.modalHeader}>
+              <View>
+                <Text style={rp.modalTitle}>📅 {name} {year}</Text>
+                <Text style={rp.modalSub}>Daily Sales Breakdown</Text>
+              </View>
+              <View style={{flexDirection:'row',gap:8,alignItems:'center'}}>
+                <TouchableOpacity style={rp.printBtn} onPress={()=>handlePrint(idx)}>
+                  <MaterialIcons name="print" size={15} color="#fff"/>
+                  <Text style={rp.printBtnTxt}>Print</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={rp.closeBtn} onPress={()=>setSelectedMonth(null)}>
+                  <MaterialIcons name="close" size={18} color="rgba(1,31,75,0.55)"/>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{gap:8,paddingVertical:4,paddingHorizontal:2}}>
+              {[
+                {l:'Orders',     v:mo.length,              c:'#1a3a6b'},
+                {l:'Cash',       v:'₱'+cash.toFixed(2),    c:'#c9a84c'},
+                {l:'Credit',     v:'₱'+credit.toFixed(2),  c:'#8e44ad'},
+                {l:'E-Wallet',   v:'₱'+ew.toFixed(2),      c:'#2980b9'},
+                {l:'Total Sales',v:'₱'+total.toFixed(2),   c:'#27ae60'},
+              ].map(s=>(
+                <View key={s.l} style={rp.summaryChip}>
+                  <Text style={[rp.summaryChipVal,{color:s.c}]}>{s.v}</Text>
+                  <Text style={rp.summaryChipLbl}>{s.l}</Text>
+                </View>
+              ))}
+            </ScrollView>
+            {daily.length===0
+              ? <View style={{padding:30,alignItems:'center'}}><Text style={sub.emptyTxt}>No orders this month.</Text></View>
+              : <>
+                  <View style={rp.dayTableHead}>
+                    <Text style={[rp.dayTh,{flex:1.8}]}>DATE</Text>
+                    <Text style={rp.dayTh}>ORD</Text>
+                    <Text style={rp.dayTh}>💵 CASH</Text>
+                    <Text style={rp.dayTh}>💳 CREDIT</Text>
+                    <Text style={rp.dayTh}>📱 EW</Text>
+                    <Text style={[rp.dayTh,{textAlign:'right',flex:1.4}]}>TOTAL</Text>
+                  </View>
+                  <View style={{flex:1,minHeight:120,position:'relative'}}>
+                    <div className="cesla-scroll" style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflowY:'auto'}}>
+                      {daily.map(([day,dayOrders],i2)=>{
+                        const dt=dayOrders.reduce((s,o)=>s+Number(o.total),0);
+                        const dc=dayOrders.filter(o=>!o.payment||o.payment==='cash').reduce((s,o)=>s+Number(o.total),0);
+                        const dcr=dayOrders.filter(o=>o.payment==='credit').reduce((s,o)=>s+Number(o.total),0);
+                        const dew=dayOrders.filter(o=>o.payment==='gcash'||o.payment==='ewallet').reduce((s,o)=>s+Number(o.total),0);
+                        return (
+                          <View key={day} style={[rp.dayRow,i2%2===0&&{backgroundColor:'rgba(255,255,255,0.45)'}]}>
+                            <Text style={[rp.dayTd,{flex:1.8,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b'}]}>{day}</Text>
+                            <Text style={rp.dayTd}>{dayOrders.length}</Text>
+                            <Text style={[rp.dayTd,{color:'#b8860b'}]}>₱{dc.toFixed(0)}</Text>
+                            <Text style={[rp.dayTd,{color:'#8e44ad'}]}>₱{dcr.toFixed(0)}</Text>
+                            <Text style={[rp.dayTd,{color:'#2980b9'}]}>₱{dew.toFixed(0)}</Text>
+                            <Text style={[rp.dayTd,{textAlign:'right',flex:1.4,fontFamily:'GoogleSans_700Bold',color:'#27ae60'}]}>₱{dt.toFixed(2)}</Text>
+                          </View>
+                        );
+                      })}
+                      <View style={rp.dayFooter}>
+                        <Text style={[rp.dayTd,{flex:1.8,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b'}]}>TOTAL</Text>
+                        <Text style={[rp.dayTd,{fontFamily:'GoogleSans_700Bold'}]}>{mo.length}</Text>
+                        <Text style={[rp.dayTd,{fontFamily:'GoogleSans_700Bold',color:'#b8860b'}]}>₱{cash.toFixed(0)}</Text>
+                        <Text style={[rp.dayTd,{fontFamily:'GoogleSans_700Bold',color:'#8e44ad'}]}>₱{credit.toFixed(0)}</Text>
+                        <Text style={[rp.dayTd,{fontFamily:'GoogleSans_700Bold',color:'#2980b9'}]}>₱{ew.toFixed(0)}</Text>
+                        <Text style={[rp.dayTd,{textAlign:'right',flex:1.4,fontFamily:'GoogleSans_700Bold',color:'#c9a84c',fontSize:13}]}>₱{total.toFixed(2)}</Text>
+                      </View>
+                    </div>
+                  </View>
+                </>
+            }
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  return (
+    <View style={{flex:1,minHeight:0,overflow:'hidden',padding:14}}>
       <View style={{flexDirection:'row',alignItems:'center',gap:10,marginBottom:12,zIndex:20}}>
         <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:11,color:'rgba(1,31,75,0.55)',letterSpacing:1}}>YEAR :</Text>
         <View style={{position:'relative'}}>
@@ -787,19 +961,18 @@ const SalesReportScreen = ({ orders }) => {
             </View>
           )}
         </View>
+        <Text style={{fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.40)'}}>Tap a month to view daily breakdown</Text>
       </View>
 
-      {/* Today's summary cards */}
       <View style={{marginBottom:12}}>
         <Text style={[sub.sectionTitle2,{marginBottom:6}]}>📊 TODAY'S SALES</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{gap:8,paddingVertical:2}}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8,paddingVertical:2}}>
           {[
-            {l:'Total Sales',v:`₱${todaySales.toFixed(2)}`, c:'#27ae60'},
-            {l:'Orders',     v:todayOrders.length,          c:'#1a3a6b'},
-            {l:'💵 Cash',    v:`₱${todayCash.toFixed(2)}`,  c:'#c9a84c'},
-            {l:'💳 Credit',  v:`₱${todayCredit.toFixed(2)}`,c:'#8e44ad'},
-            {l:'📱 E-Wallet',v:`₱${todayEwallet.toFixed(2)}`,c:'#2980b9'},
+            {l:'Total Sales',v:'₱'+todaySales.toFixed(2), c:'#27ae60'},
+            {l:'Orders',     v:todayOrders.length,         c:'#1a3a6b'},
+            {l:'💵 Cash',    v:'₱'+todayCash.toFixed(2),   c:'#c9a84c'},
+            {l:'💳 Credit',  v:'₱'+todayCredit.toFixed(2), c:'#8e44ad'},
+            {l:'📱 E-Wallet',v:'₱'+todayEwallet.toFixed(2),c:'#2980b9'},
           ].map(s=>(
             <View key={s.l} style={sub.statCard}>
               <Text style={[sub.statVal,{color:s.c,fontSize:12}]}>{s.v}</Text>
@@ -809,32 +982,31 @@ const SalesReportScreen = ({ orders }) => {
         </ScrollView>
       </View>
 
-      {/* Main scrollable content */}
-      <ScrollView showsVerticalScrollIndicator style={[{flex:1,minHeight:0},WEB_SCROLL]} contentContainerStyle={{paddingBottom:20}}>
-        {/* Monthly bar chart */}
+      <WebScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{paddingBottom:20}}>
         <Text style={sub.sectionTitle2}>📅 Monthly Earnings — {year}</Text>
         <View style={{flexDirection:'row',gap:4,alignItems:'flex-end',height:90,marginBottom:16,paddingHorizontal:4}}>
           {MONTHS.map((m,i)=>{
             const val=monthlyTotals[i];
             const barH=val>0?Math.max(8,(val/maxMonth)*72):4;
             return(
-              <View key={m} style={{flex:1,alignItems:'center',gap:2}}>
+              <TouchableOpacity key={m} style={{flex:1,alignItems:'center',gap:2}} activeOpacity={0.75}
+                onPress={()=>setSelectedMonth({idx:i,name:MONTH_FULL[i]})}>
                 <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:6,color:val>0?'#1a3a6b':'transparent'}}>
-                  {val>0?`₱${val>=1000?`${(val/1000).toFixed(1)}k`:val.toFixed(0)}`:''}
+                  {val>0?'₱'+(val>=1000?`${(val/1000).toFixed(1)}k`:val.toFixed(0)):''}
                 </Text>
                 <View style={{width:'100%',height:barH,backgroundColor:val>0?'#1a3a6b':'rgba(1,31,75,0.12)',borderRadius:3}}/>
                 <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:6,color:'rgba(1,31,75,0.50)'}}>{m}</Text>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Monthly breakdown table */}
-        <Text style={sub.sectionTitle2}>📋 Monthly Breakdown</Text>
+        <Text style={sub.sectionTitle2}>📋 Monthly Breakdown  <Text style={{fontSize:9,color:'rgba(1,31,75,0.40)'}}>— tap row to expand</Text></Text>
         <View style={sub.tableHead}>
-          <Text style={[sub.thCell,{flex:1.2}]}>MONTH</Text>
-          <Text style={sub.thCell}>ORDERS</Text>
-          <Text style={[sub.thCell,{textAlign:'right',flex:1.5}]}>TOTAL</Text>
+          <Text style={[sub.thCell,{flex:1.3}]}>MONTH</Text>
+          <Text style={sub.thCell}>ORD</Text>
+          <Text style={[sub.thCell,{flex:1.8}]}>CASH / CREDIT / EW</Text>
+          <Text style={[sub.thCell,{textAlign:'right',flex:1.2}]}>TOTAL</Text>
         </View>
         {MONTHS.map((m,i)=>{
           const mo=getMonthOrders(i);
@@ -843,26 +1015,29 @@ const SalesReportScreen = ({ orders }) => {
           const credit=mo.filter(o=>o.payment==='credit').reduce((s,o)=>s+Number(o.total),0);
           const ew=mo.filter(o=>o.payment==='gcash'||o.payment==='ewallet').reduce((s,o)=>s+Number(o.total),0);
           return(
-            <View key={m}>
-              <View style={[sub.tableRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.35)'}]}>
-                <Text style={[sub.tdCell,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b'}]}>{m} {year}</Text>
-                <Text style={sub.tdCell}>{mo.length}</Text>
-                <Text style={[sub.tdCell,{textAlign:'right',flex:1.5,fontFamily:'GoogleSans_700Bold',color:tot>0?'#c9a84c':'rgba(1,31,75,0.30)'}]}>
-                  ₱{tot.toFixed(2)}
-                </Text>
+            <TouchableOpacity key={m} activeOpacity={0.75}
+              onPress={()=>setSelectedMonth({idx:i,name:MONTH_FULL[i]})}
+              style={[rp.monthRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.40)'}]}>
+              <View style={{flex:1.3,flexDirection:'row',alignItems:'center',gap:4}}>
+                <MaterialIcons name="chevron-right" size={14} color={tot>0?'#1a3a6b':'rgba(1,31,75,0.20)'}/>
+                <Text style={[sub.tdCell,{fontFamily:'GoogleSans_700Bold',color:tot>0?'#1a3a6b':'rgba(1,31,75,0.30)'}]}>{m} {year}</Text>
               </View>
-              {tot>0&&(
-                <View style={{flexDirection:'row',gap:10,paddingHorizontal:12,paddingBottom:4,paddingTop:2,backgroundColor:i%2===0?'rgba(255,255,255,0.20)':'transparent'}}>
-                  <Text style={rp.subBreakTxt}>💵 ₱{cash.toFixed(0)}</Text>
-                  <Text style={rp.subBreakTxt}>💳 ₱{credit.toFixed(0)}</Text>
-                  <Text style={rp.subBreakTxt}>📱 ₱{ew.toFixed(0)}</Text>
-                </View>
-              )}
-            </View>
+              <Text style={[sub.tdCell,{color:tot>0?'#1a2d4e':'rgba(1,31,75,0.25)'}]}>{mo.length||'—'}</Text>
+              <View style={{flex:1.8}}>
+                {tot>0
+                  ? <Text style={{fontFamily:'GoogleSans_400Regular',fontSize:10,color:'rgba(1,31,75,0.55)'}}>
+                      {'💵'}₱{cash.toFixed(0)}  {'💳'}₱{credit.toFixed(0)}  {'📱'}₱{ew.toFixed(0)}
+                    </Text>
+                  : <Text style={{fontFamily:'GoogleSans_400Regular',fontSize:10,color:'rgba(1,31,75,0.20)'}}>—</Text>
+                }
+              </View>
+              <Text style={[sub.tdCell,{textAlign:'right',flex:1.2,fontFamily:'GoogleSans_700Bold',color:tot>0?'#c9a84c':'rgba(1,31,75,0.20)'}]}>
+                {tot>0?'₱'+tot.toFixed(2):'—'}
+              </Text>
+            </TouchableOpacity>
           );
         })}
 
-        {/* Top items */}
         {topItems.length>0&&<>
           <Text style={[sub.sectionTitle2,{marginTop:16}]}>🏆 Top Selling Items</Text>
           {topItems.map(([name,qty],i)=>(
@@ -874,7 +1049,9 @@ const SalesReportScreen = ({ orders }) => {
             </View>
           ))}
         </>}
-      </ScrollView>
+      </WebScrollView>
+
+      <MonthModal/>
     </View>
   );
 };
@@ -887,6 +1064,23 @@ const rp = StyleSheet.create({
   yearOptionActive: { backgroundColor:'#1a3a6b',borderRadius:8 },
   yearOptionTxt: { fontFamily:'GoogleSans_400Regular',fontSize:13,color:'#1a3a6b' },
   subBreakTxt: { fontFamily:'GoogleSans_400Regular',fontSize:10,color:'rgba(1,31,75,0.50)' },
+  monthRow: { flexDirection:'row',alignItems:'center',paddingVertical:10,paddingHorizontal:10,borderRadius:6,marginBottom:2 },
+  modalOverlay: { flex:1,backgroundColor:'rgba(1,20,50,0.60)',justifyContent:'center',alignItems:'center',padding:20 },
+  modalCard: { backgroundColor:'#f0f5f9',borderRadius:20,padding:20,width:'100%',maxWidth:680,maxHeight:'85%',gap:12,shadowColor:'#000',shadowOpacity:0.25,shadowRadius:20,elevation:14 },
+  modalHeader: { flexDirection:'row',alignItems:'flex-start',justifyContent:'space-between' },
+  modalTitle: { fontFamily:'GoogleSans_700Bold',fontSize:18,color:'#1a3a6b' },
+  modalSub: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.50)',marginTop:2 },
+  printBtn: { flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'#1a3a6b',borderRadius:10,paddingVertical:7,paddingHorizontal:14,borderWidth:1,borderColor:'#c9a84c' },
+  printBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#fff' },
+  closeBtn: { width:34,height:34,borderRadius:17,backgroundColor:'rgba(1,31,75,0.08)',justifyContent:'center',alignItems:'center' },
+  summaryChip: { backgroundColor:'rgba(255,255,255,0.85)',borderRadius:12,paddingVertical:8,paddingHorizontal:14,alignItems:'center',gap:3,borderWidth:1,borderColor:'rgba(255,255,255,0.95)' },
+  summaryChipVal: { fontFamily:'GoogleSans_700Bold',fontSize:14 },
+  summaryChipLbl: { fontFamily:'GoogleSans_400Regular',fontSize:9,color:'rgba(1,31,75,0.50)' },
+  dayTableHead: { flexDirection:'row',paddingVertical:8,paddingHorizontal:10,backgroundColor:'rgba(26,58,107,0.15)',borderRadius:8,marginBottom:2 },
+  dayTh: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'rgba(1,31,75,0.60)',flex:1,letterSpacing:0.5 },
+  dayRow: { flexDirection:'row',paddingVertical:9,paddingHorizontal:10,borderRadius:6,marginBottom:2 },
+  dayTd: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'#1a2d4e',flex:1 },
+  dayFooter: { flexDirection:'row',paddingVertical:10,paddingHorizontal:10,backgroundColor:'rgba(26,58,107,0.10)',borderRadius:8,marginTop:4,borderTopWidth:2,borderColor:'rgba(26,58,107,0.20)' },
 });
 
 // ─── SHARED SUB-SCREEN STYLES ─────────────────────────────────────────────────
@@ -959,7 +1153,7 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
   const cfg = TAB_CFG[activeTab];
 
   return (
-    // FIX: flex:1 + minHeight:0 + overflow:'hidden' — this prevents the panel from growing beyond screen
+    // flex:1 + minHeight:0; overflow visible on web
     <View style={{flex:1,minHeight:0,overflow:'hidden',padding:10}}>
 
       {/* Title */}
@@ -987,8 +1181,7 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
       </View>
 
       {/* Orders scroll — FIX: flex:1 + minHeight:0 */}
-      <ScrollView style={[{flex:1,minHeight:0},WEB_SCROLL]} showsVerticalScrollIndicator
-        contentContainerStyle={{gap:6,paddingBottom:12}}>
+      <WebScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{gap:6,paddingBottom:12}}>
         {displayOrders.length===0
           ? <View style={lp.emptyBox}>
               <Text style={lp.emptyIco}>📋</Text>
@@ -1023,7 +1216,7 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
             );
           })
         }
-      </ScrollView>
+      </WebScrollView>
     </View>
   );
 };
@@ -1281,7 +1474,7 @@ const styles = StyleSheet.create({
   notifBadge: { position:'absolute', top:4, right:4, backgroundColor:'#e74c3c', borderRadius:6, minWidth:14, height:14, alignItems:'center', justifyContent:'center', paddingHorizontal:2 },
   notifBadgeTxt: { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#fff' },
 
-  // BODY — FIX: flex:1 + minHeight:0 + overflow:'hidden'
+  // BODY — overflow visible on web so scrollbars are not clipped by parent
   body: {
     flex:1,
     flexDirection:'row',
@@ -1292,7 +1485,7 @@ const styles = StyleSheet.create({
     alignItems:'stretch',
   },
 
-  // LEFT PANEL — FIX: fixed flex ratio, overflow:'hidden', minHeight:0
+  // LEFT PANEL — overflow visible on web so scrollbar track is not clipped
   leftPanel: {
     flex:1.4,
     flexShrink:0,
@@ -1302,11 +1495,11 @@ const styles = StyleSheet.create({
     marginRight:0,
     borderWidth:1,
     borderColor:'rgba(255,255,255,0.40)',
-    overflow:'hidden',       // ← critical: clips children
-    minHeight:0,             // ← critical: allows flex to work correctly
+    overflow:'hidden',
+    minHeight:0,
   },
 
-  // RIGHT PANEL — FIX: flex:1 + minHeight:0
+  // RIGHT PANEL — flex:1 + minHeight:0; overflow visible on web
   rightPanel: {
     flex:3,
     minWidth:0,
@@ -1352,7 +1545,7 @@ const styles = StyleSheet.create({
   tabBadge: { backgroundColor:'#e74c3c', borderRadius:7, minWidth:14, height:14, alignItems:'center', justifyContent:'center', paddingHorizontal:2 },
   tabBadgeTxt: { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#fff' },
 
-  // CONTENT AREA — FIX: flex:1 + minHeight:0 + overflow:'hidden'
+  // CONTENT AREA — flex:1 + minHeight:0; overflow visible on web so ScrollViews work
   contentArea: {
     flex:1,
     minHeight:0,
