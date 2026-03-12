@@ -12,6 +12,7 @@ import ManageCoopScreen from "./src/screens/ManageCoopScreen";
 import ManageCanteenScreen from "./src/screens/ManageCanteenScreen";
 import ManageMerchandiseScreen from "./src/screens/ManageMerchandiseScreen";
 import ManageBillingScreen from "./src/screens/ManageBillingScreen";
+import MerchandiseScreen from "./src/screens/MerchandiseScreen";
 import { CanteenProvider } from "./src/context/CanteenContext";
 
 const Stack = createStackNavigator();
@@ -48,6 +49,7 @@ export default function App() {
         />
         <Stack.Screen name="CanteenScreen" component={CanteenScreen} />
         <Stack.Screen name="CanteenVisitorScreen" component={CanteenVisitor} />
+        <Stack.Screen name="MerchandiseScreen" component={MerchandiseScreen} />
       </Stack.Navigator>
     </NavigationContainer>
     </CanteenProvider>
