@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
@@ -294,6 +295,7 @@ export default function HomeScreen({ navigation }) {
   const [adminLoading,   setAdminLoading]   = useState(false);
   const [adminAttempts,  setAdminAttempts]  = useState(0);
   const [adminLocked,    setAdminLocked]    = useState(false);
+  const [savedSession,   setSavedSession]   = useState(null);
   const [feedbackOpen,    setFeedbackOpen]    = useState(false);
   const [feedbackName,    setFeedbackName]    = useState('');
   const [feedbackEmail,   setFeedbackEmail]   = useState('');
@@ -311,6 +313,27 @@ export default function HomeScreen({ navigation }) {
   const sTrans = useRef(new Animated.Value(30)).current;
   const fFade  = useRef(new Animated.Value(0)).current;
   const fTrans = useRef(new Animated.Value(30)).current;
+
+  // Load saved admin session on mount (mobile only)
+  // Web: skip auto-navigate — browser refresh must always return to HomeScreen
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const loadSession = async () => {
+      try {
+        const raw = await AsyncStorage.getItem('cesla_admin_session');
+        if (raw) {
+          const session = JSON.parse(raw);
+          if (session && session.role === 'Super Admin') {
+            setSavedSession(session);
+            setTimeout(() => {
+              if (navigation) navigation.navigate('AdminScreen', { admin: session });
+            }, 800);
+          }
+        }
+      } catch (e) {}
+    };
+    loadSession();
+  }, []);
 
   useEffect(() => {
     Animated.parallel([
@@ -735,6 +758,10 @@ export default function HomeScreen({ navigation }) {
                       setAdminLoginOpen(false);
                       setAdminId(''); setAdminPw('');
                       setAdminError(''); setAdminShowPw(false);
+                      // Save session for SuperAdmin auto-login (mobile only)
+                      if (found.role === 'Super Admin' && Platform.OS !== 'web') {
+                        AsyncStorage.setItem('cesla_admin_session', JSON.stringify(found)).catch(()=>{});
+                      }
                       // Navigate to AdminScreen with admin data
                       setTimeout(() => {
                         if (navigation) navigation.navigate('AdminScreen', { admin: found });

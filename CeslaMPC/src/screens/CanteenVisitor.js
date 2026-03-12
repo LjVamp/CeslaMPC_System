@@ -3,9 +3,10 @@
 // 3-panel layout: Left Categories | Center Menu+Search | Right Cart
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useCanteen } from '../context/CanteenContext';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, Animated, StatusBar,
+  ScrollView, Animated, StatusBar, Image,
   useWindowDimensions, Platform, TextInput, Modal, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,22 +15,7 @@ import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
-const CATEGORIES = ['All', 'Meals', 'Drinks', 'Snacks', 'Junk Foods', 'Others'];
 
-const MENU_ITEMS = [
-  { id:'1',  name:'Fried Chicken',   cat:'Meals',      price:80,  stock:15, emoji:'🍗' },
-  { id:'2',  name:'Lugaw with Egg',  cat:'Meals',      price:55,  stock:50, emoji:'🍚' },
-  { id:'3',  name:'Pancit Canton',   cat:'Meals',      price:65,  stock:25, emoji:'🍜' },
-  { id:'4',  name:'Pork Adobo',      cat:'Meals',      price:75,  stock:20, emoji:'🥩' },
-  { id:'5',  name:'Sinangag',        cat:'Meals',      price:30,  stock:30, emoji:'🍳' },
-  { id:'6',  name:'Bottled Water',   cat:'Drinks',     price:15,  stock:80, emoji:'💧' },
-  { id:'7',  name:'Juice',           cat:'Drinks',     price:20,  stock:60, emoji:'🧃' },
-  { id:'8',  name:'Softdrinks',      cat:'Drinks',     price:25,  stock:100,emoji:'🥤' },
-  { id:'9',  name:'Biscuit',         cat:'Snacks',     price:15,  stock:40, emoji:'🍪' },
-  { id:'10', name:'Chips',           cat:'Snacks',     price:20,  stock:50, emoji:'🍟' },
-  { id:'11', name:'Junk Food Pack',  cat:'Junk Foods', price:18,  stock:45, emoji:'🍿' },
-  { id:'12', name:'Mixed Nuts',      cat:'Junk Foods', price:35,  stock:30, emoji:'🥜' },
-];
 
 // ─── FOOD CARD — static Add To Cart only, no inline qty ───────────────────────
 const FoodCard = ({ item, onAdd }) => (
@@ -53,9 +39,12 @@ const FoodCard = ({ item, onAdd }) => (
 const FoodCardBody = ({ item, onAdd }) => (
   <>
     <View style={styles.emojiCircle}>
-      <Text style={styles.emojiText}>{item.emoji}</Text>
+      {item.image
+        ? <Image source={{ uri: item.image }} style={{ width:'100%', height:'100%', borderRadius:99 }} resizeMode="cover" />
+        : <Text style={styles.emojiText}>{item.emoji}</Text>
+      }
     </View>
-    <Text style={styles.itemName}>{item.name}</Text>
+    <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
     <Text style={styles.itemStock}>Stock: {item.stock}</Text>
     <Text style={styles.itemPrice}>₱{item.price}.00</Text>
     <TouchableOpacity style={styles.addBtn} onPress={onAdd}>
@@ -82,7 +71,7 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
   }, [visible]);
 
   if (!orderData) return null;
-  const { items, total, amountPaid, change, orderNo, time } = orderData;
+  const { items, total, amountPaid, change, orderNo, time, paymentMode } = orderData;
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
@@ -109,7 +98,7 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
               <View style={styles.receiptDividerDashed} />
               <Text style={styles.receiptMeta}>Order No.: #{orderNo}</Text>
               <Text style={styles.receiptMeta}>{time}</Text>
-              <Text style={styles.receiptMeta}>Type: Walk-in / Visitor</Text>
+              <Text style={styles.receiptMeta}>Type: Walk-in  |  {paymentMode === 'gcash' ? '📱 GCash' : '💵 Cash'}</Text>
               <View style={styles.receiptDividerDashed} />
             </View>
 
@@ -186,27 +175,41 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
 
 // ─── CART PANEL ───────────────────────────────────────────────────────────────
 const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWide, hideTitle, lastOrder, onShowReceipt }) => {
-  const [amountPaid, setAmountPaid] = useState('');
+  const [checked, setChecked] = useState({});
+  const [paymentMode, setPaymentMode] = useState('cash');
 
-  const total = Object.values(cart).reduce((s,{item,qty}) => s + item.price * qty, 0);
-  const change = parseFloat(amountPaid || 0) - total;
   const cartItems = Object.values(cart).filter(i => i.qty > 0);
 
+  // Auto-check new items when added
+  useEffect(() => {
+    setChecked(prev => {
+      const updated = { ...prev };
+      cartItems.forEach(({ item }) => {
+        if (updated[item.id] === undefined) updated[item.id] = true;
+      });
+      return updated;
+    });
+  }, [JSON.stringify(cartItems.map(i => i.item.id))]);
+
+  const toggleCheck = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
+
+  const checkedItems = cartItems.filter(({ item }) => checked[item.id]);
+  const total = checkedItems.reduce((s, { item, qty }) => s + item.price * qty, 0);
+
   const handlePlaceOrder = () => {
-    if (cartItems.length === 0) return;
+    if (checkedItems.length === 0) return;
     const orderNo = Math.floor(1000 + Math.random() * 9000);
     const now = new Date();
     const time = now.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
       + '  ' + now.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit' });
-    onPlaceOrder({ items: cartItems, total, amountPaid, change, orderNo, time });
-    setAmountPaid('');
+    onPlaceOrder({ items: checkedItems, total, amountPaid: total, change: 0, orderNo, time, paymentMode });
   };
 
   return (
     <View style={[styles.cartPanel, !isWide && styles.cartPanelMobile]}>
       {!hideTitle && <Text style={styles.cartPanelTitle}>CART</Text>}
 
-        {/* Items list */}
+        {/* Items list with checkboxes */}
         <View style={styles.cartItemsBox}>
           {cartItems.length === 0 ? (
             <Text style={styles.cartEmpty}>Cart is empty.</Text>
@@ -214,6 +217,13 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 200 }}>
               {cartItems.map(({ item, qty }) => (
                 <View key={item.id} style={styles.cartRow}>
+                  {/* Checkbox */}
+                  <TouchableOpacity
+                    style={[styles.checkbox, checked[item.id] && styles.checkboxChecked]}
+                    onPress={() => toggleCheck(item.id)}
+                  >
+                    {checked[item.id] && <Text style={styles.checkmark}>✓</Text>}
+                  </TouchableOpacity>
                   <Text style={styles.cartRowEmoji}>{item.emoji}</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cartRowName} numberOfLines={1}>{item.name}</Text>
@@ -233,53 +243,48 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
           )}
         </View>
 
-        {/* Total */}
+        {/* Total — based on checked items only */}
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total :</Text>
           <Text style={styles.totalValue}>₱ {total.toFixed(2)}</Text>
         </View>
 
-        {/* Visitor note */}
-        <View style={styles.visitorNote}>
-          <Text style={styles.visitorNoteText}>👤 Ordering as Visitor — Cash Only</Text>
+        {/* Mode of Payment */}
+        <View style={styles.paymentModeBox}>
+          <Text style={styles.paymentModeLabel}>Mode of Payment</Text>
+          <View style={styles.paymentModeRow}>
+            <TouchableOpacity style={styles.paymentModeOption} onPress={() => setPaymentMode('cash')} activeOpacity={0.8}>
+              <View style={[styles.radioOuter, paymentMode === 'cash' && styles.radioOuterActive]}>
+                {paymentMode === 'cash' && <View style={styles.radioInner} />}
+              </View>
+              <Text style={[styles.paymentModeText, paymentMode === 'cash' && styles.paymentModeTextActive]}>💵 Cash</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.paymentModeOption} onPress={() => setPaymentMode('gcash')} activeOpacity={0.8}>
+              <View style={[styles.radioOuter, paymentMode === 'gcash' && styles.radioOuterActive]}>
+                {paymentMode === 'gcash' && <View style={styles.radioInner} />}
+              </View>
+              <Text style={[styles.paymentModeText, paymentMode === 'gcash' && styles.paymentModeTextActive]}>📱 GCash</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Amount paid */}
-        <Text style={styles.amountLabel}>Amount Paid (₱)</Text>
-        <TextInput
-          style={styles.amountInput}
-          value={amountPaid}
-          onChangeText={setAmountPaid}
-          keyboardType="numeric"
-          placeholder="0.00"
-          placeholderTextColor="rgba(1,31,75,0.35)"
-        />
-
-        {/* Change */}
-        <View style={styles.changeRow}>
-          <Text style={styles.changeLabel}>Change :</Text>
-          <Text style={[styles.changeValue, { color: change < 0 ? '#e74c3c' : '#c9a84c' }]}>
-            ₱ {isNaN(change) ? '0.00' : change.toFixed(2)}
-          </Text>
-        </View>
-
-        {/* ── Place Order button — solid green, prominent ── */}
+        {/* ── Place Order button ── */}
         <TouchableOpacity
-          style={[styles.placeOrderBtn, cartItems.length === 0 && styles.placeOrderBtnDisabled]}
+          style={[styles.placeOrderBtn, checkedItems.length === 0 && styles.placeOrderBtnDisabled]}
           onPress={handlePlaceOrder}
-          activeOpacity={cartItems.length === 0 ? 1 : 0.80}
+          activeOpacity={checkedItems.length === 0 ? 1 : 0.80}
         >
           <LinearGradient
-            colors={cartItems.length > 0 ? ['#27ae60','#2ecc71'] : ['#aaa','#bbb']}
+            colors={checkedItems.length > 0 ? ['#27ae60','#2ecc71'] : ['#aaa','#bbb']}
             start={{x:0,y:0}} end={{x:1,y:0}}
             style={styles.placeOrderGrad}
           >
             <Text style={styles.placeOrderIcon}>✅</Text>
-            <Text style={styles.placeOrderText}>Place Order</Text>
+            <Text style={styles.placeOrderText}>Place Order ({checkedItems.length})</Text>
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* ── Clear cart button — solid red ── */}
+        {/* ── Clear cart button ── */}
         <TouchableOpacity
           style={styles.clearBtn}
           onPress={onClear}
@@ -289,7 +294,7 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
           <Text style={styles.clearBtnText}>Clear Cart</Text>
         </TouchableOpacity>
 
-        {/* ── Print Receipt button — solid navy, enabled only after an order ── */}
+        {/* ── Download Receipt button ── */}
         <TouchableOpacity
           style={[styles.printBtn, !lastOrder && { opacity: 0.45 }]}
           onPress={lastOrder ? onShowReceipt : null}
@@ -324,43 +329,36 @@ const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onP
             <Text style={{ color:'rgba(1,31,75,0.6)', fontSize:14 }}>✕</Text>
           </TouchableOpacity>
         </View>
-        {/* hideTitle=true so CartPanel doesn't render its own "CART" heading */}
-        <CartPanel
-          cart={cart} onAdd={onAdd} onRemove={onRemove}
-          onClear={onClear} onOrder={onOrder} isWide={false}
-          hideTitle={true} onPlaceOrder={onPlaceOrder}
-          lastOrder={lastOrder} onShowReceipt={onShowReceipt}
-        />
+        {/* Scrollable content so Mode of Payment + buttons always visible */}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ flexGrow:1 }}
+        >
+          <CartPanel
+            cart={cart} onAdd={onAdd} onRemove={onRemove}
+            onClear={onClear} onOrder={onOrder} isWide={false}
+            hideTitle={true} onPlaceOrder={onPlaceOrder}
+            lastOrder={lastOrder} onShowReceipt={onShowReceipt}
+          />
+        </ScrollView>
       </Animated.View>
     </View>
   );
 };
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
-// ─── AD BANNER (2 slots, auto-swipe every 5s, swipeable) ─────────────────────
-const AdBanner = ({ isWide }) => {
+// ─── AD BANNER — dots inside card, hide/show on mobile scroll ────────────────
+const AdBanner = ({ isWide, adAnim, ads }) => {
   const [current, setCurrent] = useState(0);
   const scrollRef = useRef(null);
   const { width } = useWindowDimensions();
 
-  const ADS = [
-    {
-      id: 1,
-      bg: ['#1a3a6b', '#2e5fa3'],
-      emoji: '🍽️',
-      title: 'Today\'s Special',
-      sub: 'Fresh meals served daily!',
-    },
-    {
-      id: 2,
-      bg: ['#7b3f00', '#c9a84c'],
-      emoji: '☕',
-      title: 'Merienda Promo',
-      sub: 'Snacks & drinks available!',
-    },
+  const ADS = ads && ads.length > 0 ? ads : [
+    { id:1, bg:['#1a3a6b','#2e5fa3'], emoji:'🍽️', title:"Today's Special", sub:'Fresh meals served daily!' },
+    { id:2, bg:['#7b3f00','#c9a84c'], emoji:'☕',  title:'Merienda Promo',   sub:'Snacks & drinks available!' },
   ];
 
-  // Auto-swipe every 5 seconds
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrent(prev => {
@@ -372,107 +370,94 @@ const AdBanner = ({ isWide }) => {
     return () => clearInterval(timer);
   }, []);
 
-  const bannerW = isWide ? Math.min(width * 0.55, 700) : width - 64;
+  const bannerW = isWide ? Math.min(width * 0.55, 700) : width - 48;
 
   const handleScroll = (e) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / bannerW);
     setCurrent(idx);
   };
 
+  // Mobile: animate show/hide via adAnim (1=visible 0=hidden)
+  const mobileAnimStyle = (!isWide && adAnim) ? {
+    overflow: 'hidden',
+    height: adAnim.interpolate({ inputRange:[0,1], outputRange:[0, 128] }),
+    opacity: adAnim.interpolate({ inputRange:[0,1], outputRange:[0, 1] }),
+    marginBottom: adAnim.interpolate({ inputRange:[0,1], outputRange:[0, 8] }),
+  } : {};
+
   return (
-    <View style={adStyles.wrapper}>
+    <Animated.View style={[{ alignSelf:'stretch' }, mobileAnimStyle]}>
       <ScrollView
         ref={scrollRef}
-        horizontal
-        pagingEnabled
+        horizontal pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={handleScroll}
-        style={{ width: bannerW }}
+        style={{ width: bannerW, alignSelf:'center' }}
         contentContainerStyle={{ width: bannerW * ADS.length }}
       >
-        {ADS.map((ad, i) => (
+        {ADS.map((ad) => (
           <LinearGradient
             key={ad.id}
-            colors={ad.bg}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            colors={ad.bg || ['#1a3a6b','#2e5fa3']}
+            start={{ x:0, y:0 }} end={{ x:1, y:1 }}
             style={[adStyles.slide, { width: bannerW }]}
           >
-            <Text style={adStyles.adEmoji}>{ad.emoji}</Text>
-            <View>
+            {(ad.image || ad.imageUrl)
+              ? <Image source={{ uri: ad.image || ad.imageUrl }} style={{ position:'absolute', top:0, left:0, right:0, bottom:0, borderRadius:16 }} resizeMode="cover" />
+              : <Text style={adStyles.adEmoji}>{ad.emoji}</Text>
+            }
+            <View style={{ flex:1 }}>
               <Text style={adStyles.adTitle}>{ad.title}</Text>
               <Text style={adStyles.adSub}>{ad.sub}</Text>
             </View>
             <View style={adStyles.adBadge}>
               <Text style={adStyles.adBadgeTxt}>AD</Text>
             </View>
+            {/* Dots inside card */}
+            <View style={adStyles.dotsInner}>
+              {ADS.map((_, i) => (
+                <TouchableOpacity key={i} onPress={() => {
+                  scrollRef.current?.scrollTo({ x: i * bannerW, animated: true });
+                  setCurrent(i);
+                }}>
+                  <View style={[adStyles.dot, current === i && adStyles.dotActive]} />
+                </TouchableOpacity>
+              ))}
+            </View>
           </LinearGradient>
         ))}
       </ScrollView>
-
-      {/* Dots indicator */}
-      <View style={adStyles.dots}>
-        {ADS.map((_, i) => (
-          <TouchableOpacity
-            key={i}
-            onPress={() => {
-              scrollRef.current?.scrollTo({ x: i * bannerW, animated: true });
-              setCurrent(i);
-            }}
-          >
-            <View style={[adStyles.dot, current === i && adStyles.dotActive]} />
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
+    </Animated.View>
   );
 };
 
 const adStyles = StyleSheet.create({
-  wrapper: {
-    alignItems: 'center',
-    marginBottom: 10,
-  },
   slide: {
-    height: 130,
-    borderRadius: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    gap: 14,
-    overflow: 'hidden',
+    height: 120, borderRadius: 16,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 20, paddingBottom: 20,
+    gap: 16, overflow: 'hidden',
   },
-  adEmoji: { fontSize: 48 },
-  adTitle: {
-    fontFamily: 'GoogleSans_700Bold',
-    fontSize: 18, color: '#fff',
-  },
-  adSub: {
-    fontFamily: 'GoogleSans_400Regular',
-    fontSize: 14, color: 'rgba(255,255,255,0.80)',
-  },
+  adEmoji: { fontSize: 52 },
+  adTitle: { fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#fff' },
+  adSub:   { fontFamily:'GoogleSans_400Regular', fontSize:14, color:'rgba(255,255,255,0.85)' },
   adBadge: {
-    position: 'absolute', top: 8, right: 10,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
+    position:'absolute', top:10, right:12,
+    backgroundColor:'rgba(255,255,255,0.25)',
+    borderRadius:4, paddingHorizontal:7, paddingVertical:3,
   },
-  adBadgeTxt: {
-    fontFamily: 'GoogleSans_700Bold',
-    fontSize: 9, color: '#fff', letterSpacing: 1,
+  adBadgeTxt: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#fff', letterSpacing:1 },
+  dotsInner: {
+    position:'absolute', bottom:7, left:0, right:0,
+    flexDirection:'row', justifyContent:'center', gap:5,
   },
-  dots: {
-    flexDirection: 'row', gap: 6, marginTop: 6,
-  },
-  dot: {
-    width: 7, height: 7, borderRadius: 4,
-    backgroundColor: 'rgba(1,31,75,0.20)',
-  },
-  dotActive: {
-    backgroundColor: '#c9a84c', width: 18,
-  },
+  dot:       { width:7, height:7, borderRadius:4, backgroundColor:'rgba(255,255,255,0.40)' },
+  dotActive: { backgroundColor:'#fff', width:18 },
 });
 
 
 export default function CanteenVisitor({ navigation }) {
+  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock } = useCanteen();
   const { width, height } = useWindowDimensions();
   const isWide  = width >= 768;
   const isSmall = width < 400;
@@ -491,7 +476,9 @@ export default function CanteenVisitor({ navigation }) {
 
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
-  const bodyFade = useRef(new Animated.Value(0)).current;
+  const bodyFade    = useRef(new Animated.Value(0)).current;
+  const adAnim      = useRef(new Animated.Value(1)).current;
+  const lastScrollY = useRef(0);
   const receiptViewRef = useRef(null);
 
   useEffect(() => {
@@ -522,10 +509,18 @@ export default function CanteenVisitor({ navigation }) {
 
   // Called by CartPanel after building order data
   const handlePlaceOrder = (orderData) => {
+    const fullOrder = {
+      ...orderData,
+      id: `ORD-${String(Math.floor(1000+Math.random()*9000))}`,
+      status: 'pending',
+      payment: orderData.paymentMode || 'cash',
+    };
+    addOrder(fullOrder);
+    deductStock(orderData.items);
     setLastOrder(orderData);
     setCartOpen(false);
     clearCart();
-    setTimeout(() => setReceiptVisible(true), 300); // slight delay so sheet closes first on mobile
+    setTimeout(() => setReceiptVisible(true), 300);
   };
 
   const handleShowReceipt = () => setReceiptVisible(true);
@@ -637,10 +632,10 @@ export default function CanteenVisitor({ navigation }) {
   // Grid cols — COLS fixed per platform, CARD_W fills available space
   const CART_W  = isWide ? 230 : 0;
   const CAT_W   = isWide ? 170 : 0;
-  const MARGIN  = isWide ? 80 : 32;
-  const GAP_C   = 10;
-  const COLS    = Platform.OS === 'web' ? 5 : 2;
-  const AVAIL   = width - CAT_W - CART_W - MARGIN - 24;  // 24 = itemsPanel padding*2
+  const MARGIN  = isWide ? 80 : 20;  // centerPanel paddingH(10)*2
+  const GAP_C   = Platform.OS === 'web' ? 10 : 5;
+  const COLS    = Platform.OS === 'web' ? 5 : 3;
+  const AVAIL   = width - CAT_W - CART_W - MARGIN - (Platform.OS==='web' ? 24 : 12);  // padding*2
   const CARD_W  = Math.floor((AVAIL - (COLS - 1) * GAP_C) / COLS);
 
   return (
@@ -659,10 +654,10 @@ export default function CanteenVisitor({ navigation }) {
       {/* HEADER */}
       <Animated.View style={{
         opacity: hdrFade, transform:[{translateY: hdrTrans}],
-        marginTop: Platform.OS==='web' ? 16 : 50,
-        marginHorizontal: isSmall ? 12 : 20, zIndex:10,
+        marginTop: Platform.OS==='web' ? 16 : 36,
+        marginHorizontal: isSmall ? 8 : 10, zIndex:10,
       }}>
-        <View style={[styles.header, { paddingHorizontal: isWide ? 40:16, paddingVertical: isWide ? 16:10 }]}>
+        <View style={[styles.header, { paddingHorizontal: isWide ? 40:12, paddingVertical: isWide ? 16:7 }]}>
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation && navigation.goBack()}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
@@ -679,13 +674,13 @@ export default function CanteenVisitor({ navigation }) {
 
           {/* Menu icon — same as Web, no cart icon */}
           <TouchableOpacity style={styles.backBtn}>
-            <Text style={{ color:'#fff', fontSize:18 }}>≡</Text>
+            <Text style={{ color:'#fff', fontSize:18, textAlign:'center', lineHeight:22, includeFontPadding:false }}>≡</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
 
       {/* BODY */}
-      <Animated.View style={[styles.body, { opacity: bodyFade }]}>
+      <Animated.View style={[styles.body, { opacity: bodyFade, minHeight: 0 }]}>
 
         {/* LEFT — Categories (web only) */}
         {isWide && (
@@ -711,8 +706,8 @@ export default function CanteenVisitor({ navigation }) {
           {/* Mobile category tabs */}
           {!isWide && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              style={{ flexGrow:0, marginBottom:6 }}
-              contentContainerStyle={{ paddingHorizontal:16, gap:8, paddingVertical:4 }}
+              style={{ flexGrow:0, marginBottom:8 }}
+              contentContainerStyle={{ paddingHorizontal:4, gap:5, paddingVertical:2 }}
             >
               {CATEGORIES.map(cat => (
                 <TouchableOpacity key={cat}
@@ -725,53 +720,76 @@ export default function CanteenVisitor({ navigation }) {
             </ScrollView>
           )}
 
-          {/* ── Search bar — full width, compact ── */}
-          <View style={[styles.searchBox, isWide && { paddingVertical: 5 }]}>
-            <Text style={styles.searchIcon}>🔍</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search items..."
-              placeholderTextColor="rgba(1,31,75,0.40)"
-              value={search}
-              onChangeText={handleSearch}
-            />
-            {search.length > 0 && (
-              <TouchableOpacity onPress={() => { setSearch(''); setActiveCategory('All'); }} style={{ paddingLeft:6 }}>
-                <Text style={{ color:'rgba(1,31,75,0.45)', fontSize:14, fontWeight:'700' }}>✕</Text>
-              </TouchableOpacity>
-            )}
+          {/* ── Ad Banner ── */}
+          <View style={{ marginBottom: isWide ? 12 : 0 }}>
+            <AdBanner isWide={isWide} adAnim={adAnim} ads={CONTEXT_ADS} />
           </View>
 
-          {/* ── Ad Banner ── */}
-          <AdBanner isWide={isWide} />
-
-          {/* Items panel — scrollable */}
+          {/* Items panel — fills remaining space */}
           <View style={styles.itemsPanel}>
-            <Text style={styles.menuSectionLabel}>
-              {search.trim() !== ''
-                ? `RESULTS FOR "${search.toUpperCase()}"`
-                : activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()
-              }
-            </Text>
+            {/* Label LEFT + Search RIGHT — same row, both web and mobile */}
+            <View style={{ flexDirection:'row', alignItems:'center', marginBottom:6, gap:8 }}>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#011f4b', letterSpacing:2, flexShrink:0 }}>
+                {search.trim() !== ''
+                  ? `RESULTS FOR "${search.toUpperCase()}"`
+                  : activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()
+                }
+              </Text>
+              <View style={styles.searchBoxInline}>
+                <Text style={{ fontSize:11, marginRight:4 }}>🔍</Text>
+                <TextInput
+                  style={styles.searchInputInline}
+                  placeholder="Search..."
+                  placeholderTextColor="rgba(1,31,75,0.35)"
+                  value={search}
+                  onChangeText={handleSearch}
+                />
+                {search.length > 0 && (
+                  <TouchableOpacity onPress={() => { setSearch(''); setActiveCategory('All'); }}>
+                    <Text style={{ color:'rgba(1,31,75,0.45)', fontSize:12, fontWeight:'700' }}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+            <View style={{ height:1, backgroundColor:'rgba(1,31,75,0.10)', marginBottom:8 }} />
             <ScrollView
               showsVerticalScrollIndicator={true}
               nestedScrollEnabled={true}
-              style={{ height: height - (Platform.OS === 'web' ? 360 : 460) }}
-              contentContainerStyle={[styles.menuGrid, { gap:10, paddingBottom:20 }]}
+              scrollEventThrottle={16}
+              onScroll={Platform.OS !== 'web' ? (e) => {
+                const y = e.nativeEvent.contentOffset.y;
+                const goingDown = y > lastScrollY.current;
+                lastScrollY.current = y;
+                const target = goingDown && y > 10 ? 0 : 1;
+                Animated.timing(adAnim, {
+                  toValue: target,
+                  duration: 150,
+                  useNativeDriver: false,
+                }).start();
+              } : undefined}
+              style={{ flex:1, minHeight:0 }}
+              contentContainerStyle={[styles.menuGrid, { gap: Platform.OS==='web' ? 10 : 5, paddingBottom:20 }]}
             >
-              <View style={[styles.menuRow, { gap:10 }]}>
-                {filtered.map(item => (
-                  <View key={item.id} style={{ width: CARD_W }}>
-                    <FoodCard
-                      item={item}
-                      onAdd={() => addToCart(item)}
-                    />
+              {filtered.length === 0 ? (
+                <Text style={styles.emptyText}>No items found.</Text>
+              ) : (
+                Array.from({ length: Math.ceil(filtered.length / COLS) }, (_, rowIdx) => (
+                  <View key={rowIdx} style={{ flexDirection:'row', gap: Platform.OS==='web' ? 10 : 5, marginBottom: Platform.OS==='web' ? 0 : 5 }}>
+                    {filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).map(item => (
+                      <View key={item.id} style={{ flex:1 }}>
+                        <FoodCard
+                          item={item}
+                          onAdd={() => addToCart(item)}
+                        />
+                      </View>
+                    ))}
+                    {/* Fill empty slots in last row */}
+                    {Array.from({ length: COLS - filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).length }).map((_, i) => (
+                      <View key={`empty-${i}`} style={{ flex:1 }} />
+                    ))}
                   </View>
-                ))}
-                {filtered.length === 0 && (
-                  <Text style={styles.emptyText}>No items found.</Text>
-                )}
-              </View>
+                ))
+              )}
             </ScrollView>
           </View>
         </View>
@@ -784,6 +802,20 @@ export default function CanteenVisitor({ navigation }) {
             hideTitle={false} onPlaceOrder={handlePlaceOrder}
             lastOrder={lastOrder} onShowReceipt={handleShowReceipt}
           />
+        )}
+        {/* Mobile floating cart button — inside body so it overlays itemsPanel */}
+        {!isWide && (
+          <TouchableOpacity style={styles.floatCart} onPress={() => setCartOpen(true)} activeOpacity={0.85}>
+            <LinearGradient
+              colors={['#c9a84c','#e8c87a']}
+              start={{x:0,y:0}} end={{x:1,y:0}}
+              style={styles.floatCartGradient}
+            >
+              <Text style={styles.floatCartText}>
+                🛒  View Cart  {totalItems > 0 ? `(${totalItems})` : ''}  •  ₱{Object.values(cart).reduce((s,{item,qty}) => s+item.price*qty, 0).toFixed(2)}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
         )}
       </Animated.View>
 
@@ -798,20 +830,7 @@ export default function CanteenVisitor({ navigation }) {
         />
       )}
 
-      {/* Mobile floating cart button */}
-      {!isWide && (
-        <TouchableOpacity style={styles.floatCart} onPress={() => setCartOpen(true)} activeOpacity={0.85}>
-          <LinearGradient
-            colors={['#c9a84c','#e8c87a']}
-            start={{x:0,y:0}} end={{x:1,y:0}}
-            style={styles.floatCartGradient}
-          >
-            <Text style={styles.floatCartText}>
-              🛒  View Cart  {totalItems > 0 ? `(${totalItems})` : ''}  •  ₱{Object.values(cart).reduce((s,{item,qty}) => s+item.price*qty, 0).toFixed(2)}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
+
 
       {/* ── RECEIPT MODAL — rendered at root level so it works on both web & mobile ── */}
       <ReceiptModal
@@ -827,7 +846,10 @@ export default function CanteenVisitor({ navigation }) {
 
 // ──────────────── STYLES ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex:1 },
+  root: {
+    flex:1,
+    ...(Platform.OS === 'web' ? { height:'100vh', maxHeight:'100vh', overflow:'hidden' } : {}),
+  },
 
   // Header
   header: {
@@ -843,7 +865,7 @@ const styles = StyleSheet.create({
     borderWidth:1, borderColor:'rgba(255,255,255,0.30)',
     justifyContent:'center', alignItems:'center', flexShrink:0, position:'relative',
   },
-  backIcon: { color:'#fff', fontSize:17, fontWeight:'600' },
+  backIcon: { color:'#fff', fontSize:16, fontWeight:'600', textAlign:'center', lineHeight:20 },
   headerCenter: { flex:1, alignItems:'center', paddingHorizontal:10 },
   headerH1: {
     fontFamily:'NotoSerif_700Bold', fontWeight:'700',
@@ -851,13 +873,15 @@ const styles = StyleSheet.create({
   },
   headerGold: { fontFamily:'NotoSerif_700Bold_Italic', color:'#c9a84c', fontStyle:'italic' },
   visitorTag: {
-    marginTop:5, paddingHorizontal:14, paddingVertical:5,
+    marginTop:0, paddingHorizontal:10, paddingVertical:3,
     borderRadius:20, backgroundColor:'rgba(255,255,255,0.18)',
-    borderWidth:1.5, borderColor:'rgba(255,255,255,0.60)',
+    borderWidth:1, borderColor:'rgba(255,255,255,0.60)',
+    alignSelf:'center', alignItems:'center', justifyContent:'center',
   },
   visitorTagText: {
-    fontFamily:'GoogleSans_700Bold', fontSize:10,
-    color:'#ffffff', letterSpacing:1.8, textTransform:'uppercase',
+    fontFamily:'GoogleSans_700Bold', fontSize:9,
+    color:'#ffffff', letterSpacing:1.5, textTransform:'uppercase',
+    textAlign:'center', lineHeight:13, includeFontPadding:false,
   },
   cartDot: {
     position:'absolute', top:-2, right:-2,
@@ -868,7 +892,11 @@ const styles = StyleSheet.create({
 
   // Body layout
   body: {
-    flex:1, flexDirection:'row', marginTop:12,
+    flex:1, flexDirection:'row',
+    alignItems:'stretch',
+    marginTop: Platform.OS === 'web' ? 12 : 6,
+    minHeight: 0,
+    overflow: Platform.OS === 'web' ? 'hidden' : 'visible',
   },
 
   // LEFT — Categories panel
@@ -877,6 +905,8 @@ const styles = StyleSheet.create({
     borderRadius:16, marginLeft:20, marginBottom:16,
     padding:12, gap:6,
     borderWidth:1, borderColor:'rgba(255,255,255,0.40)',
+    alignSelf:'stretch',
+    overflow:'hidden',
   },
   catPanelTitle: {
     fontFamily:'GoogleSans_700Bold', fontSize:12,
@@ -903,43 +933,61 @@ const styles = StyleSheet.create({
   },
 
   // CENTER panel
-  centerPanel: { flex:1, paddingHorizontal:12, paddingBottom:16 },
+  centerPanel: {
+    flex:1, flexDirection:'column',
+    paddingHorizontal: Platform.OS==='web' ? 12 : 10,
+    paddingBottom: Platform.OS==='web' ? 16 : 0,
+    minHeight: 0,
+    overflow: Platform.OS==='web' ? 'hidden' : 'visible',
+  },
   itemsPanel: {
     backgroundColor:'rgba(255,255,255,0.22)',
     borderRadius:16,
     borderWidth:1, borderColor:'rgba(255,255,255,0.40)',
-    padding:12,
-    marginTop:0,
+    padding: Platform.OS==='web' ? 10 : 6,
     overflow:'hidden',
+    flex:1,
+    minHeight: 0,
+    marginBottom: Platform.OS==='web' ? 16 : 8,
   },
 
   // ── FIX: Search bar — compact, full width, below tabs ──
+  searchBoxInline: {
+    flexDirection:'row', alignItems:'center',
+    backgroundColor:'rgba(255,255,255,0.75)',
+    borderRadius:8, paddingHorizontal:8, paddingVertical:5,
+    borderWidth:1, borderColor:'rgba(255,255,255,0.90)',
+    flex:1,
+  },
+  searchInputInline: {
+    flex:1, fontFamily:'GoogleSans_400Regular',
+    fontSize:11, color:'#011f4b', paddingVertical:0,
+  },
   searchBox: {
     flexDirection:'row', alignItems:'center',
     backgroundColor:'rgba(255,255,255,0.72)',
-    borderRadius:12, paddingHorizontal:12, paddingVertical:8,
+    borderRadius:10, paddingHorizontal:10, paddingVertical:5,
     borderWidth:1, borderColor:'rgba(255,255,255,0.90)',
     marginBottom:10,
     shadowColor:'#011f4b', shadowOpacity:0.07,
     shadowRadius:6, shadowOffset:{width:0,height:2},
   },
-  searchIcon: { fontSize:13, marginRight:6 },
+  searchIcon: { fontSize:12, marginRight:5 },
   searchInput: {
     flex:1, fontFamily:'GoogleSans_400Regular',
-    fontSize:13, color:'#011f4b',
+    fontSize:12, color:'#011f4b',
     paddingVertical:0,
   },
 
   menuSectionLabel: {
     fontFamily:'GoogleSans_700Bold', fontSize:12,
     color:'#011f4b', letterSpacing:2,
-    marginBottom:10,
-    paddingBottom:8,
+    marginBottom:6, paddingBottom:6,
     borderBottomWidth:1,
     borderColor:'rgba(1,31,75,0.10)',
   },
   menuGrid: { paddingTop:2 },
-  menuRow: { flexDirection:'row', flexWrap:'wrap' },
+  menuRow: { flexDirection:'row', flexWrap:'wrap', justifyContent:'flex-start' },
   emptyText: {
     fontFamily:'GoogleSans_400Regular', fontSize:13,
     color:'rgba(1,31,75,0.55)', padding:20,
@@ -947,14 +995,13 @@ const styles = StyleSheet.create({
 
   // Mobile category tabs
   catTab: {
-    width: 90,
-    paddingVertical:8, borderRadius:20,
+    paddingVertical:8, paddingHorizontal:16, borderRadius:16,
     backgroundColor:'rgba(255,255,255,0.25)',
     borderWidth:1, borderColor:'rgba(255,255,255,0.45)',
     alignItems:'center', justifyContent:'center',
   },
   catTabActive: { backgroundColor:'#304674', borderColor:'#c9a84c' },
-  catTabText: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(255,255,255,0.85)', textAlign:'center' },
+  catTabText: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(255,255,255,0.85)', textAlign:'center', lineHeight:16, includeFontPadding:false },
   catTabTextActive: { fontFamily:'GoogleSans_700Bold', color:'#fff' },
 
   // FOOD CARD — no inline qty counter
@@ -962,48 +1009,58 @@ const styles = StyleSheet.create({
     borderRadius:14, overflow:'hidden',
     shadowColor:'#011f4b', shadowOpacity:0.10,
     shadowRadius:8, shadowOffset:{width:0,height:3}, elevation:3,
+    flex:1,
   },
   foodCardInner: {
-    borderRadius:14, padding:14,
+    borderRadius:14, padding: Platform.OS==='web' ? 14 : 8,
     borderWidth:1.5, borderColor:'rgba(255,255,255,0.75)',
-    alignItems:'center', gap:4,
-    minHeight:180,
+    alignItems:'center', gap: Platform.OS==='web' ? 4 : 3,
+    flex:1,
     justifyContent:'space-between',
   },
   emojiCircle: {
-    width:72, height:72, borderRadius:36,
+    width: Platform.OS==='web' ? 72 : 52,
+    height: Platform.OS==='web' ? 72 : 52,
+    borderRadius: Platform.OS==='web' ? 36 : 26,
     backgroundColor:'rgba(240,246,252,0.90)',
     borderWidth:1.5, borderColor:'rgba(255,255,255,0.85)',
     justifyContent:'center', alignItems:'center',
-    marginBottom:6,
+    marginBottom: Platform.OS==='web' ? 6 : 3,
     shadowColor:'#011f4b', shadowOpacity:0.08,
     shadowRadius:6, shadowOffset:{width:0,height:2},
+    overflow:'hidden',
   },
-  emojiText: { fontSize:34 },
+  emojiText: { fontSize: Platform.OS==='web' ? 34 : 24 },
   itemName: {
-    fontFamily:'GoogleSans_700Bold', fontSize:11,
+    fontFamily:'GoogleSans_700Bold',
+    fontSize: Platform.OS==='web' ? 11 : 9,
     color:'#1a2d4e', textAlign:'center', fontWeight:'700',
-    lineHeight:15,
+    lineHeight: Platform.OS==='web' ? 15 : 12,
+    minHeight: Platform.OS==='web' ? 15 : 24,
   },
   itemStock: {
-    fontFamily:'GoogleSans_400Regular', fontSize:10,
+    fontFamily:'GoogleSans_400Regular',
+    fontSize: Platform.OS==='web' ? 10 : 9,
     color:'rgba(1,31,75,0.45)', letterSpacing:0.2,
   },
   itemPrice: {
-    fontFamily:'NotoSerif_700Bold', fontSize:14,
+    fontFamily:'NotoSerif_700Bold',
+    fontSize: Platform.OS==='web' ? 14 : 12,
     color:'#c9a84c', fontWeight:'700', letterSpacing:0.3,
   },
   addBtn: {
-    backgroundColor:'#1a3a6b', borderRadius:8,
-    paddingVertical:8, paddingHorizontal:6,
-    marginTop:4, alignItems:'center',
+    backgroundColor:'#1a3a6b', borderRadius:7,
+    paddingVertical: Platform.OS==='web' ? 8 : 6,
+    paddingHorizontal:4,
+    marginTop:2, alignItems:'center',
     width:'100%',
     shadowColor:'#1a3a6b', shadowOpacity:0.30,
     shadowRadius:6, shadowOffset:{width:0,height:2},
   },
   addBtnText: {
-    fontFamily:'GoogleSans_700Bold', fontSize:10,
-    color:'#ffffff', fontWeight:'700', letterSpacing:0.5,
+    fontFamily:'GoogleSans_700Bold',
+    fontSize: Platform.OS==='web' ? 10 : 9,
+    color:'#ffffff', fontWeight:'700', letterSpacing:0.3,
   },
 
   // RIGHT — Cart panel
@@ -1012,11 +1069,13 @@ const styles = StyleSheet.create({
     borderRadius:16, marginRight:20, marginBottom:16,
     padding:14, gap:8,
     borderWidth:1, borderColor:'rgba(255,255,255,0.45)',
+    alignSelf:'stretch',
+    overflow:'hidden',
   },
   cartPanelMobile: {
     width:'100%', marginRight:0, marginBottom:0,
     borderRadius:0, backgroundColor:'transparent',
-    borderWidth:0,
+    borderWidth:0, padding:14,
   },
   cartPanelTitle: {
     fontFamily:'GoogleSans_700Bold', fontSize:13,
@@ -1047,6 +1106,16 @@ const styles = StyleSheet.create({
     fontFamily:'GoogleSans_400Regular', fontSize:10,
     color:'rgba(1,31,75,0.55)',
   },
+  checkbox: {
+    width:22, height:22, borderRadius:5,
+    borderWidth:2, borderColor:'rgba(1,31,75,0.30)',
+    alignItems:'center', justifyContent:'center',
+    backgroundColor:'rgba(255,255,255,0.80)', flexShrink:0,
+    marginRight:6,
+  },
+  checkboxChecked: { backgroundColor:'#27ae60', borderColor:'#27ae60' },
+  checkmark: { color:'#fff', fontSize:13, fontWeight:'900', lineHeight:16 },
+
   cartRowQty: { flexDirection:'row', gap:4 },
   cartQBtn: {
     width:22, height:22, borderRadius:11,
@@ -1065,7 +1134,35 @@ const styles = StyleSheet.create({
     fontFamily:'GoogleSans_500Medium', fontSize:13, color:'rgba(1,31,75,0.75)',
   },
   totalValue: {
-    fontFamily:'NotoSerif_700Bold', fontSize:15, color:'#c9a84c',
+    fontFamily:'NotoSerif_700Bold', fontSize:15, color:'#0d1b3e',
+  },
+  paymentModeBox: {
+    backgroundColor:'rgba(255,255,255,0.30)',
+    borderRadius:10, padding:10,
+    borderWidth:1, borderColor:'rgba(255,255,255,0.60)',
+    marginVertical:4,
+  },
+  paymentModeLabel: {
+    fontFamily:'GoogleSans_700Bold', fontSize:10,
+    color:'rgba(1,31,75,0.60)', letterSpacing:1.2,
+    textTransform:'uppercase', marginBottom:8,
+  },
+  paymentModeRow: { flexDirection:'row', gap:10 },
+  paymentModeOption: { flexDirection:'row', alignItems:'center', gap:6, flex:1 },
+  radioOuter: {
+    width:18, height:18, borderRadius:9,
+    borderWidth:2, borderColor:'rgba(1,31,75,0.30)',
+    alignItems:'center', justifyContent:'center',
+    backgroundColor:'rgba(255,255,255,0.70)',
+  },
+  radioOuterActive: { borderColor:'#1a3a6b' },
+  radioInner: { width:9, height:9, borderRadius:5, backgroundColor:'#1a3a6b' },
+  paymentModeText: {
+    fontFamily:'GoogleSans_400Regular', fontSize:12,
+    color:'rgba(1,31,75,0.55)',
+  },
+  paymentModeTextActive: {
+    fontFamily:'GoogleSans_700Bold', color:'#1a3a6b',
   },
   visitorNote: {
     backgroundColor:'rgba(255,255,255,0.45)', borderRadius:8,
@@ -1271,9 +1368,10 @@ const styles = StyleSheet.create({
   sheet: {
     backgroundColor:'#f0f5f9',
     borderTopLeftRadius:24, borderTopRightRadius:24,
-    paddingBottom:34, maxHeight:'90%',
+    paddingBottom:34, maxHeight:'92%',
     shadowColor:'#000', shadowOpacity:0.35,
     shadowRadius:20, shadowOffset:{width:0,height:-4}, elevation:20,
+    overflow:'scroll',
   },
   sheetHandle: {
     width:40, height:4, borderRadius:2,
@@ -1294,17 +1392,16 @@ const styles = StyleSheet.create({
 
   // Floating cart button
   floatCart: {
-    position:'absolute', bottom:24, left:24, right:24,
-    borderRadius:30, shadowColor:'#c9a84c',
-    shadowOpacity:0.4, shadowRadius:16,
-    shadowOffset:{width:0,height:4}, elevation:10,
+    position:'absolute', bottom:28,
+    left:0, right:0,
+    alignItems:'center',
   },
   floatCartGradient: {
-    borderRadius:30, paddingVertical:14,
-    paddingHorizontal:24, alignItems:'center',
+    borderRadius:30, paddingVertical:10,
+    paddingHorizontal:32, alignItems:'center',
   },
   floatCartText: {
-    fontFamily:'GoogleSans_700Bold', fontSize:15,
+    fontFamily:'GoogleSans_700Bold', fontSize:14,
     color:'#0d1b3e', fontWeight:'700',
   },
 });
