@@ -1,14 +1,7 @@
 // App.js
-<<<<<<< Updated upstream
 import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
-=======
-import React from 'react';
-import { CanteenProvider } from './src/context/CanteenContext';
-import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
->>>>>>> Stashed changes
 
 import HomeScreen from "./src/screens/HomeScreen";
 import CanteenScreen from "./src/screens/CanteenScreen";
@@ -19,12 +12,13 @@ import ManageCoopScreen from "./src/screens/ManageCoopScreen";
 import ManageCanteenScreen from "./src/screens/ManageCanteenScreen";
 import ManageMerchandiseScreen from "./src/screens/ManageMerchandiseScreen";
 import ManageBillingScreen from "./src/screens/ManageBillingScreen";
+import { CanteenProvider } from "./src/context/CanteenContext";
 
 const Stack = createStackNavigator();
 
 export default function App() {
   return (
-<<<<<<< Updated upstream
+    <CanteenProvider>
     <NavigationContainer>
       <Stack.Navigator
         initialRouteName="Home"
@@ -56,32 +50,6 @@ export default function App() {
         <Stack.Screen name="CanteenVisitorScreen" component={CanteenVisitor} />
       </Stack.Navigator>
     </NavigationContainer>
-=======
-    <CanteenProvider>
-      <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName="Home"
-          screenOptions={{
-            headerShown: false,
-            animationEnabled: true,
-            cardStyleInterpolator: ({ current }) => ({
-              cardStyle: { opacity: current.progress },
-            }),
-          }}
-        >
-          <Stack.Screen name="Home"                  component={HomeScreen} />
-          <Stack.Screen name="CoopScreen"            component={CoopScreen} />
-          <Stack.Screen name="AdminScreen"           component={AdminScreen} />
-          <Stack.Screen name="ManageCoopScreen"      component={ManageCoopScreen} />
-          <Stack.Screen name="ManageCanteenScreen"   component={ManageCanteenScreen} />
-          <Stack.Screen name="ManageMerchandiseScreen" component={ManageMerchandiseScreen} />
-          <Stack.Screen name="ManageBillingScreen"   component={ManageBillingScreen} />
-          <Stack.Screen name="CanteenScreen"         component={CanteenScreen} />
-          <Stack.Screen name="CanteenVisitorScreen"  component={CanteenVisitor} />
-          <Stack.Screen name="MerchandiseScreen"     component={MerchandiseScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
     </CanteenProvider>
->>>>>>> Stashed changes
   );
 }
