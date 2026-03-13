@@ -307,6 +307,178 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
   );
 };
 
+// ─── QUEUE STATUS MODAL ───────────────────────────────────────────────────────
+// Shows after order placement: tracks pending → preparing → ready → done
+// Can be minimised to a floating pill; re-expands when status changes.
+const QUEUE_STEPS = [
+  { key: 'pending',   icon: '🕐', label: 'Order Placed',       sub: 'Your order has been received!'         },
+  { key: 'preparing', icon: '🔥', label: 'Preparing Your Order', sub: 'The canteen is cooking your food.'   },
+  { key: 'ready',     icon: '✅', label: 'Ready to Pick Up',    sub: 'Your order is ready! Please proceed to the canteen.' },
+  { key: 'done',      icon: '🎉', label: 'Order Complete',      sub: 'Thank you for ordering!'               },
+];
+
+const QueueStatusModal = ({ visible, orderId, orderNo, currentStatus, onClose, onMinimize, minimized }) => {
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(40)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const prevStatus = useRef(null);
+
+  // Entrance animation
+  useEffect(() => {
+    if (visible && !minimized) {
+      Animated.parallel([
+        Animated.timing(fadeAnim,  { toValue:1, duration:300, useNativeDriver:true }),
+        Animated.spring(slideAnim, { toValue:0, tension:65, friction:11, useNativeDriver:true }),
+      ]).start();
+    } else {
+      fadeAnim.setValue(0);
+      slideAnim.setValue(40);
+    }
+  }, [visible, minimized]);
+
+  // Pulse the current step icon
+  useEffect(() => {
+    if (currentStatus === 'done') { pulseAnim.setValue(1); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulseAnim, { toValue: 0.55, duration: 700, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1,    duration: 700, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [currentStatus]);
+
+  const stepIdx   = QUEUE_STEPS.findIndex(s => s.key === currentStatus);
+  const activeStep = QUEUE_STEPS[stepIdx] || QUEUE_STEPS[0];
+  const isDone = currentStatus === 'done';
+
+  if (!visible) return null;
+
+  // ── Minimized pill — renders as an absolute overlay (not in Modal) ──
+  if (minimized) {
+    const pillColor = currentStatus === 'ready' ? '#27ae60' : currentStatus === 'preparing' ? '#e67e22' : '#1a3a6b';
+    return (
+      <View style={[qs.pill, { backgroundColor: pillColor }]} pointerEvents="box-none">
+        <TouchableOpacity
+          style={{ flexDirection:'row', alignItems:'center', flex:1, gap:8 }}
+          onPress={onMinimize}
+          activeOpacity={0.85}
+        >
+          <Text style={qs.pillIcon}>{activeStep.icon}</Text>
+          <Text style={qs.pillText}>Order #{orderNo} — {activeStep.label}</Text>
+          <Text style={qs.pillChevron}>▲</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onMinimize}>
+      <Animated.View style={[qs.overlay, { opacity: fadeAnim }]}>
+        {/* Tap backdrop to minimise */}
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onMinimize} />
+        <Animated.View style={[qs.card, { transform: [{ translateY: slideAnim }] }]}>
+
+          {/* Header */}
+          <View style={qs.header}>
+            <Text style={qs.headerTitle}>🍽️  Order Queue</Text>
+            <Text style={qs.headerOrder}>#{orderNo}</Text>
+            <TouchableOpacity style={qs.minBtn} onPress={onMinimize}>
+              <Text style={qs.minBtnTxt}>—</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Step tracker */}
+          <View style={qs.stepsRow}>
+            {QUEUE_STEPS.filter(s => s.key !== 'done').map((step, i) => {
+              const stepI = QUEUE_STEPS.filter(s => s.key !== 'done').indexOf(step);
+              const activeI = QUEUE_STEPS.filter(s => s.key !== 'done').findIndex(s => s.key === currentStatus);
+              const done    = stepI < activeI || isDone;
+              const active  = step.key === currentStatus && !isDone;
+              const isLast  = stepI === 2;
+              return (
+                <React.Fragment key={step.key}>
+                  <View style={qs.stepItem}>
+                    <Animated.View style={[
+                      qs.stepCircle,
+                      done  && qs.stepCircleDone,
+                      active && qs.stepCircleActive,
+                      active && { opacity: pulseAnim },
+                    ]}>
+                      <Text style={qs.stepCircleIcon}>{done ? '✓' : step.icon}</Text>
+                    </Animated.View>
+                    <Text style={[qs.stepLabel, (done || active) && qs.stepLabelActive]}>{step.label}</Text>
+                  </View>
+                  {!isLast && (
+                    <View style={[qs.stepLine, done && qs.stepLineDone]} />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </View>
+
+          {/* Active step detail */}
+          <View style={[qs.statusBox, currentStatus === 'ready' && qs.statusBoxReady]}>
+            <Text style={qs.statusIcon}>{activeStep.icon}</Text>
+            <View style={{ flex:1 }}>
+              <Text style={[qs.statusLabel, currentStatus === 'ready' && { color:'#27ae60' }]}>{activeStep.label}</Text>
+              <Text style={qs.statusSub}>{activeStep.sub}</Text>
+            </View>
+          </View>
+
+          {/* Action buttons */}
+          {isDone && (
+            <TouchableOpacity style={qs.closeBtn} onPress={onClose}>
+              <LinearGradient colors={['#27ae60','#2ecc71']} start={{x:0,y:0}} end={{x:1,y:0}} style={qs.closeBtnGrad}>
+                <Text style={qs.closeBtnTxt}>🎉  Close</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+};
+
+const qs = StyleSheet.create({
+  overlay: { flex:1, backgroundColor:'rgba(1,20,50,0.45)', justifyContent:'center', alignItems:'center', padding:24 },
+  card: { backgroundColor:'#f0f5f9', borderRadius:24, padding:22, gap:14, shadowColor:'#000', shadowOpacity:0.22, shadowRadius:24, elevation:16, width:'100%', maxWidth:360, alignSelf:'center', margin:16 },
+  header: { flexDirection:'row', alignItems:'center', gap:8, marginBottom:2 },
+  headerTitle: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#011f4b', flex:1 },
+  headerOrder: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(1,31,75,0.45)' },
+  minBtn: { width:28, height:28, backgroundColor:'rgba(1,31,75,0.08)', borderRadius:14, justifyContent:'center', alignItems:'center' },
+  minBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:'rgba(1,31,75,0.50)', lineHeight:16 },
+
+  stepsRow: { flexDirection:'row', alignItems:'center', paddingHorizontal:4, marginVertical:6 },
+  stepItem: { alignItems:'center', gap:4, flex:0 },
+  stepCircle: { width:36, height:36, borderRadius:18, backgroundColor:'rgba(1,31,75,0.10)', justifyContent:'center', alignItems:'center', borderWidth:2, borderColor:'rgba(1,31,75,0.15)' },
+  stepCircleDone:   { backgroundColor:'#27ae60', borderColor:'#27ae60' },
+  stepCircleActive: { backgroundColor:'#1a3a6b', borderColor:'#c9a84c', borderWidth:3 },
+  stepCircleIcon: { fontSize:15 },
+  stepLabel: { fontFamily:'GoogleSans_400Regular', fontSize:7.5, color:'rgba(1,31,75,0.40)', textAlign:'center', maxWidth:60, lineHeight:10 },
+  stepLabelActive: { fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
+  stepLine: { flex:1, height:2, backgroundColor:'rgba(1,31,75,0.12)', marginHorizontal:3, marginBottom:14 },
+  stepLineDone: { backgroundColor:'#27ae60' },
+
+  statusBox: { flexDirection:'row', alignItems:'center', gap:10, backgroundColor:'rgba(26,58,107,0.08)', borderRadius:12, padding:12, borderWidth:1, borderColor:'rgba(26,58,107,0.12)' },
+  statusBoxReady: { backgroundColor:'rgba(39,174,96,0.10)', borderColor:'rgba(39,174,96,0.30)' },
+  statusIcon: { fontSize:26 },
+  statusLabel: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b', marginBottom:2 },
+  statusSub:   { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.60)', lineHeight:16 },
+
+  actions: { flexDirection:'row', gap:8, marginTop:6 },
+  minimizeBtn: { flex:1, paddingVertical:10, borderRadius:10, backgroundColor:'rgba(1,31,75,0.08)', alignItems:'center' },
+  minimizeBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(1,31,75,0.55)' },
+  closeBtn: { flex:1, borderRadius:10, overflow:'hidden' },
+  closeBtnGrad: { paddingVertical:10, alignItems:'center' },
+  closeBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#fff' },
+
+  // Minimized pill
+  pill: { position:'absolute', bottom:24, left:16, right:16, zIndex:999, borderRadius:30, flexDirection:'row', alignItems:'center', paddingVertical:12, paddingHorizontal:16, gap:8, shadowColor:'#000', shadowOpacity:0.22, shadowRadius:12, elevation:12 },
+  pillIcon: { fontSize:18 },
+  pillText: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#fff', flex:1 },
+  pillChevron: { fontSize:10, color:'rgba(255,255,255,0.70)' },
+});
+
 // ─── BOTTOM SHEET CART (Mobile) ───────────────────────────────────────────────
 const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onPlaceOrder, lastOrder, onShowReceipt }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -457,7 +629,7 @@ const adStyles = StyleSheet.create({
 
 
 export default function CanteenVisitor({ navigation }) {
-  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock } = useCanteen();
+  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock, orders, reloadFromStorage } = useCanteen();
   const { width, height } = useWindowDimensions();
   const isWide  = width >= 768;
   const isSmall = width < 400;
@@ -474,6 +646,13 @@ export default function CanteenVisitor({ navigation }) {
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
 
+  // Queue status tracking
+  const [queueVisible,   setQueueVisible]   = useState(false);
+  const [queueMinimized, setQueueMinimized] = useState(false);
+  const [trackedOrderId, setTrackedOrderId] = useState(null);
+  const [liveStatus,     setLiveStatus]     = useState('pending');
+  const prevStatusRef = useRef(null);
+
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
   const bodyFade    = useRef(new Animated.Value(0)).current;
@@ -488,6 +667,52 @@ export default function CanteenVisitor({ navigation }) {
     ]).start();
     Animated.timing(bodyFade, { toValue:1, duration:600, delay:200, useNativeDriver:true }).start();
   }, []);
+
+  // ── Poll order status every 3s while queue is visible ─────────────────────
+  useEffect(() => {
+    if (!trackedOrderId || !queueVisible) return;
+    const poll = setInterval(() => {
+      reloadFromStorage();
+    }, 3000);
+    return () => clearInterval(poll);
+  }, [trackedOrderId, queueVisible]);
+
+  // ── Watch orders array for status change on tracked order ─────────────────
+  useEffect(() => {
+    if (!trackedOrderId) return;
+    const found = orders.find(o => o.id === trackedOrderId);
+    if (!found) return;
+    const newStatus = found.status;
+    if (newStatus !== prevStatusRef.current) {
+      prevStatusRef.current = newStatus;
+      setLiveStatus(newStatus);
+      // Re-expand if minimized when status changes
+      if (newStatus === 'ready' || newStatus === 'preparing') {
+        setQueueMinimized(false);
+        // Browser notification
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window) {
+          const msg = newStatus === 'ready'
+            ? '✅ Your order is ready to pick up!'
+            : '🔥 The canteen is now preparing your order!';
+          if (Notification.permission === 'granted') {
+            new Notification('CLIMBS Canteen', { body: msg, icon: '🍽️' });
+          } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(p => {
+              if (p === 'granted') new Notification('CLIMBS Canteen', { body: msg });
+            });
+          }
+        }
+      }
+      if (newStatus === 'done') {
+        setQueueMinimized(false);
+        // Auto-close after 2.5s when admin marks done
+        setTimeout(() => {
+          setQueueVisible(false);
+          setTrackedOrderId(null);
+        }, 2500);
+      }
+    }
+  }, [orders, trackedOrderId]);
 
   const addToCart = (item) => setCart(prev => ({
     ...prev,
@@ -509,18 +734,29 @@ export default function CanteenVisitor({ navigation }) {
 
   // Called by CartPanel after building order data
   const handlePlaceOrder = (orderData) => {
+    const orderId = `ORD-${String(Math.floor(1000+Math.random()*9000))}`;
     const fullOrder = {
       ...orderData,
-      id: `ORD-${String(Math.floor(1000+Math.random()*9000))}`,
+      id: orderId,
       status: 'pending',
       payment: orderData.paymentMode || 'cash',
     };
     addOrder(fullOrder);
     deductStock(orderData.items);
-    setLastOrder(orderData);
+    setLastOrder({ ...orderData, id: orderId });
     setCartOpen(false);
     clearCart();
-    setTimeout(() => setReceiptVisible(true), 300);
+    // Open queue tracker instead of receipt
+    setTrackedOrderId(orderId);
+    setLiveStatus('pending');
+    prevStatusRef.current = 'pending';
+    setQueueMinimized(false);
+    setTimeout(() => setQueueVisible(true), 300);
+    // Request notification permission early
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window
+        && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
   };
 
   const handleShowReceipt = () => setReceiptVisible(true);
@@ -680,7 +916,8 @@ export default function CanteenVisitor({ navigation }) {
       </Animated.View>
 
       {/* BODY */}
-      <Animated.View style={[styles.body, { opacity: bodyFade, minHeight: 0 }]}>
+      <View style={styles.body}>
+      <Animated.View style={{ flex:1, flexDirection:'row', alignItems:'stretch', opacity: bodyFade, minHeight:0, overflow: Platform.OS==='web' ? 'hidden' : 'visible' }}>
 
         {/* LEFT — Categories (web only) */}
         {isWide && (
@@ -818,6 +1055,7 @@ export default function CanteenVisitor({ navigation }) {
           </TouchableOpacity>
         )}
       </Animated.View>
+      </View>
 
       {/* Mobile cart bottom sheet */}
       {!isWide && cartOpen && (
@@ -832,7 +1070,9 @@ export default function CanteenVisitor({ navigation }) {
 
 
 
-      {/* ── RECEIPT MODAL — rendered at root level so it works on both web & mobile ── */}
+
+
+      {/* ── RECEIPT MODAL — triggered only by Download Receipt button ── */}
       <ReceiptModal
         visible={receiptVisible}
         orderData={lastOrder}
@@ -840,6 +1080,30 @@ export default function CanteenVisitor({ navigation }) {
         onPrint={handlePrint}
         receiptViewRef={receiptViewRef}
       />
+
+      {/* ── QUEUE STATUS — shown after placing order, minimizes to pill ── */}
+      {queueVisible && !queueMinimized && (
+        <QueueStatusModal
+          visible={queueVisible}
+          minimized={false}
+          orderId={trackedOrderId}
+          orderNo={lastOrder?.orderNo}
+          currentStatus={liveStatus}
+          onClose={() => { setQueueVisible(false); setTrackedOrderId(null); }}
+          onMinimize={() => setQueueMinimized(true)}
+        />
+      )}
+      {queueVisible && queueMinimized && (
+        <QueueStatusModal
+          visible={true}
+          minimized={true}
+          orderId={trackedOrderId}
+          orderNo={lastOrder?.orderNo}
+          currentStatus={liveStatus}
+          onClose={() => { setQueueVisible(false); setTrackedOrderId(null); }}
+          onMinimize={() => setQueueMinimized(false)}
+        />
+      )}
     </View>
   );
 }
@@ -892,8 +1156,7 @@ const styles = StyleSheet.create({
 
   // Body layout
   body: {
-    flex:1, flexDirection:'row',
-    alignItems:'stretch',
+    flex:1,
     marginTop: Platform.OS === 'web' ? 12 : 6,
     minHeight: 0,
     overflow: Platform.OS === 'web' ? 'hidden' : 'visible',
@@ -902,10 +1165,9 @@ const styles = StyleSheet.create({
   // LEFT — Categories panel
   catPanel: {
     width:170, backgroundColor:'rgba(255,255,255,0.22)',
-    borderRadius:16, marginLeft:20, marginBottom:16,
+    borderRadius:16, marginLeft:20, marginTop:0, marginBottom:16,
     padding:12, gap:6,
     borderWidth:1, borderColor:'rgba(255,255,255,0.40)',
-    alignSelf:'stretch',
     overflow:'hidden',
   },
   catPanelTitle: {
@@ -1069,7 +1331,6 @@ const styles = StyleSheet.create({
     borderRadius:16, marginRight:20, marginBottom:16,
     padding:14, gap:8,
     borderWidth:1, borderColor:'rgba(255,255,255,0.45)',
-    alignSelf:'stretch',
     overflow:'hidden',
   },
   cartPanelMobile: {

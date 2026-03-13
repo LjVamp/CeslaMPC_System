@@ -17,11 +17,77 @@ import * as ImagePicker from 'expo-image-picker';
 import { useCanteen } from '../context/CanteenContext';
 import { useFocusEffect } from '@react-navigation/native';
 
+// ─── WEB SCROLL VIEW ──────────────────────────────────────────────────────────
+// On web, flex:1 ScrollView doesn't scroll properly inside overflow:hidden containers.
+// This wrapper uses an absolute-fill div with overflow-y:auto for web.
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const styleEl = document.createElement('style');
+  styleEl.textContent = `.cesla-sub-scroll::-webkit-scrollbar{width:7px;display:block!important}.cesla-sub-scroll::-webkit-scrollbar-thumb{background:rgba(1,31,75,0.40);border-radius:4px}.cesla-sub-scroll::-webkit-scrollbar-thumb:hover{background:rgba(1,31,75,0.65)}.cesla-sub-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,0.20);border-radius:4px}.cesla-sub-scroll{scrollbar-width:thin;scrollbar-color:rgba(1,31,75,0.40) rgba(255,255,255,0.20)}`;
+  document.head.appendChild(styleEl);
+}
+const WebScrollView = ({ children, style, contentContainerStyle, ...rest }) => {
+  if (Platform.OS !== 'web') {
+    return <ScrollView style={style} contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator {...rest}>{children}</ScrollView>;
+  }
+  const flat = StyleSheet.flatten(contentContainerStyle) || {};
+  const pH = flat.paddingHorizontal !== undefined ? flat.paddingHorizontal : (flat.padding !== undefined ? flat.padding : undefined);
+  return (
+    <View style={[{ flex:1, minHeight:0, position:'relative', overflow:'hidden' }, style]}>
+      <div className="cesla-sub-scroll" style={{
+        position:'absolute', top:0, left:0, right:0, bottom:0,
+        overflowY:'auto', overflowX:'hidden', display:'flex', flexDirection:'column',
+      }}>
+        <div style={{
+          display:'flex', flexDirection:'column', flexShrink:0,
+          width:'100%', boxSizing:'border-box',
+          paddingTop:    flat.paddingTop    !== undefined ? `${flat.paddingTop}px`    : (flat.padding !== undefined ? `${flat.padding}px` : undefined),
+          paddingBottom: flat.paddingBottom !== undefined ? `${flat.paddingBottom}px` : (flat.padding !== undefined ? `${flat.padding}px` : '12px'),
+          paddingLeft:   pH !== undefined ? `${pH}px` : undefined,
+          paddingRight:  pH !== undefined ? `${pH}px` : undefined,
+          gap:           flat.gap !== undefined ? `${flat.gap}px` : undefined,
+        }}>
+          {children}
+        </div>
+      </div>
+    </View>
+  );
+};
+
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const emptyItem = () => ({
   id: Date.now().toString(), name:'', cat:'Meals',
   price:'', stock:'', emoji:'🍽️', image:null,
 });
+
+// ─── AUTO EMOJI ───────────────────────────────────────────────────────────────
+const autoEmoji = (name) => {
+  const n = name.toLowerCase();
+  if (/rice|kanin|sinangag/.test(n))           return '🍚';
+  if (/soup|sinigang|tinola|nilaga|broth/.test(n)) return '🍲';
+  if (/chicken|manok|inasal/.test(n))          return '🍗';
+  if (/pork|lechon|liempo|adobo|sisig/.test(n))return '🥩';
+  if (/fish|isda|bangus|tilapia|tuna/.test(n)) return '🐟';
+  if (/egg|itlog/.test(n))                     return '🥚';
+  if (/noodle|mami|pancit|pasta|spaghetti/.test(n)) return '🍜';
+  if (/bread|pan|sandwich|burger/.test(n))     return '🍞';
+  if (/cake|cupcake|pastry|donut/.test(n))     return '🎂';
+  if (/cookie|biscuit|cracker/.test(n))        return '🍪';
+  if (/candy|chocolate|choco|sweet/.test(n))   return '🍫';
+  if (/chips|fries|nacho/.test(n))             return '🍟';
+  if (/juice|calamansi|lemon/.test(n))         return '🧃';
+  if (/coffee|kape|latte|cappuccino/.test(n))  return '☕';
+  if (/milk|gatas/.test(n))                    return '🥛';
+  if (/tea|tsaa/.test(n))                      return '🍵';
+  if (/water|tubig/.test(n))                   return '💧';
+  if (/soda|softdrink|cola|sprite/.test(n))    return '🥤';
+  if (/salad|vegetables|gulay/.test(n))        return '🥗';
+  if (/fruit|prutas|banana|apple|mango/.test(n)) return '🍎';
+  if (/snack|merienda/.test(n))                return '🍿';
+  if (/pizza/.test(n))                         return '🍕';
+  if (/hotdog|sausage|longganisa/.test(n))     return '🌭';
+  if (/ice cream|gelato|frozen/.test(n))       return '🍦';
+  return '📦';
+};
 
 const TABS = [
   { key:'cashier',   label:'Cashier',     icon:'point-of-sale'  },
@@ -53,6 +119,10 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
     if (!res.canceled) setForm(f=>({...f,image:res.assets[0].uri}));
   };
 
+  const handleNameChange = (v) => {
+    setForm(f => ({ ...f, name: v, emoji: f.image ? f.emoji : autoEmoji(v) }));
+  };
+
   const save = () => {
     if (!form.name.trim()) { Alert.alert('Error','Item name is required.'); return; }
     if (!form.price)       { Alert.alert('Error','Price is required.'); return; }
@@ -64,34 +134,50 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={ms.overlay}>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} activeOpacity={1}/>
-        <ScrollView contentContainerStyle={{padding:16,flexGrow:1,justifyContent:'center'}} keyboardShouldPersistTaps="handled">
+        <View style={ms.modalWrapper}>
           <View style={ms.modalCard}>
             <Text style={ms.modalTitle}>{item?.name ? 'Edit Item' : 'Add New Item'}</Text>
-            <TouchableOpacity style={ms.imgPicker} onPress={pickImage}>
-              {form.image
-                ? <Image source={{uri:form.image}} style={ms.imgPreview}/>
-                : <View style={{alignItems:'center',gap:3}}><Text style={{fontSize:38}}>{form.emoji}</Text><Text style={ms.imgHint}>Tap to upload image</Text></View>
-              }
-              <View style={ms.imgBadge}><MaterialIcons name="photo-camera" size={13} color="#fff"/></View>
-            </TouchableOpacity>
-            {form.image&&<TouchableOpacity onPress={()=>setForm(f=>({...f,image:null}))} style={{alignSelf:'center',marginTop:-4}}><Text style={{fontFamily:'GoogleSans_400Regular',fontSize:11,color:'#e74c3c'}}>✕ Remove image</Text></TouchableOpacity>}
-            {!form.image&&<View style={ms.fieldRow}><Text style={ms.fieldLabel}>Emoji (if no image)</Text><TextInput style={[ms.input,{textAlign:'center',fontSize:22}]} value={form.emoji} onChangeText={v=>setForm(f=>({...f,emoji:v}))} placeholder="🍽️"/></View>}
-            <View style={ms.fieldRow}><Text style={ms.fieldLabel}>Item Name *</Text><TextInput style={ms.input} value={form.name} onChangeText={v=>setForm(f=>({...f,name:v}))} placeholder="e.g. Fried Chicken"/></View>
-            <View style={ms.fieldRow}>
-              <Text style={ms.fieldLabel}>Category</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginTop:4}}>
-                <View style={{flexDirection:'row',gap:6}}>
-                  {categories.filter(c=>c!=='All').map(cat=>(
-                    <TouchableOpacity key={cat} style={[ms.chip,form.cat===cat&&ms.chipActive]} onPress={()=>setForm(f=>({...f,cat}))}>
-                      <Text style={[ms.chipTxt,form.cat===cat&&ms.chipTxtActive]}>{cat}</Text>
-                    </TouchableOpacity>
-                  ))}
+            <View style={{ flexDirection:'row', gap:12, alignItems:'flex-start' }}>
+              {/* Left: image picker */}
+              <View style={{ alignItems:'center', gap:4 }}>
+                <TouchableOpacity style={ms.imgPicker} onPress={pickImage}>
+                  {form.image
+                    ? <Image source={{uri:form.image}} style={ms.imgPreview}/>
+                    : <View style={{alignItems:'center',gap:2}}><Text style={{fontSize:32}}>{form.emoji}</Text><Text style={ms.imgHint}>Upload</Text></View>
+                  }
+                  <View style={ms.imgBadge}><MaterialIcons name="photo-camera" size={12} color="#fff"/></View>
+                </TouchableOpacity>
+                {form.image && <TouchableOpacity onPress={()=>setForm(f=>({...f,image:null}))}><Text style={{fontFamily:'GoogleSans_400Regular',fontSize:10,color:'#e74c3c'}}>✕ Remove</Text></TouchableOpacity>}
+                {!form.image && (
+                  <View style={{alignItems:'center',gap:2}}>
+                    <Text style={[ms.fieldLabel,{textAlign:'center'}]}>Emoji</Text>
+                    <TextInput style={[ms.input,{textAlign:'center',fontSize:20,width:56,paddingVertical:6}]} value={form.emoji} onChangeText={v=>setForm(f=>({...f,emoji:v}))} placeholder="📦"/>
+                  </View>
+                )}
+              </View>
+              {/* Right: fields */}
+              <View style={{flex:1, gap:8}}>
+                <View style={ms.fieldRow}>
+                  <Text style={ms.fieldLabel}>Item Name *</Text>
+                  <TextInput style={ms.input} value={form.name} onChangeText={handleNameChange} placeholder="e.g. Fried Chicken"/>
                 </View>
-              </ScrollView>
-            </View>
-            <View style={{flexDirection:'row',gap:10}}>
-              <View style={[ms.fieldRow,{flex:1}]}><Text style={ms.fieldLabel}>Price (₱) *</Text><TextInput style={ms.input} value={form.price} onChangeText={v=>setForm(f=>({...f,price:v}))} keyboardType="numeric" placeholder="0.00"/></View>
-              <View style={[ms.fieldRow,{flex:1}]}><Text style={ms.fieldLabel}>Stock *</Text><TextInput style={ms.input} value={form.stock} onChangeText={v=>setForm(f=>({...f,stock:v}))} keyboardType="numeric" placeholder="0"/></View>
+                <View style={ms.fieldRow}>
+                  <Text style={ms.fieldLabel}>Category</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginTop:4}}>
+                    <View style={{flexDirection:'row',gap:5}}>
+                      {categories.filter(c=>c!=='All').map(cat=>(
+                        <TouchableOpacity key={cat} style={[ms.chip,form.cat===cat&&ms.chipActive]} onPress={()=>setForm(f=>({...f,cat}))}>
+                          <Text style={[ms.chipTxt,form.cat===cat&&ms.chipTxtActive]}>{cat}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+                <View style={{flexDirection:'row',gap:8}}>
+                  <View style={[ms.fieldRow,{flex:1}]}><Text style={ms.fieldLabel}>Price (₱) *</Text><TextInput style={ms.input} value={form.price} onChangeText={v=>setForm(f=>({...f,price:v}))} keyboardType="numeric" placeholder="0.00"/></View>
+                  <View style={[ms.fieldRow,{flex:1}]}><Text style={ms.fieldLabel}>Stock *</Text><TextInput style={ms.input} value={form.stock} onChangeText={v=>setForm(f=>({...f,stock:v}))} keyboardType="numeric" placeholder="0"/></View>
+                </View>
+              </View>
             </View>
             <View style={ms.modalActions}>
               <TouchableOpacity style={ms.cancelBtn} onPress={onClose}><Text style={ms.cancelTxt}>Cancel</Text></TouchableOpacity>
@@ -102,7 +188,7 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
               </TouchableOpacity>
             </View>
           </View>
-        </ScrollView>
+        </View>
       </View>
     </Modal>
   );
@@ -155,8 +241,9 @@ const AdEditModal = ({ visible, ad, onSave, onClose, onDelete }) => {
 };
 
 const ms = StyleSheet.create({
-  overlay: { flex:1, backgroundColor:'rgba(1,20,50,0.55)', justifyContent:'center' },
-  modalCard: { backgroundColor:'#f0f5f9', borderRadius:20, padding:20, gap:10, shadowColor:'#000', shadowOpacity:0.25, shadowRadius:20, elevation:12 },
+  overlay: { flex:1, backgroundColor:'rgba(1,20,50,0.55)', justifyContent:'center', alignItems:'center', padding:20 },
+  modalWrapper: { width:'100%', maxWidth:540 },
+  modalCard: { backgroundColor:'#f0f5f9', borderRadius:20, padding:18, gap:12, shadowColor:'#000', shadowOpacity:0.25, shadowRadius:20, elevation:12 },
   modalTitle: { fontFamily:'GoogleSans_700Bold', fontSize:16, color:'#011f4b', textAlign:'center', marginBottom:4 },
   imgPicker: { alignSelf:'center', width:86, height:86, borderRadius:43, backgroundColor:'rgba(1,31,75,0.07)', borderWidth:2, borderColor:'rgba(1,31,75,0.15)', borderStyle:'dashed', justifyContent:'center', alignItems:'center' },
   imgPreview: { width:86, height:86, borderRadius:43 },
@@ -233,11 +320,12 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
           <TextInput style={cs.searchInput} placeholder="Search items..." placeholderTextColor="rgba(1,31,75,0.35)" value={search} onChangeText={setSearch}/>
           {search.length>0&&<TouchableOpacity onPress={()=>setSearch('')}><Text style={{color:'rgba(1,31,75,0.40)',fontWeight:'700'}}>✕</Text></TouchableOpacity>}
         </View>
-        <ScrollView style={{flex:1}} showsVerticalScrollIndicator contentContainerStyle={{padding:10,paddingHorizontal:12,gap:8,paddingBottom:20}}>
+        <WebScrollView style={{flex:1}} contentContainerStyle={{paddingTop:10,paddingHorizontal:12,paddingBottom:20,gap:8}}>
           {Array.from({length:Math.ceil(filtered.length/COLS)},(_,rowIdx)=>(
             <View key={rowIdx} style={{flexDirection:'row',gap:8,alignItems:'stretch'}}>
               {filtered.slice(rowIdx*COLS,rowIdx*COLS+COLS).map(item=>(
-                <TouchableOpacity key={item.id} style={[cs.itemCard,item.stock===0&&{opacity:0.45}]} onPress={()=>item.stock>0&&addToCart(item)} activeOpacity={item.stock>0?0.75:1}>
+                <View key={item.id} style={{flex:1,alignSelf:'stretch'}}>
+                <TouchableOpacity style={[cs.itemCard,item.stock===0&&{opacity:0.45},{flex:1}]} onPress={()=>item.stock>0&&addToCart(item)} activeOpacity={item.stock>0?0.75:1}>
                   <View style={cs.itemImgCircle}>
                     {item.image?<Image source={{uri:item.image}} style={{width:'100%',height:'100%',borderRadius:99}} resizeMode="cover"/>:<Text style={cs.itemEmoji}>{item.emoji}</Text>}
                   </View>
@@ -246,11 +334,12 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
                   <Text style={cs.itemCardStock}>{item.stock===0?'Out of stock':`Stock: ${item.stock}`}</Text>
                   {cart[item.id]&&<View style={cs.cartBadge}><Text style={cs.cartBadgeTxt}>{cart[item.id].qty}</Text></View>}
                 </TouchableOpacity>
+                </View>
               ))}
               {Array.from({length:COLS-filtered.slice(rowIdx*COLS,rowIdx*COLS+COLS).length}).map((_,i)=>(<View key={`e-${i}`} style={{flex:1}}/>))}
             </View>
           ))}
-        </ScrollView>
+        </WebScrollView>
       </View>
 
       {/* Cart side */}
@@ -259,7 +348,7 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
         <View style={cs.cartItemsBox}>
           {cartItems.length===0
             ? <Text style={cs.cartEmpty}>No items added yet</Text>
-            : <ScrollView showsVerticalScrollIndicator={false} style={{flex:1}}>
+            : <WebScrollView style={{flex:1}}>
                 {cartItems.map(({item,qty})=>(
                   <View key={item.id} style={cs.cartRow}>
                     <Text style={cs.cartEmoji}>{item.emoji}</Text>
@@ -274,7 +363,7 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
                     </View>
                   </View>
                 ))}
-              </ScrollView>
+              </WebScrollView>
           }
         </View>
         <View style={cs.totalRow}><Text style={cs.totalLbl}>TOTAL</Text><Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text></View>
@@ -348,7 +437,7 @@ const cs = StyleSheet.create({
   catTabTxtActive: { color:'#fff' },
   searchRow: { flexDirection:'row',alignItems:'center',backgroundColor:'rgba(255,255,255,0.70)',borderRadius:8,paddingHorizontal:10,paddingVertical:7,marginHorizontal:8,marginBottom:4,borderWidth:1,borderColor:'rgba(255,255,255,0.90)' },
   searchInput: { flex:1,fontFamily:'GoogleSans_400Regular',fontSize:12,color:'#011f4b',paddingVertical:0 },
-  itemCard: { flex:1,backgroundColor:'rgba(255,255,255,0.70)',borderRadius:12,padding:8,alignItems:'center',gap:2,borderWidth:1,borderColor:'rgba(255,255,255,0.85)',position:'relative',minHeight:130 },
+  itemCard: { flex:1,alignSelf:'stretch',backgroundColor:'rgba(255,255,255,0.70)',borderRadius:12,padding:8,alignItems:'center',justifyContent:'space-between',gap:2,borderWidth:1,borderColor:'rgba(255,255,255,0.85)',position:'relative',minHeight:130 },
   itemImgCircle: { width:44,height:44,borderRadius:22,backgroundColor:'rgba(240,246,252,0.90)',justifyContent:'center',alignItems:'center',overflow:'hidden',borderWidth:1,borderColor:'rgba(255,255,255,0.80)',flexShrink:0 },
   itemEmoji: { fontSize:20 },
   itemCardName: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#1a2d4e',textAlign:'center',lineHeight:12,minHeight:24,width:'100%' },
@@ -358,7 +447,7 @@ const cs = StyleSheet.create({
   cartBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#fff' },
   cartPanel: { width:240,flexShrink:0,backgroundColor:'rgba(255,255,255,0.22)',borderLeftWidth:1,borderColor:'rgba(255,255,255,0.40)',padding:10,gap:6,minHeight:0,overflow:'hidden',marginRight:0 },
   cartTitle: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'rgba(1,31,75,0.65)',letterSpacing:2,paddingBottom:6,borderBottomWidth:1,borderColor:'rgba(1,31,75,0.10)' },
-  cartItemsBox: { flex:1,minHeight:50,backgroundColor:'rgba(255,255,255,0.40)',borderRadius:10,padding:8,borderWidth:1,borderColor:'rgba(255,255,255,0.65)' },
+  cartItemsBox: { flex:1,minHeight:50,backgroundColor:'rgba(255,255,255,0.40)',borderRadius:10,padding:8,borderWidth:1,borderColor:'rgba(255,255,255,0.65)',overflow:'hidden' },
   cartEmpty: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.40)',textAlign:'center',paddingTop:12 },
   cartRow: { flexDirection:'row',alignItems:'center',gap:5,paddingVertical:5,borderBottomWidth:1,borderColor:'rgba(1,31,75,0.06)' },
   cartEmoji: { fontSize:15 },
@@ -401,13 +490,13 @@ const ManageMenuScreen = ({ items, categories, filtered, search, activeCategory,
     <View style={{flex:1,minHeight:0,flexDirection:'row',overflow:'hidden'}}>
       <View style={mm.catPanel}>
         <Text style={mm.catTitle}>CATEGORIES</Text>
-        <ScrollView showsVerticalScrollIndicator={false} style={{flex:1}} contentContainerStyle={{gap:4}}>
+        <WebScrollView style={{flex:1}} contentContainerStyle={{gap:4}}>
           {categories.map(cat=>(
             <TouchableOpacity key={cat} style={[mm.catBtn,activeCategory===cat&&mm.catBtnActive]} onPress={()=>onCategoryChange(cat)}>
               <Text style={[mm.catBtnTxt,activeCategory===cat&&mm.catBtnTxtActive]}>{cat}</Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </WebScrollView>
       </View>
       <View style={{flex:1,minHeight:0,minWidth:0,overflow:'hidden'}}>
         <View style={mm.headerRow}>
@@ -425,7 +514,7 @@ const ManageMenuScreen = ({ items, categories, filtered, search, activeCategory,
           </TouchableOpacity>
         </View>
         <View style={{height:1,backgroundColor:'rgba(1,31,75,0.10)',marginBottom:8,marginHorizontal:8}}/>
-        <ScrollView showsVerticalScrollIndicator style={{flex:1}} contentContainerStyle={{padding:10,paddingHorizontal:12,gap:8,paddingBottom:20}}>
+        <WebScrollView style={{flex:1}} contentContainerStyle={{paddingTop:10,paddingHorizontal:12,paddingBottom:20,gap:8}}>
           {filtered.length===0
             ? <Text style={mm.emptyTxt}>No items found.</Text>
             : Array.from({length:Math.ceil(filtered.length/COLS)},(_,rowIdx)=>(
@@ -455,7 +544,7 @@ const ManageMenuScreen = ({ items, categories, filtered, search, activeCategory,
               </View>
             ))
           }
-        </ScrollView>
+        </WebScrollView>
       </View>
     </View>
   );
@@ -523,7 +612,7 @@ const InventoryScreen = ({ items }) => {
         <Text style={sub.thCell}>STOCK</Text>
         <Text style={[sub.thCell,{textAlign:'right'}]}>VALUE</Text>
       </View>
-      <ScrollView showsVerticalScrollIndicator={false} style={{flex:1}}>
+      <WebScrollView contentContainerStyle={{gap:0}}>
         {sorted.map((item,idx)=>(
           <View key={item.id} style={[sub.tableRow,idx%2===0&&{backgroundColor:'rgba(255,255,255,0.35)'}]}>
             <Text style={[sub.tdCell,{flex:2,fontFamily:'GoogleSans_700Bold'}]} numberOfLines={1}>{item.emoji} {item.name}</Text>
@@ -533,7 +622,7 @@ const InventoryScreen = ({ items }) => {
             <Text style={[sub.tdCell,{textAlign:'right',fontFamily:'GoogleSans_700Bold',color:'#1a3a6b'}]}>₱{(item.price*item.stock).toLocaleString()}</Text>
           </View>
         ))}
-      </ScrollView>
+      </WebScrollView>
     </View>
   );
 };
@@ -554,7 +643,7 @@ const OrderHistoryScreen = ({ orders }) => {
           ))}
         </View>
       </ScrollView>
-      <ScrollView showsVerticalScrollIndicator={false} style={{flex:1}}>
+      <WebScrollView contentContainerStyle={{gap:0}}>
         {filtered.length===0
           ? <View style={sub.emptyBox}><MaterialIcons name="history" size={48} color="rgba(1,31,75,0.15)"/><Text style={sub.emptyTxt}>No orders found.</Text></View>
           : filtered.map(order=>{
@@ -575,7 +664,7 @@ const OrderHistoryScreen = ({ orders }) => {
             );
           })
         }
-      </ScrollView>
+      </WebScrollView>
     </View>
   );
 };
@@ -629,7 +718,7 @@ const SalesReportScreen = ({ orders }) => {
           <View key={s.l} style={sub.statCard}><Text style={[sub.statVal,{color:s.c,fontSize:12}]}>{s.v}</Text><Text style={sub.statLbl}>{s.l}</Text></View>
         ))}
       </ScrollView>
-      <ScrollView showsVerticalScrollIndicator={false} style={{flex:1}}>
+      <WebScrollView contentContainerStyle={{padding:0}}>
         <Text style={sub.sectionTitle2}>📅 Monthly Earnings — {year}</Text>
         <View style={{flexDirection:'row',gap:4,alignItems:'flex-end',height:90,marginBottom:16,paddingHorizontal:4}}>
           {MONTHS.map((m,i)=>{
@@ -674,14 +763,14 @@ const SalesReportScreen = ({ orders }) => {
             </View>
           ))}
         </>}
-      </ScrollView>
+      </WebScrollView>
     </View>
   );
 };
 
 // ─── SHARED SUB-SCREEN STYLES ─────────────────────────────────────────────────
 const sub = StyleSheet.create({
-  root: { flex:1, padding:14, overflow:'hidden' },
+  root: { flex:1, padding:14, overflow:'hidden', minHeight:0 },
   emptyBox: { flex:1, alignItems:'center', justifyContent:'center', gap:10, paddingTop:60 },
   emptyTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.35)', textAlign:'center', lineHeight:18 },
   filterBtn: { paddingHorizontal:14, paddingVertical:7, borderRadius:20, backgroundColor:'rgba(255,255,255,0.40)', borderWidth:1, borderColor:'rgba(255,255,255,0.60)' },
@@ -740,9 +829,9 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
   const tabData   = { pending, preparing, done };
 
   const TAB_CFG = {
-    pending:   { color:'#e74c3c', bg:'rgba(231,76,60,0.18)',   label:'PENDING',   num:pending.length   },
-    preparing: { color:'#e67e22', bg:'rgba(230,126,34,0.18)', label:'PREPARING', num:preparing.length },
-    done:      { color:'#27ae60', bg:'rgba(39,174,96,0.18)',   label:'DONE',      num:done.length      },
+    pending:   { color:'#fff', textColor:'#c0392b', bg:'#c0392b', label:'PENDING',   num:pending.length   },
+    preparing: { color:'#fff', textColor:'#b9660a', bg:'#b9660a', label:'PREPARING', num:preparing.length },
+    done:      { color:'#fff', textColor:'#1e8449', bg:'#1e8449', label:'DONE',      num:done.length      },
   };
 
   const displayOrders = tabData[activeTab]||[];
@@ -760,7 +849,7 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
       <View style={lp.statCards}>
         {Object.entries(TAB_CFG).map(([key,c])=>(
           <TouchableOpacity key={key}
-            style={[lp.statCard,{backgroundColor:c.bg,borderColor:activeTab===key?c.color:'transparent',borderWidth:2}]}
+            style={[lp.statCard,{backgroundColor:c.bg,borderColor:activeTab===key?'#fff':'transparent',borderWidth:2}]}
             onPress={()=>setActiveTab(key)} activeOpacity={0.80}>
             <Text style={[lp.statLabel,{color:c.color}]}>{c.label}</Text>
             <Text style={[lp.statNum,{color:c.color}]}>{String(c.num).padStart(2,'0')}</Text>
@@ -769,21 +858,20 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
       </View>
 
       {/* Section label */}
-      <View style={[lp.sectionBar,{borderLeftColor:cfg.color}]}>
-        <Text style={[lp.sectionLbl,{color:cfg.color}]}>{cfg.label}</Text>
-        <Text style={[lp.sectionCount,{color:cfg.color}]}>{displayOrders.length} order{displayOrders.length!==1?'s':''}</Text>
+      <View style={[lp.sectionBar,{borderLeftColor:cfg.textColor}]}>
+        <Text style={[lp.sectionLbl,{color:cfg.textColor}]}>{cfg.label}</Text>
+        <Text style={[lp.sectionCount,{color:cfg.textColor}]}>{displayOrders.length} order{displayOrders.length!==1?'s':''}</Text>
       </View>
 
       {/* Full-width single cards */}
-      <ScrollView style={{flex:1,minHeight:0}} showsVerticalScrollIndicator={false}
-        contentContainerStyle={{gap:6,paddingBottom:12}}>
+      <WebScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{gap:6,paddingBottom:12}}>
         {displayOrders.length===0
           ? <View style={lp.emptyBox}><Text style={lp.emptyIco}>📋</Text><Text style={lp.emptyTxt}>No {activeTab} orders</Text></View>
           : displayOrders.map(order=>{
             const st=ORDER_STATUSES[order.status]||ORDER_STATUSES.pending;
             const itemsList=(order.items||[]).map(i=>`${i.item?.name||i.name||'Item'} ×${i.qty}`).join(', ');
             return(
-              <View key={order.id} style={[lp.card,{borderLeftColor:cfg.color}]}>
+              <View key={order.id} style={[lp.card,{borderLeftColor:cfg.textColor}]}>
                 {/* Row 1: Order ID (bold) + Time (right) */}
                 <View style={lp.cardHead}>
                   <Text style={lp.cardId}>#{order.orderNo||order.id?.slice(-6)||'---'}</Text>
@@ -813,7 +901,7 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
             );
           })
         }
-      </ScrollView>
+      </WebScrollView>
     </View>
   );
 };

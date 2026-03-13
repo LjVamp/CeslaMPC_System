@@ -16,6 +16,10 @@ import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 const CATEGORIES = ['All', 'Shirts', 'Mugs', 'Tumbler', 'Bags', 'Pens', 'Caps', 'Umbrellas', 'Stufftoys', 'Others'];
 
+const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+const SIZED_CATS = ['Shirts'];
+const needsSize = (item) => SIZED_CATS.includes(item.cat) || item.hasSize;
+
 const MERCH_ITEMS = [
   { id:'1',  name:'CESLA Polo Shirt',       cat:'Shirts',    price:350, stock:20, emoji:'👕' },
   { id:'2',  name:'CESLA T-Shirt',          cat:'Shirts',    price:250, stock:30, emoji:'👕' },
@@ -38,6 +42,48 @@ const MERCH_ITEMS = [
   { id:'19', name:'CESLA Keychain',         cat:'Others',    price:60,  stock:50, emoji:'🔑' },
   { id:'20', name:'CESLA Sticker Pack',     cat:'Others',    price:40,  stock:80, emoji:'🏷️' },
 ];
+
+// ─── SIZE PICKER MODAL ────────────────────────────────────────────────────────
+const SizePickerModal = ({ visible, item, onConfirm, onClose }) => {
+  const [sel, setSel] = React.useState(null);
+  React.useEffect(() => { if (visible) setSel(null); }, [visible]);
+  if (!item) return null;
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex:1, backgroundColor:'rgba(1,20,50,0.60)', justifyContent:'center', alignItems:'center', padding:24 }}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} activeOpacity={1} />
+        <View style={{ backgroundColor:'#fff', borderRadius:18, padding:22, width:300, alignItems:'center', gap:14 }}>
+          <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:15, color:'#1a3a6b' }}>{item.emoji}  Select Size</Text>
+          <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.55)', textAlign:'center' }} numberOfLines={2}>{item.name}</Text>
+          <View style={{ flexDirection:'row', flexWrap:'wrap', gap:8, justifyContent:'center' }}>
+            {SIZES.map(sz => (
+              <TouchableOpacity key={sz} onPress={() => setSel(sz)}
+                style={{ paddingHorizontal:18, paddingVertical:11, borderRadius:10,
+                  backgroundColor: sel===sz ? '#1a3a6b' : 'rgba(1,31,75,0.07)',
+                  borderWidth:1.5, borderColor: sel===sz ? '#1a3a6b' : 'rgba(1,31,75,0.15)',
+                  minWidth:54, alignItems:'center' }}>
+                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:14, color: sel===sz ? '#fff' : 'rgba(1,31,75,0.65)' }}>{sz}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={{ flexDirection:'row', gap:8, width:'100%', marginTop:2 }}>
+            <TouchableOpacity onPress={onClose}
+              style={{ flex:1, paddingVertical:11, borderRadius:10, backgroundColor:'rgba(1,31,75,0.07)', alignItems:'center' }}>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'rgba(1,31,75,0.50)' }}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => sel && onConfirm(sel)}
+              style={{ flex:2, paddingVertical:11, borderRadius:10,
+                backgroundColor: sel ? '#1a3a6b' : 'rgba(1,31,75,0.20)', alignItems:'center' }}>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff' }}>
+                {sel ? 'Confirm — ' + sel : 'Pick a size'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 // ─── FOOD CARD — static Add To Cart only, no inline qty ───────────────────────
 const ItemCard = ({ item, onAdd }) => (
@@ -129,10 +175,10 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
                 <Text style={[styles.receiptItemHCol, { width:64, textAlign:'right' }]}>AMOUNT</Text>
               </View>
               <View style={styles.receiptDividerSolid} />
-              {items.map(({ item, qty }) => (
-                <View key={item.id} style={styles.receiptItemRow}>
+              {items.map(({ item, qty, size }) => (
+                <View key={size ? (item.id + '-' + size) : item.id} style={styles.receiptItemRow}>
                   <Text style={[styles.receiptItemText, { flex:1 }]} numberOfLines={1}>
-                    {item.emoji} {item.name}
+                    {item.emoji} {item.name}{size ? (' [' + size + ']') : ''}
                   </Text>
                   <Text style={[styles.receiptItemText, { width:32, textAlign:'center' }]}>{qty}</Text>
                   <Text style={[styles.receiptItemText, { width:64, textAlign:'right' }]}>
@@ -203,16 +249,20 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
   useEffect(() => {
     setChecked(prev => {
       const updated = { ...prev };
-      cartItems.forEach(({ item }) => {
-        if (updated[item.id] === undefined) updated[item.id] = true;
+      cartItems.forEach(({ item, size }) => {
+        const k = size ? (item.id + '-' + size) : item.id;
+        if (updated[k] === undefined) updated[k] = true;
       });
       return updated;
     });
-  }, [JSON.stringify(cartItems.map(i => i.item.id))]);
+  }, [JSON.stringify(cartItems.map(i => i.item.id + (i.size || '')))]);
 
   const toggleCheck = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
 
-  const checkedItems = cartItems.filter(({ item }) => checked[item.id]);
+  const checkedItems = cartItems.filter(({ item, size }) => {
+    const k = size ? (item.id + '-' + size) : item.id;
+    return checked[k];
+  });
   const total = checkedItems.reduce((s, { item, qty }) => s + item.price * qty, 0);
 
   const handlePlaceOrder = () => {
@@ -234,30 +284,33 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
             <Text style={styles.cartEmpty}>Cart is empty.</Text>
           ) : (
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 200 }}>
-              {cartItems.map(({ item, qty }) => (
-                <View key={item.id} style={styles.cartRow}>
+              {cartItems.map(({ item, qty, size }) => {
+                const cartKey = size ? (item.id + '-' + size) : item.id;
+                return (
+                <View key={cartKey} style={styles.cartRow}>
                   {/* Checkbox */}
                   <TouchableOpacity
-                    style={[styles.checkbox, checked[item.id] && styles.checkboxChecked]}
-                    onPress={() => toggleCheck(item.id)}
+                    style={[styles.checkbox, checked[cartKey] && styles.checkboxChecked]}
+                    onPress={() => toggleCheck(cartKey)}
                   >
-                    {checked[item.id] && <Text style={styles.checkmark}>✓</Text>}
+                    {checked[cartKey] && <Text style={styles.checkmark}>✓</Text>}
                   </TouchableOpacity>
                   <Text style={styles.cartRowEmoji}>{item.emoji}</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.cartRowName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.cartRowName} numberOfLines={1}>{item.name}{size ? (' [' + size + ']') : ''}</Text>
                     <Text style={styles.cartRowSub}>x{qty}  ₱{item.price * qty}</Text>
                   </View>
                   <View style={styles.cartRowQty}>
-                    <TouchableOpacity style={styles.cartQBtn} onPress={() => onRemove(item)}>
+                    <TouchableOpacity style={styles.cartQBtn} onPress={() => onRemove(item, size)}>
                       <Text style={styles.cartQBtnText}>−</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.cartQBtn, styles.cartQBtnAdd]} onPress={() => onAdd(item)}>
+                    <TouchableOpacity style={[styles.cartQBtn, styles.cartQBtnAdd]} onPress={() => onAdd(item, size)}>
                       <Text style={[styles.cartQBtnText, {color:'#fff'}]}>+</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-              ))}
+                );
+              })}
             </ScrollView>
           )}
         </View>
@@ -504,16 +557,22 @@ export default function MerchandiseScreen({ navigation }) {
     Animated.timing(bodyFade, { toValue:1, duration:600, delay:200, useNativeDriver:true }).start();
   }, []);
 
-  const addToCart = (item) => setCart(prev => ({
-    ...prev,
-    [item.id]: { item, qty: (prev[item.id]?.qty || 0) + 1 },
-  }));
+  const [sizePickerItem, setSizePickerItem] = useState(null);
 
-  const removeFromCart = (item) => setCart(prev => {
-    const qty = (prev[item.id]?.qty || 0) - 1;
-    if (qty <= 0) { const n = {...prev}; delete n[item.id]; return n; }
-    return { ...prev, [item.id]: { item, qty } };
-  });
+  const addToCart = (item, size) => {
+    if (needsSize(item) && !size) { setSizePickerItem(item); return; }
+    const key = needsSize(item) ? (item.id + '-' + size) : item.id;
+    setCart(prev => ({ ...prev, [key]: { item, qty: (prev[key] ? prev[key].qty : 0) + 1, size: size || null } }));
+  };
+
+  const removeFromCart = (item, size) => {
+    const key = needsSize(item) ? (item.id + '-' + size) : item.id;
+    setCart(prev => {
+      const qty = (prev[key] ? prev[key].qty : 0) - 1;
+      if (qty <= 0) { const n = {...prev}; delete n[key]; return n; }
+      return { ...prev, [key]: { item, qty, size: size || null } };
+    });
+  };
 
   const clearCart = () => setCart({});
 
@@ -541,7 +600,7 @@ export default function MerchandiseScreen({ navigation }) {
   const handlePrint = async () => {
     if (!lastOrder) return;
     const { orderNo } = lastOrder;
-    const filename = `CLIMBS_Receipt_${orderNo}`;
+    const filename = 'CLIMBS_Receipt_' + orderNo;
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
@@ -566,7 +625,7 @@ export default function MerchandiseScreen({ navigation }) {
           logging: false,
         });
         const link = document.createElement('a');
-        link.download = `${filename}.png`;
+        link.download = filename + '.png';
         link.href = canvas.toDataURL('image/png');
         link.click();
       } catch (e) {
@@ -601,7 +660,7 @@ export default function MerchandiseScreen({ navigation }) {
         const asset = await MediaLib.createAssetAsync(uri);
         Alert.alert(
           '✅ Saved to Gallery!',
-          `Receipt #${orderNo} saved as an image in your Photos/Gallery.`,
+          'Receipt #' + orderNo + ' saved as an image in your Photos/Gallery.',
           [{ text: 'OK' }]
         );
       } catch (e) {
@@ -755,7 +814,7 @@ export default function MerchandiseScreen({ navigation }) {
             <View style={{ flexDirection:'row', alignItems:'center', marginBottom:6, gap:8 }}>
               <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#011f4b', letterSpacing:2, flexShrink:0 }}>
                 {search.trim() !== ''
-                  ? `RESULTS FOR "${search.toUpperCase()}"`
+                  ? ('RESULTS FOR "' + search.toUpperCase() + '"')
                   : activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()
                 }
               </Text>
@@ -811,7 +870,7 @@ export default function MerchandiseScreen({ navigation }) {
                     ))}
                     {/* Fill empty slots in last row */}
                     {Array.from({ length: COLS - filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).length }).map((_, i) => (
-                      <View key={`empty-${i}`} style={{ flex:1 }} />
+                      <View key={'empty-' + i} style={{ flex:1 }} />
                     ))}
                   </View>
                 ))
@@ -838,7 +897,7 @@ export default function MerchandiseScreen({ navigation }) {
               style={styles.floatCartGradient}
             >
               <Text style={styles.floatCartText}>
-                🛒  View Cart  {totalItems > 0 ? `(${totalItems})` : ''}  •  ₱{Object.values(cart).reduce((s,{item,qty}) => s+item.price*qty, 0).toFixed(2)}
+                🛒  View Cart  {totalItems > 0 ? ('(' + totalItems + ')') : ''}  •  ₱{Object.values(cart).reduce((s,{item,qty}) => s+item.price*qty, 0).toFixed(2)}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -857,6 +916,13 @@ export default function MerchandiseScreen({ navigation }) {
       )}
 
 
+
+      <SizePickerModal
+        visible={!!sizePickerItem}
+        item={sizePickerItem}
+        onConfirm={(size) => { addToCart(sizePickerItem, size); setSizePickerItem(null); }}
+        onClose={() => setSizePickerItem(null)}
+      />
 
       {/* ── RECEIPT MODAL — rendered at root level so it works on both web & mobile ── */}
       <ReceiptModal
