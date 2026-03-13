@@ -627,44 +627,157 @@ const InventoryScreen = ({ items }) => {
   );
 };
 
-// ─── ORDER HISTORY ────────────────────────────────────────────────────────────
+// ─── ORDER HISTORY — Date-grouped Transaction Log ────────────────────────────
 const OrderHistoryScreen = ({ orders }) => {
-  const [filter, setFilter] = useState('all');
-  const FILTERS = [{k:'all',l:'All'},{k:'pending',l:'Pending'},{k:'preparing',l:'Preparing'},{k:'ready',l:'Ready'},{k:'done',l:'Done'}];
-  const filtered = filter==='all' ? orders : orders.filter(o=>o.status===filter);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+
+  const parseOrderDate = (timeStr) => {
+    if (!timeStr) return null;
+    try {
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) return d;
+      const d2 = new Date(timeStr.replace(/\s+/g,' ').trim());
+      return isNaN(d2.getTime()) ? null : d2;
+    } catch { return null; }
+  };
+
+  const dateKey = (d) => {
+    if (!d) return 'unknown';
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  };
+
+  const todayKey = dateKey(new Date());
+
+  const formatLabel = (key) => {
+    if (!key || key === 'unknown') return 'Unknown Date';
+    const [y,m,day] = key.split('-');
+    const d = new Date(Number(y),Number(m)-1,Number(day));
+    if (key === todayKey) return `Today, ${d.toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}`;
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+    if (key === dateKey(yesterday)) return `Yesterday, ${d.toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}`;
+    return d.toLocaleDateString('en-PH',{weekday:'short',month:'long',day:'numeric',year:'numeric'});
+  };
+
+  const grouped = React.useMemo(() => {
+    const map = {};
+    [...orders].forEach(o => {
+      const d = parseOrderDate(o.time);
+      const k = dateKey(d);
+      if (!map[k]) map[k] = { key:k, date:d, orders:[] };
+      map[k].orders.push(o);
+    });
+    Object.values(map).forEach(g => g.orders.sort((a,b)=>{
+      return (parseOrderDate(b.time)?.getTime()||0)-(parseOrderDate(a.time)?.getTime()||0);
+    }));
+    return Object.values(map).sort((a,b)=>(b.date?.getTime()||0)-(a.date?.getTime()||0));
+  }, [orders]);
+
+  // Always default to today (or first available)
+  React.useEffect(() => {
+    const todayGroup = grouped.find(g=>g.key===todayKey);
+    setSelectedDate(todayGroup ? todayKey : (grouped[0]?.key || null));
+  }, [grouped.length]);
+
+  const selectedGroup = grouped.find(g=>g.key===selectedDate);
+  const displayOrders = selectedGroup?.orders || [];
+  const dayTotal = displayOrders.reduce((s,o)=>s+Number(o.total),0);
+
+  // Other dates for dropdown (exclude selected)
+  const otherDates = grouped.filter(g=>g.key!==selectedDate);
+
   return (
     <View style={sub.root}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{flexGrow:0,marginBottom:12}} contentContainerStyle={{gap:6,paddingVertical:2}}>
-        <View style={{flexDirection:'row',gap:6}}>
-          {FILTERS.map(f=>(
-            <TouchableOpacity key={f.k} style={[sub.filterBtn,filter===f.k&&sub.filterBtnActive]} onPress={()=>setFilter(f.k)}>
-              <Text style={[sub.filterTxt,filter===f.k&&sub.filterTxtActive]}>{f.l}</Text>
-            </TouchableOpacity>
-          ))}
+
+      {/* ── Header row: date label + dropdown trigger ── */}
+      <View style={hst.topBar}>
+        <View style={{flex:1, minWidth:0}}>
+          <Text style={hst.txHeaderDate}>{formatLabel(selectedDate)}</Text>
+          <Text style={hst.txHeaderSub}>
+            {displayOrders.length} transaction{displayOrders.length!==1?'s':''}
+            {'  ·  '}Total: <Text style={{color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}}>₱{dayTotal.toFixed(2)}</Text>
+          </Text>
         </View>
-      </ScrollView>
-      <WebScrollView contentContainerStyle={{gap:0}}>
-        {filtered.length===0
-          ? <View style={sub.emptyBox}><MaterialIcons name="history" size={48} color="rgba(1,31,75,0.15)"/><Text style={sub.emptyTxt}>No orders found.</Text></View>
-          : filtered.map(order=>{
-            const st=ORDER_STATUSES[order.status]||ORDER_STATUSES.pending;
-            return(
-              <View key={order.id} style={sub.orderCard}>
-                <View style={sub.orderHead}>
-                  <Text style={sub.orderId} numberOfLines={1}>#{order.orderNo||order.id}</Text>
-                  <Text style={sub.orderTime} numberOfLines={1}>{order.time}</Text>
-                  <View style={[sub.badge,{backgroundColor:st.bg}]}><Text style={[sub.badgeTxt,{color:st.color}]}>{st.label}</Text></View>
+        {/* Dropdown button */}
+        {grouped.length > 1 && (
+          <TouchableOpacity style={hst.dropBtn} onPress={()=>setDropdownOpen(o=>!o)} activeOpacity={0.80}>
+            <MaterialIcons name="calendar-today" size={13} color="#1a3a6b"/>
+            <Text style={hst.dropBtnTxt}>Other Dates</Text>
+            <MaterialIcons name={dropdownOpen?'keyboard-arrow-up':'keyboard-arrow-down'} size={14} color="#1a3a6b"/>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* ── Dropdown list ── */}
+      {dropdownOpen && (
+        <View style={hst.dropdown}>
+          <ScrollView style={{maxHeight:180}} showsVerticalScrollIndicator={false}>
+            {otherDates.map(g=>{
+              const gTotal = g.orders.reduce((s,o)=>s+Number(o.total),0);
+              return (
+                <TouchableOpacity key={g.key} style={hst.dropItem}
+                  onPress={()=>{setSelectedDate(g.key);setDropdownOpen(false);}}
+                  activeOpacity={0.75}>
+                  <View style={{flex:1,minWidth:0}}>
+                    <Text style={hst.dropItemLabel}>{formatLabel(g.key)}</Text>
+                    <Text style={hst.dropItemSub}>{g.orders.length} order{g.orders.length!==1?'s':''}</Text>
+                  </View>
+                  <Text style={hst.dropItemTotal}>₱{gTotal.toFixed(0)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      <View style={{height:1,backgroundColor:'rgba(1,31,75,0.10)',marginVertical:8}}/>
+
+      {/* ── Transaction timeline ── */}
+      {displayOrders.length === 0
+        ? <View style={[sub.emptyBox,{flex:1}]}>
+            <MaterialIcons name="receipt-long" size={48} color="rgba(1,31,75,0.15)"/>
+            <Text style={sub.emptyTxt}>No transactions for this day.</Text>
+          </View>
+        : <WebScrollView contentContainerStyle={{gap:4, paddingBottom:20}}>
+            {displayOrders.map((order, idx) => {
+              const timeOnly = (() => {
+                const d = parseOrderDate(order.time);
+                return d ? d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}) : (order.time||'');
+              })();
+              const itemsSummary = (order.items||[]).map(i=>`${i.item?.name||i.name||'Item'} ×${i.qty}`).join(' · ');
+              const isLatest = idx===0 && selectedDate===todayKey;
+              const st = ORDER_STATUSES[order.status] || ORDER_STATUSES.pending;
+              return (
+                <View key={order.id} style={hst.txRow}>
+                  {/* Time */}
+                  <View style={hst.txTimeCol}>
+                    <Text style={hst.txTime}>{timeOnly}</Text>
+                    {isLatest && <View style={hst.livePip}/>}
+                  </View>
+                  {/* Timeline dot + line */}
+                  <View style={hst.txLine}>
+                    <View style={[hst.txDot, isLatest&&{backgroundColor:'#e74c3c'}]}/>
+                    {idx < displayOrders.length-1 && <View style={hst.txVLine}/>}
+                  </View>
+                  {/* Card */}
+                  <View style={hst.txContent}>
+                    <View style={{flexDirection:'row',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                      <Text style={hst.txOrderId}>#{order.orderNo||order.id}</Text>
+                      <View style={[hst.txStatusBadge,{backgroundColor:st.bg}]}>
+                        <Text style={[hst.txStatusTxt,{color:st.color}]}>{st.label}</Text>
+                      </View>
+                    </View>
+                    <Text style={hst.txItems} numberOfLines={2}>{itemsSummary}</Text>
+                    <View style={{flexDirection:'row',alignItems:'center',gap:10}}>
+                      <Text style={hst.txAmount}>₱{Number(order.total).toFixed(2)}</Text>
+                      <Text style={hst.txPay}>💵 Cash</Text>
+                    </View>
+                  </View>
                 </View>
-                <Text style={sub.orderItems} numberOfLines={2}>{(order.items||[]).map(i=>`${i.item?.name||i.name||'Item'} x${i.qty}`).join(' • ')}</Text>
-                <View style={sub.orderFoot}>
-                  <Text style={sub.orderTotal}>₱ {Number(order.total).toFixed(2)}</Text>
-                  <Text style={sub.orderPay}>💵 Cash</Text>
-                </View>
-              </View>
-            );
-          })
-        }
-      </WebScrollView>
+              );
+            })}
+          </WebScrollView>
+      }
     </View>
   );
 };
@@ -809,10 +922,48 @@ const sub = StyleSheet.create({
   orderPay:  { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', flex:1 },
 });
 
+// ─── HISTORY STYLES ───────────────────────────────────────────────────────────
+const hst = StyleSheet.create({
+  topBar: { flexDirection:'row', alignItems:'flex-start', gap:10, marginBottom:4 },
+  txHeaderDate: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:'#1a3a6b' },
+  txHeaderSub: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:2 },
+
+  dropBtn: { flexDirection:'row', alignItems:'center', gap:5, backgroundColor:'rgba(255,255,255,0.70)', borderRadius:10, paddingVertical:7, paddingHorizontal:10, borderWidth:1, borderColor:'rgba(1,31,75,0.15)', flexShrink:0 },
+  dropBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a3a6b' },
+
+  dropdown: { backgroundColor:'rgba(255,255,255,0.95)', borderRadius:12, borderWidth:1, borderColor:'rgba(1,31,75,0.15)', marginBottom:4, overflow:'hidden', shadowColor:'#000', shadowOpacity:0.10, shadowRadius:8, elevation:6 },
+  dropItem: { flexDirection:'row', alignItems:'center', paddingVertical:10, paddingHorizontal:14, borderBottomWidth:1, borderColor:'rgba(1,31,75,0.06)', gap:8 },
+  dropItemLabel: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b' },
+  dropItemSub: { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.45)', marginTop:1 },
+  dropItemTotal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#c9a84c', flexShrink:0 },
+
+  txRow: { flexDirection:'row', gap:0, minHeight:56 },
+  txTimeCol: { width:52, flexShrink:0, alignItems:'flex-end', paddingRight:8, paddingTop:3, gap:4 },
+  txTime: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.55)', textAlign:'right' },
+  livePip: { width:6, height:6, borderRadius:3, backgroundColor:'#e74c3c' },
+  txLine: { width:16, flexShrink:0, alignItems:'center' },
+  txDot: { width:10, height:10, borderRadius:5, backgroundColor:'#1a3a6b', marginTop:4, flexShrink:0, zIndex:1 },
+  txVLine: { flex:1, width:2, backgroundColor:'rgba(1,31,75,0.12)', marginTop:2 },
+  txContent: { flex:1, backgroundColor:'rgba(255,255,255,0.65)', borderRadius:10, padding:10, marginLeft:8, marginBottom:4, borderWidth:1, borderColor:'rgba(255,255,255,0.85)', gap:4 },
+  txOrderId: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b' },
+  txStatusBadge: { borderRadius:5, paddingHorizontal:6, paddingVertical:2 },
+  txStatusTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9 },
+  txItems: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.60)', lineHeight:15 },
+  txAmount: { fontFamily:'NotoSerif_700Bold', fontSize:13, color:'#c9a84c' },
+  txPay: { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.45)' },
+});
+
 // ─── LEFT PANEL: ORDERING MONITORING ─────────────────────────────────────────
+// ─── STATUS CONFIG for order cards ───────────────────────────────────────────
+const STATUS_CFG = {
+  pending:   { label:'PENDING',   color:'#c0392b', btnLabel:'Start Preparing', btnColor:'#e67e22', next:'preparing' },
+  preparing: { label:'PREPARING', color:'#b9660a', btnLabel:'Mark as Ready',   btnColor:'#2980b9', next:'ready'     },
+  ready:     { label:'READY',     color:'#1a6b2a', btnLabel:'Mark as Done',    btnColor:'#27ae60', next:'done'      },
+  done:      { label:'DONE',      color:'#1a3a6b', btnLabel:null,              btnColor:null,      next:null        },
+};
+
 const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const [activeTab, setActiveTab] = useState('pending');
 
   useEffect(() => {
     const loop = Animated.loop(Animated.sequence([
@@ -823,19 +974,22 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
     return ()=>loop.stop();
   }, []);
 
-  const pending   = orders.filter(o=>o.status==='pending');
-  const preparing = orders.filter(o=>o.status==='preparing');
-  const done      = orders.filter(o=>o.status==='done');
-  const tabData   = { pending, preparing, done };
+  const pendingCount   = orders.filter(o=>o.status==='pending').length;
+  const preparingCount = orders.filter(o=>o.status==='preparing').length;
+  const readyCount     = orders.filter(o=>o.status==='ready').length;
+  const doneCount      = orders.filter(o=>o.status==='done').length;
 
-  const TAB_CFG = {
-    pending:   { color:'#fff', textColor:'#c0392b', bg:'#c0392b', label:'PENDING',   num:pending.length   },
-    preparing: { color:'#fff', textColor:'#b9660a', bg:'#b9660a', label:'PREPARING', num:preparing.length },
-    done:      { color:'#fff', textColor:'#1e8449', bg:'#1e8449', label:'DONE',      num:done.length      },
-  };
+  // Show all active (non-done) orders in one unified list
+  const activeOrders = orders.filter(o=>o.status!=='done');
 
-  const displayOrders = tabData[activeTab]||[];
-  const cfg = TAB_CFG[activeTab];
+  const STAT_CARDS = [
+    { label:'PENDING',   num:pendingCount,   bg:'#c0392b' },
+    { label:'PREPARING', num:preparingCount, bg:'#b9660a' },
+    { label:'READY',     num:readyCount,     bg:'#1a6b2a' },
+    { label:'DONE',      num:doneCount,      bg:'#1a3a6b' },
+  ];
+
+  const COLS = 3;
 
   return (
     <View style={lp.root}>
@@ -845,61 +999,59 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
         <Text style={lp.title}>ORDERING MONITORING</Text>
       </View>
 
-      {/* 3 stat tab cards */}
+      {/* 4 stat display cards — display only, no click needed */}
       <View style={lp.statCards}>
-        {Object.entries(TAB_CFG).map(([key,c])=>(
-          <TouchableOpacity key={key}
-            style={[lp.statCard,{backgroundColor:c.bg,borderColor:activeTab===key?'#fff':'transparent',borderWidth:2}]}
-            onPress={()=>setActiveTab(key)} activeOpacity={0.80}>
-            <Text style={[lp.statLabel,{color:c.color}]}>{c.label}</Text>
-            <Text style={[lp.statNum,{color:c.color}]}>{String(c.num).padStart(2,'0')}</Text>
-          </TouchableOpacity>
+        {STAT_CARDS.map(c=>(
+          <View key={c.label} style={[lp.statCard,{backgroundColor:c.bg}]}>
+            <Text style={lp.statLabel}>{c.label}</Text>
+            <Text style={lp.statNum}>{String(c.num).padStart(2,'0')}</Text>
+          </View>
         ))}
       </View>
 
-      {/* Section label */}
-      <View style={[lp.sectionBar,{borderLeftColor:cfg.textColor}]}>
-        <Text style={[lp.sectionLbl,{color:cfg.textColor}]}>{cfg.label}</Text>
-        <Text style={[lp.sectionCount,{color:cfg.textColor}]}>{displayOrders.length} order{displayOrders.length!==1?'s':''}</Text>
-      </View>
-
-      {/* Full-width single cards */}
+      {/* All active orders in a 3-col square grid */}
       <WebScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{gap:6,paddingBottom:12}}>
-        {displayOrders.length===0
-          ? <View style={lp.emptyBox}><Text style={lp.emptyIco}>📋</Text><Text style={lp.emptyTxt}>No {activeTab} orders</Text></View>
-          : displayOrders.map(order=>{
-            const st=ORDER_STATUSES[order.status]||ORDER_STATUSES.pending;
-            const itemsList=(order.items||[]).map(i=>`${i.item?.name||i.name||'Item'} ×${i.qty}`).join(', ');
-            return(
-              <View key={order.id} style={[lp.card,{borderLeftColor:cfg.textColor}]}>
-                {/* Row 1: Order ID (bold) + Time (right) */}
-                <View style={lp.cardHead}>
-                  <Text style={lp.cardId}>#{order.orderNo||order.id?.slice(-6)||'---'}</Text>
-                  <Text style={lp.cardTime} numberOfLines={1}>{order.time||'Just now'}</Text>
+        {activeOrders.length===0
+          ? <View style={lp.emptyBox}><Text style={lp.emptyIco}>📋</Text><Text style={lp.emptyTxt}>No active orders</Text></View>
+          : (() => {
+              const rows = [];
+              for (let i = 0; i < activeOrders.length; i += COLS) rows.push(activeOrders.slice(i, i + COLS));
+              return rows.map((row, rIdx) => (
+                <View key={rIdx} style={{flexDirection:'row', gap:6}}>
+                  {row.map(order => {
+                    const cfg = STATUS_CFG[order.status] || STATUS_CFG.pending;
+                    const itemsList = (order.items||[]).map(i=>`${i.item?.name||i.name||'?'} ×${i.qty}`).join(', ');
+                    return (
+                      <View key={order.id} style={[lp.card, {flex:1, borderTopColor:cfg.color}]}>
+                        {/* Order # */}
+                        <Text style={lp.cardId}>#{order.orderNo||order.id?.slice(-4)||'--'}</Text>
+                        {/* Items */}
+                        <Text style={lp.cardItems} numberOfLines={3}>{itemsList}</Text>
+                        {/* Total */}
+                        <Text style={lp.cardTotal}>₱{Number(order.total).toFixed(0)}</Text>
+                        {/* Status badge */}
+                        <View style={[lp.statusBadge,{backgroundColor:cfg.color}]}>
+                          <Text style={lp.statusBadgeTxt}>{cfg.label}</Text>
+                        </View>
+                        {/* Action button — changes color per status */}
+                        {cfg.btnLabel&&(
+                          <TouchableOpacity
+                            style={[lp.actionBtn,{backgroundColor:cfg.btnColor}]}
+                            onPress={()=>onUpdateStatus(order.id, cfg.next)}
+                            activeOpacity={0.80}>
+                            <Text style={lp.actionBtnTxt}>{cfg.btnLabel}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    );
+                  })}
+                  {/* Fill empty slots in last row */}
+                  {Array.from({length: COLS - row.length}).map((_,i)=>(
+                    <View key={`e-${i}`} style={{flex:1}}/>
+                  ))}
                 </View>
-
-                {/* Row 2: Items summary */}
-                <Text style={lp.cardItems} numberOfLines={2}>{itemsList}</Text>
-
-                {/* Row 3: Total (left, gold) + Status badge (right) */}
-                <View style={lp.cardFoot}>
-                  <Text style={lp.cardTotal}>₱{Number(order.total).toFixed(0)}</Text>
-                  <View style={{flexDirection:'row',gap:5,alignItems:'center'}}>
-                    {st.next&&(
-                      <TouchableOpacity
-                        style={[lp.actionBtn,{backgroundColor:st.nextColor}]}
-                        onPress={()=>onUpdateStatus(order.id,st.next)}>
-                        <Text style={lp.actionBtnTxt}>{st.nextLabel?.replace(/^[^\w\s]*\s*/,'')}</Text>
-                      </TouchableOpacity>
-                    )}
-                    <View style={[lp.statusBadge,{backgroundColor:cfg.bg}]}>
-                      <Text style={[lp.statusBadgeTxt,{color:cfg.color}]}>{cfg.label}</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            );
-          })
+              ));
+            })()
         }
       </WebScrollView>
     </View>
@@ -913,49 +1065,39 @@ const lp = StyleSheet.create({
   liveDot:  { width:8, height:8, borderRadius:4, backgroundColor:'#e74c3c' },
   title:    { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#1a2d4e', letterSpacing:1.5, textDecorationLine:'underline', textAlign:'center' },
 
-  statCards: { flexDirection:'row', gap:4, marginBottom:8 },
-  statCard:  { flex:1, borderRadius:10, paddingVertical:7, paddingHorizontal:3, alignItems:'center', gap:1 },
-  statLabel: { fontFamily:'GoogleSans_700Bold', fontSize:6, letterSpacing:0.8 },
-  statNum:   { fontFamily:'GoogleSans_700Bold', fontSize:20, lineHeight:24 },
-
-  sectionBar: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', borderLeftWidth:3, paddingLeft:7, marginBottom:7, paddingVertical:2 },
-  sectionLbl: { fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:2, textTransform:'uppercase' },
-  sectionCount: { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.45)' },
+  // 4 stat cards — display only
+  statCards: { flexDirection:'row', gap:3, marginBottom:8 },
+  statCard:  { flex:1, borderRadius:10, paddingVertical:6, paddingHorizontal:2, alignItems:'center', gap:1 },
+  statLabel: { fontFamily:'GoogleSans_700Bold', fontSize:5.5, color:'#fff', letterSpacing:0.6, textAlign:'center' },
+  statNum:   { fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#fff', lineHeight:22 },
 
   emptyBox: { padding:20, alignItems:'center', gap:6 },
   emptyIco: { fontSize:28 },
   emptyTxt: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.35)', textAlign:'center' },
 
-  // Card — full width, clean light bg like screenshot
+  // Square-ish compact card, top accent border
   card: {
-    backgroundColor:'rgba(255,255,255,0.80)',
-    borderRadius:10, padding:10,
-    borderLeftWidth:4, borderWidth:1,
+    backgroundColor:'rgba(255,255,255,0.88)',
+    borderRadius:10,
+    padding:8,
+    borderTopWidth:3,
+    borderWidth:1,
     borderColor:'rgba(255,255,255,0.95)',
     gap:4,
-    shadowColor:'#000', shadowOpacity:0.06, shadowRadius:4, elevation:2,
+    shadowColor:'#000', shadowOpacity:0.07, shadowRadius:4, elevation:2,
+    minHeight:110,
+    justifyContent:'space-between',
   },
 
-  // Row 1: ID + Time
-  cardHead:  { flexDirection:'row', alignItems:'center', justifyContent:'space-between' },
   cardId:    { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#0d2540' },
-  cardTime:  { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.40)', flexShrink:1, textAlign:'right' },
+  cardItems: { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.65)', lineHeight:13, flex:1 },
+  cardTotal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#c9a84c' },
 
-  // Row 2: items
-  cardItems: { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.65)', lineHeight:14 },
+  statusBadge:   { borderRadius:5, paddingHorizontal:5, paddingVertical:2, alignSelf:'flex-start' },
+  statusBadgeTxt:{ fontFamily:'GoogleSans_700Bold', fontSize:7, color:'#fff', letterSpacing:0.5 },
 
-  // Row 3: total + badge
-  cardFoot:  { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginTop:2 },
-  cardTotal: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#c9a84c' },
-
-  statusBadge:   { borderRadius:6, paddingHorizontal:8, paddingVertical:3 },
-  statusBadgeTxt:{ fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:0.5 },
-
-  actionBtn:    { borderRadius:6, paddingVertical:4, paddingHorizontal:10, alignItems:'center', justifyContent:'center' },
-  actionBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'#fff' },
-
-  skipBtn:  { backgroundColor:'rgba(1,31,75,0.08)', borderRadius:6, paddingVertical:4, paddingHorizontal:8, borderWidth:1, borderColor:'rgba(1,31,75,0.15)' },
-  skipTxt:  { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'rgba(1,31,75,0.50)' },
+  actionBtn:    { borderRadius:6, paddingVertical:5, paddingHorizontal:4, alignItems:'center', justifyContent:'center', marginTop:2 },
+  actionBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#fff', textAlign:'center' },
 });
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
