@@ -1,13 +1,13 @@
 // src/context/CanteenContext.js
-// Shared state between ManageCanteenScreen (admin) and CanteenVisitor (users)
-// Uses AsyncStorage to persist changes across sessions
+// KEY FIX: Direct AsyncStorage write inside each action (not via useEffect)
+// This ensures data is written BEFORE any screen polls and reads it.
+// All screens share the same Context instance — React state updates propagate instantly.
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 
-// ─── DEFAULT DATA ─────────────────────────────────────────────────────────────
 const DEFAULT_CATEGORIES = ['All', 'Meals', 'Drinks', 'Snacks', 'Junk Foods', 'Others'];
-
 const DEFAULT_ITEMS = [
   { id:'1',  name:'Fried Chicken',  cat:'Meals',      price:80,  stock:15, emoji:'🍗', image:null },
   { id:'2',  name:'Lugaw with Egg', cat:'Meals',      price:55,  stock:50, emoji:'🍚', image:null },
@@ -22,13 +22,11 @@ const DEFAULT_ITEMS = [
   { id:'11', name:'Junk Food Pack', cat:'Junk Foods', price:18,  stock:45, emoji:'🍿', image:null },
   { id:'12', name:'Mixed Nuts',     cat:'Junk Foods', price:35,  stock:30, emoji:'🥜', image:null },
 ];
-
 const DEFAULT_ADS = [
   { id:'1', image:null, imageUrl:'', title:"Today's Special", sub:'Fresh meals served daily!',   bg:['#1a3a6b','#2e5fa3'], emoji:'🍽️' },
   { id:'2', image:null, imageUrl:'', title:'Merienda Promo',  sub:'Snacks & drinks available!', bg:['#7b3f00','#c9a84c'], emoji:'☕'  },
 ];
 
-// ─── CONTEXT ──────────────────────────────────────────────────────────────────
 const CanteenContext = createContext(null);
 
 export const useCanteen = () => {
@@ -44,9 +42,15 @@ export const CanteenProvider = ({ children }) => {
   const [orders,     setOrdersState] = useState([]);
   const [loaded,     setLoaded]      = useState(false);
 
-  // ── reloadFromStorage — callable by any screen via useFocusEffect ─────────
-  // This is the KEY fix for Expo Go mobile: screens call this every time they
-  // come into focus so they always show the latest AsyncStorage data.
+  // Refs to always have latest values without stale closure
+  const itemsRef  = useRef(DEFAULT_ITEMS);
+  const adsRef    = useRef(DEFAULT_ADS);
+  const ordersRef = useRef([]);
+  useEffect(() => { itemsRef.current  = items;  }, [items]);
+  useEffect(() => { adsRef.current    = ads;    }, [ads]);
+  useEffect(() => { ordersRef.current = orders; }, [orders]);
+
+  // ── Reload from AsyncStorage ──────────────────────────────────────────────
   const reloadFromStorage = useCallback(async () => {
     try {
       const [rawItems, rawAds, rawCats, rawOrders] = await Promise.all([
@@ -62,59 +66,67 @@ export const CanteenProvider = ({ children }) => {
     } catch (e) {}
   }, []);
 
-  // Load on mount
   useEffect(() => {
     reloadFromStorage().then(() => setLoaded(true));
+    const sub = AppState.addEventListener('change', s => {
+      if (s === 'active') reloadFromStorage();
+    });
+    return () => sub.remove();
   }, []);
 
-  // ── Persist to AsyncStorage whenever state changes (after load) ───────────
-  // useEffect-based persist avoids stale-closure bugs entirely.
-  useEffect(() => {
-    if (!loaded) return;
-    AsyncStorage.setItem('canteen_items', JSON.stringify(items)).catch(() => {});
-  }, [items, loaded]);
+  // ── DIRECT WRITE: update state AND AsyncStorage atomically ────────────────
+  // No useEffect delay — storage is written immediately so any screen polling
+  // will see the new data on the very next read.
+  const writeItems = (newItems) => {
+    setItemsState(newItems);
+    itemsRef.current = newItems;
+    AsyncStorage.setItem('canteen_items', JSON.stringify(newItems)).catch(() => {});
+  };
+  const writeAds = (newAds) => {
+    setAdsState(newAds);
+    adsRef.current = newAds;
+    AsyncStorage.setItem('canteen_ads', JSON.stringify(newAds)).catch(() => {});
+  };
+  const writeOrders = (newOrders) => {
+    setOrdersState(newOrders);
+    ordersRef.current = newOrders;
+    AsyncStorage.setItem('canteen_orders', JSON.stringify(newOrders)).catch(() => {});
+  };
 
-  useEffect(() => {
-    if (!loaded) return;
-    AsyncStorage.setItem('canteen_ads', JSON.stringify(ads)).catch(() => {});
-  }, [ads, loaded]);
-
-  useEffect(() => {
-    if (!loaded) return;
-    AsyncStorage.setItem('canteen_categories', JSON.stringify(categories)).catch(() => {});
-  }, [categories, loaded]);
-
-  useEffect(() => {
-    if (!loaded) return;
-    AsyncStorage.setItem('canteen_orders', JSON.stringify(orders)).catch(() => {});
-  }, [orders, loaded]);
-
-  // ── State setters — always use functional updater for latest state ─────────
-  const setItems      = (val) => setItemsState(prev => typeof val === 'function' ? val(prev) : val);
-  const setAds        = (val) => setAdsState(prev   => typeof val === 'function' ? val(prev) : val);
-  const setCategories = (val) => setCatsState(prev  => typeof val === 'function' ? val(prev) : val);
-  const setOrders     = (val) => setOrdersState(prev=> typeof val === 'function' ? val(prev) : val);
+  // ── Setters (for components that use setItems/setAds directly) ────────────
+  const setItems = (val) => {
+    const next = typeof val === 'function' ? val(itemsRef.current) : val;
+    writeItems(next);
+  };
+  const setAds = (val) => {
+    const next = typeof val === 'function' ? val(adsRef.current) : val;
+    writeAds(next);
+  };
+  const setCategories = (val) => setCatsState(prev => typeof val === 'function' ? val(prev) : val);
+  const setOrders = (val) => {
+    const next = typeof val === 'function' ? val(ordersRef.current) : val;
+    writeOrders(next);
+  };
 
   // ── Item actions ──────────────────────────────────────────────────────────
   const saveItem = (updated) => {
-    setItems(prev => {
-      const exists = prev.find(i => i.id === updated.id);
-      return exists ? prev.map(i => i.id === updated.id ? updated : i) : [...prev, updated];
-    });
+    const prev = itemsRef.current;
+    const exists = prev.find(i => i.id === updated.id);
+    writeItems(exists ? prev.map(i => i.id === updated.id ? updated : i) : [...prev, updated]);
   };
-  const deleteItem = (id) => setItems(prev => prev.filter(i => i.id !== id));
+  const deleteItem = (id) => writeItems(itemsRef.current.filter(i => i.id !== id));
 
   // ── Ad actions ────────────────────────────────────────────────────────────
-  const saveAd = (updated) => setAds(prev => prev.map(a => a.id === updated.id ? updated : a));
+  const saveAd = (updated) => writeAds(adsRef.current.map(a => a.id === updated.id ? updated : a));
 
   // ── Order actions ─────────────────────────────────────────────────────────
-  const addOrder = (order) => setOrders(prev => [order, ...prev]);
+  const addOrder = (order) => writeOrders([order, ...ordersRef.current]);
   const updateOrderStatus = (orderId, status) =>
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+    writeOrders(ordersRef.current.map(o => o.id === orderId ? { ...o, status } : o));
 
-  // ── Stock deduct when order placed ───────────────────────────────────────
+  // ── Stock deduct ──────────────────────────────────────────────────────────
   const deductStock = (orderItems) => {
-    setItems(prev => prev.map(item => {
+    writeItems(itemsRef.current.map(item => {
       const ordered = orderItems.find(oi => oi.item.id === item.id);
       if (!ordered) return item;
       return { ...item, stock: Math.max(0, item.stock - ordered.qty) };

@@ -19,17 +19,23 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { useMerchandise } from '../context/MerchandiseContext';
 
 // ─── WEB SCROLLBAR STYLING ────────────────────────────────────────────────────
 if (Platform.OS === 'web') {
   const s = document.createElement('style');
-  s.textContent = [
-    '.merch-scroll { overflow-y:auto !important; overflow-x:hidden !important; scrollbar-width:thin; scrollbar-color:rgba(26,58,107,0.50) rgba(255,255,255,0.20); }',
-    '.merch-scroll::-webkit-scrollbar { width:7px; display:block !important; }',
-    '.merch-scroll::-webkit-scrollbar-track { background:rgba(255,255,255,0.20); border-radius:4px; }',
-    '.merch-scroll::-webkit-scrollbar-thumb { background:rgba(26,58,107,0.50); border-radius:4px; }',
-    '.merch-scroll::-webkit-scrollbar-thumb:hover { background:rgba(26,58,107,0.80); }',
-  ].join('\n');
+  s.textContent = `
+    .merch-scroll {
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(26,58,107,0.50) rgba(255,255,255,0.20);
+    }
+    .merch-scroll::-webkit-scrollbar { width: 7px; display: block !important; }
+    .merch-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.20); border-radius: 4px; }
+    .merch-scroll::-webkit-scrollbar-thumb { background: rgba(26,58,107,0.50); border-radius: 4px; }
+    .merch-scroll::-webkit-scrollbar-thumb:hover { background: rgba(26,58,107,0.80); }
+  `;
   document.head.appendChild(s);
 }
 
@@ -44,8 +50,9 @@ const WebScrollView = ({ children, style, contentContainerStyle, horizontal, ...
     );
   }
   const flatContent = StyleSheet.flatten(contentContainerStyle) || {};
+  const flatStyle   = StyleSheet.flatten(style) || {};
   return (
-    <View style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+    <View style={[{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }, flatStyle]}>
       <div className="merch-scroll" style={{
         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
         overflowY: horizontal ? 'hidden' : 'auto',
@@ -55,11 +62,11 @@ const WebScrollView = ({ children, style, contentContainerStyle, horizontal, ...
         <div style={{
           display: 'flex', flexDirection: horizontal ? 'row' : 'column',
           flexShrink: 0, width: '100%',
-          gap: flatContent.gap ? (flatContent.gap + 'px') : undefined,
-          paddingTop: flatContent.paddingTop !== undefined ? (flatContent.paddingTop + 'px') : (flatContent.padding !== undefined ? (flatContent.padding + 'px') : undefined),
-          paddingBottom: flatContent.paddingBottom !== undefined ? (flatContent.paddingBottom + 'px') : (flatContent.padding !== undefined ? (flatContent.padding + 'px') : '20px'),
-          paddingLeft: flatContent.paddingHorizontal !== undefined ? (flatContent.paddingHorizontal + 'px') : (flatContent.paddingLeft !== undefined ? (flatContent.paddingLeft + 'px') : (flatContent.padding !== undefined ? (flatContent.padding + 'px') : undefined)),
-          paddingRight: flatContent.paddingHorizontal !== undefined ? (flatContent.paddingHorizontal + 'px') : (flatContent.paddingRight !== undefined ? (flatContent.paddingRight + 'px') : (flatContent.padding !== undefined ? (flatContent.padding + 'px') : undefined)),
+          gap: flatContent.gap ? `${flatContent.gap}px` : undefined,
+          paddingTop: flatContent.paddingTop !== undefined ? `${flatContent.paddingTop}px` : (flatContent.padding !== undefined ? `${flatContent.padding}px` : undefined),
+          paddingBottom: flatContent.paddingBottom !== undefined ? `${flatContent.paddingBottom}px` : (flatContent.padding !== undefined ? `${flatContent.padding}px` : '12px'),
+          paddingLeft: flatContent.paddingHorizontal !== undefined ? `${flatContent.paddingHorizontal}px` : (flatContent.paddingLeft !== undefined ? `${flatContent.paddingLeft}px` : (flatContent.padding !== undefined ? `${flatContent.padding}px` : undefined)),
+          paddingRight: flatContent.paddingHorizontal !== undefined ? `${flatContent.paddingHorizontal}px` : (flatContent.paddingRight !== undefined ? `${flatContent.paddingRight}px` : (flatContent.padding !== undefined ? `${flatContent.padding}px` : undefined)),
           minWidth: horizontal ? 'max-content' : undefined,
           boxSizing: 'border-box',
         }}>
@@ -79,14 +86,10 @@ const STORAGE_KEYS = {
 
 const DEFAULT_CATEGORIES = ['All', 'Shirts', 'Mugs', 'Tumbler', 'Bags', 'Pens', 'Caps', 'Umbrellas', 'Stufftoys', 'Others'];
 
-const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-const SIZED_CATS = ['Shirts'];
-const needsSize = (item) => item.sizes && item.sizes.length > 0;
-
 const DEFAULT_ITEMS = [
-  { id:'m1',  name:'CESLA Polo Shirt',        cat:'Shirts',    price:350, stock:20, emoji:'👕', image:null, sizes:['XS','S','M','L','XL','XXL'] },
-  { id:'m2',  name:'CESLA T-Shirt',           cat:'Shirts',    price:250, stock:30, emoji:'👕', image:null, sizes:['XS','S','M','L','XL','XXL'] },
-  { id:'m3',  name:'CESLA Polo (White)',       cat:'Shirts',    price:350, stock:15, emoji:'👔', image:null, sizes:['XS','S','M','L','XL','XXL'] },
+  { id:'m1',  name:'CESLA Polo Shirt',        cat:'Shirts',    price:350, stock:20, emoji:'👕', image:null },
+  { id:'m2',  name:'CESLA T-Shirt',           cat:'Shirts',    price:250, stock:30, emoji:'👕', image:null },
+  { id:'m3',  name:'CESLA Polo (White)',       cat:'Shirts',    price:350, stock:15, emoji:'👔', image:null },
   { id:'m4',  name:'CESLA Ceramic Mug',       cat:'Mugs',      price:180, stock:25, emoji:'☕', image:null },
   { id:'m5',  name:'CESLA Tumbler 500ml',     cat:'Tumbler',   price:280, stock:22, emoji:'🥤', image:null },
   { id:'m6',  name:'CESLA Tote Bag',          cat:'Bags',      price:150, stock:40, emoji:'👜', image:null },
@@ -123,7 +126,7 @@ const ORDER_STATUSES = {
 
 const emptyItem = () => ({
   id: Date.now().toString(), name: '', cat: 'Shirts',
-  price: '', stock: '', emoji: '📦', image: null, sizes: [],
+  price: '', stock: '', emoji: '📦', image: null,
 });
 
 // ─── AUTO EMOJI ───────────────────────────────────────────────────────────────
@@ -225,33 +228,6 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
                 </View>
               </View>
             </View>
-            <View style={{ gap: 6 }}>
-              <Text style={[ms.fieldLabel, { marginBottom: 2 }]}>Available Sizes</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {SIZES.map(sz => {
-                  const active = form.sizes && form.sizes.includes(sz);
-                  return (
-                    <TouchableOpacity key={sz}
-                      onPress={() => setForm(f => {
-                        const cur = f.sizes || [];
-                        return { ...f, sizes: active ? cur.filter(s => s !== sz) : [...cur, sz] };
-                      })}
-                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
-                        backgroundColor: active ? '#1a3a6b' : 'rgba(1,31,75,0.06)',
-                        borderWidth: 1.5, borderColor: active ? '#1a3a6b' : 'rgba(1,31,75,0.15)',
-                        minWidth: 46, alignItems: 'center' }}>
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12,
-                        color: active ? '#fff' : 'rgba(1,31,75,0.50)' }}>{sz}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              {form.sizes && form.sizes.length > 0 && (
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.40)', marginTop: 2 }}>
-                  Customers will pick from: {form.sizes.join(' · ')}
-                </Text>
-              )}
-            </View>
             <View style={ms.modalActions}>
               <TouchableOpacity style={ms.cancelBtn} onPress={onClose}><Text style={ms.cancelTxt}>Cancel</Text></TouchableOpacity>
               <TouchableOpacity style={{ flex: 2, borderRadius: 10, overflow: 'hidden' }} onPress={save}>
@@ -334,48 +310,6 @@ const ms = StyleSheet.create({
   cancelTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: 'rgba(1,31,75,0.50)' },
 });
 
-// ─── SIZE PICKER MODAL ───────────────────────────────────────────────────────
-const SizePickerModal = ({ visible, item, onConfirm, onClose }) => {
-  const [sel, setSel] = React.useState(null);
-  React.useEffect(() => { if (visible) setSel(null); }, [visible]);
-  if (!item) return null;
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex:1, backgroundColor:'rgba(1,20,50,0.60)', justifyContent:'center', alignItems:'center', padding:24 }}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} activeOpacity={1} />
-        <View style={{ backgroundColor:'#fff', borderRadius:18, padding:22, width:300, alignItems:'center', gap:14 }}>
-          <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:15, color:'#1a3a6b' }}>{item.emoji}  Select Size</Text>
-          <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.55)', textAlign:'center' }} numberOfLines={2}>{item.name}</Text>
-          <View style={{ flexDirection:'row', flexWrap:'wrap', gap:8, justifyContent:'center' }}>
-            {(item.sizes && item.sizes.length > 0 ? item.sizes : SIZES).map(sz => (
-              <TouchableOpacity key={sz} onPress={() => setSel(sz)}
-                style={{ paddingHorizontal:18, paddingVertical:11, borderRadius:10,
-                  backgroundColor: sel===sz ? '#1a3a6b' : 'rgba(1,31,75,0.07)',
-                  borderWidth:1.5, borderColor: sel===sz ? '#1a3a6b' : 'rgba(1,31,75,0.15)',
-                  minWidth:54, alignItems:'center' }}>
-                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:14, color: sel===sz ? '#fff' : 'rgba(1,31,75,0.65)' }}>{sz}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={{ flexDirection:'row', gap:8, width:'100%', marginTop:2 }}>
-            <TouchableOpacity onPress={onClose}
-              style={{ flex:1, paddingVertical:11, borderRadius:10, backgroundColor:'rgba(1,31,75,0.07)', alignItems:'center' }}>
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'rgba(1,31,75,0.50)' }}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => sel && onConfirm(sel)}
-              style={{ flex:2, paddingVertical:11, borderRadius:10,
-                backgroundColor: sel ? '#1a3a6b' : 'rgba(1,31,75,0.20)', alignItems:'center' }}>
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff' }}>
-                {sel ? 'Confirm — ' + sel : 'Pick a size'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
-
 // ─── CASHIER SCREEN ───────────────────────────────────────────────────────────
 const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
   const [activeCat, setActiveCat]  = useState('All');
@@ -385,7 +319,6 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [lastOrder, setLastOrder]  = useState(null);
   const [paymentMode, setPaymentMode] = useState('cash');
-  const [sizePickerItem, setSizePickerItem] = useState(null);
 
   const filtered = items.filter(i => {
     if (search.trim()) return i.name.toLowerCase().includes(search.toLowerCase());
@@ -397,19 +330,12 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
   const paid      = parseFloat(amountPaid) || 0;
   const change    = paid - total;
 
-  const addToCart = (item, size) => {
-    if (needsSize(item) && !size) { setSizePickerItem(item); return; }
-    const key = needsSize(item) ? (item.id + '-' + size) : item.id;
-    setCart(prev => ({ ...prev, [key]: { item, qty: (prev[key] ? prev[key].qty : 0) + 1, size: size || null } }));
-  };
-  const removeFromCart = (item, size) => {
-    const key = needsSize(item) ? (item.id + '-' + size) : item.id;
-    setCart(prev => {
-      const qty = (prev[key] ? prev[key].qty : 0) - 1;
-      if (qty <= 0) { const n = { ...prev }; delete n[key]; return n; }
-      return { ...prev, [key]: { item, qty, size: size || null } };
-    });
-  };
+  const addToCart    = (item) => setCart(prev => ({ ...prev, [item.id]: { item, qty: (prev[item.id]?.qty || 0) + 1 } }));
+  const removeFromCart = (item) => setCart(prev => {
+    const qty = (prev[item.id]?.qty || 0) - 1;
+    if (qty <= 0) { const n = { ...prev }; delete n[item.id]; return n; }
+    return { ...prev, [item.id]: { item, qty } };
+  });
   const clearCart = () => { setCart({}); setAmountPaid(''); };
 
   const handlePlaceOrder = () => {
@@ -462,18 +388,13 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
                     {item.image ? <Image source={{ uri: item.image }} style={{ width: '100%', height: '100%', borderRadius: 99 }} resizeMode="cover" /> : <Text style={cs.itemEmoji}>{item.emoji}</Text>}
                   </View>
                   <Text style={cs.itemCardName} numberOfLines={2}>{item.name}</Text>
-                  {needsSize(item) && <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:7, color:'rgba(26,58,107,0.50)', letterSpacing:0.3 }}>{item.sizes.join(' · ')}</Text>}
                   <Text style={cs.itemCardPrice}>₱{item.price}</Text>
-                  <Text style={cs.itemCardStock}>{item.stock === 0 ? 'Out of stock' : ('Stock: ' + item.stock)}</Text>
-                  {Object.values(cart).some(c => c.item.id === item.id) && (
-                    <View style={cs.cartBadge}>
-                      <Text style={cs.cartBadgeTxt}>{Object.values(cart).filter(c => c.item.id === item.id).reduce((s,c)=>s+c.qty,0)}</Text>
-                    </View>
-                  )}
+                  <Text style={cs.itemCardStock}>{item.stock === 0 ? 'Out of stock' : `Stock: ${item.stock}`}</Text>
+                  {cart[item.id] && <View style={cs.cartBadge}><Text style={cs.cartBadgeTxt}>{cart[item.id].qty}</Text></View>}
                 </TouchableOpacity>
                 </View>
               ))}
-              {Array.from({ length: COLS - filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).length }).map((_, i) => (<View key={'e-' + i} style={{ flex: 1 }} />))}
+              {Array.from({ length: COLS - filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).length }).map((_, i) => (<View key={`e-${i}`} style={{ flex: 1 }} />))}
             </View>
           ))}
         </WebScrollView>
@@ -486,17 +407,17 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
           {cartItems.length === 0
             ? <Text style={cs.cartEmpty}>No items added yet</Text>
             : <WebScrollView style={{ flex: 1 }}>
-                {cartItems.map(({ item, qty, size }) => (
-                  <View key={size ? (item.id + '-' + size) : item.id} style={cs.cartRow}>
+                {cartItems.map(({ item, qty }) => (
+                  <View key={item.id} style={cs.cartRow}>
                     <Text style={cs.cartEmoji}>{item.emoji}</Text>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={cs.cartName} numberOfLines={1}>{item.name}{size ? (' [' + size + ']') : ''}</Text>
+                      <Text style={cs.cartName} numberOfLines={1}>{item.name}</Text>
                       <Text style={cs.cartSub}>₱{item.price} × {qty} = ₱{item.price * qty}</Text>
                     </View>
                     <View style={cs.qtyRow}>
-                      <TouchableOpacity style={cs.qBtn} onPress={() => removeFromCart(item, size)}><Text style={cs.qBtnTxt}>−</Text></TouchableOpacity>
+                      <TouchableOpacity style={cs.qBtn} onPress={() => removeFromCart(item)}><Text style={cs.qBtnTxt}>−</Text></TouchableOpacity>
                       <Text style={cs.qVal}>{qty}</Text>
-                      <TouchableOpacity style={[cs.qBtn, { backgroundColor: '#1a3a6b' }]} onPress={() => addToCart(item, size)}><Text style={[cs.qBtnTxt, { color: '#fff' }]}>+</Text></TouchableOpacity>
+                      <TouchableOpacity style={[cs.qBtn, { backgroundColor: '#1a3a6b' }]} onPress={() => addToCart(item)}><Text style={[cs.qBtnTxt, { color: '#fff' }]}>+</Text></TouchableOpacity>
                     </View>
                   </View>
                 ))}
@@ -563,9 +484,9 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
               <Text style={cs.receiptMeta}>{lastOrder.time}</Text>
               <View style={{ height: 1, borderStyle: 'dashed', borderTopWidth: 1, borderColor: 'rgba(1,31,75,0.20)', marginVertical: 10 }} />
               <ScrollView style={{ maxHeight: 160 }} showsVerticalScrollIndicator={false}>
-                {(lastOrder.items || []).map(({ item, qty, size }) => (
-                  <View key={size ? (item.id + '-' + size) : item.id} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Text style={cs.receiptItem} numberOfLines={1}>{item.emoji} {item.name}{size ? (' [' + size + ']') : ''} ×{qty}</Text>
+                {(lastOrder.items || []).map(({ item, qty }) => (
+                  <View key={item.id} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={cs.receiptItem} numberOfLines={1}>{item.emoji} {item.name} ×{qty}</Text>
                     <Text style={cs.receiptAmt}>₱{(item.price * qty).toFixed(2)}</Text>
                   </View>
                 ))}
@@ -585,12 +506,6 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
           </View>
         </Modal>
       )}
-      <SizePickerModal
-        visible={!!sizePickerItem}
-        item={sizePickerItem}
-        onConfirm={(size) => { addToCart(sizePickerItem, size); setSizePickerItem(null); }}
-        onClose={() => setSizePickerItem(null)}
-      />
     </View>
   );
 };
@@ -661,19 +576,19 @@ const ManageItemsScreen = ({ items, categories, filtered, search, activeCategory
     <View style={{ flex: 1, minHeight: 0, flexDirection: 'row', overflow: 'hidden' }}>
       <View style={mm.catPanel}>
         <Text style={mm.catTitle}>CATEGORIES</Text>
-        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 4 }}>
+        <WebScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 4 }}>
           {categories.map(cat => (
             <TouchableOpacity key={cat} style={[mm.catBtn, activeCategory === cat && mm.catBtnActive]} onPress={() => onCategoryChange(cat)}>
               <Text style={[mm.catBtnTxt, activeCategory === cat && mm.catBtnTxtActive]}>{cat}</Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </WebScrollView>
       </View>
 
       <View style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
         <View style={mm.headerRow}>
           <Text style={mm.headerLbl} numberOfLines={1}>
-            {search.trim() ? ('RESULTS FOR "' + search.toUpperCase() + '"') : activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()}
+            {search.trim() ? `RESULTS FOR "${search.toUpperCase()}"` : activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()}
           </Text>
           <View style={mm.searchBox}>
             <MaterialIcons name="search" size={13} color="rgba(1,31,75,0.40)" />
@@ -716,7 +631,7 @@ const ManageItemsScreen = ({ items, categories, filtered, search, activeCategory
                     </View>
                   </View>
                 ))}
-                {Array.from({ length: COLS - filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).length }).map((_, i) => (<View key={'e-' + i} style={{ flex: 1 }} />))}
+                {Array.from({ length: COLS - filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).length }).map((_, i) => (<View key={`e-${i}`} style={{ flex: 1 }} />))}
               </View>
             ))
           }
@@ -780,7 +695,7 @@ const InventoryScreen = ({ items }) => {
           { l: 'Items',        v: items.length,                         c: '#1a3a6b' },
           { l: 'In Stock',     v: items.filter(i => i.stock > 0).length, c: '#27ae60' },
           { l: 'Out of Stock', v: items.filter(i => i.stock === 0).length, c: '#e74c3c' },
-          { l: 'Total Value',  v: '₱' + totalValue.toLocaleString(),     c: '#c9a84c' },
+          { l: 'Total Value',  v: `₱${totalValue.toLocaleString()}`,     c: '#c9a84c' },
         ].map(s => (
           <View key={s.l} style={sub.statCard}>
             <Text style={[sub.statVal, { color: s.c, fontSize: s.l === 'Total Value' ? 12 : 16 }]}>{s.v}</Text>
@@ -883,7 +798,7 @@ const OrderHistoryScreen = ({ orders }) => {
                   </View>
                 </View>
                 <Text style={sub.orderItems} numberOfLines={2}>
-                  {(order.items || []).map(i => ((i.item&&i.item.name?i.item.name:i.name||'Item') + ' x' + i.qty)).join(' • ')}
+                  {(order.items || []).map(i => `${i.item?.name || i.name || 'Item'} x${i.qty}`).join(' • ')}
                 </Text>
                 <View style={sub.orderFoot}>
                   <Text style={sub.orderTotal}>₱ {Number(order.total).toFixed(2)}</Text>
@@ -984,24 +899,24 @@ const SalesReportScreen = ({ orders }) => {
       const dc  = dayOrders.filter(o => !o.payment || o.payment === 'cash').reduce((s, o) => s + Number(o.total), 0);
       const dcr = dayOrders.filter(o => o.payment === 'credit').reduce((s, o) => s + Number(o.total), 0);
       const dew = dayOrders.filter(o => o.payment === 'gcash' || o.payment === 'ewallet').reduce((s, o) => s + Number(o.total), 0);
-      return '<tr><td>'+day+'</td><td>'+dayOrders.length+'</td><td>&#8369;'+dc.toFixed(2)+'</td><td>&#8369;'+dcr.toFixed(2)+'</td><td>&#8369;'+dew.toFixed(2)+'</td><td><strong>&#8369;'+dt.toFixed(2)+'</strong></td></tr>';
+      return `<tr><td>${day}</td><td>${dayOrders.length}</td><td>&#8369;${dc.toFixed(2)}</td><td>&#8369;${dcr.toFixed(2)}</td><td>&#8369;${dew.toFixed(2)}</td><td><strong>&#8369;${dt.toFixed(2)}</strong></td></tr>`;
     }).join('');
-     const html = '<!DOCTYPE html><html><head><title>CESLA Merchandise - '+monthName+'</title>'
-       +'<style>body{font-family:Arial,sans-serif;padding:32px;color:#1a2d4e}h1{color:#1a3a6b;margin-bottom:4px}.sub{color:#888;font-size:13px;margin-bottom:24px}.summary{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}.card{background:#f0f5f9;border-radius:10px;padding:14px 20px;min-width:120px}.card .val{font-size:18px;font-weight:bold;color:#1a3a6b}.card .lbl{font-size:11px;color:#888;margin-top:3px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#1a3a6b;color:#fff;padding:10px 12px;text-align:left;font-size:12px}td{padding:9px 12px;border-bottom:1px solid #e8eef4;font-size:13px}tr:nth-child(even) td{background:#f7fafc}tfoot td{font-weight:bold;background:#eef2f8;border-top:2px solid #1a3a6b}.gold{color:#c9a84c}@media print{body{padding:16px}}</style>'
-       +'</head><body>'
-       +'<h1>&#128230; CESLA Merchandise Sales Report</h1>'
-       +'<div class="sub">Monthly Report &mdash; '+monthName+' &nbsp;|&nbsp; Printed: '+new Date().toLocaleString('en-PH')+'</div>'
-       +'<div class="summary">'
-       +'<div class="card"><div class="val">'+mo.length+'</div><div class="lbl">Total Orders</div></div>'
-       +'<div class="card"><div class="val">&#8369;'+cash.toFixed(2)+'</div><div class="lbl">Cash</div></div>'
-       +'<div class="card"><div class="val">&#8369;'+credit.toFixed(2)+'</div><div class="lbl">Credit</div></div>'
-       +'<div class="card"><div class="val">&#8369;'+ew.toFixed(2)+'</div><div class="lbl">E-Wallet</div></div>'
-       +'<div class="card"><div class="val gold">&#8369;'+total.toFixed(2)+'</div><div class="lbl">Total Sales</div></div>'
-       +'</div>'
-       +'<table><thead><tr><th>Date</th><th>Orders</th><th>Cash</th><th>Credit</th><th>E-Wallet</th><th>Total</th></tr></thead>'
-       +'<tbody>'+rows+'</tbody>'
-       +'<tfoot><tr><td>TOTAL</td><td>'+mo.length+'</td><td>&#8369;'+cash.toFixed(2)+'</td><td>&#8369;'+credit.toFixed(2)+'</td><td>&#8369;'+ew.toFixed(2)+'</td><td class="gold">&#8369;'+total.toFixed(2)+'</td></tr></tfoot>'
-       +'</table></body></html>';
+    const html = `<!DOCTYPE html><html><head><title>CESLA Merchandise - ${monthName}</title>
+<style>body{font-family:Arial,sans-serif;padding:32px;color:#1a2d4e}h1{color:#1a3a6b;margin-bottom:4px}.sub{color:#888;font-size:13px;margin-bottom:24px}.summary{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}.card{background:#f0f5f9;border-radius:10px;padding:14px 20px;min-width:120px}.card .val{font-size:18px;font-weight:bold;color:#1a3a6b}.card .lbl{font-size:11px;color:#888;margin-top:3px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#1a3a6b;color:#fff;padding:10px 12px;text-align:left;font-size:12px}td{padding:9px 12px;border-bottom:1px solid #e8eef4;font-size:13px}tr:nth-child(even) td{background:#f7fafc}tfoot td{font-weight:bold;background:#eef2f8;border-top:2px solid #1a3a6b}.gold{color:#c9a84c}@media print{body{padding:16px}}</style>
+</head><body>
+<h1>📦 CESLA Merchandise Sales Report</h1>
+<div class="sub">Monthly Report &mdash; ${monthName} &nbsp;|&nbsp; Printed: ${new Date().toLocaleString('en-PH')}</div>
+<div class="summary">
+  <div class="card"><div class="val">${mo.length}</div><div class="lbl">Total Orders</div></div>
+  <div class="card"><div class="val">&#8369;${cash.toFixed(2)}</div><div class="lbl">Cash</div></div>
+  <div class="card"><div class="val">&#8369;${credit.toFixed(2)}</div><div class="lbl">Credit</div></div>
+  <div class="card"><div class="val">&#8369;${ew.toFixed(2)}</div><div class="lbl">E-Wallet</div></div>
+  <div class="card"><div class="val gold">&#8369;${total.toFixed(2)}</div><div class="lbl">Total Sales</div></div>
+</div>
+<table><thead><tr><th>Date</th><th>Orders</th><th>Cash</th><th>Credit</th><th>E-Wallet</th><th>Total</th></tr></thead>
+<tbody>${rows}</tbody>
+<tfoot><tr><td>TOTAL</td><td>${mo.length}</td><td>&#8369;${cash.toFixed(2)}</td><td>&#8369;${credit.toFixed(2)}</td><td>&#8369;${ew.toFixed(2)}</td><td class="gold">&#8369;${total.toFixed(2)}</td></tr></tfoot>
+</table></body></html>`;
     const win = window.open('', '_blank');
     win.document.write(html);
     win.document.close();
@@ -1153,7 +1068,7 @@ const SalesReportScreen = ({ orders }) => {
               <TouchableOpacity key={m} style={{ flex: 1, alignItems: 'center', gap: 2 }} activeOpacity={0.75}
                 onPress={() => setSelectedMonth({ idx: i, name: MONTH_FULL[i] })}>
                 <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 6, color: val > 0 ? '#1a3a6b' : 'transparent' }}>
-                  {val > 0 ? '₱' + (val >= 1000 ? ((val / 1000).toFixed(1) + 'k') : val.toFixed(0)) : ''}
+                  {val > 0 ? '₱' + (val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val.toFixed(0)) : ''}
                 </Text>
                 <View style={{ width: '100%', height: barH, backgroundColor: val > 0 ? '#1a3a6b' : 'rgba(1,31,75,0.12)', borderRadius: 3 }} />
                 <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 6, color: 'rgba(1,31,75,0.50)' }}>{m}</Text>
@@ -1205,7 +1120,7 @@ const SalesReportScreen = ({ orders }) => {
             <View key={name} style={sub.topItemRow}>
               <Text style={sub.topItemRank}>#{i + 1}</Text>
               <Text style={[sub.topItemName, { flex: 1 }]} numberOfLines={1}>{name}</Text>
-              <View style={[sub.topItemBar, { width: Math.min(100, (qty / topItems[0][1]) * 100) + '%' }]} />
+              <View style={[sub.topItemBar, { width: `${Math.min(100, (qty / topItems[0][1]) * 100)}%` }]} />
               <Text style={sub.topItemQty}>{qty} sold</Text>
             </View>
           ))}
@@ -1245,7 +1160,7 @@ const rp = StyleSheet.create({
 
 // ─── SHARED SUB STYLES ────────────────────────────────────────────────────────
 const sub = StyleSheet.create({
-  root: { flex: 1, padding: 14, overflow: 'hidden' },
+  root: { flex: 1, padding: 14, overflow: 'hidden', minHeight: 0 },
   emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: 60 },
   emptyTxt: { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(1,31,75,0.35)', textAlign: 'center', lineHeight: 18 },
   statCard: { minWidth: 80, backgroundColor: 'rgba(255,255,255,0.60)', borderRadius: 12, padding: 10, alignItems: 'center', gap: 3 },
@@ -1332,7 +1247,7 @@ const OrderMonitoringPanel = ({ orders, onUpdateStatus }) => {
             </View>
           : displayOrders.map(order => {
             const st = ORDER_STATUSES[order.status] || ORDER_STATUSES.pending;
-            const itemsList = (order.items || []).map(i => ((i.item&&i.item.name?i.item.name:i.name||'Item') + ' ×' + i.qty)).join(', ');
+            const itemsList = (order.items || []).map(i => `${i.item?.name || i.name || 'Item'} ×${i.qty}`).join(', ');
             return (
               <View key={order.id} style={[lp.card, { borderLeftColor: cfg.textColor }]}>
                 <View style={lp.cardHead}>
@@ -1396,61 +1311,18 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
   const { width } = useWindowDimensions();
   const isSmall = width < 400;
 
-  // ── Local state + AsyncStorage (mirrors CanteenContext pattern) ───────────
-  const [items,  setItemsState]  = useState(DEFAULT_ITEMS);
-  const [ads,    setAdsState]    = useState(DEFAULT_ADS);
-  const [orders, setOrdersState] = useState([]);
-  const [loaded, setLoaded]      = useState(false);
+  // ── Use shared MerchandiseContext (same data as MerchandiseScreen visitor) ──
+  const {
+    items, ads, categories, orders,
+    saveItem, deleteItem, saveAd, setAds,
+    addOrder, updateOrderStatus, deductStock,
+    reloadFromStorage,
+  } = useMerchandise();
 
-  const categories = DEFAULT_CATEGORIES;
-
-  const setItems  = (val) => setItemsState(prev => typeof val === 'function' ? val(prev) : val);
-  const setAds    = (val) => setAdsState(prev   => typeof val === 'function' ? val(prev) : val);
-  const setOrders = (val) => setOrdersState(prev=> typeof val === 'function' ? val(prev) : val);
-
-  const reloadFromStorage = useCallback(async () => {
-    try {
-      const [rawItems, rawAds, rawOrders] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.items),
-        AsyncStorage.getItem(STORAGE_KEYS.ads),
-        AsyncStorage.getItem(STORAGE_KEYS.orders),
-      ]);
-      if (rawItems)  setItemsState(JSON.parse(rawItems));
-      if (rawAds)    setAdsState(JSON.parse(rawAds));
-      if (rawOrders) setOrdersState(JSON.parse(rawOrders));
-    } catch (e) {}
-  }, []);
-
-  useEffect(() => { reloadFromStorage().then(() => setLoaded(true)); }, []);
-
-  useEffect(() => { if (!loaded) return; AsyncStorage.setItem(STORAGE_KEYS.items,  JSON.stringify(items)).catch(() => {}); }, [items, loaded]);
-  useEffect(() => { if (!loaded) return; AsyncStorage.setItem(STORAGE_KEYS.ads,    JSON.stringify(ads)).catch(() => {}); }, [ads, loaded]);
-  useEffect(() => { if (!loaded) return; AsyncStorage.setItem(STORAGE_KEYS.orders, JSON.stringify(orders)).catch(() => {}); }, [orders, loaded]);
-
+  // Context already polls every 2s — no extra polling needed here
   useFocusEffect(useCallback(() => {
-    reloadFromStorage();
-    const poll = setInterval(() => reloadFromStorage(), 3000);
-    return () => clearInterval(poll);
+    reloadFromStorage(); // immediate reload on focus
   }, [reloadFromStorage]));
-
-  // Item CRUD
-  const saveItem = (updated) => setItems(prev => {
-    const exists = prev.find(i => i.id === updated.id);
-    return exists ? prev.map(i => i.id === updated.id ? updated : i) : [...prev, updated];
-  });
-  const deleteItem = (id) => setItems(prev => prev.filter(i => i.id !== id));
-
-  // Ad CRUD
-  const saveAd = (updated) => setAds(prev => prev.map(a => a.id === updated.id ? updated : a));
-
-  // Orders
-  const addOrder = (order) => setOrders(prev => [order, ...prev]);
-  const updateOrderStatus = (orderId, status) => setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
-  const deductStock = (orderItems) => setItems(prev => prev.map(item => {
-    const ordered = orderItems.find(oi => oi.item.id === item.id);
-    if (!ordered) return item;
-    return { ...item, stock: Math.max(0, item.stock - ordered.qty) };
-  }));
 
   // ── Fonts ─────────────────────────────────────────────────────────────────
   const [fontsLoaded] = useFonts({

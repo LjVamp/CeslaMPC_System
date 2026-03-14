@@ -2,8 +2,9 @@
 // CLIMBS Canteen — Visitor Food Ordering Screen
 // 3-panel layout: Left Categories | Center Menu+Search | Right Cart
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useCanteen } from '../context/CanteenContext';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Animated, StatusBar, Image,
@@ -17,33 +18,81 @@ import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 
 
-// ─── FOOD CARD — static Add To Cart only, no inline qty ───────────────────────
-const FoodCard = ({ item, onAdd }) => (
-  <View style={styles.foodCard}>
-    {Platform.OS === 'web' ? (
-      <LinearGradient
-        colors={['rgba(220,232,242,0.80)','rgba(200,218,235,0.60)']}
-        start={{x:0,y:0}} end={{x:0,y:1}}
-        style={styles.foodCardInner}
-      >
-        <FoodCardBody item={item} onAdd={onAdd} />
-      </LinearGradient>
-    ) : (
-      <View style={[styles.foodCardInner, { backgroundColor:'rgba(225,238,248,0.85)' }]}>
-        <FoodCardBody item={item} onAdd={onAdd} />
-      </View>
-    )}
-  </View>
-);
+// ─── IMAGE ZOOM MODAL ─────────────────────────────────────────────────────────
+const ImageZoomModal = ({ visible, item, onClose }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fadeAnim,  { toValue:1, duration:220, useNativeDriver:true }),
+        Animated.spring(scaleAnim, { toValue:1, tension:70, friction:11, useNativeDriver:true }),
+      ]).start();
+    } else {
+      fadeAnim.setValue(0);
+      scaleAnim.setValue(0.85);
+    }
+  }, [visible]);
+  if (!item) return null;
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      <Animated.View style={{ flex:1, backgroundColor:'rgba(1,15,40,0.80)', justifyContent:'center', alignItems:'center', opacity:fadeAnim }}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose}/>
+        <Animated.View style={{ alignItems:'center', gap:16, transform:[{scale:scaleAnim}] }}>
+          {/* Image or emoji */}
+          <View style={{ width:220, height:220, borderRadius:110, overflow:'hidden', backgroundColor:'rgba(240,246,252,0.95)', borderWidth:3, borderColor:'rgba(255,255,255,0.90)', shadowColor:'#000', shadowOpacity:0.30, shadowRadius:20, elevation:16, justifyContent:'center', alignItems:'center' }}>
+            {item.image
+              ? <Image source={{ uri:item.image }} style={{ width:'100%', height:'100%' }} resizeMode="cover"/>
+              : <Text style={{ fontSize:90 }}>{item.emoji}</Text>
+            }
+          </View>
+          {/* Info */}
+          <View style={{ alignItems:'center', gap:6 }}>
+            <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#fff', textAlign:'center', paddingHorizontal:20 }}>{item.name}</Text>
+            <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:22, color:'#c9a84c' }}>₱{item.price}.00</Text>
+            <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:13, color:'rgba(255,255,255,0.60)' }}>Stock: {item.stock}</Text>
+          </View>
+          {/* Close hint */}
+          <TouchableOpacity onPress={onClose} style={{ paddingHorizontal:28, paddingVertical:10, backgroundColor:'rgba(255,255,255,0.15)', borderRadius:20, borderWidth:1, borderColor:'rgba(255,255,255,0.30)' }}>
+            <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff' }}>✕  Close</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+};
 
-const FoodCardBody = ({ item, onAdd }) => (
+// ─── FOOD CARD — static Add To Cart only, no inline qty ───────────────────────
+const FoodCard = ({ item, onAdd }) => {
+  const [zoomed, setZoomed] = useState(false);
+  return (
+    <View style={styles.foodCard}>
+      {Platform.OS === 'web' ? (
+        <LinearGradient
+          colors={['rgba(220,232,242,0.80)','rgba(200,218,235,0.60)']}
+          start={{x:0,y:0}} end={{x:0,y:1}}
+          style={styles.foodCardInner}
+        >
+          <FoodCardBody item={item} onAdd={onAdd} onZoom={() => setZoomed(true)} />
+        </LinearGradient>
+      ) : (
+        <View style={[styles.foodCardInner, { backgroundColor:'rgba(225,238,248,0.85)' }]}>
+          <FoodCardBody item={item} onAdd={onAdd} onZoom={() => setZoomed(true)} />
+        </View>
+      )}
+      <ImageZoomModal visible={zoomed} item={item} onClose={() => setZoomed(false)} />
+    </View>
+  );
+};
+
+const FoodCardBody = ({ item, onAdd, onZoom }) => (
   <>
-    <View style={styles.emojiCircle}>
+    <TouchableOpacity style={styles.emojiCircle} onPress={onZoom} activeOpacity={0.80}>
       {item.image
         ? <Image source={{ uri: item.image }} style={{ width:'100%', height:'100%', borderRadius:99 }} resizeMode="cover" />
         : <Text style={styles.emojiText}>{item.emoji}</Text>
       }
-    </View>
+    </TouchableOpacity>
     <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
     <Text style={styles.itemStock}>Stock: {item.stock}</Text>
     <Text style={styles.itemPrice}>₱{item.price}.00</Text>
@@ -355,6 +404,7 @@ const QueueStatusModal = ({ visible, orderId, orderNo, currentStatus, onClose, o
 
   // ── Minimized pill — renders as an absolute overlay (not in Modal) ──
   if (minimized) {
+    if (currentStatus === 'done') return null;
     const pillColor = currentStatus === 'ready' ? '#27ae60' : currentStatus === 'preparing' ? '#e67e22' : '#1a3a6b';
     return (
       <View style={[qs.pill, { backgroundColor: pillColor }]} pointerEvents="box-none">
@@ -668,6 +718,19 @@ export default function CanteenVisitor({ navigation }) {
     Animated.timing(bodyFade, { toValue:1, duration:600, delay:200, useNativeDriver:true }).start();
   }, []);
 
+  // ── Global menu reload — keeps items/stock in sync with admin changes ───
+  useEffect(() => {
+    // Subscribe to canteen bus for instant push updates
+    let unsub;
+    try {
+      const { notifyCanteenChange } = require('../context/CanteenContext');
+      // no-op: just importing to ensure bus is active
+    } catch(e) {}
+    // Poll every 500ms on mobile to catch admin edits in near-realtime
+    const menuPoll = setInterval(() => reloadFromStorage(), 500);
+    return () => clearInterval(menuPoll);
+  }, []);
+
   // ── Poll order status every 3s while queue is visible ─────────────────────
   useEffect(() => {
     if (!trackedOrderId || !queueVisible) return;
@@ -967,10 +1030,7 @@ export default function CanteenVisitor({ navigation }) {
             {/* Label LEFT + Search RIGHT — same row, both web and mobile */}
             <View style={{ flexDirection:'row', alignItems:'center', marginBottom:6, gap:8 }}>
               <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#011f4b', letterSpacing:2, flexShrink:0 }}>
-                {search.trim() !== ''
-                  ? `RESULTS FOR "${search.toUpperCase()}"`
-                  : activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()
-                }
+                {activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()}
               </Text>
               <View style={styles.searchBoxInline}>
                 <Text style={{ fontSize:11, marginRight:4 }}>🔍</Text>
@@ -1224,6 +1284,7 @@ const styles = StyleSheet.create({
   searchInputInline: {
     flex:1, fontFamily:'GoogleSans_400Regular',
     fontSize:11, color:'#011f4b', paddingVertical:0,
+    ...(Platform.OS === 'web' ? { outlineStyle:'none' } : {}),
   },
   searchBox: {
     flexDirection:'row', alignItems:'center',

@@ -106,7 +106,7 @@ const MODULES = [
   },
   {
     id: 'canteen',
-    title: 'Canteen Ordering\nSystem',
+    title: 'Canteen Management\nSystem',
     description: 'Employee food ordering, menu management & daily records',
     icon: '🍽️',
     isNew: false,
@@ -314,26 +314,7 @@ export default function HomeScreen({ navigation }) {
   const fFade  = useRef(new Animated.Value(0)).current;
   const fTrans = useRef(new Animated.Value(30)).current;
 
-  // Load saved admin session on mount (mobile only)
-  // Web: skip auto-navigate — browser refresh must always return to HomeScreen
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-    const loadSession = async () => {
-      try {
-        const raw = await AsyncStorage.getItem('cesla_admin_session');
-        if (raw) {
-          const session = JSON.parse(raw);
-          if (session && session.role === 'Super Admin') {
-            setSavedSession(session);
-            setTimeout(() => {
-              if (navigation) navigation.navigate('AdminScreen', { admin: session });
-            }, 800);
-          }
-        }
-      } catch (e) {}
-    };
-    loadSession();
-  }, []);
+  // Auto-login removed — always start from HomeScreen
 
   useEffect(() => {
     Animated.parallel([
@@ -758,10 +739,7 @@ export default function HomeScreen({ navigation }) {
                       setAdminLoginOpen(false);
                       setAdminId(''); setAdminPw('');
                       setAdminError(''); setAdminShowPw(false);
-                      // Save session for SuperAdmin auto-login (mobile only)
-                      if (found.role === 'Super Admin' && Platform.OS !== 'web') {
-                        AsyncStorage.setItem('cesla_admin_session', JSON.stringify(found)).catch(()=>{});
-                      }
+                      // Session saving removed — no auto-login
                       // Navigate to AdminScreen with admin data
                       setTimeout(() => {
                         if (navigation) navigation.navigate('AdminScreen', { admin: found });

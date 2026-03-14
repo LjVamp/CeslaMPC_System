@@ -1129,10 +1129,9 @@ export default function ManageCanteenScreen({ navigation }) {
   const bodyFade   = useRef(new Animated.Value(0)).current;
   const adScrollRef = useRef(null);
 
+  // Context already polls every 2s — no extra polling needed here
   useFocusEffect(useCallback(()=>{
-    reloadFromStorage();
-    const poll = setInterval(()=>{ reloadFromStorage(); }, 3000);
-    return ()=>clearInterval(poll);
+    reloadFromStorage(); // immediate reload on focus
   },[reloadFromStorage]));
 
   useEffect(()=>{

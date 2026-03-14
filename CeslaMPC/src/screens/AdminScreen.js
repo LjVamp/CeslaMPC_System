@@ -438,6 +438,7 @@ export default function AdminScreen({ navigation, route }) {
 
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [selectedSystem, setSelectedSystem] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const PAD = isWide ? 32 : 20;
   const GAP = 16;
@@ -462,6 +463,17 @@ export default function AdminScreen({ navigation, route }) {
   }, []);
 
   const handleCardPress = (sys) => {
+    // Super Admin (access: 'all') — skip login modal, navigate directly
+    if (admin.access === 'all') {
+      if (navigation) navigation.navigate(sys.screen, { admin });
+      return;
+    }
+    // Other admins — check if they have access to this system
+    if (Array.isArray(admin.access) && admin.access.includes(sys.key)) {
+      if (navigation) navigation.navigate(sys.screen, { admin });
+      return;
+    }
+    // No access — show login modal so they can use a different account
     setSelectedSystem(sys);
     setLoginModalOpen(true);
   };
@@ -517,14 +529,49 @@ export default function AdminScreen({ navigation, route }) {
             </Text>
           </View>
 
-          <View style={[styles.adminChip, { backgroundColor: admin.accent + '30', borderColor: admin.accent + '60' }]}>
-            <View style={[styles.adminChipAvatar, { backgroundColor: admin.accent }]}>
-              <Text style={styles.adminChipAvatarTxt}>{admin.avatar}</Text>
-            </View>
-            {!isSmall && (
-              <Text style={[styles.adminChipName, { color: '#fff' }]} numberOfLines={1}>
-                {admin.name.split(' ')[0]}
-              </Text>
+          <View style={{ position:'relative', flexShrink:0 }}>
+            <TouchableOpacity
+              style={[styles.adminChip, { backgroundColor: admin.accent + '30', borderColor: admin.accent + '60' }]}
+              onPress={() => setProfileOpen(p => !p)}
+              activeOpacity={0.80}
+            >
+              <View style={[styles.adminChipAvatar, { backgroundColor: admin.accent, width: isWide ? 26 : 36, height: isWide ? 26 : 36, borderRadius: isWide ? 13 : 18 }]}>
+                <Text style={[styles.adminChipAvatarTxt, { fontSize: isWide ? 10 : 14 }]}>{admin.avatar}</Text>
+              </View>
+              {isWide && (
+                <Text style={[styles.adminChipName, { color: '#fff' }]} numberOfLines={1}>
+                  {admin.name.split(' ')[0]}
+                </Text>
+              )}
+            </TouchableOpacity>
+            {profileOpen && (
+              <>
+                <TouchableOpacity style={{ position:'fixed', top:0, left:0, right:0, bottom:0, zIndex:998 }} activeOpacity={0} onPress={() => setProfileOpen(false)}/>
+                <View style={styles.profileDropdown}>
+                  <View style={styles.profileDropdownHeader}>
+                    <View style={[styles.profileDropdownAvatar, { backgroundColor: admin.accent }]}>
+                      <Text style={styles.profileDropdownAvatarTxt}>{admin.avatar}</Text>
+                    </View>
+                    <View style={{ flex:1, minWidth:0 }}>
+                      <Text style={styles.profileDropdownName} numberOfLines={1}>{admin.name}</Text>
+                      <Text style={styles.profileDropdownRole} numberOfLines={1}>{admin.role}</Text>
+                      <Text style={styles.profileDropdownId} numberOfLines={1}>{admin.id}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.profileDropdownDivider}/>
+                  <TouchableOpacity
+                    style={styles.profileLogoutBtn}
+                    activeOpacity={0.80}
+                    onPress={() => {
+                      setProfileOpen(false);
+                      setTimeout(() => navigation && navigation.navigate('Home'), 150);
+                    }}
+                  >
+                    <MaterialIcons name="logout" size={15} color="#e74c3c"/>
+                    <Text style={styles.profileLogoutTxt}>Log Out</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
             )}
           </View>
         </View>
@@ -593,11 +640,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
   backIcon: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 10 },
+  headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8, minWidth: 0 },
   headerH1: { fontFamily: 'NotoSerif_700Bold', fontWeight: '800', color: '#fff', textAlign: 'center', letterSpacing: 0.5 },
   headerGold: { fontFamily: 'NotoSerif_700Bold_Italic', color: '#c9a84c', fontStyle: 'italic' },
   headerSub: { fontFamily: 'GoogleSans_400Regular', color: 'rgba(232,200,122,0.75)', letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 2, textAlign: 'center' },
-  adminChip: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1, flexShrink: 0 },
+  adminChip: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 6, paddingVertical: 6, borderRadius: 24, borderWidth: 1, flexShrink: 0 },
   adminChipAvatar: { width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
   adminChipAvatarTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#0d1b3e' },
   adminChipName: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, maxWidth: 70 },
@@ -674,4 +721,44 @@ const styles = StyleSheet.create({
   loginBtn: { borderRadius: 12, overflow: 'hidden', marginTop: 4, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
   loginBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14 },
   loginBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff', letterSpacing: 0.8 },
+
+  // ── Profile dropdown ──
+  profileDropdown: {
+    position: 'absolute', top: 46, right: 0, zIndex: 999,
+    backgroundColor: '#f0f5fa', borderRadius: 16,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)',
+    shadowColor: '#011f4b', shadowOpacity: 0.22, shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 }, elevation: 14,
+    minWidth: 220, overflow: 'hidden',
+  },
+  profileDropdownHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    padding: 14, paddingBottom: 12,
+  },
+  profileDropdownAvatar: {
+    width: 40, height: 40, borderRadius: 20,
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+  },
+  profileDropdownAvatarTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#0d1b3e',
+  },
+  profileDropdownName: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#011f4b',
+  },
+  profileDropdownRole: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.55)', marginTop: 1,
+  },
+  profileDropdownId: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.40)', marginTop: 1,
+  },
+  profileDropdownDivider: {
+    height: 1, backgroundColor: 'rgba(1,31,75,0.08)',
+  },
+  profileLogoutBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    padding: 13, paddingHorizontal: 16,
+  },
+  profileLogoutTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e74c3c',
+  },
 });

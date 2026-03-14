@@ -2,23 +2,25 @@
 // CESLA MPC — Merchandise Ordering System
 // 3-panel layout: Left Categories | Center Items+Search | Right Cart
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, Animated, StatusBar,
+  ScrollView, Animated, StatusBar, Image,
   useWindowDimensions, Platform, TextInput, Modal, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts } from 'expo-font';
 import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/noto-serif';
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
+import { useFocusEffect } from '@react-navigation/native';
+import { useMerchandise } from '../context/MerchandiseContext';
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 const CATEGORIES = ['All', 'Shirts', 'Mugs', 'Tumbler', 'Bags', 'Pens', 'Caps', 'Umbrellas', 'Stufftoys', 'Others'];
 
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const SIZED_CATS = ['Shirts'];
-const needsSize = (item) => SIZED_CATS.includes(item.cat) || item.hasSize;
+const needsSize = (item) => item.sizes && item.sizes.length > 0;
 
 const MERCH_ITEMS = [
   { id:'1',  name:'CESLA Polo Shirt',       cat:'Shirts',    price:350, stock:20, emoji:'👕' },
@@ -85,30 +87,79 @@ const SizePickerModal = ({ visible, item, onConfirm, onClose }) => {
   );
 };
 
-// ─── FOOD CARD — static Add To Cart only, no inline qty ───────────────────────
-const ItemCard = ({ item, onAdd }) => (
-  <View style={styles.foodCard}>
-    {Platform.OS === 'web' ? (
-      <LinearGradient
-        colors={['rgba(220,232,242,0.80)','rgba(200,218,235,0.60)']}
-        start={{x:0,y:0}} end={{x:0,y:1}}
-        style={styles.foodCardInner}
-      >
-        <ItemCardBody item={item} onAdd={onAdd} />
-      </LinearGradient>
-    ) : (
-      <View style={[styles.foodCardInner, { backgroundColor:'rgba(225,238,248,0.85)' }]}>
-        <ItemCardBody item={item} onAdd={onAdd} />
-      </View>
-    )}
-  </View>
-);
 
-const ItemCardBody = ({ item, onAdd }) => (
-  <>
-    <View style={styles.emojiCircle}>
-      <Text style={styles.emojiText}>{item.emoji}</Text>
+// ─── IMAGE ZOOM MODAL ─────────────────────────────────────────────────────────
+const ImageZoomModal = ({ visible, item, onClose }) => {
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fadeAnim,  { toValue:1, duration:220, useNativeDriver:true }),
+        Animated.spring(scaleAnim, { toValue:1, tension:70, friction:11, useNativeDriver:true }),
+      ]).start();
+    } else {
+      fadeAnim.setValue(0);
+      scaleAnim.setValue(0.85);
+    }
+  }, [visible]);
+  if (!item) return null;
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      <Animated.View style={{ flex:1, backgroundColor:'rgba(1,15,40,0.80)', justifyContent:'center', alignItems:'center', opacity:fadeAnim }}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose}/>
+        <Animated.View style={{ alignItems:'center', gap:16, transform:[{scale:scaleAnim}] }}>
+          <View style={{ width:220, height:220, borderRadius:110, overflow:'hidden', backgroundColor:'rgba(240,246,252,0.95)', borderWidth:3, borderColor:'rgba(255,255,255,0.90)', shadowColor:'#000', shadowOpacity:0.30, shadowRadius:20, elevation:16, justifyContent:'center', alignItems:'center' }}>
+            {item.image
+              ? <Image source={{ uri:item.image }} style={{ width:'100%', height:'100%' }} resizeMode="cover"/>
+              : <Text style={{ fontSize:90 }}>{item.emoji}</Text>
+            }
+          </View>
+          <View style={{ alignItems:'center', gap:6 }}>
+            <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#fff', textAlign:'center', paddingHorizontal:20 }}>{item.name}</Text>
+            <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:22, color:'#c9a84c' }}>₱{item.price}.00</Text>
+            <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:13, color:'rgba(255,255,255,0.60)' }}>Stock: {item.stock}</Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={{ paddingHorizontal:28, paddingVertical:10, backgroundColor:'rgba(255,255,255,0.15)', borderRadius:20, borderWidth:1, borderColor:'rgba(255,255,255,0.30)' }}>
+            <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff' }}>✕  Close</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+};
+
+// ─── FOOD CARD — static Add To Cart only, no inline qty ───────────────────────
+const ItemCard = ({ item, onAdd }) => {
+  const [zoomed, setZoomed] = useState(false);
+  return (
+    <View style={styles.foodCard}>
+      {Platform.OS === 'web' ? (
+        <LinearGradient
+          colors={['rgba(220,232,242,0.80)','rgba(200,218,235,0.60)']}
+          start={{x:0,y:0}} end={{x:0,y:1}}
+          style={styles.foodCardInner}
+        >
+          <ItemCardBody item={item} onAdd={onAdd} onZoom={() => setZoomed(true)} />
+        </LinearGradient>
+      ) : (
+        <View style={[styles.foodCardInner, { backgroundColor:'rgba(225,238,248,0.85)' }]}>
+          <ItemCardBody item={item} onAdd={onAdd} onZoom={() => setZoomed(true)} />
+        </View>
+      )}
+      <ImageZoomModal visible={zoomed} item={item} onClose={() => setZoomed(false)} />
     </View>
+  );
+};
+
+const ItemCardBody = ({ item, onAdd, onZoom }) => (
+  <>
+    <TouchableOpacity style={styles.emojiCircle} onPress={onZoom} activeOpacity={0.80}>
+      {item.image
+        ? <Image source={{ uri: item.image }} style={{ width:'100%', height:'100%', borderRadius:99 }} resizeMode="cover" />
+        : <Text style={styles.emojiText}>{item.emoji}</Text>
+      }
+    </TouchableOpacity>
     <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
     <Text style={styles.itemStock}>Stock: {item.stock}</Text>
     <Text style={styles.itemPrice}>₱{item.price}.00</Text>
@@ -325,18 +376,18 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
         <View style={styles.paymentModeBox}>
           <Text style={styles.paymentModeLabel}>Mode of Payment</Text>
           <View style={styles.paymentModeRow}>
-            <TouchableOpacity style={styles.paymentModeOption} onPress={() => setPaymentMode('cash')} activeOpacity={0.8}>
-              <View style={[styles.radioOuter, paymentMode === 'cash' && styles.radioOuterActive]}>
-                {paymentMode === 'cash' && <View style={styles.radioInner} />}
-              </View>
-              <Text style={[styles.paymentModeText, paymentMode === 'cash' && styles.paymentModeTextActive]}>💵 Cash</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.paymentModeOption} onPress={() => setPaymentMode('gcash')} activeOpacity={0.8}>
-              <View style={[styles.radioOuter, paymentMode === 'gcash' && styles.radioOuterActive]}>
-                {paymentMode === 'gcash' && <View style={styles.radioInner} />}
-              </View>
-              <Text style={[styles.paymentModeText, paymentMode === 'gcash' && styles.paymentModeTextActive]}>📱 GCash</Text>
-            </TouchableOpacity>
+            {[
+              { key:'cash',    label:'💵 Cash'    },
+              { key:'gcash',   label:'📱 GCash'   },
+              { key:'credits', label:'🪙 Credits'  },
+            ].map(p => (
+              <TouchableOpacity key={p.key} style={styles.paymentModeOption} onPress={() => setPaymentMode(p.key)} activeOpacity={0.8}>
+                <View style={[styles.radioOuter, paymentMode === p.key && styles.radioOuterActive]}>
+                  {paymentMode === p.key && <View style={styles.radioInner} />}
+                </View>
+                <Text style={[styles.paymentModeText, paymentMode === p.key && styles.paymentModeTextActive]}>{p.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
@@ -534,6 +585,20 @@ export default function MerchandiseScreen({ navigation }) {
     NotoSerif_700Bold, NotoSerif_700Bold_Italic,
     GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold,
   });
+
+  // ── Live data from shared MerchandiseContext ──────────────────────────────
+  const { items: MERCH_ITEMS, categories: CATEGORIES, reloadFromStorage } = useMerchandise();
+
+  // Reload on focus so visitor always sees latest items from admin
+  useFocusEffect(useCallback(() => {
+    reloadFromStorage(); // immediate on focus
+  }, [reloadFromStorage]));
+
+  // ── Global item reload — 500ms poll for near-realtime mobile sync ─────────
+  useEffect(() => {
+    const menuPoll = setInterval(() => reloadFromStorage(), 500);
+    return () => clearInterval(menuPoll);
+  }, []);
 
   const [activeCategory, setActiveCategory] = useState('All');
   const [search, setSearch] = useState('');
@@ -786,27 +851,10 @@ export default function MerchandiseScreen({ navigation }) {
             </ScrollView>
           )}
 
-          {/* Web only: search bar above panel */}
-          {isWide && (
-            <View style={[styles.searchBox, { paddingVertical: 5, marginBottom:8 }]}>
-              <Text style={styles.searchIcon}>🔍</Text>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search merchandise..."
-                placeholderTextColor="rgba(1,31,75,0.40)"
-                value={search}
-                onChangeText={handleSearch}
-              />
-              {search.length > 0 && (
-                <TouchableOpacity onPress={() => { setSearch(''); setActiveCategory('All'); }} style={{ paddingLeft:6 }}>
-                  <Text style={{ color:'rgba(1,31,75,0.45)', fontSize:14, fontWeight:'700' }}>✕</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-
           {/* ── Ad Banner ── */}
-          <AdBanner isWide={isWide} adAnim={adAnim} />
+          <View style={{ marginBottom:12, flexShrink:0 }}>
+            <AdBanner isWide={isWide} adAnim={adAnim} />
+          </View>
 
           {/* Items panel — fills remaining space */}
           <View style={styles.itemsPanel}>
@@ -818,23 +866,21 @@ export default function MerchandiseScreen({ navigation }) {
                   : activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()
                 }
               </Text>
-              {!isWide && (
-                <View style={styles.searchBoxInline}>
-                  <Text style={{ fontSize:11, marginRight:4 }}>🔍</Text>
-                  <TextInput
-                    style={styles.searchInputInline}
-                    placeholder="Search..."
-                    placeholderTextColor="rgba(1,31,75,0.35)"
-                    value={search}
-                    onChangeText={handleSearch}
-                  />
-                  {search.length > 0 && (
-                    <TouchableOpacity onPress={() => { setSearch(''); setActiveCategory('All'); }}>
-                      <Text style={{ color:'rgba(1,31,75,0.45)', fontSize:12, fontWeight:'700' }}>✕</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
+              <View style={styles.searchBoxInline}>
+                <Text style={{ fontSize:11, marginRight:4 }}>🔍</Text>
+                <TextInput
+                  style={styles.searchInputInline}
+                  placeholder="Search..."
+                  placeholderTextColor="rgba(1,31,75,0.35)"
+                  value={search}
+                  onChangeText={handleSearch}
+                />
+                {search.length > 0 && (
+                  <TouchableOpacity onPress={() => { setSearch(''); setActiveCategory('All'); }}>
+                    <Text style={{ color:'rgba(1,31,75,0.45)', fontSize:12, fontWeight:'700' }}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
             <View style={{ height:1, backgroundColor:'rgba(1,31,75,0.10)', marginBottom:8 }} />
             <ScrollView
@@ -938,7 +984,7 @@ export default function MerchandiseScreen({ navigation }) {
 
 // ──────────────── STYLES ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex:1 },
+  root: { flex:1, ...(Platform.OS === 'web' ? { height:'100vh', maxHeight:'100vh', overflow:'hidden' } : {}) },
 
   // Header
   header: {
@@ -981,8 +1027,10 @@ const styles = StyleSheet.create({
 
   // Body layout
   body: {
-    flex:1, flexDirection:'row',
+    flex:1, flexDirection:'row', alignItems:'stretch',
     marginTop: Platform.OS === 'web' ? 12 : 6,
+    minHeight: 0,
+    overflow: Platform.OS === 'web' ? 'hidden' : 'visible',
   },
 
   // LEFT — Categories panel
@@ -991,6 +1039,7 @@ const styles = StyleSheet.create({
     borderRadius:16, marginLeft:20, marginBottom:16,
     padding:12, gap:6,
     borderWidth:1, borderColor:'rgba(255,255,255,0.40)',
+    overflow:'hidden', minHeight:0,
   },
   catPanelTitle: {
     fontFamily:'GoogleSans_700Bold', fontSize:12,
@@ -1017,7 +1066,7 @@ const styles = StyleSheet.create({
   },
 
   // CENTER panel
-  centerPanel: { flex:1, flexDirection:'column', paddingHorizontal: Platform.OS==='web' ? 12 : 10, paddingBottom: Platform.OS==='web' ? 16 : 0 },
+  centerPanel: { flex:1, flexDirection:'column', paddingHorizontal: Platform.OS==='web' ? 12 : 10, paddingBottom: Platform.OS==='web' ? 16 : 0, minHeight:0, overflow: Platform.OS==='web' ? 'hidden' : 'visible' },
   itemsPanel: {
     backgroundColor:'rgba(255,255,255,0.22)',
     borderRadius:16,
@@ -1039,6 +1088,7 @@ const styles = StyleSheet.create({
   searchInputInline: {
     flex:1, fontFamily:'GoogleSans_400Regular',
     fontSize:11, color:'#011f4b', paddingVertical:0,
+    ...(Platform.OS === 'web' ? { outlineStyle:'none' } : {}),
   },
   searchBox: {
     flexDirection:'row', alignItems:'center',
@@ -1145,6 +1195,7 @@ const styles = StyleSheet.create({
     borderRadius:16, marginRight:20, marginBottom:16,
     padding:14, gap:8,
     borderWidth:1, borderColor:'rgba(255,255,255,0.45)',
+    overflow:'hidden', minHeight:0,
   },
   cartPanelMobile: {
     width:'100%', marginRight:0, marginBottom:0,
@@ -1208,7 +1259,7 @@ const styles = StyleSheet.create({
     fontFamily:'GoogleSans_500Medium', fontSize:13, color:'rgba(1,31,75,0.75)',
   },
   totalValue: {
-    fontFamily:'NotoSerif_700Bold', fontSize:15, color:'#c9a84c',
+    fontFamily:'NotoSerif_700Bold', fontSize:15, color:'#0d1b3e',
   },
   paymentModeBox: {
     backgroundColor:'rgba(255,255,255,0.30)',
@@ -1221,8 +1272,8 @@ const styles = StyleSheet.create({
     color:'rgba(1,31,75,0.60)', letterSpacing:1.2,
     textTransform:'uppercase', marginBottom:8,
   },
-  paymentModeRow: { flexDirection:'row', gap:10 },
-  paymentModeOption: { flexDirection:'row', alignItems:'center', gap:6, flex:1 },
+  paymentModeRow: { flexDirection:'column', gap:8 },
+  paymentModeOption: { flexDirection:'row', alignItems:'center', gap:8 },
   radioOuter: {
     width:18, height:18, borderRadius:9,
     borderWidth:2, borderColor:'rgba(1,31,75,0.30)',

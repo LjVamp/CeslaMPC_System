@@ -14,12 +14,14 @@ import ManageMerchandiseScreen from "./src/screens/ManageMerchandiseScreen";
 import ManageBillingScreen from "./src/screens/ManageBillingScreen";
 import MerchandiseScreen from "./src/screens/MerchandiseScreen";
 import { CanteenProvider } from "./src/context/CanteenContext";
+import { MerchandiseProvider } from "./src/context/MerchandiseContext";
 
 const Stack = createStackNavigator();
 
 export default function App() {
   return (
     <CanteenProvider>
+    <MerchandiseProvider>
     <NavigationContainer>
       <Stack.Navigator
         initialRouteName="Home"
@@ -52,6 +54,7 @@ export default function App() {
         <Stack.Screen name="MerchandiseScreen" component={MerchandiseScreen} />
       </Stack.Navigator>
     </NavigationContainer>
+    </MerchandiseProvider>
     </CanteenProvider>
   );
 }
