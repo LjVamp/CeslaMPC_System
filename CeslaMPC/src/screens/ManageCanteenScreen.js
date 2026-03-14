@@ -579,7 +579,7 @@ const mm = StyleSheet.create({
 });
 
 // ─── INVENTORY SCREEN ─────────────────────────────────────────────────────────
-const InventoryScreen = ({ items }) => {
+const InventoryScreen = ({ items, maxQtyMap, onAddItem, onEditItem }) => {
   const today = new Date();
 
   // ── Date label formatting ─────────────────────────────────────────────────
@@ -620,8 +620,7 @@ const InventoryScreen = ({ items }) => {
   const [unitDropdown, setUnitDropdown] = useState(null);
 
   // ── Max QTY per item (editable) ────────────────────────────────────────────
-  const [maxQty, setMaxQty] = useState({});
-  const getMax = (id) => maxQty[id] !== undefined ? maxQty[id] : 50;
+  const getMax = (id) => (maxQtyMap && maxQtyMap[id] !== undefined) ? maxQtyMap[id] : (items.find(i=>i.id===id)?.maxQty || 50);
 
   // ── Totals ────────────────────────────────────────────────────────────────
   const overallPrice = items.reduce((s, i) => s + i.price, 0);
@@ -629,17 +628,21 @@ const InventoryScreen = ({ items }) => {
   const grandTotal   = items.reduce((s, i) => s + i.price * i.stock, 0);
 
   return (
-    <View style={{ flex:1, minHeight:0, overflow:'hidden' }}>
+    <View style={{ flex:1, minHeight:0, overflow:'hidden', position:'relative' }}>
 
-      {/* ── Title row ── */}
-      <TouchableOpacity
-        style={inv2.titleRow}
-        onPress={() => setShowDatePicker(p => !p)}
-        activeOpacity={0.80}
-      >
-        <Text style={inv2.titleText}>{formatDateLabel(selectedDate)}</Text>
-        <Text style={inv2.titleCaret}>{showDatePicker ? '▲' : '▼'}</Text>
-      </TouchableOpacity>
+      <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginHorizontal:14, marginTop:8, marginBottom:6 }}>
+        <TouchableOpacity
+          style={inv2.titleRow}
+          onPress={() => setShowDatePicker(p => !p)}
+          activeOpacity={0.80}
+        >
+          <Text style={inv2.titleText}>{formatDateLabel(selectedDate)}</Text>
+          <Text style={inv2.titleCaret}>{showDatePicker ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={inv2.addItemBtn} onPress={() => onAddItem && onAddItem()} activeOpacity={0.80}>
+          <Text style={inv2.addItemBtnTxt}>+ Add Item</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* ── Calendar dropdown ── */}
       {showDatePicker && (
@@ -684,7 +687,6 @@ const InventoryScreen = ({ items }) => {
         <View style={inv2.thead}>
           <Text style={[inv2.th, inv2.colName]}>ITEM NAME</Text>
           <Text style={[inv2.th, inv2.colCat]}>CATEGORY</Text>
-          <Text style={[inv2.th, inv2.colUnit]}>UNIT</Text>
           <Text style={[inv2.th, inv2.colQty]}>QTY</Text>
           <Text style={[inv2.th, inv2.colMaxQty]}>MAX QTY</Text>
           <Text style={[inv2.th, inv2.colPrice]}>PRICE</Text>
@@ -698,7 +700,7 @@ const InventoryScreen = ({ items }) => {
             const max     = getMax(item.id);
             const restock = Math.max(0, max - item.stock);
             return (
-              <View key={item.id} style={[inv2.trow, idx % 2 === 0 && inv2.trowAlt]}>
+              <TouchableOpacity key={item.id} style={[inv2.trow, idx % 2 === 0 && inv2.trowAlt]} onPress={() => onEditItem && onEditItem(item)} activeOpacity={0.75}>
                 {/* Item Name */}
                 <View style={[inv2.td, inv2.colName]}>
                   <Text style={inv2.tdName} numberOfLines={1}>{item.emoji}  {item.name}</Text>
@@ -707,42 +709,16 @@ const InventoryScreen = ({ items }) => {
                 <View style={[inv2.td, inv2.colCat]}>
                   <Text style={inv2.tdMuted} numberOfLines={1}>{item.cat}</Text>
                 </View>
-                {/* Unit of Measure */}
-                <View style={[inv2.td, inv2.colUnit]}>
-                  <TouchableOpacity
-                    style={inv2.unitChip}
-                    onPress={() => setUnitDropdown(unitDropdown === item.id ? null : item.id)}
-                  >
-                    <Text style={inv2.unitChipTxt}>{getUnit(item.id)}</Text>
-                    <Text style={inv2.unitChipArr}>▾</Text>
-                  </TouchableOpacity>
-                  {unitDropdown === item.id && (
-                    <View style={inv2.unitMenu}>
-                      {UNIT_OPTIONS.map(u => (
-                        <TouchableOpacity key={u} style={[inv2.unitOpt, getUnit(item.id)===u && inv2.unitOptActive]}
-                          onPress={() => { setUnits(p => ({...p,[item.id]:u})); setUnitDropdown(null); }}>
-                          <Text style={[inv2.unitOptTxt, getUnit(item.id)===u && inv2.unitOptTxtActive]}>{u}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
                 {/* QTY */}
                 <View style={[inv2.td, inv2.colQty]}>
                   <Text style={[inv2.tdNum,
                     item.stock === 0 && { color:'#e74c3c', fontFamily:'GoogleSans_700Bold' },
-                    item.stock <= 5 && item.stock > 0 && { color:'#e67e22', fontFamily:'GoogleSans_700Bold' },
+                    item.stock <= 5 && item.stock > 0 && { color:'#b85c00', fontFamily:'GoogleSans_700Bold' },
                   ]}>{item.stock}</Text>
                 </View>
                 {/* Max QTY */}
                 <View style={[inv2.td, inv2.colMaxQty]}>
-                  <TextInput
-                    style={inv2.maxQtyInput}
-                    value={String(getMax(item.id))}
-                    onChangeText={v => setMaxQty(p => ({...p, [item.id]: parseInt(v)||0}))}
-                    keyboardType="numeric"
-                    selectTextOnFocus
-                  />
+                  <Text style={[inv2.tdNum, { textAlign:'center' }]}>{getMax(item.id)}</Text>
                 </View>
                 {/* Price */}
                 <View style={[inv2.td, inv2.colPrice]}>
@@ -765,30 +741,29 @@ const InventoryScreen = ({ items }) => {
                     <Text style={inv2.restockOk}>✓ OK</Text>
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
 
-          {/* ── Footer totals ── */}
-          <View style={inv2.tfooter}>
-            <View style={[inv2.td, inv2.colName]}>
-              <Text style={inv2.tfootLbl}>TOTALS</Text>
-            </View>
-            <View style={[inv2.td, inv2.colCat]}/>
-            <View style={[inv2.td, inv2.colUnit]}/>
-            <View style={[inv2.td, inv2.colQty]}>
-              <Text style={inv2.tfootVal}>{overallQty}</Text>
-            </View>
-            <View style={[inv2.td, inv2.colMaxQty]}/>
-            <View style={[inv2.td, inv2.colPrice]}>
-              <Text style={inv2.tfootVal}>₱{overallPrice.toLocaleString()}</Text>
-            </View>
-            <View style={[inv2.td, inv2.colValue]}>
-              <Text style={[inv2.tfootVal, { color:'#c9a84c' }]}>₱{grandTotal.toLocaleString()}</Text>
-            </View>
-            <View style={[inv2.td, inv2.colRestock]}/>
-          </View>
         </WebScrollView>
+        {/* Static TOTALS footer */}
+        <View style={inv2.tfooter}>
+          <View style={[inv2.td, inv2.colName]}>
+            <Text style={inv2.tfootLbl}>TOTALS</Text>
+          </View>
+          <View style={[inv2.td, inv2.colCat]}/>
+          <View style={[inv2.td, inv2.colQty]}>
+            <Text style={[inv2.tfootVal, { textAlign:'center' }]}>{overallQty}</Text>
+          </View>
+          <View style={[inv2.td, inv2.colMaxQty]}/>
+          <View style={[inv2.td, inv2.colPrice]}>
+            <Text style={[inv2.tfootVal, { textAlign:'center' }]}>₱{overallPrice.toLocaleString()}</Text>
+          </View>
+          <View style={[inv2.td, inv2.colValue]}>
+            <Text style={[inv2.tfootVal, { color:'#8a6500', textAlign:'center' }]}>₱{grandTotal.toLocaleString()}</Text>
+          </View>
+          <View style={[inv2.td, inv2.colRestock]}/>
+        </View>
       </View>
     </View>
   );
@@ -798,33 +773,37 @@ const InventoryScreen = ({ items }) => {
 const inv2 = StyleSheet.create({
   // Title
   titleRow: {
-    flexDirection:'row', alignItems:'center', justifyContent:'center',
-    gap:8, paddingVertical:10, paddingHorizontal:14,
-    backgroundColor:'rgba(26,58,107,0.10)', borderRadius:10,
-    marginHorizontal:14, marginTop:10, marginBottom:8,
+    flexDirection:'row', alignItems:'center',
+    gap:6, paddingVertical:6, paddingHorizontal:12,
+    backgroundColor:'rgba(26,58,107,0.10)', borderRadius:8,
+    marginHorizontal:0, marginTop:0, marginBottom:0,
     borderWidth:1, borderColor:'rgba(26,58,107,0.15)',
+    alignSelf:'flex-start',
   },
-  titleText: { fontFamily:'NotoSerif_700Bold', fontSize:14, color:'#1a3a6b', textAlign:'center' },
+  titleText: { fontFamily:'NotoSerif_700Bold', fontSize:12, color:'#1a3a6b' },
   titleCaret: { fontSize:10, color:'rgba(26,58,107,0.50)' },
+  addItemBtn: { backgroundColor:'#1a3a6b', borderRadius:8, paddingVertical:7, paddingHorizontal:14, borderWidth:1, borderColor:'rgba(201,168,76,0.40)' },
+  addItemBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#fff', letterSpacing:0.3 },
 
   // Calendar
   calCard: {
-    marginHorizontal:14, marginBottom:10,
-    backgroundColor:'rgba(255,255,255,0.92)', borderRadius:14,
+    position:'absolute', top:52, left:14, zIndex:999,
+    backgroundColor:'rgba(255,255,255,0.98)', borderRadius:10,
     borderWidth:1, borderColor:'rgba(26,58,107,0.18)',
-    padding:12, shadowColor:'#000', shadowOpacity:0.10, shadowRadius:8, elevation:6,
+    padding:8, shadowColor:'#000', shadowOpacity:0.18, shadowRadius:12, elevation:20,
+    minWidth:220, maxWidth:260,
   },
-  calNav: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:8 },
-  calNavBtn: { width:28, height:28, borderRadius:14, backgroundColor:'rgba(26,58,107,0.08)', justifyContent:'center', alignItems:'center' },
-  calNavTxt: { fontFamily:'GoogleSans_700Bold', fontSize:16, color:'#1a3a6b' },
-  calMonthLbl: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b' },
-  calDaysRow: { flexDirection:'row', marginBottom:4 },
-  calDayHdr: { flex:1, fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(26,58,107,0.45)', textAlign:'center', letterSpacing:0.5 },
+  calNav: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:4 },
+  calNavBtn: { width:22, height:22, borderRadius:11, backgroundColor:'rgba(26,58,107,0.08)', justifyContent:'center', alignItems:'center' },
+  calNavTxt: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b' },
+  calMonthLbl: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a3a6b' },
+  calDaysRow: { flexDirection:'row', marginBottom:2 },
+  calDayHdr: { flex:1, fontFamily:'GoogleSans_700Bold', fontSize:8, color:'rgba(26,58,107,0.45)', textAlign:'center', letterSpacing:0.3 },
   calGrid: { flexDirection:'row', flexWrap:'wrap' },
-  calCell: { width:'14.28%', aspectRatio:1, justifyContent:'center', alignItems:'center', borderRadius:6 },
+  calCell: { width:'14.28%', height:24, justifyContent:'center', alignItems:'center', borderRadius:4 },
   calCellSel: { backgroundColor:'#1a3a6b' },
   calCellToday: { backgroundColor:'rgba(201,168,76,0.20)', borderWidth:1, borderColor:'#c9a84c' },
-  calCellTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'#1a3a6b' },
+  calCellTxt: { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'#1a3a6b' },
   calCellTxtSel: { fontFamily:'GoogleSans_700Bold', color:'#fff' },
 
   // Table layout
@@ -835,25 +814,24 @@ const inv2 = StyleSheet.create({
     borderRadius:8, paddingVertical:9, paddingHorizontal:8,
     marginBottom:2,
   },
-  th: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.60)', letterSpacing:0.8, textTransform:'uppercase' },
-  trow: { flexDirection:'row', alignItems:'center', paddingVertical:8, paddingHorizontal:8, borderRadius:6, minHeight:42 },
+  th: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.60)', letterSpacing:0.8, textTransform:'uppercase', textAlign:'center', borderRightWidth:1, borderColor:'rgba(26,58,107,0.10)', paddingHorizontal:4 },
+  trow: { flexDirection:'row', alignItems:'center', paddingVertical:8, paddingHorizontal:8, minHeight:42, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.07)' },
   trowAlt: { backgroundColor:'rgba(255,255,255,0.38)' },
-  td: { justifyContent:'center', paddingHorizontal:3 },
+  td: { justifyContent:'center', alignItems:'center', paddingHorizontal:4, borderRightWidth:1, borderColor:'rgba(26,58,107,0.10)' },
 
-  // Column widths — must sum to fit panel
-  colName:    { flex:2.2, minWidth:0 },
-  colCat:     { flex:1.2, minWidth:0 },
-  colUnit:    { flex:1.0, minWidth:0, position:'relative', zIndex:10 },
-  colQty:     { flex:0.7, minWidth:0, alignItems:'center' },
-  colMaxQty:  { flex:0.9, minWidth:0, alignItems:'center' },
-  colPrice:   { flex:1.0, minWidth:0, alignItems:'flex-end' },
-  colValue:   { flex:1.1, minWidth:0, alignItems:'flex-end' },
-  colRestock: { flex:1.2, minWidth:0, alignItems:'center' },
+  // Column widths
+  colName:    { flex:2.2, minWidth:0, alignItems:'flex-start' },
+  colCat:     { flex:1.1, minWidth:0, alignItems:'center' },
+  colQty:     { flex:0.6, minWidth:0, alignItems:'center' },
+  colMaxQty:  { flex:0.8, minWidth:0, alignItems:'center' },
+  colPrice:   { flex:0.9, minWidth:0, alignItems:'center' },
+  colValue:   { flex:1.0, minWidth:0, alignItems:'center' },
+  colRestock: { flex:1.0, minWidth:0, alignItems:'center' },
 
   // Cell text
   tdName:  { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a2d4e' },
-  tdMuted: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(26,58,107,0.65)' },
-  tdNum:   { fontFamily:'GoogleSans_500Medium', fontSize:11, color:'#1a2d4e', textAlign:'right' },
+  tdMuted: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(26,58,107,0.65)', textAlign:'center' },
+  tdNum:   { fontFamily:'GoogleSans_500Medium', fontSize:11, color:'#1a2d4e', textAlign:'center' },
 
   // Unit picker
   unitChip: { flexDirection:'row', alignItems:'center', gap:2, backgroundColor:'rgba(26,58,107,0.08)', borderRadius:6, paddingHorizontal:7, paddingVertical:4, borderWidth:1, borderColor:'rgba(26,58,107,0.15)' },
@@ -870,9 +848,9 @@ const inv2 = StyleSheet.create({
 
   // Re-stock badge
   restockBadge: { alignItems:'center' },
-  restockNeed: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#e67e22' },
+  restockNeed: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#b85c00' },
   restockSub:  { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(26,58,107,0.45)' },
-  restockOk:   { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#27ae60' },
+  restockOk:   { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a7a45' },
 
   // Footer totals row
   tfooter: {
@@ -882,14 +860,27 @@ const inv2 = StyleSheet.create({
     borderRadius:6, marginTop:4,
     borderTopWidth:1.5, borderColor:'rgba(26,58,107,0.18)',
   },
-  tfootLbl: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(26,58,107,0.55)', letterSpacing:1 },
-  tfootVal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b', textAlign:'right' },
+  tfootLbl: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b', letterSpacing:0.5 },
+  tfootVal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b', textAlign:'center', letterSpacing:0.2 },
 });
 
 // ─── ORDER HISTORY — Date-grouped Transaction Log ────────────────────────────
 const OrderHistoryScreen = ({ orders }) => {
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
+  const todayCal = new Date();
+  const [calMonth, setCalMonth] = useState(todayCal.getMonth());
+  const [calYear,  setCalYear]  = useState(todayCal.getFullYear());
+  const HST_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const HST_DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const calDays = (() => {
+    const first = new Date(calYear, calMonth, 1).getDay();
+    const dim = new Date(calYear, calMonth + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < first; i++) cells.push(null);
+    for (let d = 1; d <= dim; d++) cells.push(d);
+    return cells;
+  })();
 
   const parseOrderDate = (timeStr) => {
     if (!timeStr) return null;
@@ -942,54 +933,57 @@ const OrderHistoryScreen = ({ orders }) => {
   const displayOrders = selectedGroup?.orders || [];
   const dayTotal = displayOrders.reduce((s,o)=>s+Number(o.total),0);
 
-  // Other dates for dropdown (exclude selected)
-  const otherDates = grouped.filter(g=>g.key!==selectedDate);
-
   return (
-    <View style={sub.root}>
+    <View style={[sub.root, { position:'relative' }]}>
 
-      {/* ── Header row: date label + dropdown trigger ── */}
-      <View style={hst.topBar}>
-        <View style={{flex:1, minWidth:0}}>
-          <Text style={hst.txHeaderDate}>{formatLabel(selectedDate)}</Text>
-          <Text style={hst.txHeaderSub}>
-            {displayOrders.length} transaction{displayOrders.length!==1?'s':''}
-            {'  ·  '}Total: <Text style={{color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}}>₱{dayTotal.toFixed(2)}</Text>
-          </Text>
-        </View>
-        {/* Dropdown button */}
-        {grouped.length > 1 && (
-          <TouchableOpacity style={hst.dropBtn} onPress={()=>setDropdownOpen(o=>!o)} activeOpacity={0.80}>
-            <MaterialIcons name="calendar-today" size={13} color="#1a3a6b"/>
-            <Text style={hst.dropBtnTxt}>Other Dates</Text>
-            <MaterialIcons name={dropdownOpen?'keyboard-arrow-up':'keyboard-arrow-down'} size={14} color="#1a3a6b"/>
-          </TouchableOpacity>
-        )}
+      {/* Header: calendar date picker */}
+      <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginBottom:6 }}>
+        <TouchableOpacity style={hst.calTrigger} onPress={() => setShowCalendar(p => !p)} activeOpacity={0.80}>
+          <Text style={hst.calTriggerTxt}>{formatLabel(selectedDate)}</Text>
+          <Text style={hst.calTriggerCaret}>{showCalendar ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+        <Text style={hst.txHeaderSub}>
+          {displayOrders.length} order{displayOrders.length!==1?'s':''}
+          {'  ·  '}<Text style={{color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}}>₱{dayTotal.toFixed(2)}</Text>
+        </Text>
       </View>
-
-      {/* ── Dropdown list ── */}
-      {dropdownOpen && (
-        <View style={hst.dropdown}>
-          <ScrollView style={{maxHeight:180}} showsVerticalScrollIndicator={false}>
-            {otherDates.map(g=>{
-              const gTotal = g.orders.reduce((s,o)=>s+Number(o.total),0);
+      {showCalendar && (
+        <View style={hst.calCard}>
+          <View style={inv2.calNav}>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={() => {
+              if (calMonth === 0) { setCalMonth(11); setCalYear(y => y-1); }
+              else setCalMonth(m => m-1);
+            }}><Text style={inv2.calNavTxt}>{'<'}</Text></TouchableOpacity>
+            <Text style={inv2.calMonthLbl}>{HST_MONTHS[calMonth]} {calYear}</Text>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={() => {
+              if (calMonth === 11) { setCalMonth(0); setCalYear(y => y+1); }
+              else setCalMonth(m => m+1);
+            }}><Text style={inv2.calNavTxt}>{'>'}</Text></TouchableOpacity>
+          </View>
+          <View style={inv2.calDaysRow}>
+            {HST_DAYS.map(d => <Text key={d} style={inv2.calDayHdr}>{d}</Text>)}
+          </View>
+          <View style={inv2.calGrid}>
+            {calDays.map((day, idx) => {
+              if (!day) return <View key={'e'+idx} style={inv2.calCell}/>;
+              const dk = calYear + '-' + String(calMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+              const isSel = dk === selectedDate;
+              const isToday = dk === todayKey;
+              const hasOrders = grouped.some(g => g.key === dk);
               return (
-                <TouchableOpacity key={g.key} style={hst.dropItem}
-                  onPress={()=>{setSelectedDate(g.key);setDropdownOpen(false);}}
-                  activeOpacity={0.75}>
-                  <View style={{flex:1,minWidth:0}}>
-                    <Text style={hst.dropItemLabel}>{formatLabel(g.key)}</Text>
-                    <Text style={hst.dropItemSub}>{g.orders.length} order{g.orders.length!==1?'s':''}</Text>
-                  </View>
-                  <Text style={hst.dropItemTotal}>₱{gTotal.toFixed(0)}</Text>
+                <TouchableOpacity key={idx}
+                  style={[inv2.calCell, isSel && inv2.calCellSel, isToday && !isSel && inv2.calCellToday, !hasOrders && { opacity:0.30 }]}
+                  onPress={() => { if (hasOrders) { setSelectedDate(dk); setShowCalendar(false); } }}
+                  activeOpacity={hasOrders ? 0.75 : 1}
+                >
+                  <Text style={[inv2.calCellTxt, isSel && inv2.calCellTxtSel]}>{day}</Text>
+                  {hasOrders && !isSel && <View style={hst.calDot}/>}
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
         </View>
-      )}
-
-      <View style={{height:1,backgroundColor:'rgba(1,31,75,0.10)',marginVertical:8}}/>
+      )}      <View style={{height:1,backgroundColor:'rgba(1,31,75,0.10)',marginVertical:8}}/>
 
       {/* ── Transaction timeline ── */}
       {displayOrders.length === 0
@@ -1051,96 +1045,330 @@ const EmployeeCreditsScreen = () => (
 );
 
 // ─── SALES REPORT ─────────────────────────────────────────────────────────────
-const SalesReportScreen = ({ orders }) => {
+const SalesReportScreen = ({ orders, items }) => {
   const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState(currentYear);
-  const years = Array.from({length:5},(_,i)=>currentYear-i);
+  const [year,         setYear]         = useState(currentYear);
+  const [yearDropdown, setYearDropdown] = useState(false);
+  const [activeMonth,  setActiveMonth]  = useState(new Date().getMonth());
+  const [expandedTxDate,  setExpandedTxDate]  = useState(null);
+  const [expandedInvDate, setExpandedInvDate] = useState(null);
+
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  const doneOrders = orders.filter(o=>o.status==='done');
-  const totalSales = doneOrders.reduce((s,o)=>s+Number(o.total),0);
-  const cashTotal  = doneOrders.filter(o=>o.payment==='cash').reduce((s,o)=>s+Number(o.total),0);
+  // Year list — 2025 up to current year, extendable
+  const startYear = 2025;
+  const years = Array.from({ length: currentYear - startYear + 1 }, (_, i) => startYear + i);
 
-  const getMonthOrders = (monthIdx) => doneOrders.filter(o=>{
-    if(!o.time) return false;
-    try { const d=new Date(o.time); return !isNaN(d.getTime())&&d.getFullYear()===year&&d.getMonth()===monthIdx; } catch{ return false; }
+  // Parse order date
+  const parseDate = (timeStr) => {
+    if (!timeStr) return null;
+    try {
+      const d = new Date(timeStr);
+      return isNaN(d.getTime()) ? null : d;
+    } catch { return null; }
+  };
+
+  const fmtDateKey = (d) =>
+    String(d.getMonth()+1).padStart(2,'0') + '-' +
+    String(d.getDate()).padStart(2,'0') + '-' +
+    d.getFullYear();
+
+  // All done orders for selected year + month
+  const monthOrders = orders.filter(o => {
+    const d = parseDate(o.time);
+    return d && d.getFullYear() === year && d.getMonth() === activeMonth;
   });
 
-  const monthlyTotals = MONTHS.map((_,i)=>getMonthOrders(i).reduce((s,o)=>s+Number(o.total),0));
-  const maxMonth = Math.max(...monthlyTotals, 1);
+  // Group by day — Transaction History
+  const txByDay = React.useMemo(() => {
+    const map = {};
+    monthOrders.forEach(o => {
+      const d = parseDate(o.time);
+      if (!d) return;
+      const k = fmtDateKey(d);
+      if (!map[k]) map[k] = { key: k, orders: [] };
+      map[k].orders.push(o);
+    });
+    return Object.values(map).sort((a, b) => a.key.localeCompare(b.key));
+  }, [monthOrders.length, activeMonth, year]);
 
-  const itemMap={};
-  doneOrders.forEach(o=>(o.items||[]).forEach(i=>{const nm=i.item?.name||i.name||'Item';itemMap[nm]=(itemMap[nm]||0)+i.qty;}));
-  const topItems=Object.entries(itemMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  // Inventory snapshot per day (use items for stock data)
+  const invByDay = React.useMemo(() => {
+    // Use same dates as transaction history (days that have activity)
+    return txByDay.map(g => {
+      const totalStock = (items || []).reduce((s, i) => s + (i.stock || 0), 0);
+      const totalValue = (items || []).reduce((s, i) => s + (i.price || 0) * (i.stock || 0), 0);
+      return { key: g.key, totalStock, totalValue };
+    });
+  }, [txByDay, items]);
+
+  // Print transaction history for a specific day
+  const printTxDay = (dayGroup) => {
+    if (typeof window === 'undefined') return;
+    const total = dayGroup.orders.reduce((s, o) => s + Number(o.total), 0);
+    const rows = dayGroup.orders.map((o, i) => {
+      const items = (o.items || []).map(it => (it.item?.name || it.name || 'Item') + ' x' + it.qty).join(', ');
+      return '<tr><td>' + (i+1) + '</td><td>#' + (o.orderNo||o.id) + '</td><td>' + (o.time||'') + '</td><td>' + items + '</td><td>&#8369;' + Number(o.total).toFixed(2) + '</td></tr>';
+    }).join('');
+    const html = '<html><head><title>Transaction Report ' + dayGroup.key + '</title>'
+      + '<style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style>'
+      + '</head><body><h2>Transaction History Report</h2><p><b>Date:</b> ' + dayGroup.key + ' &nbsp;|&nbsp; <b>Total Orders:</b> ' + dayGroup.orders.length + ' &nbsp;|&nbsp; <b>Total Earnings:</b> &#8369;' + total.toFixed(2) + '</p>'
+      + '<table><thead><tr><th>#</th><th>Order No</th><th>Time</th><th>Items</th><th>Amount</th></tr></thead><tbody>' + rows + '</tbody>'
+      + '<tfoot><tr><td colspan="4">TOTAL</td><td>&#8369;' + total.toFixed(2) + '</td></tr></tfoot></table></body></html>';
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 400);
+  };
+
+  // Print inventory for a specific day
+  const printInvDay = (invDay) => {
+    if (typeof window === 'undefined') return;
+    const rows = (items || []).map(it =>
+      '<tr><td>' + (it.emoji||'') + ' ' + (it.name||'') + '</td><td>' + (it.cat||'') + '</td><td>' + (it.stock||0) + '</td><td>&#8369;' + (it.price||0).toLocaleString() + '</td><td>&#8369;' + ((it.price||0)*(it.stock||0)).toLocaleString() + '</td></tr>'
+    ).join('');
+    const totalStock = (items||[]).reduce((s,i)=>s+(i.stock||0),0);
+    const totalValue = (items||[]).reduce((s,i)=>s+(i.price||0)*(i.stock||0),0);
+    const html = '<html><head><title>Inventory Report ' + invDay.key + '</title>'
+      + '<style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style>'
+      + '</head><body><h2>Inventory Report</h2><p><b>Date:</b> ' + invDay.key + ' &nbsp;|&nbsp; <b>Total Stock:</b> ' + invDay.totalStock + ' &nbsp;|&nbsp; <b>Total Value:</b> &#8369;' + invDay.totalValue.toLocaleString() + '</p>'
+      + '<table><thead><tr><th>Item</th><th>Category</th><th>Stock</th><th>Price</th><th>Value</th></tr></thead><tbody>' + rows + '</tbody>'
+      + '<tfoot><tr><td colspan="2">TOTAL</td><td>' + totalStock + '</td><td></td><td>&#8369;' + totalValue.toLocaleString() + '</td></tr></tfoot></table></body></html>';
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 400);
+  };
 
   return (
     <View style={sub.root}>
-      <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:10}}>
-        <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:11,color:'rgba(1,31,75,0.55)',letterSpacing:1}}>YEAR :</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:6}} style={{flexGrow:0}}>
-          {years.map(y=>(
-            <TouchableOpacity key={y} style={[sub.filterBtn,year===y&&sub.filterBtnActive]} onPress={()=>setYear(y)}>
-              <Text style={[sub.filterTxt,year===y&&sub.filterTxtActive]}>{y}</Text>
+      <WebScrollView contentContainerStyle={{ gap:0, paddingBottom:20 }}>
+
+        {/* ── Year selector ── */}
+        <View style={{ alignItems:'center', marginBottom:14 }}>
+          <TouchableOpacity
+            style={rpt.yearBtn}
+            onPress={() => setYearDropdown(p => !p)}
+            activeOpacity={0.80}
+          >
+            <Text style={rpt.yearTxt}>YEAR  {year}</Text>
+            <Text style={rpt.yearCaret}>{yearDropdown ? '\u25b2' : '\u25bc'}</Text>
+          </TouchableOpacity>
+          {yearDropdown && (
+            <View style={rpt.yearMenu}>
+              {years.map(y => (
+                <TouchableOpacity key={y} style={[rpt.yearOpt, y === year && rpt.yearOptActive]}
+                  onPress={() => { setYear(y); setYearDropdown(false); }}>
+                  <Text style={[rpt.yearOptTxt, y === year && rpt.yearOptTxtActive]}>{y}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* ── Month tabs ── */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap:6, paddingHorizontal:2, paddingBottom:4 }}
+          style={{ flexGrow:0, marginBottom:16 }}>
+          {MONTHS.map((m, i) => (
+            <TouchableOpacity key={m}
+              style={[rpt.monthBtn, activeMonth === i && rpt.monthBtnActive]}
+              onPress={() => { setActiveMonth(i); setExpandedTxDate(null); setExpandedInvDate(null); }}>
+              <Text style={[rpt.monthTxt, activeMonth === i && rpt.monthTxtActive]}>{m}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{flexGrow:0,marginBottom:12}} contentContainerStyle={{gap:8,paddingVertical:2}}>
-        {[{l:'Total Sales',v:`₱${totalSales.toFixed(2)}`,c:'#27ae60'},{l:'Orders Done',v:doneOrders.length,c:'#1a3a6b'},{l:'Cash',v:`₱${cashTotal.toFixed(2)}`,c:'#c9a84c'}].map(s=>(
-          <View key={s.l} style={sub.statCard}><Text style={[sub.statVal,{color:s.c,fontSize:12}]}>{s.v}</Text><Text style={sub.statLbl}>{s.l}</Text></View>
-        ))}
-      </ScrollView>
-      <WebScrollView contentContainerStyle={{padding:0}}>
-        <Text style={sub.sectionTitle2}>📅 Monthly Earnings — {year}</Text>
-        <View style={{flexDirection:'row',gap:4,alignItems:'flex-end',height:90,marginBottom:16,paddingHorizontal:4}}>
-          {MONTHS.map((m,i)=>{
-            const val=monthlyTotals[i];
-            const barH=val>0?Math.max(8,(val/maxMonth)*72):4;
-            return(
-              <View key={m} style={{flex:1,alignItems:'center',gap:2}}>
-                <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:6,color:val>0?'#1a3a6b':'transparent'}}>
-                  {val>0?`₱${val>=1000?`${(val/1000).toFixed(1)}k`:val.toFixed(0)}`:''}
-                </Text>
-                <View style={{width:'100%',height:barH,backgroundColor:val>0?'#1a3a6b':'rgba(1,31,75,0.12)',borderRadius:3}}/>
-                <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:6,color:'rgba(1,31,75,0.50)'}}>{m}</Text>
-              </View>
-            );
-          })}
-        </View>
-        <Text style={sub.sectionTitle2}>📋 Monthly Breakdown</Text>
-        <View style={sub.tableHead}>
-          <Text style={[sub.thCell,{flex:1.2}]}>MONTH</Text>
-          <Text style={sub.thCell}>ORDERS</Text>
-          <Text style={[sub.thCell,{textAlign:'right',flex:1.5}]}>TOTAL EARNINGS</Text>
-        </View>
-        {MONTHS.map((m,i)=>{
-          const mo=getMonthOrders(i);
-          const tot=mo.reduce((s,o)=>s+Number(o.total),0);
-          return(
-            <View key={m} style={[sub.tableRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.35)'}]}>
-              <Text style={[sub.tdCell,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b'}]}>{m} {year}</Text>
-              <Text style={sub.tdCell}>{mo.length}</Text>
-              <Text style={[sub.tdCell,{textAlign:'right',flex:1.5,fontFamily:'GoogleSans_700Bold',color:tot>0?'#c9a84c':'rgba(1,31,75,0.30)'}]}>₱{tot.toFixed(2)}</Text>
+
+        {/* ── Transaction History Report ── */}
+        <View style={rpt.section}>
+          <Text style={rpt.sectionTitle}>Transaction History Reports</Text>
+          {/* Table header */}
+          <View style={rpt.thead}>
+            <Text style={[rpt.th, { flex:1.2 }]}>DATE</Text>
+            <Text style={[rpt.th, { flex:0.8, textAlign:'center' }]}>TOTAL ORDERS</Text>
+            <Text style={[rpt.th, { flex:1.0, textAlign:'center' }]}>TOTAL EARNINGS</Text>
+            <Text style={[rpt.th, { flex:0.5, textAlign:'center' }]}>PRINT</Text>
+          </View>
+          {txByDay.length === 0 ? (
+            <View style={rpt.emptyRow}>
+              <Text style={rpt.emptyTxt}>No transactions for {MONTHS[activeMonth]} {year}</Text>
             </View>
-          );
-        })}
-        {topItems.length>0&&<>
-          <Text style={[sub.sectionTitle2,{marginTop:16}]}>🏆 Top Selling Items</Text>
-          {topItems.map(([name,qty],i)=>(
-            <View key={name} style={sub.topItemRow}>
-              <Text style={sub.topItemRank}>#{i+1}</Text>
-              <Text style={[sub.topItemName,{flex:1}]} numberOfLines={1}>{name}</Text>
-              <View style={[sub.topItemBar,{width:`${Math.min(100,(qty/topItems[0][1])*100)}%`}]}/>
-              <Text style={sub.topItemQty}>{qty} sold</Text>
+          ) : (
+            txByDay.map((g, idx) => {
+              const total = g.orders.reduce((s, o) => s + Number(o.total), 0);
+              const isOpen = expandedTxDate === g.key;
+              return (
+                <View key={g.key}>
+                  <TouchableOpacity
+                    style={[rpt.trow, idx % 2 === 0 && rpt.trowAlt]}
+                    onPress={() => setExpandedTxDate(isOpen ? null : g.key)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[rpt.td, { flex:1.2, fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' }]}>{g.key}</Text>
+                    <Text style={[rpt.td, { flex:0.8, textAlign:'center' }]}>{g.orders.length}</Text>
+                    <Text style={[rpt.td, { flex:1.0, textAlign:'center', fontFamily:'GoogleSans_700Bold', color:'#1a7a45' }]}>
+                      {'\u20b1'}{total.toFixed(2)}
+                    </Text>
+                    <TouchableOpacity style={rpt.printBtn} onPress={() => printTxDay(g)}>
+                      <Text style={rpt.printBtnTxt}>Print</Text>
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                  {isOpen && (
+                    <View style={rpt.expandPanel}>
+                      <View style={rpt.expandHead}>
+                        <Text style={[rpt.expandTh, { flex:0.4 }]}>#</Text>
+                        <Text style={[rpt.expandTh, { flex:0.8 }]}>ORDER NO</Text>
+                        <Text style={[rpt.expandTh, { flex:1.8 }]}>ITEMS</Text>
+                        <Text style={[rpt.expandTh, { flex:0.8, textAlign:'right' }]}>AMOUNT</Text>
+                      </View>
+                      {g.orders.map((o, i) => {
+                        const itms = (o.items||[]).map(it => (it.item?.name||it.name||'Item') + ' x' + it.qty).join(', ');
+                        return (
+                          <View key={o.id} style={[rpt.expandRow, i%2===0 && { backgroundColor:'rgba(255,255,255,0.30)' }]}>
+                            <Text style={[rpt.expandTd, { flex:0.4 }]}>{i+1}</Text>
+                            <Text style={[rpt.expandTd, { flex:0.8, fontFamily:'GoogleSans_700Bold' }]}>#{o.orderNo||o.id}</Text>
+                            <Text style={[rpt.expandTd, { flex:1.8 }]} numberOfLines={2}>{itms}</Text>
+                            <Text style={[rpt.expandTd, { flex:0.8, textAlign:'right', color:'#c9a84c', fontFamily:'GoogleSans_700Bold' }]}>
+                              {'\u20b1'}{Number(o.total).toFixed(2)}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        {/* ── Inventory Report ── */}
+        <View style={[rpt.section, { marginTop:16 }]}>
+          <Text style={rpt.sectionTitle}>Inventory Reports</Text>
+          <View style={rpt.thead}>
+            <Text style={[rpt.th, { flex:1.2 }]}>DATE</Text>
+            <Text style={[rpt.th, { flex:0.8, textAlign:'center' }]}>TOTAL STOCK</Text>
+            <Text style={[rpt.th, { flex:1.0, textAlign:'center' }]}>TOTAL VALUE</Text>
+            <Text style={[rpt.th, { flex:0.5, textAlign:'center' }]}>PRINT</Text>
+          </View>
+          {invByDay.length === 0 ? (
+            <View style={rpt.emptyRow}>
+              <Text style={rpt.emptyTxt}>No inventory data for {MONTHS[activeMonth]} {year}</Text>
             </View>
-          ))}
-        </>}
+          ) : (
+            invByDay.map((g, idx) => {
+              const isOpen = expandedInvDate === g.key;
+              return (
+                <View key={g.key}>
+                  <TouchableOpacity
+                    style={[rpt.trow, idx % 2 === 0 && rpt.trowAlt]}
+                    onPress={() => setExpandedInvDate(isOpen ? null : g.key)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[rpt.td, { flex:1.2, fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' }]}>{g.key}</Text>
+                    <Text style={[rpt.td, { flex:0.8, textAlign:'center' }]}>{g.totalStock}</Text>
+                    <Text style={[rpt.td, { flex:1.0, textAlign:'center', fontFamily:'GoogleSans_700Bold', color:'#1a7a45' }]}>
+                      {'\u20b1'}{g.totalValue.toLocaleString()}
+                    </Text>
+                    <TouchableOpacity style={rpt.printBtn} onPress={() => printInvDay(g)}>
+                      <Text style={rpt.printBtnTxt}>Print</Text>
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                  {isOpen && (
+                    <View style={rpt.expandPanel}>
+                      <View style={rpt.expandHead}>
+                        <Text style={[rpt.expandTh, { flex:2 }]}>ITEM</Text>
+                        <Text style={[rpt.expandTh, { flex:1 }]}>CATEGORY</Text>
+                        <Text style={[rpt.expandTh, { flex:0.6, textAlign:'center' }]}>STOCK</Text>
+                        <Text style={[rpt.expandTh, { flex:0.8, textAlign:'right' }]}>VALUE</Text>
+                      </View>
+                      {(items||[]).map((it, i) => (
+                        <View key={it.id} style={[rpt.expandRow, i%2===0 && { backgroundColor:'rgba(255,255,255,0.30)' }]}>
+                          <Text style={[rpt.expandTd, { flex:2, fontFamily:'GoogleSans_700Bold' }]} numberOfLines={1}>{it.emoji} {it.name}</Text>
+                          <Text style={[rpt.expandTd, { flex:1 }]} numberOfLines={1}>{it.cat}</Text>
+                          <Text style={[rpt.expandTd, { flex:0.6, textAlign:'center' }]}>{it.stock}</Text>
+                          <Text style={[rpt.expandTd, { flex:0.8, textAlign:'right', color:'#c9a84c', fontFamily:'GoogleSans_700Bold' }]}>
+                            {'\u20b1'}{((it.price||0)*(it.stock||0)).toLocaleString()}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        {/* ── Credits Report ── */}
+        <View style={[rpt.section, { marginTop:16 }]}>
+          <Text style={rpt.sectionTitle}>Credits Reports</Text>
+          <View style={rpt.comingSoon}>
+            <Text style={rpt.comingSoonEmoji}>🚧</Text>
+            <Text style={rpt.comingSoonTxt}>Coming Soon</Text>
+            <Text style={rpt.comingSoonSub}>Credits reporting will be available in a future update.</Text>
+          </View>
+        </View>
+
       </WebScrollView>
     </View>
   );
 };
 
-// ─── SHARED SUB-SCREEN STYLES ─────────────────────────────────────────────────
+const rpt = StyleSheet.create({
+  yearBtn: {
+    flexDirection:'row', alignItems:'center', gap:10,
+    paddingVertical:10, paddingHorizontal:28,
+    backgroundColor:'rgba(26,58,107,0.12)', borderRadius:12,
+    borderWidth:1.5, borderColor:'rgba(26,58,107,0.20)',
+  },
+  yearTxt:  { fontFamily:'GoogleSans_700Bold', fontSize:20, color:'#1a3a6b', letterSpacing:1 },
+  yearCaret:{ fontSize:12, color:'rgba(26,58,107,0.50)' },
+  yearMenu: {
+    marginTop:4, backgroundColor:'rgba(255,255,255,0.97)',
+    borderRadius:10, borderWidth:1, borderColor:'rgba(26,58,107,0.18)',
+    shadowColor:'#000', shadowOpacity:0.12, shadowRadius:8, elevation:10,
+    minWidth:120, zIndex:99,
+  },
+  yearOpt:       { paddingVertical:10, paddingHorizontal:20, alignItems:'center' },
+  yearOptActive: { backgroundColor:'rgba(26,58,107,0.08)' },
+  yearOptTxt:    { fontFamily:'GoogleSans_400Regular', fontSize:14, color:'#1a3a6b' },
+  yearOptTxtActive:{ fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
+
+  monthBtn:       { paddingHorizontal:14, paddingVertical:7, borderRadius:20, backgroundColor:'rgba(255,255,255,0.40)', borderWidth:1, borderColor:'rgba(255,255,255,0.60)' },
+  monthBtnActive: { backgroundColor:'#1a3a6b', borderColor:'#c9a84c' },
+  monthTxt:       { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.60)' },
+  monthTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#fff' },
+
+  section: { backgroundColor:'rgba(255,255,255,0.22)', borderRadius:12, borderWidth:1, borderColor:'rgba(255,255,255,0.45)', overflow:'hidden' },
+  sectionTitle: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b', letterSpacing:0.5, padding:12, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.10)', backgroundColor:'rgba(26,58,107,0.06)' },
+
+  thead: { flexDirection:'row', alignItems:'center', paddingVertical:8, paddingHorizontal:12, backgroundColor:'rgba(26,58,107,0.12)' },
+  th:    { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.60)', letterSpacing:0.8, textTransform:'uppercase', flex:1 },
+
+  trow:    { flexDirection:'row', alignItems:'center', paddingVertical:10, paddingHorizontal:12, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.06)' },
+  trowAlt: { backgroundColor:'rgba(255,255,255,0.35)' },
+  td:      { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#1a2d4e', flex:1 },
+
+  printBtn:    { flex:0.5, alignItems:'center', backgroundColor:'#1a3a6b', borderRadius:6, paddingVertical:5, paddingHorizontal:8 },
+  printBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'#fff', letterSpacing:0.3 },
+
+  expandPanel: { backgroundColor:'rgba(26,58,107,0.04)', borderBottomWidth:1, borderColor:'rgba(26,58,107,0.10)' },
+  expandHead:  { flexDirection:'row', paddingVertical:6, paddingHorizontal:20, backgroundColor:'rgba(26,58,107,0.08)' },
+  expandTh:    { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'rgba(26,58,107,0.50)', letterSpacing:0.5, textTransform:'uppercase', flex:1 },
+  expandRow:   { flexDirection:'row', paddingVertical:7, paddingHorizontal:20, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.04)' },
+  expandTd:    { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'#1a2d4e', flex:1 },
+
+  emptyRow: { paddingVertical:20, alignItems:'center' },
+  emptyTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.40)' },
+
+  comingSoon:    { alignItems:'center', paddingVertical:32, gap:8 },
+  comingSoonEmoji:{ fontSize:32 },
+  comingSoonTxt: { fontFamily:'GoogleSans_700Bold', fontSize:16, color:'rgba(1,31,75,0.40)' },
+  comingSoonSub: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.35)', textAlign:'center', paddingHorizontal:20 },
+});
+
+
 const sub = StyleSheet.create({
   root: { flex:1, padding:14, overflow:'hidden', minHeight:0 },
   emptyBox: { flex:1, alignItems:'center', justifyContent:'center', gap:10, paddingTop:60 },
@@ -1183,6 +1411,11 @@ const sub = StyleSheet.create({
 
 // ─── HISTORY STYLES ───────────────────────────────────────────────────────────
 const hst = StyleSheet.create({
+  calTrigger: { flexDirection:'row', alignItems:'center', gap:6, paddingVertical:6, paddingHorizontal:12, backgroundColor:'rgba(26,58,107,0.10)', borderRadius:8, borderWidth:1, borderColor:'rgba(26,58,107,0.15)', alignSelf:'flex-start' },
+  calTriggerTxt: { fontFamily:'NotoSerif_700Bold', fontSize:12, color:'#1a3a6b' },
+  calTriggerCaret: { fontSize:10, color:'rgba(26,58,107,0.50)' },
+  calCard: { position:'absolute', top:38, left:0, zIndex:999, backgroundColor:'rgba(255,255,255,0.98)', borderRadius:10, borderWidth:1, borderColor:'rgba(26,58,107,0.18)', padding:8, shadowColor:'#000', shadowOpacity:0.18, shadowRadius:12, elevation:20, minWidth:220, maxWidth:260 },
+  calDot: { width:4, height:4, borderRadius:2, backgroundColor:'#1a3a6b', position:'absolute', bottom:2, alignSelf:'center' },
   topBar: { flexDirection:'row', alignItems:'flex-start', gap:10, marginBottom:4 },
   txHeaderDate: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:'#1a3a6b' },
   txHeaderSub: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:2 },
@@ -1381,6 +1614,7 @@ export default function ManageCanteenScreen({ navigation }) {
   const [editItemModal,  setEditItemModal]  = useState(false);
   const [editAd,         setEditAd]         = useState(null);
   const [editAdModal,    setEditAdModal]    = useState(false);
+  const [invMaxQty,      setInvMaxQty]      = useState({});
   const [adCurrent,      setAdCurrent]      = useState(0);
 
   const hdrFade    = useRef(new Animated.Value(0)).current;
@@ -1430,12 +1664,22 @@ export default function ManageCanteenScreen({ navigation }) {
 
   const openAddItem  = ()=>{setEditItem(emptyItem());setEditItemModal(true);};
   const openEditItem = (item)=>{setEditItem({...item,price:String(item.price),stock:String(item.stock)});setEditItemModal(true);};
-  const handleSaveItem   = (updated)=>{saveItem(updated);setEditItemModal(false);};
-  const handleDeleteItem = (id)=>{
-    Alert.alert('Delete Item','Are you sure?',[
-      {text:'Cancel',style:'cancel'},
-      {text:'Delete',style:'destructive',onPress:()=>deleteItem(id)},
-    ]);
+  const handleSaveItem = (updated) => {
+    saveItem(updated);
+    if (updated.maxQty !== undefined) setInvMaxQty(p => ({ ...p, [updated.id]: updated.maxQty }));
+    setEditItemModal(false);
+  };
+  const handleDeleteItem = (id) => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete this item? This cannot be undone.')) {
+        deleteItem(id);
+      }
+    } else {
+      Alert.alert('Delete Item', 'Are you sure?', [
+        { text:'Cancel', style:'cancel' },
+        { text:'Delete', style:'destructive', onPress: () => deleteItem(id) },
+      ]);
+    }
   };
 
   const handleSaveAd = (updated)=>{
@@ -1457,10 +1701,10 @@ export default function ManageCanteenScreen({ navigation }) {
   const renderContent = ()=>{
     if(activeTab==='cashier')   return <CashierScreen items={items} categories={categories} addOrder={addOrder} deductStock={deductStock}/>;
     if(activeTab==='menu')      return <ManageMenuScreen items={items} categories={categories} filtered={filtered} search={search} activeCategory={activeCategory} onSearch={handleSearch} onCategoryChange={setActiveCategory} onAddItem={openAddItem} onEditItem={openEditItem} onDeleteItem={handleDeleteItem}/>;
-    if(activeTab==='inventory') return <InventoryScreen items={items}/>;
+    if(activeTab==='inventory') return <InventoryScreen items={items} maxQtyMap={invMaxQty} onAddItem={openAddItem} onEditItem={openEditItem}/>;
     if(activeTab==='history')   return <OrderHistoryScreen orders={orders}/>;
     if(activeTab==='credits')   return <EmployeeCreditsScreen/>;
-    if(activeTab==='report')    return <SalesReportScreen orders={orders}/>;
+    if(activeTab==='report')    return <SalesReportScreen orders={orders} items={items}/>;
     return null;
   };
 
