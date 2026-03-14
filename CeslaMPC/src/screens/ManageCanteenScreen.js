@@ -580,52 +580,311 @@ const mm = StyleSheet.create({
 
 // ─── INVENTORY SCREEN ─────────────────────────────────────────────────────────
 const InventoryScreen = ({ items }) => {
-  const [sort,setSort] = useState('name');
-  const totalValue = items.reduce((s,i)=>s+i.price*i.stock,0);
-  const sorted = [...items].sort((a,b)=>{
-    if(sort==='name')  return a.name.localeCompare(b.name);
-    if(sort==='price') return b.price-a.price;
-    if(sort==='stock') return b.stock-a.stock;
-    if(sort==='value') return (b.price*b.stock)-(a.price*a.stock);
-    return 0;
-  });
+  const today = new Date();
+
+  // ── Date label formatting ─────────────────────────────────────────────────
+  const formatDateLabel = (d) => {
+    const now = new Date();
+    const todayKey = now.toDateString();
+    const yestKey  = new Date(now - 86400000).toDateString();
+    const opts = { month: 'long', day: 'numeric', year: 'numeric' };
+    if (d.toDateString() === todayKey) return "Today's Stocks, " + d.toLocaleDateString('en-PH', opts);
+    if (d.toDateString() === yestKey)  return "Yesterday's Stocks, " + d.toLocaleDateString('en-PH', opts);
+    return "Stocks — " + d.toLocaleDateString('en-PH', opts);
+  };
+
+  // ── Calendar date picker state ─────────────────────────────────────────────
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Build calendar grid for selected month
+  const [calMonth, setCalMonth] = useState(today.getMonth());
+  const [calYear,  setCalYear]  = useState(today.getFullYear());
+
+  const calDays = (() => {
+    const first = new Date(calYear, calMonth, 1).getDay();
+    const days  = new Date(calYear, calMonth + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < first; i++) cells.push(null);
+    for (let d = 1; d <= days; d++) cells.push(d);
+    return cells;
+  })();
+
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+  // ── Unit of Measure per item (editable) ───────────────────────────────────
+  const [units, setUnits] = useState({});
+  const getUnit = (id) => units[id] || 'pcs';
+  const UNIT_OPTIONS = ['pcs','kilo','case','pack','box','dozen','liter','bag'];
+  const [unitDropdown, setUnitDropdown] = useState(null);
+
+  // ── Max QTY per item (editable) ────────────────────────────────────────────
+  const [maxQty, setMaxQty] = useState({});
+  const getMax = (id) => maxQty[id] !== undefined ? maxQty[id] : 50;
+
+  // ── Totals ────────────────────────────────────────────────────────────────
+  const overallPrice = items.reduce((s, i) => s + i.price, 0);
+  const overallQty   = items.reduce((s, i) => s + i.stock, 0);
+  const grandTotal   = items.reduce((s, i) => s + i.price * i.stock, 0);
+
   return (
-    <View style={sub.root}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{flexGrow:0,marginBottom:8}} contentContainerStyle={{paddingVertical:2}}>
-        <View style={sub.statRow}>
-          {[{l:'Items',v:items.length,c:'#1a3a6b'},{l:'In Stock',v:items.filter(i=>i.stock>0).length,c:'#27ae60'},{l:'Out',v:items.filter(i=>i.stock===0).length,c:'#e74c3c'},{l:'Total Value',v:`₱${totalValue.toLocaleString()}`,c:'#c9a84c'}].map(s=>(
-            <View key={s.l} style={sub.statCard}><Text style={[sub.statVal,{color:s.c,fontSize:s.l==='Total Value'?12:16}]}>{s.v}</Text><Text style={sub.statLbl}>{s.l}</Text></View>
-          ))}
-        </View>
-      </ScrollView>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{flexGrow:0,marginBottom:8}} contentContainerStyle={{gap:6,paddingVertical:2}}>
-        {[{k:'name',l:'Name'},{k:'price',l:'Price'},{k:'stock',l:'Stock'},{k:'value',l:'Value'}].map(s=>(
-          <TouchableOpacity key={s.k} style={[sub.sortChip,sort===s.k&&sub.sortChipActive]} onPress={()=>setSort(s.k)}>
-            <Text style={[sub.sortTxt,sort===s.k&&sub.sortTxtActive]}>Sort: {s.l}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-      <View style={sub.tableHead}>
-        <Text style={[sub.thCell,{flex:2}]}>ITEM</Text>
-        <Text style={sub.thCell}>CAT</Text>
-        <Text style={sub.thCell}>PRICE</Text>
-        <Text style={sub.thCell}>STOCK</Text>
-        <Text style={[sub.thCell,{textAlign:'right'}]}>VALUE</Text>
-      </View>
-      <WebScrollView contentContainerStyle={{gap:0}}>
-        {sorted.map((item,idx)=>(
-          <View key={item.id} style={[sub.tableRow,idx%2===0&&{backgroundColor:'rgba(255,255,255,0.35)'}]}>
-            <Text style={[sub.tdCell,{flex:2,fontFamily:'GoogleSans_700Bold'}]} numberOfLines={1}>{item.emoji} {item.name}</Text>
-            <Text style={sub.tdCell} numberOfLines={1}>{item.cat}</Text>
-            <Text style={sub.tdCell}>₱{item.price}</Text>
-            <Text style={[sub.tdCell,item.stock===0&&{color:'#e74c3c',fontFamily:'GoogleSans_700Bold'},item.stock<=5&&item.stock>0&&{color:'#e67e22',fontFamily:'GoogleSans_700Bold'}]}>{item.stock}</Text>
-            <Text style={[sub.tdCell,{textAlign:'right',fontFamily:'GoogleSans_700Bold',color:'#1a3a6b'}]}>₱{(item.price*item.stock).toLocaleString()}</Text>
+    <View style={{ flex:1, minHeight:0, overflow:'hidden' }}>
+
+      {/* ── Title row ── */}
+      <TouchableOpacity
+        style={inv2.titleRow}
+        onPress={() => setShowDatePicker(p => !p)}
+        activeOpacity={0.80}
+      >
+        <Text style={inv2.titleText}>{formatDateLabel(selectedDate)}</Text>
+        <Text style={inv2.titleCaret}>{showDatePicker ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+
+      {/* ── Calendar dropdown ── */}
+      {showDatePicker && (
+        <View style={inv2.calCard}>
+          {/* Month nav */}
+          <View style={inv2.calNav}>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={() => {
+              if (calMonth === 0) { setCalMonth(11); setCalYear(y => y-1); }
+              else setCalMonth(m => m-1);
+            }}><Text style={inv2.calNavTxt}>‹</Text></TouchableOpacity>
+            <Text style={inv2.calMonthLbl}>{MONTHS[calMonth]} {calYear}</Text>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={() => {
+              if (calMonth === 11) { setCalMonth(0); setCalYear(y => y+1); }
+              else setCalMonth(m => m+1);
+            }}><Text style={inv2.calNavTxt}>›</Text></TouchableOpacity>
           </View>
-        ))}
-      </WebScrollView>
+          {/* Day headers */}
+          <View style={inv2.calDaysRow}>
+            {DAYS.map(d => <Text key={d} style={inv2.calDayHdr}>{d}</Text>)}
+          </View>
+          {/* Date grid */}
+          <View style={inv2.calGrid}>
+            {calDays.map((day, idx) => {
+              if (!day) return <View key={'e'+idx} style={inv2.calCell}/>;
+              const thisDate   = new Date(calYear, calMonth, day);
+              const isSelected = thisDate.toDateString() === selectedDate.toDateString();
+              const isToday    = thisDate.toDateString() === today.toDateString();
+              return (
+                <TouchableOpacity key={idx} style={[inv2.calCell, isSelected && inv2.calCellSel, isToday && !isSelected && inv2.calCellToday]}
+                  onPress={() => { setSelectedDate(new Date(calYear, calMonth, day)); setShowDatePicker(false); }}>
+                  <Text style={[inv2.calCellTxt, isSelected && inv2.calCellTxtSel]}>{day}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
+      {/* ── Table ── */}
+      <View style={inv2.tableWrap}>
+        {/* Header */}
+        <View style={inv2.thead}>
+          <Text style={[inv2.th, inv2.colName]}>ITEM NAME</Text>
+          <Text style={[inv2.th, inv2.colCat]}>CATEGORY</Text>
+          <Text style={[inv2.th, inv2.colUnit]}>UNIT</Text>
+          <Text style={[inv2.th, inv2.colQty]}>QTY</Text>
+          <Text style={[inv2.th, inv2.colMaxQty]}>MAX QTY</Text>
+          <Text style={[inv2.th, inv2.colPrice]}>PRICE</Text>
+          <Text style={[inv2.th, inv2.colValue]}>VALUE</Text>
+          <Text style={[inv2.th, inv2.colRestock]}>RE-STOCK</Text>
+        </View>
+
+        {/* Rows */}
+        <WebScrollView style={{ flex:1 }} contentContainerStyle={{ gap:0 }}>
+          {items.map((item, idx) => {
+            const max     = getMax(item.id);
+            const restock = Math.max(0, max - item.stock);
+            return (
+              <View key={item.id} style={[inv2.trow, idx % 2 === 0 && inv2.trowAlt]}>
+                {/* Item Name */}
+                <View style={[inv2.td, inv2.colName]}>
+                  <Text style={inv2.tdName} numberOfLines={1}>{item.emoji}  {item.name}</Text>
+                </View>
+                {/* Category */}
+                <View style={[inv2.td, inv2.colCat]}>
+                  <Text style={inv2.tdMuted} numberOfLines={1}>{item.cat}</Text>
+                </View>
+                {/* Unit of Measure */}
+                <View style={[inv2.td, inv2.colUnit]}>
+                  <TouchableOpacity
+                    style={inv2.unitChip}
+                    onPress={() => setUnitDropdown(unitDropdown === item.id ? null : item.id)}
+                  >
+                    <Text style={inv2.unitChipTxt}>{getUnit(item.id)}</Text>
+                    <Text style={inv2.unitChipArr}>▾</Text>
+                  </TouchableOpacity>
+                  {unitDropdown === item.id && (
+                    <View style={inv2.unitMenu}>
+                      {UNIT_OPTIONS.map(u => (
+                        <TouchableOpacity key={u} style={[inv2.unitOpt, getUnit(item.id)===u && inv2.unitOptActive]}
+                          onPress={() => { setUnits(p => ({...p,[item.id]:u})); setUnitDropdown(null); }}>
+                          <Text style={[inv2.unitOptTxt, getUnit(item.id)===u && inv2.unitOptTxtActive]}>{u}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+                {/* QTY */}
+                <View style={[inv2.td, inv2.colQty]}>
+                  <Text style={[inv2.tdNum,
+                    item.stock === 0 && { color:'#e74c3c', fontFamily:'GoogleSans_700Bold' },
+                    item.stock <= 5 && item.stock > 0 && { color:'#e67e22', fontFamily:'GoogleSans_700Bold' },
+                  ]}>{item.stock}</Text>
+                </View>
+                {/* Max QTY */}
+                <View style={[inv2.td, inv2.colMaxQty]}>
+                  <TextInput
+                    style={inv2.maxQtyInput}
+                    value={String(getMax(item.id))}
+                    onChangeText={v => setMaxQty(p => ({...p, [item.id]: parseInt(v)||0}))}
+                    keyboardType="numeric"
+                    selectTextOnFocus
+                  />
+                </View>
+                {/* Price */}
+                <View style={[inv2.td, inv2.colPrice]}>
+                  <Text style={inv2.tdNum}>₱{item.price.toLocaleString()}</Text>
+                </View>
+                {/* Value */}
+                <View style={[inv2.td, inv2.colValue]}>
+                  <Text style={[inv2.tdNum, { color:'#1a3a6b', fontFamily:'GoogleSans_700Bold' }]}>
+                    ₱{(item.price * item.stock).toLocaleString()}
+                  </Text>
+                </View>
+                {/* Re-Stock */}
+                <View style={[inv2.td, inv2.colRestock]}>
+                  {restock > 0 ? (
+                    <View style={inv2.restockBadge}>
+                      <Text style={inv2.restockNeed}>Need {restock}</Text>
+                      <Text style={inv2.restockSub}>({item.stock}/{max})</Text>
+                    </View>
+                  ) : (
+                    <Text style={inv2.restockOk}>✓ OK</Text>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+
+          {/* ── Footer totals ── */}
+          <View style={inv2.tfooter}>
+            <View style={[inv2.td, inv2.colName]}>
+              <Text style={inv2.tfootLbl}>TOTALS</Text>
+            </View>
+            <View style={[inv2.td, inv2.colCat]}/>
+            <View style={[inv2.td, inv2.colUnit]}/>
+            <View style={[inv2.td, inv2.colQty]}>
+              <Text style={inv2.tfootVal}>{overallQty}</Text>
+            </View>
+            <View style={[inv2.td, inv2.colMaxQty]}/>
+            <View style={[inv2.td, inv2.colPrice]}>
+              <Text style={inv2.tfootVal}>₱{overallPrice.toLocaleString()}</Text>
+            </View>
+            <View style={[inv2.td, inv2.colValue]}>
+              <Text style={[inv2.tfootVal, { color:'#c9a84c' }]}>₱{grandTotal.toLocaleString()}</Text>
+            </View>
+            <View style={[inv2.td, inv2.colRestock]}/>
+          </View>
+        </WebScrollView>
+      </View>
     </View>
   );
 };
+
+// ── Inventory styles ──────────────────────────────────────────────────────────
+const inv2 = StyleSheet.create({
+  // Title
+  titleRow: {
+    flexDirection:'row', alignItems:'center', justifyContent:'center',
+    gap:8, paddingVertical:10, paddingHorizontal:14,
+    backgroundColor:'rgba(26,58,107,0.10)', borderRadius:10,
+    marginHorizontal:14, marginTop:10, marginBottom:8,
+    borderWidth:1, borderColor:'rgba(26,58,107,0.15)',
+  },
+  titleText: { fontFamily:'NotoSerif_700Bold', fontSize:14, color:'#1a3a6b', textAlign:'center' },
+  titleCaret: { fontSize:10, color:'rgba(26,58,107,0.50)' },
+
+  // Calendar
+  calCard: {
+    marginHorizontal:14, marginBottom:10,
+    backgroundColor:'rgba(255,255,255,0.92)', borderRadius:14,
+    borderWidth:1, borderColor:'rgba(26,58,107,0.18)',
+    padding:12, shadowColor:'#000', shadowOpacity:0.10, shadowRadius:8, elevation:6,
+  },
+  calNav: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:8 },
+  calNavBtn: { width:28, height:28, borderRadius:14, backgroundColor:'rgba(26,58,107,0.08)', justifyContent:'center', alignItems:'center' },
+  calNavTxt: { fontFamily:'GoogleSans_700Bold', fontSize:16, color:'#1a3a6b' },
+  calMonthLbl: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b' },
+  calDaysRow: { flexDirection:'row', marginBottom:4 },
+  calDayHdr: { flex:1, fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(26,58,107,0.45)', textAlign:'center', letterSpacing:0.5 },
+  calGrid: { flexDirection:'row', flexWrap:'wrap' },
+  calCell: { width:'14.28%', aspectRatio:1, justifyContent:'center', alignItems:'center', borderRadius:6 },
+  calCellSel: { backgroundColor:'#1a3a6b' },
+  calCellToday: { backgroundColor:'rgba(201,168,76,0.20)', borderWidth:1, borderColor:'#c9a84c' },
+  calCellTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'#1a3a6b' },
+  calCellTxtSel: { fontFamily:'GoogleSans_700Bold', color:'#fff' },
+
+  // Table layout
+  tableWrap: { flex:1, minHeight:0, marginHorizontal:14, marginBottom:10 },
+  thead: {
+    flexDirection:'row', alignItems:'center',
+    backgroundColor:'rgba(26,58,107,0.14)',
+    borderRadius:8, paddingVertical:9, paddingHorizontal:8,
+    marginBottom:2,
+  },
+  th: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.60)', letterSpacing:0.8, textTransform:'uppercase' },
+  trow: { flexDirection:'row', alignItems:'center', paddingVertical:8, paddingHorizontal:8, borderRadius:6, minHeight:42 },
+  trowAlt: { backgroundColor:'rgba(255,255,255,0.38)' },
+  td: { justifyContent:'center', paddingHorizontal:3 },
+
+  // Column widths — must sum to fit panel
+  colName:    { flex:2.2, minWidth:0 },
+  colCat:     { flex:1.2, minWidth:0 },
+  colUnit:    { flex:1.0, minWidth:0, position:'relative', zIndex:10 },
+  colQty:     { flex:0.7, minWidth:0, alignItems:'center' },
+  colMaxQty:  { flex:0.9, minWidth:0, alignItems:'center' },
+  colPrice:   { flex:1.0, minWidth:0, alignItems:'flex-end' },
+  colValue:   { flex:1.1, minWidth:0, alignItems:'flex-end' },
+  colRestock: { flex:1.2, minWidth:0, alignItems:'center' },
+
+  // Cell text
+  tdName:  { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a2d4e' },
+  tdMuted: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(26,58,107,0.65)' },
+  tdNum:   { fontFamily:'GoogleSans_500Medium', fontSize:11, color:'#1a2d4e', textAlign:'right' },
+
+  // Unit picker
+  unitChip: { flexDirection:'row', alignItems:'center', gap:2, backgroundColor:'rgba(26,58,107,0.08)', borderRadius:6, paddingHorizontal:7, paddingVertical:4, borderWidth:1, borderColor:'rgba(26,58,107,0.15)' },
+  unitChipTxt: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#1a3a6b' },
+  unitChipArr: { fontSize:8, color:'rgba(26,58,107,0.45)' },
+  unitMenu: { position:'absolute', top:26, left:0, backgroundColor:'#fff', borderRadius:8, borderWidth:1, borderColor:'rgba(26,58,107,0.18)', shadowColor:'#000', shadowOpacity:0.14, shadowRadius:8, elevation:12, minWidth:64, zIndex:999 },
+  unitOpt: { paddingVertical:7, paddingHorizontal:10 },
+  unitOptActive: { backgroundColor:'rgba(26,58,107,0.08)' },
+  unitOptTxt: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#1a3a6b' },
+  unitOptTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
+
+  // Max QTY input
+  maxQtyInput: { width:44, textAlign:'center', fontFamily:'GoogleSans_500Medium', fontSize:11, color:'#1a3a6b', backgroundColor:'rgba(255,255,255,0.80)', borderRadius:6, borderWidth:1, borderColor:'rgba(26,58,107,0.20)', paddingVertical:3, paddingHorizontal:4 },
+
+  // Re-stock badge
+  restockBadge: { alignItems:'center' },
+  restockNeed: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#e67e22' },
+  restockSub:  { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(26,58,107,0.45)' },
+  restockOk:   { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#27ae60' },
+
+  // Footer totals row
+  tfooter: {
+    flexDirection:'row', alignItems:'center',
+    paddingVertical:10, paddingHorizontal:8,
+    backgroundColor:'rgba(26,58,107,0.10)',
+    borderRadius:6, marginTop:4,
+    borderTopWidth:1.5, borderColor:'rgba(26,58,107,0.18)',
+  },
+  tfootLbl: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(26,58,107,0.55)', letterSpacing:1 },
+  tfootVal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b', textAlign:'right' },
+});
 
 // ─── ORDER HISTORY — Date-grouped Transaction Log ────────────────────────────
 const OrderHistoryScreen = ({ orders }) => {
@@ -1129,9 +1388,10 @@ export default function ManageCanteenScreen({ navigation }) {
   const bodyFade   = useRef(new Animated.Value(0)).current;
   const adScrollRef = useRef(null);
 
-  // Context already polls every 2s — no extra polling needed here
   useFocusEffect(useCallback(()=>{
-    reloadFromStorage(); // immediate reload on focus
+    reloadFromStorage();
+    const poll = setInterval(()=>{ reloadFromStorage(); }, 3000);
+    return ()=>clearInterval(poll);
   },[reloadFromStorage]));
 
   useEffect(()=>{
