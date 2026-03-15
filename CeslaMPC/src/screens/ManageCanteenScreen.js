@@ -1052,12 +1052,13 @@ const SalesReportScreen = ({ orders, items }) => {
   const [activeMonth,  setActiveMonth]  = useState(new Date().getMonth());
   const [expandedTxDate,  setExpandedTxDate]  = useState(null);
   const [expandedInvDate, setExpandedInvDate] = useState(null);
+  const [showTx,      setShowTx]      = useState(true);
+  const [showInv,     setShowInv]     = useState(true);
+  const [showCredits, setShowCredits] = useState(true);
 
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  // Year list — 2025 up to current year, extendable
-  const startYear = 2025;
-  const years = Array.from({ length: currentYear - startYear + 1 }, (_, i) => startYear + i);
+  const years = Array.from({ length: 30 }, (_, i) => 2025 + i); // 2025 - 2054
 
   // Parse order date
   const parseDate = (timeStr) => {
@@ -1145,7 +1146,7 @@ const SalesReportScreen = ({ orders, items }) => {
       <WebScrollView contentContainerStyle={{ gap:0, paddingBottom:20 }}>
 
         {/* ── Year selector ── */}
-        <View style={{ alignItems:'center', marginBottom:14 }}>
+        <View style={{ alignItems:'center', marginBottom:14, position:'relative', zIndex:100 }}>
           <TouchableOpacity
             style={rpt.yearBtn}
             onPress={() => setYearDropdown(p => !p)}
@@ -1155,21 +1156,19 @@ const SalesReportScreen = ({ orders, items }) => {
             <Text style={rpt.yearCaret}>{yearDropdown ? '\u25b2' : '\u25bc'}</Text>
           </TouchableOpacity>
           {yearDropdown && (
-            <View style={rpt.yearMenu}>
+            <ScrollView style={rpt.yearMenu} showsVerticalScrollIndicator={false}>
               {years.map(y => (
                 <TouchableOpacity key={y} style={[rpt.yearOpt, y === year && rpt.yearOptActive]}
                   onPress={() => { setYear(y); setYearDropdown(false); }}>
                   <Text style={[rpt.yearOptTxt, y === year && rpt.yearOptTxtActive]}>{y}</Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
           )}
         </View>
 
         {/* ── Month tabs ── */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap:6, paddingHorizontal:2, paddingBottom:4 }}
-          style={{ flexGrow:0, marginBottom:16 }}>
+        <View style={{ flexDirection:'row', flexWrap:'wrap', justifyContent:'center', gap:6, marginBottom:16 }}>
           {MONTHS.map((m, i) => (
             <TouchableOpacity key={m}
               style={[rpt.monthBtn, activeMonth === i && rpt.monthBtnActive]}
@@ -1177,17 +1176,21 @@ const SalesReportScreen = ({ orders, items }) => {
               <Text style={[rpt.monthTxt, activeMonth === i && rpt.monthTxtActive]}>{m}</Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
 
         {/* ── Transaction History Report ── */}
         <View style={rpt.section}>
-          <Text style={rpt.sectionTitle}>Transaction History Reports</Text>
+          <TouchableOpacity style={rpt.sectionTitleRow} onPress={() => setShowTx(p=>!p)} activeOpacity={0.80}>
+            <Text style={rpt.sectionTitle}>Transaction History Reports</Text>
+            <Text style={rpt.sectionToggle}>{showTx ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+          {showTx && <View>
           {/* Table header */}
           <View style={rpt.thead}>
-            <Text style={[rpt.th, { flex:1.2 }]}>DATE</Text>
-            <Text style={[rpt.th, { flex:0.8, textAlign:'center' }]}>TOTAL ORDERS</Text>
-            <Text style={[rpt.th, { flex:1.0, textAlign:'center' }]}>TOTAL EARNINGS</Text>
-            <Text style={[rpt.th, { flex:0.5, textAlign:'center' }]}>PRINT</Text>
+            <Text style={[rpt.th, { flex:1.0, textAlign:'left', paddingLeft:12 }]}>DATE</Text>
+            <Text style={[rpt.th, { flex:1.1 }]}>TOTAL ORDERS</Text>
+            <Text style={[rpt.th, { flex:1.3 }]}>TOTAL EARNINGS</Text>
+            <Text style={[rpt.th, { width:80 }]}>PRINT</Text>
           </View>
           {txByDay.length === 0 ? (
             <View style={rpt.emptyRow}>
@@ -1204,14 +1207,14 @@ const SalesReportScreen = ({ orders, items }) => {
                     onPress={() => setExpandedTxDate(isOpen ? null : g.key)}
                     activeOpacity={0.75}
                   >
-                    <Text style={[rpt.td, { flex:1.2, fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' }]}>{g.key}</Text>
-                    <Text style={[rpt.td, { flex:0.8, textAlign:'center' }]}>{g.orders.length}</Text>
-                    <Text style={[rpt.td, { flex:1.0, textAlign:'center', fontFamily:'GoogleSans_700Bold', color:'#1a7a45' }]}>
+                    <Text style={[rpt.td, { flex:1.0, fontFamily:'GoogleSans_700Bold', color:'#1a3a6b', textAlign:'left', paddingLeft:12 }]}>{g.key}</Text>
+                    <Text style={[rpt.td, { flex:1.1 }]}>{g.orders.length}</Text>
+                    <Text style={[rpt.td, { flex:1.3, fontFamily:'GoogleSans_700Bold', color:'#1a7a45' }]}>
                       {'\u20b1'}{total.toFixed(2)}
                     </Text>
-                    <TouchableOpacity style={rpt.printBtn} onPress={() => printTxDay(g)}>
+                    <View style={{ width:80, alignItems:'center', justifyContent:'center', alignSelf:'stretch', borderRightWidth:1, borderColor:'rgba(26,58,107,0.08)' }}><TouchableOpacity style={rpt.printBtn} onPress={() => printTxDay(g)}>
                       <Text style={rpt.printBtnTxt}>Print</Text>
-                    </TouchableOpacity>
+                    </TouchableOpacity></View>
                   </TouchableOpacity>
                   {isOpen && (
                     <View style={rpt.expandPanel}>
@@ -1240,16 +1243,21 @@ const SalesReportScreen = ({ orders, items }) => {
               );
             })
           )}
+          </View>}
         </View>
 
         {/* ── Inventory Report ── */}
         <View style={[rpt.section, { marginTop:16 }]}>
-          <Text style={rpt.sectionTitle}>Inventory Reports</Text>
+          <TouchableOpacity style={rpt.sectionTitleRow} onPress={() => setShowInv(p=>!p)} activeOpacity={0.80}>
+            <Text style={rpt.sectionTitle}>Inventory Reports</Text>
+            <Text style={rpt.sectionToggle}>{showInv ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+          {showInv && <View>
           <View style={rpt.thead}>
-            <Text style={[rpt.th, { flex:1.2 }]}>DATE</Text>
-            <Text style={[rpt.th, { flex:0.8, textAlign:'center' }]}>TOTAL STOCK</Text>
-            <Text style={[rpt.th, { flex:1.0, textAlign:'center' }]}>TOTAL VALUE</Text>
-            <Text style={[rpt.th, { flex:0.5, textAlign:'center' }]}>PRINT</Text>
+            <Text style={[rpt.th, { flex:1.0, textAlign:'left', paddingLeft:12 }]}>DATE</Text>
+            <Text style={[rpt.th, { flex:1.1 }]}>TOTAL STOCK</Text>
+            <Text style={[rpt.th, { flex:1.3 }]}>TOTAL VALUE</Text>
+            <Text style={[rpt.th, { width:80 }]}>PRINT</Text>
           </View>
           {invByDay.length === 0 ? (
             <View style={rpt.emptyRow}>
@@ -1265,14 +1273,14 @@ const SalesReportScreen = ({ orders, items }) => {
                     onPress={() => setExpandedInvDate(isOpen ? null : g.key)}
                     activeOpacity={0.75}
                   >
-                    <Text style={[rpt.td, { flex:1.2, fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' }]}>{g.key}</Text>
-                    <Text style={[rpt.td, { flex:0.8, textAlign:'center' }]}>{g.totalStock}</Text>
-                    <Text style={[rpt.td, { flex:1.0, textAlign:'center', fontFamily:'GoogleSans_700Bold', color:'#1a7a45' }]}>
+                    <Text style={[rpt.td, { flex:1.0, fontFamily:'GoogleSans_700Bold', color:'#1a3a6b', textAlign:'left', paddingLeft:12 }]}>{g.key}</Text>
+                    <Text style={[rpt.td, { flex:1.1 }]}>{g.totalStock}</Text>
+                    <Text style={[rpt.td, { flex:1.3, fontFamily:'GoogleSans_700Bold', color:'#1a7a45' }]}>
                       {'\u20b1'}{g.totalValue.toLocaleString()}
                     </Text>
-                    <TouchableOpacity style={rpt.printBtn} onPress={() => printInvDay(g)}>
+                    <View style={{ width:80, alignItems:'center', justifyContent:'center', alignSelf:'stretch', borderRightWidth:1, borderColor:'rgba(26,58,107,0.08)' }}><TouchableOpacity style={rpt.printBtn} onPress={() => printInvDay(g)}>
                       <Text style={rpt.printBtnTxt}>Print</Text>
-                    </TouchableOpacity>
+                    </TouchableOpacity></View>
                   </TouchableOpacity>
                   {isOpen && (
                     <View style={rpt.expandPanel}>
@@ -1298,16 +1306,20 @@ const SalesReportScreen = ({ orders, items }) => {
               );
             })
           )}
+          </View>}
         </View>
 
         {/* ── Credits Report ── */}
         <View style={[rpt.section, { marginTop:16 }]}>
-          <Text style={rpt.sectionTitle}>Credits Reports</Text>
-          <View style={rpt.comingSoon}>
+          <TouchableOpacity style={rpt.sectionTitleRow} onPress={() => setShowCredits(p=>!p)} activeOpacity={0.80}>
+            <Text style={rpt.sectionTitle}>Credits Reports</Text>
+            <Text style={rpt.sectionToggle}>{showCredits ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+          {showCredits && <View style={rpt.comingSoon}>
             <Text style={rpt.comingSoonEmoji}>🚧</Text>
             <Text style={rpt.comingSoonTxt}>Coming Soon</Text>
             <Text style={rpt.comingSoonSub}>Credits reporting will be available in a future update.</Text>
-          </View>
+          </View>}
         </View>
 
       </WebScrollView>
@@ -1325,32 +1337,41 @@ const rpt = StyleSheet.create({
   yearTxt:  { fontFamily:'GoogleSans_700Bold', fontSize:20, color:'#1a3a6b', letterSpacing:1 },
   yearCaret:{ fontSize:12, color:'rgba(26,58,107,0.50)' },
   yearMenu: {
-    marginTop:4, backgroundColor:'rgba(255,255,255,0.97)',
+    position:'absolute', top:48, zIndex:9999,
+    backgroundColor:'rgba(255,255,255,0.99)',
     borderRadius:10, borderWidth:1, borderColor:'rgba(26,58,107,0.18)',
-    shadowColor:'#000', shadowOpacity:0.12, shadowRadius:8, elevation:10,
-    minWidth:120, zIndex:99,
+    shadowColor:'#000', shadowOpacity:0.18, shadowRadius:12, elevation:20,
+    minWidth:140, maxHeight:200,
   },
   yearOpt:       { paddingVertical:10, paddingHorizontal:20, alignItems:'center' },
   yearOptActive: { backgroundColor:'rgba(26,58,107,0.08)' },
   yearOptTxt:    { fontFamily:'GoogleSans_400Regular', fontSize:14, color:'#1a3a6b' },
   yearOptTxtActive:{ fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
 
-  monthBtn:       { paddingHorizontal:14, paddingVertical:7, borderRadius:20, backgroundColor:'rgba(255,255,255,0.40)', borderWidth:1, borderColor:'rgba(255,255,255,0.60)' },
-  monthBtnActive: { backgroundColor:'#1a3a6b', borderColor:'#c9a84c' },
-  monthTxt:       { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.60)' },
-  monthTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#fff' },
+
+  monthBtn:       { paddingHorizontal:14, paddingVertical:7, borderRadius:20, backgroundColor:'#1a3a6b', borderWidth:1, borderColor:'rgba(26,58,107,0.60)' },
+  monthBtnActive: { backgroundColor:'rgba(198,220,240,0.90)', borderColor:'#304674', borderWidth:1.5 },
+  monthTxt:       { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(255,255,255,0.90)' },
+  monthTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
 
   section: { backgroundColor:'rgba(255,255,255,0.22)', borderRadius:12, borderWidth:1, borderColor:'rgba(255,255,255,0.45)', overflow:'hidden' },
-  sectionTitle: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b', letterSpacing:0.5, padding:12, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.10)', backgroundColor:'rgba(26,58,107,0.06)' },
+  sectionTitleRow: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical:10, paddingHorizontal:12 },
+  sectionToggle:   { fontSize:13, color:'rgba(26,58,107,0.45)', paddingLeft:8 },
+  sectionTitle: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b', letterSpacing:0.5 },
 
-  thead: { flexDirection:'row', alignItems:'center', paddingVertical:8, paddingHorizontal:12, backgroundColor:'rgba(26,58,107,0.12)' },
-  th:    { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.60)', letterSpacing:0.8, textTransform:'uppercase', flex:1 },
+  thead:   { flexDirection:'row', alignItems:'center', paddingVertical:8, paddingHorizontal:0, backgroundColor:'rgba(26,58,107,0.12)' },
+  th:      { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.60)', letterSpacing:0.8, textTransform:'uppercase',
+             textAlign:'center', paddingVertical:8, paddingHorizontal:6,
+             borderRightWidth:1, borderColor:'rgba(26,58,107,0.10)' },
 
-  trow:    { flexDirection:'row', alignItems:'center', paddingVertical:10, paddingHorizontal:12, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.06)' },
+  trow:    { flexDirection:'row', alignItems:'center', paddingVertical:0, paddingHorizontal:0, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.07)', minHeight:42 },
   trowAlt: { backgroundColor:'rgba(255,255,255,0.35)' },
-  td:      { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#1a2d4e', flex:1 },
+  td:      { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#1a2d4e',
+             textAlign:'center', paddingVertical:10, paddingHorizontal:6,
+             borderRightWidth:1, borderColor:'rgba(26,58,107,0.08)',
+             alignSelf:'stretch', justifyContent:'center' },
 
-  printBtn:    { flex:0.5, alignItems:'center', backgroundColor:'#1a3a6b', borderRadius:6, paddingVertical:5, paddingHorizontal:8 },
+  printBtn:    { alignItems:'center', backgroundColor:'#1a3a6b', borderRadius:6, paddingVertical:5, paddingHorizontal:10 },
   printBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'#fff', letterSpacing:0.3 },
 
   expandPanel: { backgroundColor:'rgba(26,58,107,0.04)', borderBottomWidth:1, borderColor:'rgba(26,58,107,0.10)' },
@@ -1456,6 +1477,7 @@ const STATUS_CFG = {
 
 const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [activeFilter, setActiveFilter] = useState('pending');
 
   useEffect(() => {
     const loop = Animated.loop(Animated.sequence([
@@ -1469,17 +1491,34 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
   const pendingCount   = orders.filter(o=>o.status==='pending').length;
   const preparingCount = orders.filter(o=>o.status==='preparing').length;
   const readyCount     = orders.filter(o=>o.status==='ready').length;
-  const doneCount      = orders.filter(o=>o.status==='done').length;
-
-  // Show all active (non-done) orders in one unified list
-  const activeOrders = orders.filter(o=>o.status!=='done');
+  const doneToday      = orders.filter(o=>{
+    if (o.status!=='done') return false;
+    try {
+      const d = new Date(o.time);
+      const t = new Date();
+      return d.toDateString()===t.toDateString();
+    } catch { return false; }
+  }).length;
 
   const STAT_CARDS = [
-    { label:'PENDING',   num:pendingCount,   bg:'#c0392b' },
-    { label:'PREPARING', num:preparingCount, bg:'#b9660a' },
-    { label:'READY',     num:readyCount,     bg:'#1a6b2a' },
-    { label:'DONE',      num:doneCount,      bg:'#1a3a6b' },
+    { key:'pending',   label:'PENDING',   num:pendingCount,   bg:'#c0392b', activeBg:'#e74c3c' },
+    { key:'preparing', label:'PREPARING', num:preparingCount, bg:'#b9660a', activeBg:'#e67e22' },
+    { key:'ready',     label:'READY',     num:readyCount,     bg:'#1a6b2a', activeBg:'#27ae60' },
+    { key:'done',      label:'DONE',      num:doneToday,      bg:'#1a3a6b', activeBg:'#2e5fa3' },
   ];
+
+  // Filter orders by active tab
+  const filteredOrders = orders.filter(o => {
+    if (activeFilter === 'done') {
+      if (o.status !== 'done') return false;
+      try {
+        const d = new Date(o.time);
+        const t = new Date();
+        return d.toDateString() === t.toDateString();
+      } catch { return false; }
+    }
+    return o.status === activeFilter;
+  });
 
   const COLS = 3;
 
@@ -1491,41 +1530,60 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
         <Text style={lp.title}>ORDERING MONITORING</Text>
       </View>
 
-      {/* 4 stat display cards — display only, no click needed */}
+      {/* 4 clickable stat filter cards */}
       <View style={lp.statCards}>
         {STAT_CARDS.map(c=>(
-          <View key={c.label} style={[lp.statCard,{backgroundColor:c.bg}]}>
+          <TouchableOpacity
+            key={c.key}
+            style={[lp.statCard, { backgroundColor: activeFilter===c.key ? c.activeBg : c.bg },
+              activeFilter===c.key && lp.statCardActive]}
+            onPress={() => setActiveFilter(c.key)}
+            activeOpacity={0.80}
+          >
             <Text style={lp.statLabel}>{c.label}</Text>
             <Text style={lp.statNum}>{String(c.num).padStart(2,'0')}</Text>
-          </View>
+            {activeFilter===c.key && <View style={lp.statCardIndicator}/>}
+          </TouchableOpacity>
         ))}
       </View>
 
-      {/* All active orders in a 3-col square grid */}
+      {/* Orders grid filtered by active tab */}
       <WebScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{gap:6,paddingBottom:12}}>
-        {activeOrders.length===0
-          ? <View style={lp.emptyBox}><Text style={lp.emptyIco}>📋</Text><Text style={lp.emptyTxt}>No active orders</Text></View>
+        {filteredOrders.length===0
+          ? <View style={lp.emptyBox}>
+              <Text style={lp.emptyIco}>
+                {activeFilter==='pending'?'⏳':activeFilter==='preparing'?'🔥':activeFilter==='ready'?'✅':'✓'}
+              </Text>
+              <Text style={lp.emptyTxt}>No {activeFilter} orders</Text>
+            </View>
           : (() => {
               const rows = [];
-              for (let i = 0; i < activeOrders.length; i += COLS) rows.push(activeOrders.slice(i, i + COLS));
+              for (let i = 0; i < filteredOrders.length; i += COLS) rows.push(filteredOrders.slice(i, i + COLS));
               return rows.map((row, rIdx) => (
                 <View key={rIdx} style={{flexDirection:'row', gap:6}}>
                   {row.map(order => {
                     const cfg = STATUS_CFG[order.status] || STATUS_CFG.pending;
-                    const itemsList = (order.items||[]).map(i=>`${i.item?.name||i.name||'?'} ×${i.qty}`).join(', ');
+                    const itemsList = (order.items||[]).map(i=>`${i.item?.name||i.name||'?'} x${i.qty}`).join(', ');
+                    const timeStr = (() => {
+                      try {
+                        const d = new Date(order.time);
+                        return isNaN(d) ? '' : d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});
+                      } catch { return ''; }
+                    })();
                     return (
                       <View key={order.id} style={[lp.card, {flex:1, borderTopColor:cfg.color}]}>
-                        {/* Order # */}
-                        <Text style={lp.cardId}>#{order.orderNo||order.id?.slice(-4)||'--'}</Text>
+                        {/* Order # + time */}
+                        <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}>
+                          <Text style={lp.cardId}>#{order.orderNo||order.id?.slice(-4)||'--'}</Text>
+                          <Text style={lp.cardTime}>{timeStr}</Text>
+                        </View>
                         {/* Items */}
                         <Text style={lp.cardItems} numberOfLines={3}>{itemsList}</Text>
                         {/* Total */}
-                        <Text style={lp.cardTotal}>₱{Number(order.total).toFixed(0)}</Text>
-                        {/* Status badge */}
-                        <View style={[lp.statusBadge,{backgroundColor:cfg.color}]}>
-                          <Text style={lp.statusBadgeTxt}>{cfg.label}</Text>
-                        </View>
-                        {/* Action button — changes color per status */}
+                        <Text style={lp.cardTotal}>{'\u20b1'}{Number(order.total).toFixed(0)}</Text>
+                        {/* Payment mode */}
+                        <Text style={lp.cardPay}>{order.payment==='gcash'?'📱 GCash':'💵 Cash'}</Text>
+                        {/* Action button */}
                         {cfg.btnLabel&&(
                           <TouchableOpacity
                             style={[lp.actionBtn,{backgroundColor:cfg.btnColor}]}
@@ -1537,7 +1595,6 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
                       </View>
                     );
                   })}
-                  {/* Fill empty slots in last row */}
                   {Array.from({length: COLS - row.length}).map((_,i)=>(
                     <View key={`e-${i}`} style={{flex:1}}/>
                   ))}
@@ -1550,6 +1607,7 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
   );
 };
 
+
 const lp = StyleSheet.create({
   root: { flex:1, padding:10, minHeight:0, overflow:'hidden' },
 
@@ -1558,10 +1616,12 @@ const lp = StyleSheet.create({
   title:    { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#1a2d4e', letterSpacing:1.5, textDecorationLine:'underline', textAlign:'center' },
 
   // 4 stat cards — display only
-  statCards: { flexDirection:'row', gap:3, marginBottom:8 },
-  statCard:  { flex:1, borderRadius:10, paddingVertical:6, paddingHorizontal:2, alignItems:'center', gap:1 },
-  statLabel: { fontFamily:'GoogleSans_700Bold', fontSize:5.5, color:'#fff', letterSpacing:0.6, textAlign:'center' },
-  statNum:   { fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#fff', lineHeight:22 },
+  statCards: { flexDirection:'row', gap:4, marginBottom:10 },
+  statCard:  { flex:1, borderRadius:10, paddingVertical:8, paddingHorizontal:2, alignItems:'center', gap:2, position:'relative', overflow:'hidden' },
+  statCardActive: { shadowColor:'#000', shadowOpacity:0.25, shadowRadius:6, elevation:6, transform:[{scale:1.03}] },
+  statCardIndicator: { position:'absolute', bottom:0, left:0, right:0, height:3, backgroundColor:'rgba(255,255,255,0.60)' },
+  statLabel: { fontFamily:'GoogleSans_700Bold', fontSize:6, color:'#fff', letterSpacing:0.8, textAlign:'center' },
+  statNum:   { fontFamily:'GoogleSans_700Bold', fontSize:20, color:'#fff', lineHeight:24 },
 
   emptyBox: { padding:20, alignItems:'center', gap:6 },
   emptyIco: { fontSize:28 },
@@ -1582,8 +1642,10 @@ const lp = StyleSheet.create({
   },
 
   cardId:    { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#0d2540' },
+  cardTime:  { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.40)' },
   cardItems: { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.65)', lineHeight:13, flex:1 },
   cardTotal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#c9a84c' },
+  cardPay:   { fontFamily:'GoogleSans_400Regular', fontSize:8, color:'rgba(1,31,75,0.40)' },
 
   statusBadge:   { borderRadius:5, paddingHorizontal:5, paddingVertical:2, alignSelf:'flex-start' },
   statusBadgeTxt:{ fontFamily:'GoogleSans_700Bold', fontSize:7, color:'#fff', letterSpacing:0.5 },
