@@ -21,7 +21,7 @@ import WaterBillingScreen  from './billing/WaterBillingScreen';
 import MilkBeansScreen     from './billing/MilkBeansScreen';
 import TicketScreen        from './billing/TicketScreen';
 import BillingOverviewScreen from './billing/BillingOverviewScreen';
-import SettingsModal       from '../components/billing/SettingsModal';
+import SettingsModal       from '../components/SettingsModal';
 
 const TABS = [
   { key: 'overview',       label: 'Overview',        icon: 'dashboard',      color: '#1a3a6b' },
@@ -247,33 +247,38 @@ const s = StyleSheet.create({
 
   // Month bar
   monthBar: {
-    flexShrink: 0, backgroundColor: 'rgba(26,58,107,0.30)',
-    marginHorizontal: 10, borderRadius: 12, marginBottom: 6,
+    flexShrink: 0, backgroundColor: 'rgba(26,58,107,0.35)',
+    marginHorizontal: 10, borderRadius: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
   monthBtn: {
-    paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingVertical: 6, paddingHorizontal: 14, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
-  monthBtnActive: { backgroundColor: '#fff' },
-  monthBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: 'rgba(255,255,255,0.85)' },
+  monthBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#011f4b', shadowOpacity: 0.15, shadowRadius: 4, elevation: 2,
+  },
+  monthBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: 'rgba(255,255,255,0.90)' },
   monthBtnTxtActive: { color: '#1a3a6b' },
 
   // Summary cards
   summCard: {
-    backgroundColor: 'rgba(255,255,255,0.80)',
-    borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12,
-    gap: 2, minWidth: 110,
-    shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 4, elevation: 2,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14,
+    gap: 2, minWidth: 120,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)',
+    shadowColor: '#011f4b', shadowOpacity: 0.10, shadowRadius: 6, elevation: 3,
   },
   summLabel: {
     fontFamily: 'GoogleSans_700Bold', fontSize: 8,
-    color: 'rgba(1,31,75,0.55)', letterSpacing: 0.8, textTransform: 'uppercase',
+    color: 'rgba(1,31,75,0.60)', letterSpacing: 1, textTransform: 'uppercase',
   },
   summVal: {
-    fontFamily: 'NotoSerif_700Bold', fontSize: 14, color: '#1a3a6b',
+    fontFamily: 'NotoSerif_700Bold', fontSize: 15, color: '#1a3a6b',
   },
   summSub: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.45)',
+    fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.50)',
   },
 
   // Tab bar

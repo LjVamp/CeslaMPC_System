@@ -1,30 +1,32 @@
-// src/screens/billing/MilkBeansScreen.js
+// src/screens/billing/WaterBillingScreen.js
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useBilling, MONTHS, fmt, fmtDate } from '../../context/BillingContext';
-import EntryModal from '../../components/EntryModal';
+import { useBilling, DEPARTMENTS, MONTHS, fmt, fmtDate } from '../../context/BillingContext';
+import EntryModal from './EntryModal';
 
-export default function MilkBeansScreen({ year, month }) {
+export default function WaterBillingScreen({ year, month }) {
   const { entries, getUniqueDates, getEntriesByDate, toggleStatus } = useBilling();
   const [detailDate, setDetailDate] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editEntry, setEditEntry] = useState(null);
 
-  const dates = useMemo(() => getUniqueDates('milkbeans', year, month), [entries, year, month]);
+  const dates = useMemo(() => getUniqueDates('waterbilling', year, month), [entries, year, month]);
 
   const dateSummaries = useMemo(() => dates.map((date, idx) => {
-    const dayEntries = getEntriesByDate('milkbeans', year, month, date);
-    const totalAmt   = dayEntries.reduce((s, e) => s + (e.amount || 0), 0);
-    const status     = dayEntries.length > 0 ? (dayEntries[0].status || 'pending') : 'pending';
-    const mm         = String(month + 1).padStart(2, '0');
-    const billingNo  = `MB ${year}-${mm}-${String(idx + 1).padStart(2, '0')}`;
-    return { date, totalAmt, status, billingNo, id: dayEntries[0]?.id };
+    const dayEntries   = getEntriesByDate('waterbilling', year, month, date);
+    const totalGallons = dayEntries.reduce((s, e) => s + (parseFloat(e.gallons) || 0), 0);
+    const totalAmt     = dayEntries.reduce((s, e) => s + (e.amount || 0), 0);
+    const priceGallon  = dayEntries.length > 0 ? (dayEntries[0].priceGallon || 0) : 0;
+    const status       = dayEntries.length > 0 ? (dayEntries[0].status || 'pending') : 'pending';
+    const mm           = String(month + 1).padStart(2, '0');
+    const billingNo    = `WB ${year}-${mm}-${String(idx + 1).padStart(2, '0')}`;
+    return { date, totalGallons, totalAmt, priceGallon, status, billingNo, id: dayEntries[0]?.id };
   }), [dates, entries]);
 
   const grandTotal    = dateSummaries.reduce((s, d) => s + d.totalAmt, 0);
   const detailEntries = useMemo(() =>
-    detailDate ? getEntriesByDate('milkbeans', year, month, detailDate) : [],
+    detailDate ? getEntriesByDate('waterbilling', year, month, detailDate) : [],
     [detailDate, entries, year, month]
   );
   const detailTotal = detailEntries.reduce((s, e) => s + (e.amount || 0), 0);
@@ -32,15 +34,15 @@ export default function MilkBeansScreen({ year, month }) {
   // ── DETAIL VIEW ────────────────────────────────────────────────────────────
   if (detailDate) return (
     <View style={{ flex: 1 }}>
-      <View style={mb.detailHeader}>
-        <TouchableOpacity style={mb.backBtn} onPress={() => setDetailDate(null)}>
+      <View style={ws.detailHeader}>
+        <TouchableOpacity style={ws.backBtn} onPress={() => setDetailDate(null)}>
           <MaterialIcons name="arrow-back" size={16} color="#1a3a6b" />
-          <Text style={mb.backBtnTxt}>Back</Text>
+          <Text style={ws.backBtnTxt}>Back</Text>
         </TouchableOpacity>
-        <Text style={mb.detailTitle} numberOfLines={1}>
+        <Text style={ws.detailTitle} numberOfLines={1}>
           {fmtDate(detailDate)} — {MONTHS[month]} {year}
         </Text>
-        <TouchableOpacity style={mb.addBtnSm}
+        <TouchableOpacity style={ws.addBtnSm}
           onPress={() => { setEditEntry(null); setModalVisible(true); }}>
           <MaterialIcons name="add" size={14} color="#fff" />
         </TouchableOpacity>
@@ -49,29 +51,25 @@ export default function MilkBeansScreen({ year, month }) {
         data={detailEntries}
         keyExtractor={item => item.id}
         contentContainerStyle={{ padding: 10, gap: 6, paddingBottom: 20 }}
-        ListEmptyComponent={<Text style={mb.emptyTxt}>No entries yet.</Text>}
+        ListEmptyComponent={<Text style={ws.emptyTxt}>No entries yet.</Text>}
         renderItem={({ item }) => (
-          <TouchableOpacity style={mb.detailCard}
+          <TouchableOpacity style={ws.detailCard}
             onPress={() => { setEditEntry(item); setModalVisible(true); }}>
             <View style={{ flex: 1 }}>
-              <Text style={mb.detailDept}>{item.dept}</Text>
-              <Text style={mb.detailSub}>
-                {item.milkType !== 'None' ? `🥛 Milk: ${item.milkQty} × ${fmt(item.milkPrice)}` : ''}
-                {item.milkType !== 'None' && item.beansType !== 'None' ? '   ' : ''}
-                {item.beansType !== 'None' ? `🫘 Beans: ${item.beansQty} × ${fmt(item.beansPrice)}` : ''}
-              </Text>
+              <Text style={ws.detailDept}>{item.dept}</Text>
+              <Text style={ws.detailSub}>{item.gallons} gal × {fmt(item.priceGallon)}</Text>
             </View>
-            <Text style={mb.detailAmt}>{fmt(item.amount)}</Text>
+            <Text style={ws.detailAmt}>{fmt(item.amount)}</Text>
           </TouchableOpacity>
         )}
         ListFooterComponent={
-          <View style={mb.totalBar}>
-            <Text style={mb.totalLbl}>GRAND TOTAL</Text>
-            <Text style={mb.totalVal}>{fmt(detailTotal)}</Text>
+          <View style={ws.totalBar}>
+            <Text style={ws.totalLbl}>GRAND TOTAL</Text>
+            <Text style={ws.totalVal}>{fmt(detailTotal)}</Text>
           </View>
         }
       />
-      <EntryModal visible={modalVisible} category="milkbeans"
+      <EntryModal visible={modalVisible} category="waterbilling"
         editEntry={editEntry} presetDate={detailDate}
         year={year} month={month} onClose={() => setModalVisible(false)} />
     </View>
@@ -80,41 +78,45 @@ export default function MilkBeansScreen({ year, month }) {
   // ── MAIN VIEW ──────────────────────────────────────────────────────────────
   return (
     <View style={{ flex: 1 }}>
-      <View style={mb.toolbar}>
-        <TouchableOpacity style={mb.addBtn}
+      <View style={ws.toolbar}>
+        <TouchableOpacity style={ws.addBtn}
           onPress={() => { setEditEntry(null); setModalVisible(true); }}>
           <MaterialIcons name="add" size={15} color="#fff" />
-          <Text style={mb.addBtnTxt}>Add Entry</Text>
+          <Text style={ws.addBtnTxt}>Add Entry</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={mb.thead}>
-        <Text style={[mb.th, { flex: 1.2 }]}>DATE</Text>
-        <Text style={[mb.th, { flex: 1.5 }]}>BILLING NO.</Text>
-        <Text style={[mb.th, { flex: 1, textAlign: 'right' }]}>AMOUNT</Text>
-        <Text style={[mb.th, { flex: 0.9, textAlign: 'center' }]}>STATUS</Text>
+      <View style={ws.thead}>
+        <Text style={[ws.th, { flex: 1.2 }]}>DATE</Text>
+        <Text style={[ws.th, { flex: 1.5 }]}>BILLING NO.</Text>
+        <Text style={[ws.th, { flex: 0.9, textAlign: 'center' }]}>GALLONS</Text>
+        <Text style={[ws.th, { flex: 1, textAlign: 'center' }]}>PRICE/GAL</Text>
+        <Text style={[ws.th, { flex: 1, textAlign: 'right' }]}>AMOUNT</Text>
+        <Text style={[ws.th, { flex: 0.9, textAlign: 'center' }]}>STATUS</Text>
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }}>
         {dateSummaries.length === 0
-          ? <Text style={mb.emptyTxt}>No entries yet for {MONTHS[month]} {year}.</Text>
+          ? <Text style={ws.emptyTxt}>No entries yet for {MONTHS[month]} {year}.</Text>
           : dateSummaries.map((d, i) => (
             <TouchableOpacity key={d.date}
-              style={[mb.trow, i % 2 === 0 && mb.trowAlt]}
+              style={[ws.trow, i % 2 === 0 && ws.trowAlt]}
               onPress={() => setDetailDate(d.date)}
               activeOpacity={0.75}>
-              <Text style={[mb.td, { flex: 1.2 }]}>{fmtDate(d.date)}</Text>
-              <Text style={[mb.td, { flex: 1.5, fontFamily: 'GoogleSans_700Bold', color: '#1a3a6b', fontSize: 10 }]}>
+              <Text style={[ws.td, { flex: 1.2 }]}>{fmtDate(d.date)}</Text>
+              <Text style={[ws.td, { flex: 1.5, fontFamily: 'GoogleSans_700Bold', color: '#1a3a6b', fontSize: 10 }]}>
                 {d.billingNo}
               </Text>
-              <Text style={[mb.td, { flex: 1, textAlign: 'right', fontFamily: 'GoogleSans_700Bold', color: '#1a3a6b' }]}>
+              <Text style={[ws.td, { flex: 0.9, textAlign: 'center' }]}>{d.totalGallons}</Text>
+              <Text style={[ws.td, { flex: 1, textAlign: 'center' }]}>{fmt(d.priceGallon)}</Text>
+              <Text style={[ws.td, { flex: 1, textAlign: 'right', fontFamily: 'GoogleSans_700Bold', color: '#1a3a6b' }]}>
                 {fmt(d.totalAmt)}
               </Text>
               <View style={{ flex: 0.9, alignItems: 'center' }}>
                 <TouchableOpacity
-                  style={[mb.statusBadge, d.status === 'paid' ? mb.statusPaid : mb.statusPending]}
+                  style={[ws.statusBadge, d.status === 'paid' ? ws.statusPaid : ws.statusPending]}
                   onPress={() => toggleStatus(d.id, d.status)}>
-                  <Text style={[mb.statusTxt, { color: d.status === 'paid' ? '#1a6e2e' : '#b36200' }]}>
+                  <Text style={[ws.statusTxt, { color: d.status === 'paid' ? '#1a6e2e' : '#b36200' }]}>
                     {d.status === 'paid' ? '✔ Paid' : '⏳ Pend'}
                   </Text>
                 </TouchableOpacity>
@@ -122,22 +124,22 @@ export default function MilkBeansScreen({ year, month }) {
             </TouchableOpacity>
           ))
         }
-        <View style={mb.totalBar}>
-          <Text style={mb.totalLbl}>GRAND TOTAL</Text>
-          <Text style={mb.totalVal}>{fmt(grandTotal)}</Text>
+        <View style={ws.totalBar}>
+          <Text style={ws.totalLbl}>GRAND TOTAL</Text>
+          <Text style={ws.totalVal}>{fmt(grandTotal)}</Text>
         </View>
       </ScrollView>
 
-      <EntryModal visible={modalVisible} category="milkbeans"
+      <EntryModal visible={modalVisible} category="waterbilling"
         editEntry={editEntry} year={year} month={month}
         onClose={() => setModalVisible(false)} />
     </View>
   );
 }
 
-const mb = StyleSheet.create({
+const ws = StyleSheet.create({
   toolbar: { flexDirection: 'row', padding: 10, paddingBottom: 6, borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.10)' },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#8e44ad', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 14 },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#2980b9', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 14 },
   addBtnSm: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#1a3a6b', justifyContent: 'center', alignItems: 'center' },
   addBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#fff' },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: 'rgba(26,58,107,0.20)' },

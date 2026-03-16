@@ -2105,9 +2105,10 @@ const sp = StyleSheet.create({
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 export default function ManageMerchandiseScreen({ navigation, route }) {
-  const { width } = useWindowDimensions();
-  const isSmall = width < 400;
-  const isWide  = width >= 768;
+  const { width, height } = useWindowDimensions();
+  const isSmall  = width < 400;
+  const isTablet = width >= 600 && width < 900;
+  const isWide   = width >= 900;
 
   // ── Use shared MerchandiseContext (same data as MerchandiseScreen visitor) ──
   const {
@@ -2137,6 +2138,7 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
   const [editAdModal,    setEditAdModal]    = useState(false);
   const [adCurrent,      setAdCurrent]      = useState(0);
   const [invMaxQty,      setInvMaxQty]      = useState({});
+  const [salesCollapsed, setSalesCollapsed] = useState(false);
 
   const hdrFade    = useRef(new Animated.Value(0)).current;
   const hdrTrans   = useRef(new Animated.Value(-16)).current;
@@ -2151,7 +2153,7 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
     Animated.timing(bodyFade, { toValue: 1, duration: 500, delay: 150, useNativeDriver: true }).start();
   }, []);
 
-  const bannerW = Math.min(width * 0.60, 700);
+  const bannerW = isWide ? Math.min(width * 0.60, 700) : width - 16;
 
   useEffect(() => {
     if (!ads.length) return;
@@ -2229,7 +2231,7 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
       <LinearGradient colors={['rgba(50,80,120,0.0)', 'rgba(60,90,130,0.35)']} locations={[0.4, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFillObject} />
 
       {/* HEADER */}
-      <Animated.View style={{ opacity: hdrFade, transform: [{ translateY: hdrTrans }], marginTop: Platform.OS === 'web' ? 16 : 36, marginHorizontal: isSmall ? 8 : 10, zIndex: 30, flexShrink: 0 }}>
+      <Animated.View style={{ opacity: hdrFade, transform: [{ translateY: hdrTrans }], marginTop: Platform.OS === 'web' ? 16 : (isSmall ? 32 : 36), marginHorizontal: isSmall ? 8 : 10, zIndex: 30, flexShrink: 0 }}>
         <View style={[styles.header, { paddingHorizontal: 20, paddingVertical: 10 }]}>
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation && navigation.goBack()}>
             <Text style={styles.backIcon}>←</Text>
@@ -2254,15 +2256,48 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
         <View style={{ flex:1, flexDirection: isWide ? 'row' : 'column', minHeight:0, overflow:'hidden' }}>
 
         {/* LEFT PANEL — Order Monitoring */}
-        <View style={isWide ? styles.leftPanel : styles.leftPanelMobile}>
-          <MerchandiseSalesPanel orders={orders} items={items} />
-        </View>
+        {isWide ? (
+          <View style={styles.leftPanel}>
+            <MerchandiseSalesPanel orders={orders} items={items} />
+          </View>
+        ) : (
+          /* Mobile/Tablet: collapsible sales overview */
+          <View style={[
+            styles.leftPanelMobile,
+            salesCollapsed && { height: 36 },
+            isTablet && !salesCollapsed && { height: 170 },
+          ]}>
+            {/* Collapse toggle header */}
+            <TouchableOpacity
+              onPress={() => setSalesCollapsed(v => !v)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                paddingHorizontal: 12, paddingVertical: 6,
+                backgroundColor: 'rgba(26,58,107,0.15)',
+                borderBottomWidth: salesCollapsed ? 0 : 1,
+                borderColor: 'rgba(255,255,255,0.30)',
+              }}
+              activeOpacity={0.80}
+            >
+              <View style={{ flexDirection:'row', alignItems:'center', gap:6 }}>
+                <View style={{ width:6, height:6, borderRadius:3, backgroundColor:'#27ae60' }} />
+                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#1a2d4e', letterSpacing:1.2 }}>SALES OVERVIEW</Text>
+              </View>
+              <MaterialIcons name={salesCollapsed ? 'expand-more' : 'expand-less'} size={18} color="rgba(26,58,107,0.60)" />
+            </TouchableOpacity>
+            {!salesCollapsed && (
+              <View style={{ flex:1, minHeight:0, overflow:'hidden' }}>
+                <MerchandiseSalesPanel orders={orders} items={items} />
+              </View>
+            )}
+          </View>
+        )}
 
         {/* RIGHT PANEL */}
         <View style={isWide ? styles.rightPanel : styles.rightPanelMobile}>
 
           {/* Ad Banner */}
-          <View style={styles.adWrapper}>
+          <View style={[styles.adWrapper, !isWide && { borderRadius: 12 }]}>
             <ScrollView ref={adScrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
               onMomentumScrollEnd={e => setAdCurrent(Math.round(e.nativeEvent.contentOffset.x / bannerW))}
               style={{ width: '100%' }} contentContainerStyle={{ width: bannerW * (ads.length + 1) }}>
@@ -2270,10 +2305,10 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
                 const imgSrc = ad.image ? { uri: ad.image } : (ad.imageUrl ? { uri: ad.imageUrl } : null);
                 return (
                   <LinearGradient key={ad.id} colors={ad.bg || ['#1a3a6b', '#2e5fa3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.adSlide, { width: bannerW }]}>
-                    {imgSrc ? <Image source={imgSrc} style={styles.adBgImg} resizeMode="cover" /> : <Text style={styles.adEmoji}>{ad.emoji}</Text>}
+                    {imgSrc ? <Image source={imgSrc} style={styles.adBgImg} resizeMode="cover" /> : <Text style={[styles.adEmoji, isSmall && { fontSize: 28 }]}>{ad.emoji}</Text>}
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.adTitle} numberOfLines={1}>{ad.title}</Text>
-                      <Text style={styles.adSub} numberOfLines={1}>{ad.sub}</Text>
+                      <Text style={[styles.adTitle, isSmall && { fontSize: 13 }]} numberOfLines={1}>{ad.title}</Text>
+                      <Text style={[styles.adSub, isSmall && { fontSize: 10 }]} numberOfLines={1}>{ad.sub}</Text>
                     </View>
                     <View style={styles.adBadge}><Text style={styles.adBadgeTxt}>AD</Text></View>
                     <TouchableOpacity style={styles.adEditBtn} onPress={() => { setEditAd({ ...ad }); setEditAdModal(true); }}>
@@ -2300,15 +2335,16 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
           </View>
 
           {/* Tabs */}
-          <View style={styles.tabBar}>
+          <View style={[styles.tabBar, isSmall && { paddingHorizontal: 2 }]}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 2 }} style={{ flexGrow: 0 }}>
               {TABS.map(tab => (
                 <TouchableOpacity key={tab.key}
-                  style={[styles.tabBtn, activeTab === tab.key && styles.tabBtnActive]}
+                  style={[styles.tabBtn, activeTab === tab.key && styles.tabBtnActive, isSmall && { paddingHorizontal: 8, paddingVertical: 7 }]}
                   onPress={() => setActiveTab(tab.key)} activeOpacity={0.80}>
-                  <MaterialIcons name={tab.icon} size={13} color={activeTab === tab.key ? '#1a3a6b' : 'rgba(255,255,255,0.80)'} />
-                  <Text style={[styles.tabBtnTxt, activeTab === tab.key && styles.tabBtnTxtActive]}>{tab.label}</Text>
-                  
+                  <MaterialIcons name={tab.icon} size={isSmall ? 12 : 13} color={activeTab === tab.key ? '#1a3a6b' : 'rgba(255,255,255,0.80)'} />
+                  {(!isSmall || activeTab === tab.key) && (
+                    <Text style={[styles.tabBtnTxt, activeTab === tab.key && styles.tabBtnTxtActive, isSmall && { fontSize: 10 }]}>{tab.label}</Text>
+                  )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -2350,13 +2386,13 @@ const styles = StyleSheet.create({
   leftPanelMobile: {
     height: 220, flexShrink: 0,
     backgroundColor: 'rgba(255,255,255,0.22)',
-    borderRadius: 12, margin: 8,
+    borderRadius: 12, marginHorizontal: 8, marginTop: 4, marginBottom: 0,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.40)',
     overflow: 'hidden',
   },
   rightPanelMobile: {
     flex: 1, minWidth: 0, minHeight: 0,
-    marginHorizontal: 8, marginBottom: 8, flexDirection: 'column', overflow: 'hidden',
+    marginHorizontal: 8, marginTop: 6, marginBottom: 8, flexDirection: 'column', overflow: 'hidden',
   },
   leftPanel: {
     flex: 1.4, flexShrink: 0,

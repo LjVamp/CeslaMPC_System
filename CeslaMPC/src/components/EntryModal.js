@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useBilling, DEPARTMENTS, todayVal, fmt } from '../../context/BillingContext';
+import { useBilling, DEPARTMENTS, todayVal, fmt } from '../context/BillingContext';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const emptyForm = (category, presetDept, presetDate) => {

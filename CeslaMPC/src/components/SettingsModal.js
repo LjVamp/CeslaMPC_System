@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useBilling } from '../../context/BillingContext';
+import { useBilling } from '../context/BillingContext';
 
 export default function SettingsModal({ visible, onClose }) {
   const { settings, saveSettings } = useBilling();

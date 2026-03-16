@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useBilling, DEPARTMENTS, fmt, fmtDate } from '../../context/BillingContext';
-import EntryModal from '../../components/EntryModal';
+import EntryModal from './EntryModal';
 
 export default function TicketScreen({ year, month }) {
   const { entries } = useBilling();

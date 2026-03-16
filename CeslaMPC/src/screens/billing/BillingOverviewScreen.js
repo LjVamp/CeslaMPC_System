@@ -20,7 +20,7 @@ export default function BillingOverviewScreen({ year, onYearChange }) {
   const grand = Object.values(totals).reduce((a, b) => a + b, 0);
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 30 }}>
+    <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 30 }}>
       {/* Year picker */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
         <Text style={ov.heading}>Summary of Year</Text>
@@ -71,44 +71,61 @@ export default function BillingOverviewScreen({ year, onYearChange }) {
 }
 
 const ov = StyleSheet.create({
-  heading: { fontFamily: 'GoogleSans_700Bold', fontSize: 16, color: '#1a3a6b' },
+  // Year picker row
+  heading: {
+    fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#1a3a6b',
+    textShadowColor: 'rgba(255,255,255,0.60)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
+  },
   yearBtn: {
     paddingHorizontal: 14, paddingVertical: 7,
-    backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 8,
-    borderWidth: 1, borderColor: 'rgba(26,58,107,0.20)',
+    backgroundColor: 'rgba(26,58,107,0.18)', borderRadius: 10,
+    borderWidth: 1.5, borderColor: 'rgba(26,58,107,0.25)',
   },
   yearBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 16, color: '#1a3a6b' },
+
+  // Category card — glassmorphism
   card: {
-    backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 16,
-    overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.90)',
+    backgroundColor: 'rgba(255,255,255,0.30)', borderRadius: 16,
+    overflow: 'hidden', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.70)',
+    shadowColor: '#011f4b', shadowOpacity: 0.10, shadowRadius: 12, elevation: 4,
   },
   row: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 14, paddingHorizontal: 20, gap: 10,
+    paddingVertical: 14, paddingHorizontal: 20, gap: 12,
   },
-  rowBorder: { borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.07)' },
-  catIcon: { fontSize: 18, width: 28 },
-  catLabel: { flex: 1, fontFamily: 'GoogleSans_500Medium', fontSize: 14, color: '#1a2d4e' },
-  catVal:   { fontFamily: 'NotoSerif_700Bold', fontSize: 14, color: '#2980b9' },
+  rowBorder: { borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.55)' },
+  catIcon: { fontSize: 20, width: 30 },
+  catLabel: {
+    flex: 1, fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#0d2540',
+    textShadowColor: 'rgba(255,255,255,0.50)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
+  },
+  catVal: { fontFamily: 'NotoSerif_700Bold', fontSize: 14, color: '#1a3a6b' },
+
+  // Grand total row
   grandRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#1a6e2e', paddingVertical: 16, paddingHorizontal: 20,
+    backgroundColor: 'rgba(26,58,107,0.88)', paddingVertical: 16, paddingHorizontal: 20,
   },
-  grandLabel: { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff', letterSpacing: 0.3 },
-  grandVal:   { fontFamily: 'NotoSerif_700Bold', fontSize: 17, color: '#fff' },
+  grandLabel: { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: 'rgba(255,255,255,0.90)', letterSpacing: 0.5 },
+  grandVal:   { fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: '#c9a84c' },
+
+  // Year picker modal
   pickerOverlay: {
     flex: 1, backgroundColor: 'rgba(1,20,50,0.55)',
     justifyContent: 'center', alignItems: 'center', padding: 40,
   },
   pickerCard: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 16, width: '100%', maxWidth: 280,
+    backgroundColor: 'rgba(240,247,252,0.98)', borderRadius: 16, padding: 16,
+    width: '100%', maxWidth: 280,
+    borderWidth: 1, borderColor: 'rgba(26,58,107,0.15)',
+    shadowColor: '#000', shadowOpacity: 0.20, shadowRadius: 16, elevation: 12,
   },
   pickerTitle: {
     fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#1a3a6b',
     textAlign: 'center', marginBottom: 10,
   },
-  pickerOpt:        { paddingVertical: 12, paddingHorizontal: 20, alignItems: 'center' },
-  pickerOptActive:  { backgroundColor: 'rgba(26,58,107,0.08)' },
-  pickerOptTxt:     { fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: '#1a3a6b' },
+  pickerOpt:         { paddingVertical: 12, paddingHorizontal: 20, alignItems: 'center' },
+  pickerOptActive:   { backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 8 },
+  pickerOptTxt:      { fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: '#1a3a6b' },
   pickerOptTxtActive:{ fontFamily: 'GoogleSans_700Bold', color: '#1a3a6b' },
 });

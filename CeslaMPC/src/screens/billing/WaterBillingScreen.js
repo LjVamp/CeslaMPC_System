@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useBilling, DEPARTMENTS, MONTHS, fmt, fmtDate } from '../../context/BillingContext';
-import EntryModal from '../../components/billing/EntryModal';
+import EntryModal from '../../components/EntryModal';
 
 export default function WaterBillingScreen({ year, month }) {
   const { entries, getUniqueDates, getEntriesByDate, toggleStatus } = useBilling();

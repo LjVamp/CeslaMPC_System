@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useBilling, DEPARTMENTS, fmt, fmtDate } from '../../context/BillingContext';
-import EntryModal from '../../components/billing/EntryModal';
+import EntryModal from '../../components/EntryModal';
 
 export default function RiceAllowancesScreen({ year, month }) {
   const { entries } = useBilling();

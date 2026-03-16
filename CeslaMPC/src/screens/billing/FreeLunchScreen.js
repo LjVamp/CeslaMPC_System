@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useBilling, DEPARTMENTS, MONTHS, fmt, fmtDate } from '../../context/BillingContext';
-import EntryModal from '../../components/billing/EntryModal';
+import EntryModal from '../../components/EntryModal';
 
 export default function FreeLunchScreen({ year, month }) {
   const { entries, getUniqueDates, getEntriesByDate, toggleStatus, deleteEntry, fmt: fmtCtx } = useBilling();

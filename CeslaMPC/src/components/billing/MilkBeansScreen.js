@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useBilling, MONTHS, fmt, fmtDate } from '../../context/BillingContext';
-import EntryModal from '../../components/EntryModal';
+import EntryModal from './EntryModal';
 
 export default function MilkBeansScreen({ year, month }) {
   const { entries, getUniqueDates, getEntriesByDate, toggleStatus } = useBilling();
