@@ -718,27 +718,13 @@ export default function CanteenVisitor({ navigation }) {
     Animated.timing(bodyFade, { toValue:1, duration:600, delay:200, useNativeDriver:true }).start();
   }, []);
 
-  // ── Global menu reload — keeps items/stock in sync with admin changes ───
+  // Firestore onSnapshot keeps items/stock live — no polling needed
   useEffect(() => {
-    // Subscribe to canteen bus for instant push updates
-    let unsub;
-    try {
-      const { notifyCanteenChange } = require('../context/CanteenContext');
-      // no-op: just importing to ensure bus is active
-    } catch(e) {}
-    // Poll every 500ms on mobile to catch admin edits in near-realtime
-    const menuPoll = setInterval(() => reloadFromStorage(), 500);
-    return () => clearInterval(menuPoll);
+    reloadFromStorage();
   }, []);
 
-  // ── Poll order status every 3s while queue is visible ─────────────────────
-  useEffect(() => {
-    if (!trackedOrderId || !queueVisible) return;
-    const poll = setInterval(() => {
-      reloadFromStorage();
-    }, 3000);
-    return () => clearInterval(poll);
-  }, [trackedOrderId, queueVisible]);
+  // Firestore onSnapshot on canteen_orders fires automatically when status changes
+  // No polling needed — the useEffect below watches `orders` array in real time
 
   // ── Watch orders array for status change on tracked order ─────────────────
   useEffect(() => {
@@ -796,25 +782,37 @@ export default function CanteenVisitor({ navigation }) {
   };
 
   // Called by CartPanel after building order data
-  const handlePlaceOrder = (orderData) => {
-    const orderId = `ORD-${String(Math.floor(1000+Math.random()*9000))}`;
+  const handlePlaceOrder = async (orderData) => {
+    const orderNo = orderData.orderNo || Math.floor(1000 + Math.random() * 9000);
+    const now = new Date();
+    const time = now.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
+      + '  ' + now.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit' });
+
     const fullOrder = {
       ...orderData,
-      id: orderId,
+      orderNo,
+      time,
       status: 'pending',
       payment: orderData.paymentMode || 'cash',
+      source: 'visitor',
     };
-    addOrder(fullOrder);
-    deductStock(orderData.items);
-    setLastOrder({ ...orderData, id: orderId });
+
+    // Save to Firestore — returns the real document ID
+    const firestoreId = await addOrder(fullOrder);
+    await deductStock(orderData.items);
+
+    const trackedId = firestoreId || `ORD-${orderNo}`;
+    setLastOrder({ ...orderData, orderNo, time, id: trackedId });
     setCartOpen(false);
     clearCart();
-    // Open queue tracker instead of receipt
-    setTrackedOrderId(orderId);
+
+    // Start tracking with the real Firestore ID
+    setTrackedOrderId(trackedId);
     setLiveStatus('pending');
     prevStatusRef.current = 'pending';
     setQueueMinimized(false);
     setTimeout(() => setQueueVisible(true), 300);
+
     // Request notification permission early
     if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window
         && Notification.permission === 'default') {

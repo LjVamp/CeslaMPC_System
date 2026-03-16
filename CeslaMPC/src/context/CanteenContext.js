@@ -1,13 +1,17 @@
 // src/context/CanteenContext.js
-// KEY FIX: Direct AsyncStorage write inside each action (not via useEffect)
-// This ensures data is written BEFORE any screen polls and reads it.
-// All screens share the same Context instance — React state updates propagate instantly.
+// Firestore real-time sync — replaces AsyncStorage
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState } from 'react-native';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import {
+  collection, doc, onSnapshot,
+  setDoc, deleteDoc, updateDoc,
+  addDoc, writeBatch, getDocs,
+} from 'firebase/firestore';
+import { db } from '../config/firebase';
 
+// ─── DEFAULT DATA ─────────────────────────────────────────────────────────────
 const DEFAULT_CATEGORIES = ['All', 'Meals', 'Drinks', 'Snacks', 'Junk Foods', 'Others'];
+
 const DEFAULT_ITEMS = [
   { id:'1',  name:'Fried Chicken',  cat:'Meals',      price:80,  stock:15, emoji:'🍗', image:null },
   { id:'2',  name:'Lugaw with Egg', cat:'Meals',      price:55,  stock:50, emoji:'🍚', image:null },
@@ -22,11 +26,33 @@ const DEFAULT_ITEMS = [
   { id:'11', name:'Junk Food Pack', cat:'Junk Foods', price:18,  stock:45, emoji:'🍿', image:null },
   { id:'12', name:'Mixed Nuts',     cat:'Junk Foods', price:35,  stock:30, emoji:'🥜', image:null },
 ];
+
 const DEFAULT_ADS = [
-  { id:'1', image:null, imageUrl:'', title:"Today's Special", sub:'Fresh meals served daily!',   bg:['#1a3a6b','#2e5fa3'], emoji:'🍽️' },
-  { id:'2', image:null, imageUrl:'', title:'Merienda Promo',  sub:'Snacks & drinks available!', bg:['#7b3f00','#c9a84c'], emoji:'☕'  },
+  { id:'ca1', image:null, imageUrl:'', title:"Today's Special", sub:'Fresh meals served daily!',   bg:['#1a3a6b','#2e5fa3'], emoji:'🍽️' },
+  { id:'ca2', image:null, imageUrl:'', title:'Merienda Promo',  sub:'Snacks & drinks available!', bg:['#7b3f00','#c9a84c'], emoji:'☕'  },
 ];
 
+// ─── SEED FIRESTORE (runs once if collections are empty) ──────────────────────
+const seedIfEmpty = async () => {
+  try {
+    const itemsSnap = await getDocs(collection(db, 'canteen_items'));
+    if (itemsSnap.empty) {
+      const batch = writeBatch(db);
+      DEFAULT_ITEMS.forEach(item => batch.set(doc(db, 'canteen_items', item.id), item));
+      await batch.commit();
+      console.log('Seeded canteen_items');
+    }
+    const adsSnap = await getDocs(collection(db, 'canteen_ads'));
+    if (adsSnap.empty) {
+      const batch = writeBatch(db);
+      DEFAULT_ADS.forEach(ad => batch.set(doc(db, 'canteen_ads', ad.id), ad));
+      await batch.commit();
+      console.log('Seeded canteen_ads');
+    }
+  } catch (e) { console.warn('Canteen seed error:', e); }
+};
+
+// ─── CONTEXT ──────────────────────────────────────────────────────────────────
 const CanteenContext = createContext(null);
 
 export const useCanteen = () => {
@@ -36,102 +62,125 @@ export const useCanteen = () => {
 };
 
 export const CanteenProvider = ({ children }) => {
-  const [items,      setItemsState]  = useState(DEFAULT_ITEMS);
-  const [ads,        setAdsState]    = useState(DEFAULT_ADS);
+  const [items,      setItemsState]  = useState([]);
+  const [ads,        setAdsState]    = useState([]);
   const [categories, setCatsState]   = useState(DEFAULT_CATEGORIES);
   const [orders,     setOrdersState] = useState([]);
   const [loaded,     setLoaded]      = useState(false);
 
-  // Refs to always have latest values without stale closure
-  const itemsRef  = useRef(DEFAULT_ITEMS);
-  const adsRef    = useRef(DEFAULT_ADS);
-  const ordersRef = useRef([]);
-  useEffect(() => { itemsRef.current  = items;  }, [items]);
-  useEffect(() => { adsRef.current    = ads;    }, [ads]);
-  useEffect(() => { ordersRef.current = orders; }, [orders]);
-
-  // ── Reload from AsyncStorage ──────────────────────────────────────────────
-  const reloadFromStorage = useCallback(async () => {
-    try {
-      const [rawItems, rawAds, rawCats, rawOrders] = await Promise.all([
-        AsyncStorage.getItem('canteen_items'),
-        AsyncStorage.getItem('canteen_ads'),
-        AsyncStorage.getItem('canteen_categories'),
-        AsyncStorage.getItem('canteen_orders'),
-      ]);
-      if (rawItems)  setItemsState(JSON.parse(rawItems));
-      if (rawAds)    setAdsState(JSON.parse(rawAds));
-      if (rawCats)   setCatsState(JSON.parse(rawCats));
-      if (rawOrders) setOrdersState(JSON.parse(rawOrders));
-    } catch (e) {}
-  }, []);
-
+  // ── Seed then attach real-time Firestore listeners ────────────────────────
   useEffect(() => {
-    reloadFromStorage().then(() => setLoaded(true));
-    const sub = AppState.addEventListener('change', s => {
-      if (s === 'active') reloadFromStorage();
+    let unsubItems, unsubAds, unsubOrders;
+
+    seedIfEmpty().then(() => {
+      // Items — sorted by numeric id
+      unsubItems = onSnapshot(
+        collection(db, 'canteen_items'),
+        snap => {
+          const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+          data.sort((a, b) => (parseInt(a.id) || 999) - (parseInt(b.id) || 999));
+          setItemsState(data);
+          setLoaded(true);
+        },
+        err => console.warn('canteen items error:', err)
+      );
+
+      // Ads
+      unsubAds = onSnapshot(
+        collection(db, 'canteen_ads'),
+        snap => setAdsState(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
+        err => console.warn('canteen ads error:', err)
+      );
+
+      // Orders — sorted newest first by createdAt
+      unsubOrders = onSnapshot(
+        collection(db, 'canteen_orders'),
+        snap => {
+          const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+          data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          setOrdersState(data);
+        },
+        err => console.warn('canteen orders error:', err)
+      );
     });
-    return () => sub.remove();
+
+    return () => {
+      unsubItems?.();
+      unsubAds?.();
+      unsubOrders?.();
+    };
   }, []);
 
-  // ── DIRECT WRITE: update state AND AsyncStorage atomically ────────────────
-  // No useEffect delay — storage is written immediately so any screen polling
-  // will see the new data on the very next read.
-  const writeItems = (newItems) => {
-    setItemsState(newItems);
-    itemsRef.current = newItems;
-    AsyncStorage.setItem('canteen_items', JSON.stringify(newItems)).catch(() => {});
-  };
-  const writeAds = (newAds) => {
-    setAdsState(newAds);
-    adsRef.current = newAds;
-    AsyncStorage.setItem('canteen_ads', JSON.stringify(newAds)).catch(() => {});
-  };
-  const writeOrders = (newOrders) => {
-    setOrdersState(newOrders);
-    ordersRef.current = newOrders;
-    AsyncStorage.setItem('canteen_orders', JSON.stringify(newOrders)).catch(() => {});
+  // ── CRUD operations ───────────────────────────────────────────────────────
+  const saveItem = async (item) => {
+    try { await setDoc(doc(db, 'canteen_items', item.id), item); }
+    catch (e) { console.warn('saveItem error:', e); }
   };
 
-  // ── Setters (for components that use setItems/setAds directly) ────────────
-  const setItems = (val) => {
-    const next = typeof val === 'function' ? val(itemsRef.current) : val;
-    writeItems(next);
+  const deleteItem = async (id) => {
+    try { await deleteDoc(doc(db, 'canteen_items', id)); }
+    catch (e) { console.warn('deleteItem error:', e); }
   };
+
+  const saveAd = async (ad) => {
+    try { await setDoc(doc(db, 'canteen_ads', ad.id), ad); }
+    catch (e) { console.warn('saveAd error:', e); }
+  };
+
+  const addOrder = async (order) => {
+    try {
+      const docRef = await addDoc(collection(db, 'canteen_orders'), {
+        ...order,
+        createdAt: Date.now(),
+      });
+      return docRef.id; // Return Firestore doc ID for order tracking
+    } catch (e) { console.warn('addOrder error:', e); return null; }
+  };
+
+  const updateOrderStatus = async (orderId, status) => {
+    try { await updateDoc(doc(db, 'canteen_orders', orderId), { status }); }
+    catch (e) { console.warn('updateOrderStatus error:', e); }
+  };
+
+  const deductStock = async (orderItems) => {
+    try {
+      const batch = writeBatch(db);
+      orderItems.forEach(({ item, qty }) => {
+        batch.update(doc(db, 'canteen_items', item.id), {
+          stock: Math.max(0, (item.stock || 0) - qty),
+        });
+      });
+      await batch.commit();
+    } catch (e) { console.warn('deductStock error:', e); }
+  };
+
+  // Setters used by ManageCanteenScreen for ads
+  const setItems = async (val) => {
+    const next = typeof val === 'function' ? val(items) : val;
+    const batch = writeBatch(db);
+    next.forEach(item => batch.set(doc(db, 'canteen_items', item.id), item));
+    await batch.commit().catch(e => console.warn('setItems error:', e));
+  };
+
   const setAds = (val) => {
-    const next = typeof val === 'function' ? val(adsRef.current) : val;
-    writeAds(next);
+    const next = typeof val === 'function' ? val(ads) : val;
+    // Save each ad to Firestore
+    next.forEach(ad =>
+      setDoc(doc(db, 'canteen_ads', ad.id), ad).catch(e => console.warn('setAds error:', e))
+    );
+    // Also remove any ads that were deleted
+    ads.forEach(ad => {
+      if (!next.find(a => a.id === ad.id)) {
+        deleteDoc(doc(db, 'canteen_ads', ad.id)).catch(() => {});
+      }
+    });
   };
+
   const setCategories = (val) => setCatsState(prev => typeof val === 'function' ? val(prev) : val);
-  const setOrders = (val) => {
-    const next = typeof val === 'function' ? val(ordersRef.current) : val;
-    writeOrders(next);
-  };
+  const setOrders = (val) => { /* no-op — Firestore handles order writes */ };
 
-  // ── Item actions ──────────────────────────────────────────────────────────
-  const saveItem = (updated) => {
-    const prev = itemsRef.current;
-    const exists = prev.find(i => i.id === updated.id);
-    writeItems(exists ? prev.map(i => i.id === updated.id ? updated : i) : [...prev, updated]);
-  };
-  const deleteItem = (id) => writeItems(itemsRef.current.filter(i => i.id !== id));
-
-  // ── Ad actions ────────────────────────────────────────────────────────────
-  const saveAd = (updated) => writeAds(adsRef.current.map(a => a.id === updated.id ? updated : a));
-
-  // ── Order actions ─────────────────────────────────────────────────────────
-  const addOrder = (order) => writeOrders([order, ...ordersRef.current]);
-  const updateOrderStatus = (orderId, status) =>
-    writeOrders(ordersRef.current.map(o => o.id === orderId ? { ...o, status } : o));
-
-  // ── Stock deduct ──────────────────────────────────────────────────────────
-  const deductStock = (orderItems) => {
-    writeItems(itemsRef.current.map(item => {
-      const ordered = orderItems.find(oi => oi.item.id === item.id);
-      if (!ordered) return item;
-      return { ...item, stock: Math.max(0, item.stock - ordered.qty) };
-    }));
-  };
+  // no-op — Firestore listeners are always live
+  const reloadFromStorage = useCallback(() => {}, []);
 
   return (
     <CanteenContext.Provider value={{

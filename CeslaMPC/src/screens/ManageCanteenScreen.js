@@ -1,6 +1,6 @@
 // src/screens/ManageCanteenScreen.js
 // CESLA MPC — Manage Canteen (Admin)
-// NEW LAYOUT: Left Panel (Ordering Monitoring) | Right Panel (Tabs + Content)
+// Firebase Firestore connected — real-time sync
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -18,8 +18,6 @@ import { useCanteen } from '../context/CanteenContext';
 import { useFocusEffect } from '@react-navigation/native';
 
 // ─── WEB SCROLL VIEW ──────────────────────────────────────────────────────────
-// On web, flex:1 ScrollView doesn't scroll properly inside overflow:hidden containers.
-// This wrapper uses an absolute-fill div with overflow-y:auto for web.
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const styleEl = document.createElement('style');
   styleEl.textContent = `.cesla-sub-scroll::-webkit-scrollbar{width:7px;display:block!important}.cesla-sub-scroll::-webkit-scrollbar-thumb{background:rgba(1,31,75,0.40);border-radius:4px}.cesla-sub-scroll::-webkit-scrollbar-thumb:hover{background:rgba(1,31,75,0.65)}.cesla-sub-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,0.20);border-radius:4px}.cesla-sub-scroll{scrollbar-width:thin;scrollbar-color:rgba(1,31,75,0.40) rgba(255,255,255,0.20)}`;
@@ -59,33 +57,32 @@ const emptyItem = () => ({
   price:'', stock:'', emoji:'🍽️', image:null,
 });
 
-// ─── AUTO EMOJI ───────────────────────────────────────────────────────────────
 const autoEmoji = (name) => {
   const n = name.toLowerCase();
-  if (/rice|kanin|sinangag/.test(n))           return '🍚';
-  if (/soup|sinigang|tinola|nilaga|broth/.test(n)) return '🍲';
-  if (/chicken|manok|inasal/.test(n))          return '🍗';
-  if (/pork|lechon|liempo|adobo|sisig/.test(n))return '🥩';
-  if (/fish|isda|bangus|tilapia|tuna/.test(n)) return '🐟';
-  if (/egg|itlog/.test(n))                     return '🥚';
+  if (/rice|kanin|sinangag/.test(n))                return '🍚';
+  if (/soup|sinigang|tinola|nilaga|broth/.test(n))  return '🍲';
+  if (/chicken|manok|inasal/.test(n))               return '🍗';
+  if (/pork|lechon|liempo|adobo|sisig/.test(n))     return '🥩';
+  if (/fish|isda|bangus|tilapia|tuna/.test(n))      return '🐟';
+  if (/egg|itlog/.test(n))                          return '🥚';
   if (/noodle|mami|pancit|pasta|spaghetti/.test(n)) return '🍜';
-  if (/bread|pan|sandwich|burger/.test(n))     return '🍞';
-  if (/cake|cupcake|pastry|donut/.test(n))     return '🎂';
-  if (/cookie|biscuit|cracker/.test(n))        return '🍪';
-  if (/candy|chocolate|choco|sweet/.test(n))   return '🍫';
-  if (/chips|fries|nacho/.test(n))             return '🍟';
-  if (/juice|calamansi|lemon/.test(n))         return '🧃';
-  if (/coffee|kape|latte|cappuccino/.test(n))  return '☕';
-  if (/milk|gatas/.test(n))                    return '🥛';
-  if (/tea|tsaa/.test(n))                      return '🍵';
-  if (/water|tubig/.test(n))                   return '💧';
-  if (/soda|softdrink|cola|sprite/.test(n))    return '🥤';
-  if (/salad|vegetables|gulay/.test(n))        return '🥗';
-  if (/fruit|prutas|banana|apple|mango/.test(n)) return '🍎';
-  if (/snack|merienda/.test(n))                return '🍿';
-  if (/pizza/.test(n))                         return '🍕';
-  if (/hotdog|sausage|longganisa/.test(n))     return '🌭';
-  if (/ice cream|gelato|frozen/.test(n))       return '🍦';
+  if (/bread|pan|sandwich|burger/.test(n))          return '🍞';
+  if (/cake|cupcake|pastry|donut/.test(n))          return '🎂';
+  if (/cookie|biscuit|cracker/.test(n))             return '🍪';
+  if (/candy|chocolate|choco|sweet/.test(n))        return '🍫';
+  if (/chips|fries|nacho/.test(n))                  return '🍟';
+  if (/juice|calamansi|lemon/.test(n))              return '🧃';
+  if (/coffee|kape|latte|cappuccino/.test(n))       return '☕';
+  if (/milk|gatas/.test(n))                         return '🥛';
+  if (/tea|tsaa/.test(n))                           return '🍵';
+  if (/water|tubig/.test(n))                        return '💧';
+  if (/soda|softdrink|cola|sprite/.test(n))         return '🥤';
+  if (/salad|vegetables|gulay/.test(n))             return '🥗';
+  if (/fruit|prutas|banana|apple|mango/.test(n))    return '🍎';
+  if (/snack|merienda/.test(n))                     return '🍿';
+  if (/pizza/.test(n))                              return '🍕';
+  if (/hotdog|sausage|longganisa/.test(n))          return '🌭';
+  if (/ice cream|gelato|frozen/.test(n))            return '🍦';
   return '📦';
 };
 
@@ -138,7 +135,6 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
           <View style={ms.modalCard}>
             <Text style={ms.modalTitle}>{item?.name ? 'Edit Item' : 'Add New Item'}</Text>
             <View style={{ flexDirection:'row', gap:12, alignItems:'flex-start' }}>
-              {/* Left: image picker */}
               <View style={{ alignItems:'center', gap:4 }}>
                 <TouchableOpacity style={ms.imgPicker} onPress={pickImage}>
                   {form.image
@@ -155,7 +151,6 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
                   </View>
                 )}
               </View>
-              {/* Right: fields */}
               <View style={{flex:1, gap:8}}>
                 <View style={ms.fieldRow}>
                   <Text style={ms.fieldLabel}>Item Name *</Text>
@@ -288,15 +283,16 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
   });
   const clearCart = () => { setCart({}); setAmountPaid(''); };
 
-  const handlePlaceOrder = () => {
+  // ── FIX: async — awaits Firestore writes ──────────────────────────────────
+  const handlePlaceOrder = async () => {
     if(cartItems.length===0) return;
     if(paid<total){ Alert.alert('Insufficient Amount','Please enter the correct amount paid.'); return; }
     const orderNo=Math.floor(1000+Math.random()*9000);
     const now=new Date();
     const time=now.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})+'  '+now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});
-    const order={id:Date.now().toString(),orderNo,time,items:cartItems,total,amountPaid:paid,change,payment:'cash',status:'pending'};
-    addOrder(order);
-    deductStock(cartItems);
+    const order={id:Date.now().toString(),orderNo,time,items:cartItems,total,amountPaid:paid,change,payment:'cash',status:'pending',source:'cashier'};
+    await addOrder(order);
+    await deductStock(cartItems);
     setLastOrder(order);
     clearCart();
     setTimeout(()=>setReceiptVisible(true),200);
@@ -445,7 +441,7 @@ const cs = StyleSheet.create({
   itemCardStock: { fontFamily:'GoogleSans_400Regular',fontSize:8,color:'rgba(1,31,75,0.45)' },
   cartBadge: { position:'absolute',top:4,right:4,backgroundColor:'#e74c3c',borderRadius:8,width:16,height:16,justifyContent:'center',alignItems:'center' },
   cartBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#fff' },
-  cartPanel: { width:240,flexShrink:0,backgroundColor:'rgba(255,255,255,0.22)',borderLeftWidth:1,borderColor:'rgba(255,255,255,0.40)',padding:10,gap:6,minHeight:0,overflow:'hidden',marginRight:0 },
+  cartPanel: { width:240,flexShrink:0,backgroundColor:'rgba(255,255,255,0.22)',borderLeftWidth:1,borderColor:'rgba(255,255,255,0.40)',padding:10,gap:6,minHeight:0,overflow:'hidden' },
   cartTitle: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'rgba(1,31,75,0.65)',letterSpacing:2,paddingBottom:6,borderBottomWidth:1,borderColor:'rgba(1,31,75,0.10)' },
   cartItemsBox: { flex:1,minHeight:50,backgroundColor:'rgba(255,255,255,0.40)',borderRadius:10,padding:8,borderWidth:1,borderColor:'rgba(255,255,255,0.65)',overflow:'hidden' },
   cartEmpty: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.40)',textAlign:'center',paddingTop:12 },
@@ -578,11 +574,11 @@ const mm = StyleSheet.create({
   editItemBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff' },
 });
 
-// ─── INVENTORY SCREEN ─────────────────────────────────────────────────────────
+// ─── INVENTORY, HISTORY, CREDITS, REPORT — unchanged from original ────────────
+// (These screens have no order-writing logic, only reads — no changes needed)
+
 const InventoryScreen = ({ items, maxQtyMap, onAddItem, onEditItem }) => {
   const today = new Date();
-
-  // ── Date label formatting ─────────────────────────────────────────────────
   const formatDateLabel = (d) => {
     const now = new Date();
     const todayKey = now.toDateString();
@@ -592,15 +588,10 @@ const InventoryScreen = ({ items, maxQtyMap, onAddItem, onEditItem }) => {
     if (d.toDateString() === yestKey)  return "Yesterday's Stocks, " + d.toLocaleDateString('en-PH', opts);
     return "Stocks — " + d.toLocaleDateString('en-PH', opts);
   };
-
-  // ── Calendar date picker state ─────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(today);
   const [showDatePicker, setShowDatePicker] = useState(false);
-
-  // Build calendar grid for selected month
   const [calMonth, setCalMonth] = useState(today.getMonth());
   const [calYear,  setCalYear]  = useState(today.getFullYear());
-
   const calDays = (() => {
     const first = new Date(calYear, calMonth, 1).getDay();
     const days  = new Date(calYear, calMonth + 1, 0).getDate();
@@ -609,33 +600,17 @@ const InventoryScreen = ({ items, maxQtyMap, onAddItem, onEditItem }) => {
     for (let d = 1; d <= days; d++) cells.push(d);
     return cells;
   })();
-
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
-
-  // ── Unit of Measure per item (editable) ───────────────────────────────────
-  const [units, setUnits] = useState({});
-  const getUnit = (id) => units[id] || 'pcs';
-  const UNIT_OPTIONS = ['pcs','kilo','case','pack','box','dozen','liter','bag'];
-  const [unitDropdown, setUnitDropdown] = useState(null);
-
-  // ── Max QTY per item (editable) ────────────────────────────────────────────
   const getMax = (id) => (maxQtyMap && maxQtyMap[id] !== undefined) ? maxQtyMap[id] : (items.find(i=>i.id===id)?.maxQty || 50);
-
-  // ── Totals ────────────────────────────────────────────────────────────────
   const overallPrice = items.reduce((s, i) => s + i.price, 0);
   const overallQty   = items.reduce((s, i) => s + i.stock, 0);
   const grandTotal   = items.reduce((s, i) => s + i.price * i.stock, 0);
 
   return (
     <View style={{ flex:1, minHeight:0, overflow:'hidden', position:'relative' }}>
-
       <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginHorizontal:14, marginTop:8, marginBottom:6 }}>
-        <TouchableOpacity
-          style={inv2.titleRow}
-          onPress={() => setShowDatePicker(p => !p)}
-          activeOpacity={0.80}
-        >
+        <TouchableOpacity style={inv2.titleRow} onPress={() => setShowDatePicker(p => !p)} activeOpacity={0.80}>
           <Text style={inv2.titleText}>{formatDateLabel(selectedDate)}</Text>
           <Text style={inv2.titleCaret}>{showDatePicker ? '▲' : '▼'}</Text>
         </TouchableOpacity>
@@ -643,228 +618,126 @@ const InventoryScreen = ({ items, maxQtyMap, onAddItem, onEditItem }) => {
           <Text style={inv2.addItemBtnTxt}>+ Add Item</Text>
         </TouchableOpacity>
       </View>
-
-      {/* ── Calendar dropdown ── */}
       {showDatePicker && (
         <View style={inv2.calCard}>
-          {/* Month nav */}
           <View style={inv2.calNav}>
-            <TouchableOpacity style={inv2.calNavBtn} onPress={() => {
-              if (calMonth === 0) { setCalMonth(11); setCalYear(y => y-1); }
-              else setCalMonth(m => m-1);
-            }}><Text style={inv2.calNavTxt}>‹</Text></TouchableOpacity>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={() => { if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1); }}><Text style={inv2.calNavTxt}>‹</Text></TouchableOpacity>
             <Text style={inv2.calMonthLbl}>{MONTHS[calMonth]} {calYear}</Text>
-            <TouchableOpacity style={inv2.calNavBtn} onPress={() => {
-              if (calMonth === 11) { setCalMonth(0); setCalYear(y => y+1); }
-              else setCalMonth(m => m+1);
-            }}><Text style={inv2.calNavTxt}>›</Text></TouchableOpacity>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={() => { if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1); }}><Text style={inv2.calNavTxt}>›</Text></TouchableOpacity>
           </View>
-          {/* Day headers */}
-          <View style={inv2.calDaysRow}>
-            {DAYS.map(d => <Text key={d} style={inv2.calDayHdr}>{d}</Text>)}
-          </View>
-          {/* Date grid */}
+          <View style={inv2.calDaysRow}>{DAYS.map(d=><Text key={d} style={inv2.calDayHdr}>{d}</Text>)}</View>
           <View style={inv2.calGrid}>
-            {calDays.map((day, idx) => {
-              if (!day) return <View key={'e'+idx} style={inv2.calCell}/>;
-              const thisDate   = new Date(calYear, calMonth, day);
-              const isSelected = thisDate.toDateString() === selectedDate.toDateString();
-              const isToday    = thisDate.toDateString() === today.toDateString();
-              return (
-                <TouchableOpacity key={idx} style={[inv2.calCell, isSelected && inv2.calCellSel, isToday && !isSelected && inv2.calCellToday]}
-                  onPress={() => { setSelectedDate(new Date(calYear, calMonth, day)); setShowDatePicker(false); }}>
-                  <Text style={[inv2.calCellTxt, isSelected && inv2.calCellTxtSel]}>{day}</Text>
+            {calDays.map((day,idx)=>{
+              if(!day) return <View key={'e'+idx} style={inv2.calCell}/>;
+              const thisDate=new Date(calYear,calMonth,day);
+              const isSelected=thisDate.toDateString()===selectedDate.toDateString();
+              const isToday=thisDate.toDateString()===today.toDateString();
+              return(
+                <TouchableOpacity key={idx} style={[inv2.calCell,isSelected&&inv2.calCellSel,isToday&&!isSelected&&inv2.calCellToday]}
+                  onPress={()=>{setSelectedDate(new Date(calYear,calMonth,day));setShowDatePicker(false);}}>
+                  <Text style={[inv2.calCellTxt,isSelected&&inv2.calCellTxtSel]}>{day}</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
         </View>
       )}
-
-      {/* ── Table ── */}
       <View style={inv2.tableWrap}>
-        {/* Header */}
         <View style={inv2.thead}>
-          <Text style={[inv2.th, inv2.colName]}>ITEM NAME</Text>
-          <Text style={[inv2.th, inv2.colCat]}>CATEGORY</Text>
-          <Text style={[inv2.th, inv2.colQty]}>QTY</Text>
-          <Text style={[inv2.th, inv2.colMaxQty]}>MAX QTY</Text>
-          <Text style={[inv2.th, inv2.colPrice]}>PRICE</Text>
-          <Text style={[inv2.th, inv2.colValue]}>VALUE</Text>
-          <Text style={[inv2.th, inv2.colRestock]}>RE-STOCK</Text>
+          <Text style={[inv2.th,inv2.colName]}>ITEM NAME</Text>
+          <Text style={[inv2.th,inv2.colCat]}>CATEGORY</Text>
+          <Text style={[inv2.th,inv2.colQty]}>QTY</Text>
+          <Text style={[inv2.th,inv2.colMaxQty]}>MAX QTY</Text>
+          <Text style={[inv2.th,inv2.colPrice]}>PRICE</Text>
+          <Text style={[inv2.th,inv2.colValue]}>VALUE</Text>
+          <Text style={[inv2.th,inv2.colRestock]}>RE-STOCK</Text>
         </View>
-
-        {/* Rows */}
-        <WebScrollView style={{ flex:1 }} contentContainerStyle={{ gap:0 }}>
-          {items.map((item, idx) => {
-            const max     = getMax(item.id);
-            const restock = Math.max(0, max - item.stock);
-            return (
-              <TouchableOpacity key={item.id} style={[inv2.trow, idx % 2 === 0 && inv2.trowAlt]} onPress={() => onEditItem && onEditItem(item)} activeOpacity={0.75}>
-                {/* Item Name */}
-                <View style={[inv2.td, inv2.colName]}>
-                  <Text style={inv2.tdName} numberOfLines={1}>{item.emoji}  {item.name}</Text>
-                </View>
-                {/* Category */}
-                <View style={[inv2.td, inv2.colCat]}>
-                  <Text style={inv2.tdMuted} numberOfLines={1}>{item.cat}</Text>
-                </View>
-                {/* QTY */}
-                <View style={[inv2.td, inv2.colQty]}>
-                  <Text style={[inv2.tdNum,
-                    item.stock === 0 && { color:'#e74c3c', fontFamily:'GoogleSans_700Bold' },
-                    item.stock <= 5 && item.stock > 0 && { color:'#b85c00', fontFamily:'GoogleSans_700Bold' },
-                  ]}>{item.stock}</Text>
-                </View>
-                {/* Max QTY */}
-                <View style={[inv2.td, inv2.colMaxQty]}>
-                  <Text style={[inv2.tdNum, { textAlign:'center' }]}>{getMax(item.id)}</Text>
-                </View>
-                {/* Price */}
-                <View style={[inv2.td, inv2.colPrice]}>
-                  <Text style={inv2.tdNum}>₱{item.price.toLocaleString()}</Text>
-                </View>
-                {/* Value */}
-                <View style={[inv2.td, inv2.colValue]}>
-                  <Text style={[inv2.tdNum, { color:'#1a3a6b', fontFamily:'GoogleSans_700Bold' }]}>
-                    ₱{(item.price * item.stock).toLocaleString()}
-                  </Text>
-                </View>
-                {/* Re-Stock */}
-                <View style={[inv2.td, inv2.colRestock]}>
-                  {restock > 0 ? (
-                    <View style={inv2.restockBadge}>
-                      <Text style={inv2.restockNeed}>Need {restock}</Text>
-                      <Text style={inv2.restockSub}>({item.stock}/{max})</Text>
-                    </View>
-                  ) : (
-                    <Text style={inv2.restockOk}>✓ OK</Text>
-                  )}
+        <WebScrollView style={{flex:1}} contentContainerStyle={{gap:0}}>
+          {items.map((item,idx)=>{
+            const max=getMax(item.id);
+            const restock=Math.max(0,max-item.stock);
+            return(
+              <TouchableOpacity key={item.id} style={[inv2.trow,idx%2===0&&inv2.trowAlt]} onPress={()=>onEditItem&&onEditItem(item)} activeOpacity={0.75}>
+                <View style={[inv2.td,inv2.colName]}><Text style={inv2.tdName} numberOfLines={1}>{item.emoji}  {item.name}</Text></View>
+                <View style={[inv2.td,inv2.colCat]}><Text style={inv2.tdMuted} numberOfLines={1}>{item.cat}</Text></View>
+                <View style={[inv2.td,inv2.colQty]}><Text style={[inv2.tdNum,item.stock===0&&{color:'#e74c3c',fontFamily:'GoogleSans_700Bold'},item.stock<=5&&item.stock>0&&{color:'#b85c00',fontFamily:'GoogleSans_700Bold'}]}>{item.stock}</Text></View>
+                <View style={[inv2.td,inv2.colMaxQty]}><Text style={[inv2.tdNum,{textAlign:'center'}]}>{getMax(item.id)}</Text></View>
+                <View style={[inv2.td,inv2.colPrice]}><Text style={inv2.tdNum}>₱{item.price.toLocaleString()}</Text></View>
+                <View style={[inv2.td,inv2.colValue]}><Text style={[inv2.tdNum,{color:'#1a3a6b',fontFamily:'GoogleSans_700Bold'}]}>₱{(item.price*item.stock).toLocaleString()}</Text></View>
+                <View style={[inv2.td,inv2.colRestock]}>
+                  {restock>0?(<View style={inv2.restockBadge}><Text style={inv2.restockNeed}>Need {restock}</Text><Text style={inv2.restockSub}>({item.stock}/{max})</Text></View>):(<Text style={inv2.restockOk}>✓ OK</Text>)}
                 </View>
               </TouchableOpacity>
             );
           })}
-
         </WebScrollView>
-        {/* Static TOTALS footer */}
         <View style={inv2.tfooter}>
-          <View style={[inv2.td, inv2.colName]}>
-            <Text style={inv2.tfootLbl}>TOTALS</Text>
-          </View>
-          <View style={[inv2.td, inv2.colCat]}/>
-          <View style={[inv2.td, inv2.colQty]}>
-            <Text style={[inv2.tfootVal, { textAlign:'center' }]}>{overallQty}</Text>
-          </View>
-          <View style={[inv2.td, inv2.colMaxQty]}/>
-          <View style={[inv2.td, inv2.colPrice]}>
-            <Text style={[inv2.tfootVal, { textAlign:'center' }]}>₱{overallPrice.toLocaleString()}</Text>
-          </View>
-          <View style={[inv2.td, inv2.colValue]}>
-            <Text style={[inv2.tfootVal, { color:'#8a6500', textAlign:'center' }]}>₱{grandTotal.toLocaleString()}</Text>
-          </View>
-          <View style={[inv2.td, inv2.colRestock]}/>
+          <View style={[inv2.td,inv2.colName]}><Text style={inv2.tfootLbl}>TOTALS</Text></View>
+          <View style={[inv2.td,inv2.colCat]}/>
+          <View style={[inv2.td,inv2.colQty]}><Text style={[inv2.tfootVal,{textAlign:'center'}]}>{overallQty}</Text></View>
+          <View style={[inv2.td,inv2.colMaxQty]}/>
+          <View style={[inv2.td,inv2.colPrice]}><Text style={[inv2.tfootVal,{textAlign:'center'}]}>₱{overallPrice.toLocaleString()}</Text></View>
+          <View style={[inv2.td,inv2.colValue]}><Text style={[inv2.tfootVal,{color:'#8a6500',textAlign:'center'}]}>₱{grandTotal.toLocaleString()}</Text></View>
+          <View style={[inv2.td,inv2.colRestock]}/>
         </View>
       </View>
     </View>
   );
 };
 
-// ── Inventory styles ──────────────────────────────────────────────────────────
 const inv2 = StyleSheet.create({
-  // Title
-  titleRow: {
-    flexDirection:'row', alignItems:'center',
-    gap:6, paddingVertical:6, paddingHorizontal:12,
-    backgroundColor:'rgba(26,58,107,0.10)', borderRadius:8,
-    marginHorizontal:0, marginTop:0, marginBottom:0,
-    borderWidth:1, borderColor:'rgba(26,58,107,0.15)',
-    alignSelf:'flex-start',
-  },
-  titleText: { fontFamily:'NotoSerif_700Bold', fontSize:12, color:'#1a3a6b' },
-  titleCaret: { fontSize:10, color:'rgba(26,58,107,0.50)' },
-  addItemBtn: { backgroundColor:'#1a3a6b', borderRadius:8, paddingVertical:7, paddingHorizontal:14, borderWidth:1, borderColor:'rgba(201,168,76,0.40)' },
-  addItemBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#fff', letterSpacing:0.3 },
-
-  // Calendar
-  calCard: {
-    position:'absolute', top:52, left:14, zIndex:999,
-    backgroundColor:'rgba(255,255,255,0.98)', borderRadius:10,
-    borderWidth:1, borderColor:'rgba(26,58,107,0.18)',
-    padding:8, shadowColor:'#000', shadowOpacity:0.18, shadowRadius:12, elevation:20,
-    minWidth:220, maxWidth:260,
-  },
-  calNav: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:4 },
-  calNavBtn: { width:22, height:22, borderRadius:11, backgroundColor:'rgba(26,58,107,0.08)', justifyContent:'center', alignItems:'center' },
-  calNavTxt: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b' },
-  calMonthLbl: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a3a6b' },
-  calDaysRow: { flexDirection:'row', marginBottom:2 },
-  calDayHdr: { flex:1, fontFamily:'GoogleSans_700Bold', fontSize:8, color:'rgba(26,58,107,0.45)', textAlign:'center', letterSpacing:0.3 },
-  calGrid: { flexDirection:'row', flexWrap:'wrap' },
-  calCell: { width:'14.28%', height:24, justifyContent:'center', alignItems:'center', borderRadius:4 },
+  titleRow: { flexDirection:'row',alignItems:'center',gap:6,paddingVertical:6,paddingHorizontal:12,backgroundColor:'rgba(26,58,107,0.10)',borderRadius:8,borderWidth:1,borderColor:'rgba(26,58,107,0.15)',alignSelf:'flex-start' },
+  titleText: { fontFamily:'NotoSerif_700Bold',fontSize:12,color:'#1a3a6b' },
+  titleCaret: { fontSize:10,color:'rgba(26,58,107,0.50)' },
+  addItemBtn: { backgroundColor:'#1a3a6b',borderRadius:8,paddingVertical:7,paddingHorizontal:14,borderWidth:1,borderColor:'rgba(201,168,76,0.40)' },
+  addItemBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#fff',letterSpacing:0.3 },
+  calCard: { position:'absolute',top:52,left:14,zIndex:999,backgroundColor:'rgba(255,255,255,0.98)',borderRadius:10,borderWidth:1,borderColor:'rgba(26,58,107,0.18)',padding:8,shadowColor:'#000',shadowOpacity:0.18,shadowRadius:12,elevation:20,minWidth:220,maxWidth:260 },
+  calNav: { flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:4 },
+  calNavBtn: { width:22,height:22,borderRadius:11,backgroundColor:'rgba(26,58,107,0.08)',justifyContent:'center',alignItems:'center' },
+  calNavTxt: { fontFamily:'GoogleSans_700Bold',fontSize:13,color:'#1a3a6b' },
+  calMonthLbl: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#1a3a6b' },
+  calDaysRow: { flexDirection:'row',marginBottom:2 },
+  calDayHdr: { flex:1,fontFamily:'GoogleSans_700Bold',fontSize:8,color:'rgba(26,58,107,0.45)',textAlign:'center',letterSpacing:0.3 },
+  calGrid: { flexDirection:'row',flexWrap:'wrap' },
+  calCell: { width:'14.28%',height:24,justifyContent:'center',alignItems:'center',borderRadius:4 },
   calCellSel: { backgroundColor:'#1a3a6b' },
-  calCellToday: { backgroundColor:'rgba(201,168,76,0.20)', borderWidth:1, borderColor:'#c9a84c' },
-  calCellTxt: { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'#1a3a6b' },
-  calCellTxtSel: { fontFamily:'GoogleSans_700Bold', color:'#fff' },
-
-  // Table layout
-  tableWrap: { flex:1, minHeight:0, marginHorizontal:14, marginBottom:10 },
-  thead: {
-    flexDirection:'row', alignItems:'center',
-    backgroundColor:'rgba(26,58,107,0.14)',
-    borderRadius:8, paddingVertical:9, paddingHorizontal:8,
-    marginBottom:2,
-  },
-  th: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.60)', letterSpacing:0.8, textTransform:'uppercase', textAlign:'center', borderRightWidth:1, borderColor:'rgba(26,58,107,0.10)', paddingHorizontal:4 },
-  trow: { flexDirection:'row', alignItems:'center', paddingVertical:8, paddingHorizontal:8, minHeight:42, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.07)' },
+  calCellToday: { backgroundColor:'rgba(201,168,76,0.20)',borderWidth:1,borderColor:'#c9a84c' },
+  calCellTxt: { fontFamily:'GoogleSans_400Regular',fontSize:9,color:'#1a3a6b' },
+  calCellTxtSel: { fontFamily:'GoogleSans_700Bold',color:'#fff' },
+  tableWrap: { flex:1,minHeight:0,marginHorizontal:14,marginBottom:10 },
+  thead: { flexDirection:'row',alignItems:'center',backgroundColor:'rgba(26,58,107,0.14)',borderRadius:8,paddingVertical:9,paddingHorizontal:8,marginBottom:2 },
+  th: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'rgba(26,58,107,0.60)',letterSpacing:0.8,textTransform:'uppercase',textAlign:'center',borderRightWidth:1,borderColor:'rgba(26,58,107,0.10)',paddingHorizontal:4 },
+  trow: { flexDirection:'row',alignItems:'center',paddingVertical:8,paddingHorizontal:8,minHeight:42,borderBottomWidth:1,borderColor:'rgba(26,58,107,0.07)' },
   trowAlt: { backgroundColor:'rgba(255,255,255,0.38)' },
-  td: { justifyContent:'center', alignItems:'center', paddingHorizontal:4, borderRightWidth:1, borderColor:'rgba(26,58,107,0.10)' },
-
-  // Column widths
-  colName:    { flex:2.2, minWidth:0, alignItems:'flex-start' },
-  colCat:     { flex:1.1, minWidth:0, alignItems:'center' },
-  colQty:     { flex:0.6, minWidth:0, alignItems:'center' },
-  colMaxQty:  { flex:0.8, minWidth:0, alignItems:'center' },
-  colPrice:   { flex:0.9, minWidth:0, alignItems:'center' },
-  colValue:   { flex:1.0, minWidth:0, alignItems:'center' },
-  colRestock: { flex:1.0, minWidth:0, alignItems:'center' },
-
-  // Cell text
-  tdName:  { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a2d4e' },
-  tdMuted: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(26,58,107,0.65)', textAlign:'center' },
-  tdNum:   { fontFamily:'GoogleSans_500Medium', fontSize:11, color:'#1a2d4e', textAlign:'center' },
-
-  // Unit picker
-  unitChip: { flexDirection:'row', alignItems:'center', gap:2, backgroundColor:'rgba(26,58,107,0.08)', borderRadius:6, paddingHorizontal:7, paddingVertical:4, borderWidth:1, borderColor:'rgba(26,58,107,0.15)' },
-  unitChipTxt: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#1a3a6b' },
-  unitChipArr: { fontSize:8, color:'rgba(26,58,107,0.45)' },
-  unitMenu: { position:'absolute', top:26, left:0, backgroundColor:'#fff', borderRadius:8, borderWidth:1, borderColor:'rgba(26,58,107,0.18)', shadowColor:'#000', shadowOpacity:0.14, shadowRadius:8, elevation:12, minWidth:64, zIndex:999 },
-  unitOpt: { paddingVertical:7, paddingHorizontal:10 },
-  unitOptActive: { backgroundColor:'rgba(26,58,107,0.08)' },
-  unitOptTxt: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#1a3a6b' },
-  unitOptTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
-
-  // Max QTY input
-  maxQtyInput: { width:44, textAlign:'center', fontFamily:'GoogleSans_500Medium', fontSize:11, color:'#1a3a6b', backgroundColor:'rgba(255,255,255,0.80)', borderRadius:6, borderWidth:1, borderColor:'rgba(26,58,107,0.20)', paddingVertical:3, paddingHorizontal:4 },
-
-  // Re-stock badge
+  td: { justifyContent:'center',alignItems:'center',paddingHorizontal:4,borderRightWidth:1,borderColor:'rgba(26,58,107,0.10)' },
+  colName:    { flex:2.2,minWidth:0,alignItems:'flex-start' },
+  colCat:     { flex:1.1,minWidth:0,alignItems:'center' },
+  colQty:     { flex:0.6,minWidth:0,alignItems:'center' },
+  colMaxQty:  { flex:0.8,minWidth:0,alignItems:'center' },
+  colPrice:   { flex:0.9,minWidth:0,alignItems:'center' },
+  colValue:   { flex:1.0,minWidth:0,alignItems:'center' },
+  colRestock: { flex:1.0,minWidth:0,alignItems:'center' },
+  tdName:  { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#1a2d4e' },
+  tdMuted: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(26,58,107,0.65)',textAlign:'center' },
+  tdNum:   { fontFamily:'GoogleSans_500Medium',fontSize:11,color:'#1a2d4e',textAlign:'center' },
   restockBadge: { alignItems:'center' },
-  restockNeed: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#b85c00' },
-  restockSub:  { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(26,58,107,0.45)' },
-  restockOk:   { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a7a45' },
-
-  // Footer totals row
-  tfooter: {
-    flexDirection:'row', alignItems:'center',
-    paddingVertical:10, paddingHorizontal:8,
-    backgroundColor:'rgba(26,58,107,0.10)',
-    borderRadius:6, marginTop:4,
-    borderTopWidth:1.5, borderColor:'rgba(26,58,107,0.18)',
-  },
-  tfootLbl: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b', letterSpacing:0.5 },
-  tfootVal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b', textAlign:'center', letterSpacing:0.2 },
+  restockNeed: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#b85c00' },
+  restockSub:  { fontFamily:'GoogleSans_400Regular',fontSize:9,color:'rgba(26,58,107,0.45)' },
+  restockOk:   { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#1a7a45' },
+  tfooter: { flexDirection:'row',alignItems:'center',paddingVertical:10,paddingHorizontal:8,backgroundColor:'rgba(26,58,107,0.10)',borderRadius:6,marginTop:4,borderTopWidth:1.5,borderColor:'rgba(26,58,107,0.18)' },
+  tfootLbl: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#1a3a6b',letterSpacing:0.5 },
+  tfootVal: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#1a3a6b',textAlign:'center',letterSpacing:0.2 },
+  maxQtyInput: { width:44,textAlign:'center',fontFamily:'GoogleSans_500Medium',fontSize:11,color:'#1a3a6b',backgroundColor:'rgba(255,255,255,0.80)',borderRadius:6,borderWidth:1,borderColor:'rgba(26,58,107,0.20)',paddingVertical:3,paddingHorizontal:4 },
+  unitChip: { flexDirection:'row',alignItems:'center',gap:2,backgroundColor:'rgba(26,58,107,0.08)',borderRadius:6,paddingHorizontal:7,paddingVertical:4,borderWidth:1,borderColor:'rgba(26,58,107,0.15)' },
+  unitChipTxt: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#1a3a6b' },
+  unitChipArr: { fontSize:8,color:'rgba(26,58,107,0.45)' },
+  unitMenu: { position:'absolute',top:26,left:0,backgroundColor:'#fff',borderRadius:8,borderWidth:1,borderColor:'rgba(26,58,107,0.18)',shadowColor:'#000',shadowOpacity:0.14,shadowRadius:8,elevation:12,minWidth:64,zIndex:999 },
+  unitOpt: { paddingVertical:7,paddingHorizontal:10 },
+  unitOptActive: { backgroundColor:'rgba(26,58,107,0.08)' },
+  unitOptTxt: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'#1a3a6b' },
+  unitOptTxtActive: { fontFamily:'GoogleSans_700Bold',color:'#1a3a6b' },
 });
 
-// ─── ORDER HISTORY — Date-grouped Transaction Log ────────────────────────────
 const OrderHistoryScreen = ({ orders }) => {
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -874,168 +747,100 @@ const OrderHistoryScreen = ({ orders }) => {
   const HST_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const HST_DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
   const calDays = (() => {
-    const first = new Date(calYear, calMonth, 1).getDay();
-    const dim = new Date(calYear, calMonth + 1, 0).getDate();
-    const cells = [];
-    for (let i = 0; i < first; i++) cells.push(null);
-    for (let d = 1; d <= dim; d++) cells.push(d);
+    const first=new Date(calYear,calMonth,1).getDay();
+    const dim=new Date(calYear,calMonth+1,0).getDate();
+    const cells=[];
+    for(let i=0;i<first;i++)cells.push(null);
+    for(let d=1;d<=dim;d++)cells.push(d);
     return cells;
   })();
-
   const parseOrderDate = (timeStr) => {
-    if (!timeStr) return null;
-    try {
-      const d = new Date(timeStr);
-      if (!isNaN(d.getTime())) return d;
-      const d2 = new Date(timeStr.replace(/\s+/g,' ').trim());
-      return isNaN(d2.getTime()) ? null : d2;
-    } catch { return null; }
+    if(!timeStr) return null;
+    try{ const d=new Date(timeStr); if(!isNaN(d.getTime()))return d; const d2=new Date(timeStr.replace(/\s+/g,' ').trim()); return isNaN(d2.getTime())?null:d2; }catch{return null;}
   };
-
-  const dateKey = (d) => {
-    if (!d) return 'unknown';
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  };
-
-  const todayKey = dateKey(new Date());
-
-  const formatLabel = (key) => {
-    if (!key || key === 'unknown') return 'Unknown Date';
-    const [y,m,day] = key.split('-');
-    const d = new Date(Number(y),Number(m)-1,Number(day));
-    if (key === todayKey) return `Today, ${d.toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}`;
-    const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
-    if (key === dateKey(yesterday)) return `Yesterday, ${d.toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}`;
+  const dateKey=(d)=>{if(!d)return'unknown';return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+  const todayKey=dateKey(new Date());
+  const formatLabel=(key)=>{
+    if(!key||key==='unknown')return'Unknown Date';
+    const[y,m,day]=key.split('-');
+    const d=new Date(Number(y),Number(m)-1,Number(day));
+    if(key===todayKey)return`Today, ${d.toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}`;
+    const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+    if(key===dateKey(yesterday))return`Yesterday, ${d.toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}`;
     return d.toLocaleDateString('en-PH',{weekday:'short',month:'long',day:'numeric',year:'numeric'});
   };
-
-  const grouped = React.useMemo(() => {
-    const map = {};
-    [...orders].forEach(o => {
-      const d = parseOrderDate(o.time);
-      const k = dateKey(d);
-      if (!map[k]) map[k] = { key:k, date:d, orders:[] };
-      map[k].orders.push(o);
-    });
-    Object.values(map).forEach(g => g.orders.sort((a,b)=>{
-      return (parseOrderDate(b.time)?.getTime()||0)-(parseOrderDate(a.time)?.getTime()||0);
-    }));
+  const grouped=React.useMemo(()=>{
+    const map={};
+    [...orders].forEach(o=>{const d=parseOrderDate(o.time);const k=dateKey(d);if(!map[k])map[k]={key:k,date:d,orders:[]};map[k].orders.push(o);});
+    Object.values(map).forEach(g=>g.orders.sort((a,b)=>(parseOrderDate(b.time)?.getTime()||0)-(parseOrderDate(a.time)?.getTime()||0)));
     return Object.values(map).sort((a,b)=>(b.date?.getTime()||0)-(a.date?.getTime()||0));
-  }, [orders]);
+  },[orders]);
+  React.useEffect(()=>{const tg=grouped.find(g=>g.key===todayKey);setSelectedDate(tg?todayKey:(grouped[0]?.key||null));},[grouped.length]);
+  const selectedGroup=grouped.find(g=>g.key===selectedDate);
+  const displayOrders=selectedGroup?.orders||[];
+  const dayTotal=displayOrders.reduce((s,o)=>s+Number(o.total),0);
 
-  // Always default to today (or first available)
-  React.useEffect(() => {
-    const todayGroup = grouped.find(g=>g.key===todayKey);
-    setSelectedDate(todayGroup ? todayKey : (grouped[0]?.key || null));
-  }, [grouped.length]);
-
-  const selectedGroup = grouped.find(g=>g.key===selectedDate);
-  const displayOrders = selectedGroup?.orders || [];
-  const dayTotal = displayOrders.reduce((s,o)=>s+Number(o.total),0);
-
-  return (
-    <View style={[sub.root, { position:'relative' }]}>
-
-      {/* Header: calendar date picker */}
-      <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginBottom:6 }}>
-        <TouchableOpacity style={hst.calTrigger} onPress={() => setShowCalendar(p => !p)} activeOpacity={0.80}>
+  return(
+    <View style={[sub.root,{position:'relative'}]}>
+      <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:6}}>
+        <TouchableOpacity style={hst.calTrigger} onPress={()=>setShowCalendar(p=>!p)} activeOpacity={0.80}>
           <Text style={hst.calTriggerTxt}>{formatLabel(selectedDate)}</Text>
-          <Text style={hst.calTriggerCaret}>{showCalendar ? '▲' : '▼'}</Text>
+          <Text style={hst.calTriggerCaret}>{showCalendar?'▲':'▼'}</Text>
         </TouchableOpacity>
-        <Text style={hst.txHeaderSub}>
-          {displayOrders.length} order{displayOrders.length!==1?'s':''}
-          {'  ·  '}<Text style={{color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}}>₱{dayTotal.toFixed(2)}</Text>
-        </Text>
+        <Text style={hst.txHeaderSub}>{displayOrders.length} order{displayOrders.length!==1?'s':''}{'  ·  '}<Text style={{color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}}>₱{dayTotal.toFixed(2)}</Text></Text>
       </View>
-      {showCalendar && (
+      {showCalendar&&(
         <View style={hst.calCard}>
           <View style={inv2.calNav}>
-            <TouchableOpacity style={inv2.calNavBtn} onPress={() => {
-              if (calMonth === 0) { setCalMonth(11); setCalYear(y => y-1); }
-              else setCalMonth(m => m-1);
-            }}><Text style={inv2.calNavTxt}>{'<'}</Text></TouchableOpacity>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={()=>{if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);}}><Text style={inv2.calNavTxt}>{'<'}</Text></TouchableOpacity>
             <Text style={inv2.calMonthLbl}>{HST_MONTHS[calMonth]} {calYear}</Text>
-            <TouchableOpacity style={inv2.calNavBtn} onPress={() => {
-              if (calMonth === 11) { setCalMonth(0); setCalYear(y => y+1); }
-              else setCalMonth(m => m+1);
-            }}><Text style={inv2.calNavTxt}>{'>'}</Text></TouchableOpacity>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={()=>{if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);}}><Text style={inv2.calNavTxt}>{'>'}</Text></TouchableOpacity>
           </View>
-          <View style={inv2.calDaysRow}>
-            {HST_DAYS.map(d => <Text key={d} style={inv2.calDayHdr}>{d}</Text>)}
-          </View>
+          <View style={inv2.calDaysRow}>{HST_DAYS.map(d=><Text key={d} style={inv2.calDayHdr}>{d}</Text>)}</View>
           <View style={inv2.calGrid}>
-            {calDays.map((day, idx) => {
-              if (!day) return <View key={'e'+idx} style={inv2.calCell}/>;
-              const dk = calYear + '-' + String(calMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
-              const isSel = dk === selectedDate;
-              const isToday = dk === todayKey;
-              const hasOrders = grouped.some(g => g.key === dk);
-              return (
-                <TouchableOpacity key={idx}
-                  style={[inv2.calCell, isSel && inv2.calCellSel, isToday && !isSel && inv2.calCellToday, !hasOrders && { opacity:0.30 }]}
-                  onPress={() => { if (hasOrders) { setSelectedDate(dk); setShowCalendar(false); } }}
-                  activeOpacity={hasOrders ? 0.75 : 1}
-                >
-                  <Text style={[inv2.calCellTxt, isSel && inv2.calCellTxtSel]}>{day}</Text>
-                  {hasOrders && !isSel && <View style={hst.calDot}/>}
-                </TouchableOpacity>
-              );
+            {calDays.map((day,idx)=>{
+              if(!day)return<View key={'e'+idx} style={inv2.calCell}/>;
+              const dk=calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+              const isSel=dk===selectedDate,isToday=dk===todayKey,hasOrders=grouped.some(g=>g.key===dk);
+              return(<TouchableOpacity key={idx} style={[inv2.calCell,isSel&&inv2.calCellSel,isToday&&!isSel&&inv2.calCellToday,!hasOrders&&{opacity:0.30}]} onPress={()=>{if(hasOrders){setSelectedDate(dk);setShowCalendar(false);}}} activeOpacity={hasOrders?0.75:1}>
+                <Text style={[inv2.calCellTxt,isSel&&inv2.calCellTxtSel]}>{day}</Text>
+                {hasOrders&&!isSel&&<View style={hst.calDot}/>}
+              </TouchableOpacity>);
             })}
           </View>
         </View>
-      )}      <View style={{height:1,backgroundColor:'rgba(1,31,75,0.10)',marginVertical:8}}/>
-
-      {/* ── Transaction timeline ── */}
-      {displayOrders.length === 0
-        ? <View style={[sub.emptyBox,{flex:1}]}>
-            <MaterialIcons name="receipt-long" size={48} color="rgba(1,31,75,0.15)"/>
-            <Text style={sub.emptyTxt}>No transactions for this day.</Text>
-          </View>
-        : <WebScrollView contentContainerStyle={{gap:4, paddingBottom:20}}>
-            {displayOrders.map((order, idx) => {
-              const timeOnly = (() => {
-                const d = parseOrderDate(order.time);
-                return d ? d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}) : (order.time||'');
-              })();
-              const itemsSummary = (order.items||[]).map(i=>`${i.item?.name||i.name||'Item'} ×${i.qty}`).join(' · ');
-              const isLatest = idx===0 && selectedDate===todayKey;
-              const st = ORDER_STATUSES[order.status] || ORDER_STATUSES.pending;
-              return (
-                <View key={order.id} style={hst.txRow}>
-                  {/* Time */}
-                  <View style={hst.txTimeCol}>
-                    <Text style={hst.txTime}>{timeOnly}</Text>
-                    {isLatest && <View style={hst.livePip}/>}
-                  </View>
-                  {/* Timeline dot + line */}
-                  <View style={hst.txLine}>
-                    <View style={[hst.txDot, isLatest&&{backgroundColor:'#e74c3c'}]}/>
-                    {idx < displayOrders.length-1 && <View style={hst.txVLine}/>}
-                  </View>
-                  {/* Card */}
-                  <View style={hst.txContent}>
-                    <View style={{flexDirection:'row',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                      <Text style={hst.txOrderId}>#{order.orderNo||order.id}</Text>
-                      <View style={[hst.txStatusBadge,{backgroundColor:st.bg}]}>
-                        <Text style={[hst.txStatusTxt,{color:st.color}]}>{st.label}</Text>
-                      </View>
-                    </View>
-                    <Text style={hst.txItems} numberOfLines={2}>{itemsSummary}</Text>
-                    <View style={{flexDirection:'row',alignItems:'center',gap:10}}>
-                      <Text style={hst.txAmount}>₱{Number(order.total).toFixed(2)}</Text>
-                      <Text style={hst.txPay}>💵 Cash</Text>
-                    </View>
-                  </View>
+      )}
+      <View style={{height:1,backgroundColor:'rgba(1,31,75,0.10)',marginVertical:8}}/>
+      {displayOrders.length===0
+        ?<View style={[sub.emptyBox,{flex:1}]}><MaterialIcons name="receipt-long" size={48} color="rgba(1,31,75,0.15)"/><Text style={sub.emptyTxt}>No transactions for this day.</Text></View>
+        :<WebScrollView contentContainerStyle={{gap:4,paddingBottom:20}}>
+          {displayOrders.map((order,idx)=>{
+            const timeOnly=(()=>{const d=parseOrderDate(order.time);return d?d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}):(order.time||'');})();
+            const itemsSummary=(order.items||[]).map(i=>`${i.item?.name||i.name||'Item'} ×${i.qty}`).join(' · ');
+            const isLatest=idx===0&&selectedDate===todayKey;
+            const st=ORDER_STATUSES[order.status]||ORDER_STATUSES.pending;
+            return(<View key={order.id} style={hst.txRow}>
+              <View style={hst.txTimeCol}><Text style={hst.txTime}>{timeOnly}</Text>{isLatest&&<View style={hst.livePip}/>}</View>
+              <View style={hst.txLine}><View style={[hst.txDot,isLatest&&{backgroundColor:'#e74c3c'}]}/>{idx<displayOrders.length-1&&<View style={hst.txVLine}/>}</View>
+              <View style={hst.txContent}>
+                <View style={{flexDirection:'row',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                  <Text style={hst.txOrderId}>#{order.orderNo||order.id}</Text>
+                  <View style={[hst.txStatusBadge,{backgroundColor:st.bg}]}><Text style={[hst.txStatusTxt,{color:st.color}]}>{st.label}</Text></View>
                 </View>
-              );
-            })}
-          </WebScrollView>
+                <Text style={hst.txItems} numberOfLines={2}>{itemsSummary}</Text>
+                <View style={{flexDirection:'row',alignItems:'center',gap:10}}>
+                  <Text style={hst.txAmount}>₱{Number(order.total).toFixed(2)}</Text>
+                  <Text style={hst.txPay}>💵 Cash</Text>
+                </View>
+              </View>
+            </View>);
+          })}
+        </WebScrollView>
       }
     </View>
   );
 };
 
-// ─── EMPLOYEE CREDITS ─────────────────────────────────────────────────────────
 const EmployeeCreditsScreen = () => (
   <View style={[sub.root,{justifyContent:'center',alignItems:'center',gap:14}]}>
     <MaterialIcons name="account-balance" size={64} color="rgba(1,31,75,0.15)"/>
@@ -1044,430 +849,129 @@ const EmployeeCreditsScreen = () => (
   </View>
 );
 
-// ─── SALES REPORT ─────────────────────────────────────────────────────────────
 const SalesReportScreen = ({ orders, items }) => {
-  const currentYear = new Date().getFullYear();
-  const [year,         setYear]         = useState(currentYear);
-  const [yearDropdown, setYearDropdown] = useState(false);
-  const [activeMonth,  setActiveMonth]  = useState(new Date().getMonth());
-  const [expandedTxDate,  setExpandedTxDate]  = useState(null);
-  const [expandedInvDate, setExpandedInvDate] = useState(null);
-  const [showTx,      setShowTx]      = useState(true);
-  const [showInv,     setShowInv]     = useState(true);
-  const [showCredits, setShowCredits] = useState(true);
+  const currentYear=new Date().getFullYear();
+  const[year,setYear]=useState(currentYear);
+  const[yearDropdown,setYearDropdown]=useState(false);
+  const[activeMonth,setActiveMonth]=useState(new Date().getMonth());
+  const[expandedTxDate,setExpandedTxDate]=useState(null);
+  const[expandedInvDate,setExpandedInvDate]=useState(null);
+  const[showTx,setShowTx]=useState(true);
+  const[showInv,setShowInv]=useState(true);
+  const[showCredits,setShowCredits]=useState(true);
+  const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const years=Array.from({length:30},(_,i)=>2025+i);
+  const parseDate=(timeStr)=>{if(!timeStr)return null;try{const d=new Date(timeStr);return isNaN(d.getTime())?null:d;}catch{return null;}};
+  const fmtDateKey=(d)=>String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'-'+d.getFullYear();
+  const monthOrders=orders.filter(o=>{const d=parseDate(o.time);return d&&d.getFullYear()===year&&d.getMonth()===activeMonth;});
+  const txByDay=React.useMemo(()=>{const map={};monthOrders.forEach(o=>{const d=parseDate(o.time);if(!d)return;const k=fmtDateKey(d);if(!map[k])map[k]={key:k,orders:[]};map[k].orders.push(o);});return Object.values(map).sort((a,b)=>a.key.localeCompare(b.key));},[monthOrders.length,activeMonth,year]);
+  const invByDay=React.useMemo(()=>txByDay.map(g=>{const totalStock=(items||[]).reduce((s,i)=>s+(i.stock||0),0);const totalValue=(items||[]).reduce((s,i)=>s+(i.price||0)*(i.stock||0),0);return{key:g.key,totalStock,totalValue};}),[txByDay,items]);
+  const printTxDay=(dayGroup)=>{if(typeof window==='undefined')return;const total=dayGroup.orders.reduce((s,o)=>s+Number(o.total),0);const rows=dayGroup.orders.map((o,i)=>{const its=(o.items||[]).map(it=>(it.item?.name||it.name||'Item')+' x'+it.qty).join(', ');return'<tr><td>'+(i+1)+'</td><td>#'+(o.orderNo||o.id)+'</td><td>'+(o.time||'')+'</td><td>'+its+'</td><td>&#8369;'+Number(o.total).toFixed(2)+'</td></tr>';}).join('');const html='<html><head><title>Transaction Report '+dayGroup.key+'</title><style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style></head><body><h2>Transaction History Report</h2><p><b>Date:</b> '+dayGroup.key+' &nbsp;|&nbsp; <b>Total Orders:</b> '+dayGroup.orders.length+' &nbsp;|&nbsp; <b>Total Earnings:</b> &#8369;'+total.toFixed(2)+'</p><table><thead><tr><th>#</th><th>Order No</th><th>Time</th><th>Items</th><th>Amount</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4">TOTAL</td><td>&#8369;'+total.toFixed(2)+'</td></tr></tfoot></table></body></html>';const w=window.open('','_blank');w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);};
+  const printInvDay=(invDay)=>{if(typeof window==='undefined')return;const rows=(items||[]).map(it=>'<tr><td>'+(it.emoji||'')+' '+(it.name||'')+'</td><td>'+(it.cat||'')+'</td><td>'+(it.stock||0)+'</td><td>&#8369;'+(it.price||0).toLocaleString()+'</td><td>&#8369;'+((it.price||0)*(it.stock||0)).toLocaleString()+'</td></tr>').join('');const totalStock=(items||[]).reduce((s,i)=>s+(i.stock||0),0);const totalValue=(items||[]).reduce((s,i)=>s+(i.price||0)*(i.stock||0),0);const html='<html><head><title>Inventory Report '+invDay.key+'</title><style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style></head><body><h2>Inventory Report</h2><p><b>Date:</b> '+invDay.key+' &nbsp;|&nbsp; <b>Total Stock:</b> '+invDay.totalStock+' &nbsp;|&nbsp; <b>Total Value:</b> &#8369;'+invDay.totalValue.toLocaleString()+'</p><table><thead><tr><th>Item</th><th>Category</th><th>Stock</th><th>Price</th><th>Value</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="2">TOTAL</td><td>'+totalStock+'</td><td></td><td>&#8369;'+totalValue.toLocaleString()+'</td></tr></tfoot></table></body></html>';const w=window.open('','_blank');w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);};
 
-  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  const years = Array.from({ length: 30 }, (_, i) => 2025 + i); // 2025 - 2054
-
-  // Parse order date
-  const parseDate = (timeStr) => {
-    if (!timeStr) return null;
-    try {
-      const d = new Date(timeStr);
-      return isNaN(d.getTime()) ? null : d;
-    } catch { return null; }
-  };
-
-  const fmtDateKey = (d) =>
-    String(d.getMonth()+1).padStart(2,'0') + '-' +
-    String(d.getDate()).padStart(2,'0') + '-' +
-    d.getFullYear();
-
-  // All done orders for selected year + month
-  const monthOrders = orders.filter(o => {
-    const d = parseDate(o.time);
-    return d && d.getFullYear() === year && d.getMonth() === activeMonth;
-  });
-
-  // Group by day — Transaction History
-  const txByDay = React.useMemo(() => {
-    const map = {};
-    monthOrders.forEach(o => {
-      const d = parseDate(o.time);
-      if (!d) return;
-      const k = fmtDateKey(d);
-      if (!map[k]) map[k] = { key: k, orders: [] };
-      map[k].orders.push(o);
-    });
-    return Object.values(map).sort((a, b) => a.key.localeCompare(b.key));
-  }, [monthOrders.length, activeMonth, year]);
-
-  // Inventory snapshot per day (use items for stock data)
-  const invByDay = React.useMemo(() => {
-    // Use same dates as transaction history (days that have activity)
-    return txByDay.map(g => {
-      const totalStock = (items || []).reduce((s, i) => s + (i.stock || 0), 0);
-      const totalValue = (items || []).reduce((s, i) => s + (i.price || 0) * (i.stock || 0), 0);
-      return { key: g.key, totalStock, totalValue };
-    });
-  }, [txByDay, items]);
-
-  // Print transaction history for a specific day
-  const printTxDay = (dayGroup) => {
-    if (typeof window === 'undefined') return;
-    const total = dayGroup.orders.reduce((s, o) => s + Number(o.total), 0);
-    const rows = dayGroup.orders.map((o, i) => {
-      const items = (o.items || []).map(it => (it.item?.name || it.name || 'Item') + ' x' + it.qty).join(', ');
-      return '<tr><td>' + (i+1) + '</td><td>#' + (o.orderNo||o.id) + '</td><td>' + (o.time||'') + '</td><td>' + items + '</td><td>&#8369;' + Number(o.total).toFixed(2) + '</td></tr>';
-    }).join('');
-    const html = '<html><head><title>Transaction Report ' + dayGroup.key + '</title>'
-      + '<style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style>'
-      + '</head><body><h2>Transaction History Report</h2><p><b>Date:</b> ' + dayGroup.key + ' &nbsp;|&nbsp; <b>Total Orders:</b> ' + dayGroup.orders.length + ' &nbsp;|&nbsp; <b>Total Earnings:</b> &#8369;' + total.toFixed(2) + '</p>'
-      + '<table><thead><tr><th>#</th><th>Order No</th><th>Time</th><th>Items</th><th>Amount</th></tr></thead><tbody>' + rows + '</tbody>'
-      + '<tfoot><tr><td colspan="4">TOTAL</td><td>&#8369;' + total.toFixed(2) + '</td></tr></tfoot></table></body></html>';
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => w.print(), 400);
-  };
-
-  // Print inventory for a specific day
-  const printInvDay = (invDay) => {
-    if (typeof window === 'undefined') return;
-    const rows = (items || []).map(it =>
-      '<tr><td>' + (it.emoji||'') + ' ' + (it.name||'') + '</td><td>' + (it.cat||'') + '</td><td>' + (it.stock||0) + '</td><td>&#8369;' + (it.price||0).toLocaleString() + '</td><td>&#8369;' + ((it.price||0)*(it.stock||0)).toLocaleString() + '</td></tr>'
-    ).join('');
-    const totalStock = (items||[]).reduce((s,i)=>s+(i.stock||0),0);
-    const totalValue = (items||[]).reduce((s,i)=>s+(i.price||0)*(i.stock||0),0);
-    const html = '<html><head><title>Inventory Report ' + invDay.key + '</title>'
-      + '<style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style>'
-      + '</head><body><h2>Inventory Report</h2><p><b>Date:</b> ' + invDay.key + ' &nbsp;|&nbsp; <b>Total Stock:</b> ' + invDay.totalStock + ' &nbsp;|&nbsp; <b>Total Value:</b> &#8369;' + invDay.totalValue.toLocaleString() + '</p>'
-      + '<table><thead><tr><th>Item</th><th>Category</th><th>Stock</th><th>Price</th><th>Value</th></tr></thead><tbody>' + rows + '</tbody>'
-      + '<tfoot><tr><td colspan="2">TOTAL</td><td>' + totalStock + '</td><td></td><td>&#8369;' + totalValue.toLocaleString() + '</td></tr></tfoot></table></body></html>';
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => w.print(), 400);
-  };
-
-  return (
+  return(
     <View style={sub.root}>
-      <WebScrollView contentContainerStyle={{ gap:0, paddingBottom:20 }}>
-
-        {/* ── Year selector ── */}
-        <View style={{ alignItems:'center', marginBottom:14, position:'relative', zIndex:100 }}>
-          <TouchableOpacity
-            style={rpt.yearBtn}
-            onPress={() => setYearDropdown(p => !p)}
-            activeOpacity={0.80}
-          >
+      <WebScrollView contentContainerStyle={{gap:0,paddingBottom:20}}>
+        <View style={{alignItems:'center',marginBottom:14,position:'relative',zIndex:100}}>
+          <TouchableOpacity style={rpt.yearBtn} onPress={()=>setYearDropdown(p=>!p)} activeOpacity={0.80}>
             <Text style={rpt.yearTxt}>YEAR  {year}</Text>
-            <Text style={rpt.yearCaret}>{yearDropdown ? '\u25b2' : '\u25bc'}</Text>
+            <Text style={rpt.yearCaret}>{yearDropdown?'▲':'▼'}</Text>
           </TouchableOpacity>
-          {yearDropdown && (
-            <ScrollView style={rpt.yearMenu} showsVerticalScrollIndicator={false}>
-              {years.map(y => (
-                <TouchableOpacity key={y} style={[rpt.yearOpt, y === year && rpt.yearOptActive]}
-                  onPress={() => { setYear(y); setYearDropdown(false); }}>
-                  <Text style={[rpt.yearOptTxt, y === year && rpt.yearOptTxtActive]}>{y}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
+          {yearDropdown&&(<ScrollView style={rpt.yearMenu} showsVerticalScrollIndicator={false}>{years.map(y=>(<TouchableOpacity key={y} style={[rpt.yearOpt,y===year&&rpt.yearOptActive]} onPress={()=>{setYear(y);setYearDropdown(false);}}><Text style={[rpt.yearOptTxt,y===year&&rpt.yearOptTxtActive]}>{y}</Text></TouchableOpacity>))}</ScrollView>)}
         </View>
-
-        {/* ── Month tabs ── */}
-        <View style={{ flexDirection:'row', flexWrap:'wrap', justifyContent:'center', gap:6, marginBottom:16 }}>
-          {MONTHS.map((m, i) => (
-            <TouchableOpacity key={m}
-              style={[rpt.monthBtn, activeMonth === i && rpt.monthBtnActive]}
-              onPress={() => { setActiveMonth(i); setExpandedTxDate(null); setExpandedInvDate(null); }}>
-              <Text style={[rpt.monthTxt, activeMonth === i && rpt.monthTxtActive]}>{m}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{flexDirection:'row',flexWrap:'wrap',justifyContent:'center',gap:6,marginBottom:16}}>
+          {MONTHS.map((m,i)=>(<TouchableOpacity key={m} style={[rpt.monthBtn,activeMonth===i&&rpt.monthBtnActive]} onPress={()=>{setActiveMonth(i);setExpandedTxDate(null);setExpandedInvDate(null);}}><Text style={[rpt.monthTxt,activeMonth===i&&rpt.monthTxtActive]}>{m}</Text></TouchableOpacity>))}
         </View>
-
-        {/* ── Transaction History Report ── */}
         <View style={rpt.section}>
-          <TouchableOpacity style={rpt.sectionTitleRow} onPress={() => setShowTx(p=>!p)} activeOpacity={0.80}>
-            <Text style={rpt.sectionTitle}>Transaction History Reports</Text>
-            <Text style={rpt.sectionToggle}>{showTx ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-          {showTx && <View>
-          {/* Table header */}
-          <View style={rpt.thead}>
-            <Text style={[rpt.th, { flex:1.0, textAlign:'left', paddingLeft:12 }]}>DATE</Text>
-            <Text style={[rpt.th, { flex:1.1 }]}>TOTAL ORDERS</Text>
-            <Text style={[rpt.th, { flex:1.3 }]}>TOTAL EARNINGS</Text>
-            <Text style={[rpt.th, { width:80 }]}>PRINT</Text>
-          </View>
-          {txByDay.length === 0 ? (
-            <View style={rpt.emptyRow}>
-              <Text style={rpt.emptyTxt}>No transactions for {MONTHS[activeMonth]} {year}</Text>
-            </View>
-          ) : (
-            txByDay.map((g, idx) => {
-              const total = g.orders.reduce((s, o) => s + Number(o.total), 0);
-              const isOpen = expandedTxDate === g.key;
-              return (
-                <View key={g.key}>
-                  <TouchableOpacity
-                    style={[rpt.trow, idx % 2 === 0 && rpt.trowAlt]}
-                    onPress={() => setExpandedTxDate(isOpen ? null : g.key)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[rpt.td, { flex:1.0, fontFamily:'GoogleSans_700Bold', color:'#1a3a6b', textAlign:'left', paddingLeft:12 }]}>{g.key}</Text>
-                    <Text style={[rpt.td, { flex:1.1 }]}>{g.orders.length}</Text>
-                    <Text style={[rpt.td, { flex:1.3, fontFamily:'GoogleSans_700Bold', color:'#1a7a45' }]}>
-                      {'\u20b1'}{total.toFixed(2)}
-                    </Text>
-                    <View style={{ width:80, alignItems:'center', justifyContent:'center', alignSelf:'stretch', borderRightWidth:1, borderColor:'rgba(26,58,107,0.08)' }}><TouchableOpacity style={rpt.printBtn} onPress={() => printTxDay(g)}>
-                      <Text style={rpt.printBtnTxt}>Print</Text>
-                    </TouchableOpacity></View>
-                  </TouchableOpacity>
-                  {isOpen && (
-                    <View style={rpt.expandPanel}>
-                      <View style={rpt.expandHead}>
-                        <Text style={[rpt.expandTh, { flex:0.4 }]}>#</Text>
-                        <Text style={[rpt.expandTh, { flex:0.8 }]}>ORDER NO</Text>
-                        <Text style={[rpt.expandTh, { flex:1.8 }]}>ITEMS</Text>
-                        <Text style={[rpt.expandTh, { flex:0.8, textAlign:'right' }]}>AMOUNT</Text>
-                      </View>
-                      {g.orders.map((o, i) => {
-                        const itms = (o.items||[]).map(it => (it.item?.name||it.name||'Item') + ' x' + it.qty).join(', ');
-                        return (
-                          <View key={o.id} style={[rpt.expandRow, i%2===0 && { backgroundColor:'rgba(255,255,255,0.30)' }]}>
-                            <Text style={[rpt.expandTd, { flex:0.4 }]}>{i+1}</Text>
-                            <Text style={[rpt.expandTd, { flex:0.8, fontFamily:'GoogleSans_700Bold' }]}>#{o.orderNo||o.id}</Text>
-                            <Text style={[rpt.expandTd, { flex:1.8 }]} numberOfLines={2}>{itms}</Text>
-                            <Text style={[rpt.expandTd, { flex:0.8, textAlign:'right', color:'#c9a84c', fontFamily:'GoogleSans_700Bold' }]}>
-                              {'\u20b1'}{Number(o.total).toFixed(2)}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          )}
+          <TouchableOpacity style={rpt.sectionTitleRow} onPress={()=>setShowTx(p=>!p)} activeOpacity={0.80}><Text style={rpt.sectionTitle}>Transaction History Reports</Text><Text style={rpt.sectionToggle}>{showTx?'▲':'▼'}</Text></TouchableOpacity>
+          {showTx&&<View>
+            <View style={rpt.thead}><Text style={[rpt.th,{flex:1.0,textAlign:'left',paddingLeft:12}]}>DATE</Text><Text style={[rpt.th,{flex:1.1}]}>TOTAL ORDERS</Text><Text style={[rpt.th,{flex:1.3}]}>TOTAL EARNINGS</Text><Text style={[rpt.th,{width:80}]}>PRINT</Text></View>
+            {txByDay.length===0?(<View style={rpt.emptyRow}><Text style={rpt.emptyTxt}>No transactions for {MONTHS[activeMonth]} {year}</Text></View>):txByDay.map((g,idx)=>{const total=g.orders.reduce((s,o)=>s+Number(o.total),0);const isOpen=expandedTxDate===g.key;return(<View key={g.key}><TouchableOpacity style={[rpt.trow,idx%2===0&&rpt.trowAlt]} onPress={()=>setExpandedTxDate(isOpen?null:g.key)} activeOpacity={0.75}><Text style={[rpt.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:12}]}>{g.key}</Text><Text style={[rpt.td,{flex:1.1}]}>{g.orders.length}</Text><Text style={[rpt.td,{flex:1.3,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>{'\u20b1'}{total.toFixed(2)}</Text><View style={{width:80,alignItems:'center',justifyContent:'center',alignSelf:'stretch',borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)'}}><TouchableOpacity style={rpt.printBtn} onPress={()=>printTxDay(g)}><Text style={rpt.printBtnTxt}>Print</Text></TouchableOpacity></View></TouchableOpacity>{isOpen&&(<View style={rpt.expandPanel}><View style={rpt.expandHead}><Text style={[rpt.expandTh,{flex:0.4}]}>#</Text><Text style={[rpt.expandTh,{flex:0.8}]}>ORDER NO</Text><Text style={[rpt.expandTh,{flex:1.8}]}>ITEMS</Text><Text style={[rpt.expandTh,{flex:0.8,textAlign:'right'}]}>AMOUNT</Text></View>{g.orders.map((o,i)=>{const itms=(o.items||[]).map(it=>(it.item?.name||it.name||'Item')+' x'+it.qty).join(', ');return(<View key={o.id} style={[rpt.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}><Text style={[rpt.expandTd,{flex:0.4}]}>{i+1}</Text><Text style={[rpt.expandTd,{flex:0.8,fontFamily:'GoogleSans_700Bold'}]}>#{o.orderNo||o.id}</Text><Text style={[rpt.expandTd,{flex:1.8}]} numberOfLines={2}>{itms}</Text><Text style={[rpt.expandTd,{flex:0.8,textAlign:'right',color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>{'\u20b1'}{Number(o.total).toFixed(2)}</Text></View>);})}</View>)}</View>);})}
           </View>}
         </View>
-
-        {/* ── Inventory Report ── */}
-        <View style={[rpt.section, { marginTop:16 }]}>
-          <TouchableOpacity style={rpt.sectionTitleRow} onPress={() => setShowInv(p=>!p)} activeOpacity={0.80}>
-            <Text style={rpt.sectionTitle}>Inventory Reports</Text>
-            <Text style={rpt.sectionToggle}>{showInv ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-          {showInv && <View>
-          <View style={rpt.thead}>
-            <Text style={[rpt.th, { flex:1.0, textAlign:'left', paddingLeft:12 }]}>DATE</Text>
-            <Text style={[rpt.th, { flex:1.1 }]}>TOTAL STOCK</Text>
-            <Text style={[rpt.th, { flex:1.3 }]}>TOTAL VALUE</Text>
-            <Text style={[rpt.th, { width:80 }]}>PRINT</Text>
-          </View>
-          {invByDay.length === 0 ? (
-            <View style={rpt.emptyRow}>
-              <Text style={rpt.emptyTxt}>No inventory data for {MONTHS[activeMonth]} {year}</Text>
-            </View>
-          ) : (
-            invByDay.map((g, idx) => {
-              const isOpen = expandedInvDate === g.key;
-              return (
-                <View key={g.key}>
-                  <TouchableOpacity
-                    style={[rpt.trow, idx % 2 === 0 && rpt.trowAlt]}
-                    onPress={() => setExpandedInvDate(isOpen ? null : g.key)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[rpt.td, { flex:1.0, fontFamily:'GoogleSans_700Bold', color:'#1a3a6b', textAlign:'left', paddingLeft:12 }]}>{g.key}</Text>
-                    <Text style={[rpt.td, { flex:1.1 }]}>{g.totalStock}</Text>
-                    <Text style={[rpt.td, { flex:1.3, fontFamily:'GoogleSans_700Bold', color:'#1a7a45' }]}>
-                      {'\u20b1'}{g.totalValue.toLocaleString()}
-                    </Text>
-                    <View style={{ width:80, alignItems:'center', justifyContent:'center', alignSelf:'stretch', borderRightWidth:1, borderColor:'rgba(26,58,107,0.08)' }}><TouchableOpacity style={rpt.printBtn} onPress={() => printInvDay(g)}>
-                      <Text style={rpt.printBtnTxt}>Print</Text>
-                    </TouchableOpacity></View>
-                  </TouchableOpacity>
-                  {isOpen && (
-                    <View style={rpt.expandPanel}>
-                      <View style={rpt.expandHead}>
-                        <Text style={[rpt.expandTh, { flex:2 }]}>ITEM</Text>
-                        <Text style={[rpt.expandTh, { flex:1 }]}>CATEGORY</Text>
-                        <Text style={[rpt.expandTh, { flex:0.6, textAlign:'center' }]}>STOCK</Text>
-                        <Text style={[rpt.expandTh, { flex:0.8, textAlign:'right' }]}>VALUE</Text>
-                      </View>
-                      {(items||[]).map((it, i) => (
-                        <View key={it.id} style={[rpt.expandRow, i%2===0 && { backgroundColor:'rgba(255,255,255,0.30)' }]}>
-                          <Text style={[rpt.expandTd, { flex:2, fontFamily:'GoogleSans_700Bold' }]} numberOfLines={1}>{it.emoji} {it.name}</Text>
-                          <Text style={[rpt.expandTd, { flex:1 }]} numberOfLines={1}>{it.cat}</Text>
-                          <Text style={[rpt.expandTd, { flex:0.6, textAlign:'center' }]}>{it.stock}</Text>
-                          <Text style={[rpt.expandTd, { flex:0.8, textAlign:'right', color:'#c9a84c', fontFamily:'GoogleSans_700Bold' }]}>
-                            {'\u20b1'}{((it.price||0)*(it.stock||0)).toLocaleString()}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          )}
+        <View style={[rpt.section,{marginTop:16}]}>
+          <TouchableOpacity style={rpt.sectionTitleRow} onPress={()=>setShowInv(p=>!p)} activeOpacity={0.80}><Text style={rpt.sectionTitle}>Inventory Reports</Text><Text style={rpt.sectionToggle}>{showInv?'▲':'▼'}</Text></TouchableOpacity>
+          {showInv&&<View>
+            <View style={rpt.thead}><Text style={[rpt.th,{flex:1.0,textAlign:'left',paddingLeft:12}]}>DATE</Text><Text style={[rpt.th,{flex:1.1}]}>TOTAL STOCK</Text><Text style={[rpt.th,{flex:1.3}]}>TOTAL VALUE</Text><Text style={[rpt.th,{width:80}]}>PRINT</Text></View>
+            {invByDay.length===0?(<View style={rpt.emptyRow}><Text style={rpt.emptyTxt}>No inventory data for {MONTHS[activeMonth]} {year}</Text></View>):invByDay.map((g,idx)=>{const isOpen=expandedInvDate===g.key;return(<View key={g.key}><TouchableOpacity style={[rpt.trow,idx%2===0&&rpt.trowAlt]} onPress={()=>setExpandedInvDate(isOpen?null:g.key)} activeOpacity={0.75}><Text style={[rpt.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:12}]}>{g.key}</Text><Text style={[rpt.td,{flex:1.1}]}>{g.totalStock}</Text><Text style={[rpt.td,{flex:1.3,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>{'\u20b1'}{g.totalValue.toLocaleString()}</Text><View style={{width:80,alignItems:'center',justifyContent:'center',alignSelf:'stretch',borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)'}}><TouchableOpacity style={rpt.printBtn} onPress={()=>printInvDay(g)}><Text style={rpt.printBtnTxt}>Print</Text></TouchableOpacity></View></TouchableOpacity>{isOpen&&(<View style={rpt.expandPanel}><View style={rpt.expandHead}><Text style={[rpt.expandTh,{flex:2}]}>ITEM</Text><Text style={[rpt.expandTh,{flex:1}]}>CATEGORY</Text><Text style={[rpt.expandTh,{flex:0.6,textAlign:'center'}]}>STOCK</Text><Text style={[rpt.expandTh,{flex:0.8,textAlign:'right'}]}>VALUE</Text></View>{(items||[]).map((it,i)=>(<View key={it.id} style={[rpt.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}><Text style={[rpt.expandTd,{flex:2,fontFamily:'GoogleSans_700Bold'}]} numberOfLines={1}>{it.emoji} {it.name}</Text><Text style={[rpt.expandTd,{flex:1}]} numberOfLines={1}>{it.cat}</Text><Text style={[rpt.expandTd,{flex:0.6,textAlign:'center'}]}>{it.stock}</Text><Text style={[rpt.expandTd,{flex:0.8,textAlign:'right',color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>{'\u20b1'}{((it.price||0)*(it.stock||0)).toLocaleString()}</Text></View>))}</View>)}</View>);})}
           </View>}
         </View>
-
-        {/* ── Credits Report ── */}
-        <View style={[rpt.section, { marginTop:16 }]}>
-          <TouchableOpacity style={rpt.sectionTitleRow} onPress={() => setShowCredits(p=>!p)} activeOpacity={0.80}>
-            <Text style={rpt.sectionTitle}>Credits Reports</Text>
-            <Text style={rpt.sectionToggle}>{showCredits ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-          {showCredits && <View style={rpt.comingSoon}>
-            <Text style={rpt.comingSoonEmoji}>🚧</Text>
-            <Text style={rpt.comingSoonTxt}>Coming Soon</Text>
-            <Text style={rpt.comingSoonSub}>Credits reporting will be available in a future update.</Text>
-          </View>}
+        <View style={[rpt.section,{marginTop:16}]}>
+          <TouchableOpacity style={rpt.sectionTitleRow} onPress={()=>setShowCredits(p=>!p)} activeOpacity={0.80}><Text style={rpt.sectionTitle}>Credits Reports</Text><Text style={rpt.sectionToggle}>{showCredits?'▲':'▼'}</Text></TouchableOpacity>
+          {showCredits&&<View style={rpt.comingSoon}><Text style={rpt.comingSoonEmoji}>🚧</Text><Text style={rpt.comingSoonTxt}>Coming Soon</Text><Text style={rpt.comingSoonSub}>Credits reporting will be available in a future update.</Text></View>}
         </View>
-
       </WebScrollView>
     </View>
   );
 };
 
 const rpt = StyleSheet.create({
-  yearBtn: {
-    flexDirection:'row', alignItems:'center', gap:10,
-    paddingVertical:10, paddingHorizontal:28,
-    backgroundColor:'rgba(26,58,107,0.12)', borderRadius:12,
-    borderWidth:1.5, borderColor:'rgba(26,58,107,0.20)',
-  },
-  yearTxt:  { fontFamily:'GoogleSans_700Bold', fontSize:20, color:'#1a3a6b', letterSpacing:1 },
-  yearCaret:{ fontSize:12, color:'rgba(26,58,107,0.50)' },
-  yearMenu: {
-    position:'absolute', top:48, zIndex:9999,
-    backgroundColor:'rgba(255,255,255,0.99)',
-    borderRadius:10, borderWidth:1, borderColor:'rgba(26,58,107,0.18)',
-    shadowColor:'#000', shadowOpacity:0.18, shadowRadius:12, elevation:20,
-    minWidth:140, maxHeight:200,
-  },
-  yearOpt:       { paddingVertical:10, paddingHorizontal:20, alignItems:'center' },
+  yearBtn: { flexDirection:'row',alignItems:'center',gap:10,paddingVertical:10,paddingHorizontal:28,backgroundColor:'rgba(26,58,107,0.12)',borderRadius:12,borderWidth:1.5,borderColor:'rgba(26,58,107,0.20)' },
+  yearTxt:  { fontFamily:'GoogleSans_700Bold',fontSize:20,color:'#1a3a6b',letterSpacing:1 },
+  yearCaret:{ fontSize:12,color:'rgba(26,58,107,0.50)' },
+  yearMenu: { position:'absolute',top:48,zIndex:9999,backgroundColor:'rgba(255,255,255,0.99)',borderRadius:10,borderWidth:1,borderColor:'rgba(26,58,107,0.18)',shadowColor:'#000',shadowOpacity:0.18,shadowRadius:12,elevation:20,minWidth:140,maxHeight:200 },
+  yearOpt: { paddingVertical:10,paddingHorizontal:20,alignItems:'center' },
   yearOptActive: { backgroundColor:'rgba(26,58,107,0.08)' },
-  yearOptTxt:    { fontFamily:'GoogleSans_400Regular', fontSize:14, color:'#1a3a6b' },
-  yearOptTxtActive:{ fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
-
-
-  monthBtn:       { paddingHorizontal:14, paddingVertical:7, borderRadius:20, backgroundColor:'#1a3a6b', borderWidth:1, borderColor:'rgba(26,58,107,0.60)' },
-  monthBtnActive: { backgroundColor:'rgba(198,220,240,0.90)', borderColor:'#304674', borderWidth:1.5 },
-  monthTxt:       { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(255,255,255,0.90)' },
-  monthTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
-
-  section: { backgroundColor:'rgba(255,255,255,0.22)', borderRadius:12, borderWidth:1, borderColor:'rgba(255,255,255,0.45)', overflow:'hidden' },
-  sectionTitleRow: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical:10, paddingHorizontal:12 },
-  sectionToggle:   { fontSize:13, color:'rgba(26,58,107,0.45)', paddingLeft:8 },
-  sectionTitle: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b', letterSpacing:0.5 },
-
-  thead:   { flexDirection:'row', alignItems:'center', paddingVertical:8, paddingHorizontal:0, backgroundColor:'rgba(26,58,107,0.12)' },
-  th:      { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.60)', letterSpacing:0.8, textTransform:'uppercase',
-             textAlign:'center', paddingVertical:8, paddingHorizontal:6,
-             borderRightWidth:1, borderColor:'rgba(26,58,107,0.10)' },
-
-  trow:    { flexDirection:'row', alignItems:'center', paddingVertical:0, paddingHorizontal:0, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.07)', minHeight:42 },
+  yearOptTxt: { fontFamily:'GoogleSans_400Regular',fontSize:14,color:'#1a3a6b' },
+  yearOptTxtActive: { fontFamily:'GoogleSans_700Bold',color:'#1a3a6b' },
+  monthBtn: { paddingHorizontal:14,paddingVertical:7,borderRadius:20,backgroundColor:'#1a3a6b',borderWidth:1,borderColor:'rgba(26,58,107,0.60)' },
+  monthBtnActive: { backgroundColor:'rgba(198,220,240,0.90)',borderColor:'#304674',borderWidth:1.5 },
+  monthTxt: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'rgba(255,255,255,0.90)' },
+  monthTxtActive: { fontFamily:'GoogleSans_700Bold',color:'#1a3a6b' },
+  section: { backgroundColor:'rgba(255,255,255,0.22)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,0.45)',overflow:'hidden' },
+  sectionTitleRow: { flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:10,paddingHorizontal:12 },
+  sectionToggle: { fontSize:13,color:'rgba(26,58,107,0.45)',paddingLeft:8 },
+  sectionTitle: { fontFamily:'GoogleSans_700Bold',fontSize:13,color:'#1a3a6b',letterSpacing:0.5 },
+  thead: { flexDirection:'row',alignItems:'center',paddingVertical:8,paddingHorizontal:0,backgroundColor:'rgba(26,58,107,0.12)' },
+  th: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'rgba(26,58,107,0.60)',letterSpacing:0.8,textTransform:'uppercase',textAlign:'center',paddingVertical:8,paddingHorizontal:6,borderRightWidth:1,borderColor:'rgba(26,58,107,0.10)' },
+  trow: { flexDirection:'row',alignItems:'center',paddingVertical:0,paddingHorizontal:0,borderBottomWidth:1,borderColor:'rgba(26,58,107,0.07)',minHeight:42 },
   trowAlt: { backgroundColor:'rgba(255,255,255,0.35)' },
-  td:      { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#1a2d4e',
-             textAlign:'center', paddingVertical:10, paddingHorizontal:6,
-             borderRightWidth:1, borderColor:'rgba(26,58,107,0.08)',
-             alignSelf:'stretch', justifyContent:'center' },
-
-  printBtn:    { alignItems:'center', backgroundColor:'#1a3a6b', borderRadius:6, paddingVertical:5, paddingHorizontal:10 },
-  printBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'#fff', letterSpacing:0.3 },
-
-  expandPanel: { backgroundColor:'rgba(26,58,107,0.04)', borderBottomWidth:1, borderColor:'rgba(26,58,107,0.10)' },
-  expandHead:  { flexDirection:'row', paddingVertical:6, paddingHorizontal:20, backgroundColor:'rgba(26,58,107,0.08)' },
-  expandTh:    { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'rgba(26,58,107,0.50)', letterSpacing:0.5, textTransform:'uppercase', flex:1 },
-  expandRow:   { flexDirection:'row', paddingVertical:7, paddingHorizontal:20, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.04)' },
-  expandTd:    { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'#1a2d4e', flex:1 },
-
-  emptyRow: { paddingVertical:20, alignItems:'center' },
-  emptyTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.40)' },
-
-  comingSoon:    { alignItems:'center', paddingVertical:32, gap:8 },
-  comingSoonEmoji:{ fontSize:32 },
-  comingSoonTxt: { fontFamily:'GoogleSans_700Bold', fontSize:16, color:'rgba(1,31,75,0.40)' },
-  comingSoonSub: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.35)', textAlign:'center', paddingHorizontal:20 },
+  td: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'#1a2d4e',textAlign:'center',paddingVertical:10,paddingHorizontal:6,borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)',alignSelf:'stretch',justifyContent:'center' },
+  printBtn: { alignItems:'center',backgroundColor:'#1a3a6b',borderRadius:6,paddingVertical:5,paddingHorizontal:10 },
+  printBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#fff',letterSpacing:0.3 },
+  expandPanel: { backgroundColor:'rgba(26,58,107,0.04)',borderBottomWidth:1,borderColor:'rgba(26,58,107,0.10)' },
+  expandHead: { flexDirection:'row',paddingVertical:6,paddingHorizontal:20,backgroundColor:'rgba(26,58,107,0.08)' },
+  expandTh: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'rgba(26,58,107,0.50)',letterSpacing:0.5,textTransform:'uppercase',flex:1 },
+  expandRow: { flexDirection:'row',paddingVertical:7,paddingHorizontal:20,borderBottomWidth:1,borderColor:'rgba(26,58,107,0.04)' },
+  expandTd: { fontFamily:'GoogleSans_400Regular',fontSize:10,color:'#1a2d4e',flex:1 },
+  emptyRow: { paddingVertical:20,alignItems:'center' },
+  emptyTxt: { fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(1,31,75,0.40)' },
+  comingSoon: { alignItems:'center',paddingVertical:32,gap:8 },
+  comingSoonEmoji: { fontSize:32 },
+  comingSoonTxt: { fontFamily:'GoogleSans_700Bold',fontSize:16,color:'rgba(1,31,75,0.40)' },
+  comingSoonSub: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.35)',textAlign:'center',paddingHorizontal:20 },
 });
-
 
 const sub = StyleSheet.create({
-  root: { flex:1, padding:14, overflow:'hidden', minHeight:0 },
-  emptyBox: { flex:1, alignItems:'center', justifyContent:'center', gap:10, paddingTop:60 },
-  emptyTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.35)', textAlign:'center', lineHeight:18 },
-  filterBtn: { paddingHorizontal:14, paddingVertical:7, borderRadius:20, backgroundColor:'rgba(255,255,255,0.40)', borderWidth:1, borderColor:'rgba(255,255,255,0.60)' },
-  filterBtnActive: { backgroundColor:'#1a3a6b', borderColor:'#c9a84c' },
-  filterTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.60)' },
-  filterTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#fff' },
-  statRow: { flexDirection:'row', gap:8 },
-  statCard: { minWidth:80, backgroundColor:'rgba(255,255,255,0.60)', borderRadius:12, padding:10, alignItems:'center', gap:3 },
-  statVal:  { fontFamily:'GoogleSans_700Bold', fontSize:16, color:'#1a3a6b' },
-  statLbl:  { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.45)', textAlign:'center' },
-  sectionTitle2:{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(1,31,75,0.55)', letterSpacing:1, textTransform:'uppercase', marginBottom:8, marginTop:4 },
-  sortChip: { paddingHorizontal:12, paddingVertical:6, borderRadius:14, backgroundColor:'rgba(255,255,255,0.40)', borderWidth:1, borderColor:'rgba(255,255,255,0.60)' },
-  sortChipActive: { backgroundColor:'#1a3a6b' },
-  sortTxt: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.60)' },
-  sortTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#fff' },
-  tableHead: { flexDirection:'row', paddingVertical:8, paddingHorizontal:10, backgroundColor:'rgba(26,58,107,0.12)', borderRadius:8, marginBottom:4 },
-  thCell: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.55)', flex:1, letterSpacing:0.5 },
-  tableRow:{ flexDirection:'row', paddingVertical:9, paddingHorizontal:10, borderRadius:6, marginBottom:2 },
-  tdCell:  { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#1a2d4e', flex:1 },
-  topItemRow: { flexDirection:'row', alignItems:'center', gap:8, paddingVertical:7, borderBottomWidth:1, borderColor:'rgba(1,31,75,0.06)' },
-  topItemRank:{ fontFamily:'GoogleSans_700Bold', fontSize:14, color:'#c9a84c', width:24, flexShrink:0 },
-  topItemName:{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'#1a2d4e' },
-  topItemBar: { height:6, backgroundColor:'rgba(26,58,107,0.20)', borderRadius:3, maxWidth:80 },
-  topItemQty: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a3a6b', width:55, textAlign:'right', flexShrink:0 },
-  sectionHead: { borderLeftWidth:3, paddingLeft:10, marginBottom:8 },
-  sectionTitle: { fontFamily:'GoogleSans_700Bold', fontSize:12, letterSpacing:0.5 },
-  orderCard: { backgroundColor:'rgba(255,255,255,0.65)', borderRadius:12, padding:12, marginBottom:8, borderWidth:1, borderColor:'rgba(255,255,255,0.80)', gap:6 },
-  orderHead: { flexDirection:'row', alignItems:'center', gap:8, overflow:'hidden' },
-  orderId:   { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b', flexShrink:1 },
-  orderTime: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.45)', flex:1 },
-  badge:     { borderRadius:6, paddingHorizontal:7, paddingVertical:2, flexShrink:0 },
-  badgeTxt:  { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#1a2d4e' },
-  orderItems:{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.60)', lineHeight:16 },
-  orderFoot: { flexDirection:'row', alignItems:'center', gap:8, flexWrap:'wrap' },
-  orderTotal:{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#c9a84c', flexShrink:0 },
-  orderPay:  { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', flex:1 },
+  root: { flex:1,padding:14,overflow:'hidden',minHeight:0 },
+  emptyBox: { flex:1,alignItems:'center',justifyContent:'center',gap:10,paddingTop:60 },
+  emptyTxt: { fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(1,31,75,0.35)',textAlign:'center',lineHeight:18 },
 });
 
-// ─── HISTORY STYLES ───────────────────────────────────────────────────────────
 const hst = StyleSheet.create({
-  calTrigger: { flexDirection:'row', alignItems:'center', gap:6, paddingVertical:6, paddingHorizontal:12, backgroundColor:'rgba(26,58,107,0.10)', borderRadius:8, borderWidth:1, borderColor:'rgba(26,58,107,0.15)', alignSelf:'flex-start' },
-  calTriggerTxt: { fontFamily:'NotoSerif_700Bold', fontSize:12, color:'#1a3a6b' },
-  calTriggerCaret: { fontSize:10, color:'rgba(26,58,107,0.50)' },
-  calCard: { position:'absolute', top:38, left:0, zIndex:999, backgroundColor:'rgba(255,255,255,0.98)', borderRadius:10, borderWidth:1, borderColor:'rgba(26,58,107,0.18)', padding:8, shadowColor:'#000', shadowOpacity:0.18, shadowRadius:12, elevation:20, minWidth:220, maxWidth:260 },
-  calDot: { width:4, height:4, borderRadius:2, backgroundColor:'#1a3a6b', position:'absolute', bottom:2, alignSelf:'center' },
-  topBar: { flexDirection:'row', alignItems:'flex-start', gap:10, marginBottom:4 },
-  txHeaderDate: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:'#1a3a6b' },
-  txHeaderSub: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:2 },
-
-  dropBtn: { flexDirection:'row', alignItems:'center', gap:5, backgroundColor:'rgba(255,255,255,0.70)', borderRadius:10, paddingVertical:7, paddingHorizontal:10, borderWidth:1, borderColor:'rgba(1,31,75,0.15)', flexShrink:0 },
-  dropBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a3a6b' },
-
-  dropdown: { backgroundColor:'rgba(255,255,255,0.95)', borderRadius:12, borderWidth:1, borderColor:'rgba(1,31,75,0.15)', marginBottom:4, overflow:'hidden', shadowColor:'#000', shadowOpacity:0.10, shadowRadius:8, elevation:6 },
-  dropItem: { flexDirection:'row', alignItems:'center', paddingVertical:10, paddingHorizontal:14, borderBottomWidth:1, borderColor:'rgba(1,31,75,0.06)', gap:8 },
-  dropItemLabel: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b' },
-  dropItemSub: { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.45)', marginTop:1 },
-  dropItemTotal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#c9a84c', flexShrink:0 },
-
-  txRow: { flexDirection:'row', gap:0, minHeight:56 },
-  txTimeCol: { width:52, flexShrink:0, alignItems:'flex-end', paddingRight:8, paddingTop:3, gap:4 },
-  txTime: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.55)', textAlign:'right' },
-  livePip: { width:6, height:6, borderRadius:3, backgroundColor:'#e74c3c' },
-  txLine: { width:16, flexShrink:0, alignItems:'center' },
-  txDot: { width:10, height:10, borderRadius:5, backgroundColor:'#1a3a6b', marginTop:4, flexShrink:0, zIndex:1 },
-  txVLine: { flex:1, width:2, backgroundColor:'rgba(1,31,75,0.12)', marginTop:2 },
-  txContent: { flex:1, backgroundColor:'rgba(255,255,255,0.65)', borderRadius:10, padding:10, marginLeft:8, marginBottom:4, borderWidth:1, borderColor:'rgba(255,255,255,0.85)', gap:4 },
-  txOrderId: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b' },
-  txStatusBadge: { borderRadius:5, paddingHorizontal:6, paddingVertical:2 },
-  txStatusTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9 },
-  txItems: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.60)', lineHeight:15 },
-  txAmount: { fontFamily:'NotoSerif_700Bold', fontSize:13, color:'#c9a84c' },
-  txPay: { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.45)' },
+  calTrigger: { flexDirection:'row',alignItems:'center',gap:6,paddingVertical:6,paddingHorizontal:12,backgroundColor:'rgba(26,58,107,0.10)',borderRadius:8,borderWidth:1,borderColor:'rgba(26,58,107,0.15)',alignSelf:'flex-start' },
+  calTriggerTxt: { fontFamily:'NotoSerif_700Bold',fontSize:12,color:'#1a3a6b' },
+  calTriggerCaret: { fontSize:10,color:'rgba(26,58,107,0.50)' },
+  calCard: { position:'absolute',top:38,left:0,zIndex:999,backgroundColor:'rgba(255,255,255,0.98)',borderRadius:10,borderWidth:1,borderColor:'rgba(26,58,107,0.18)',padding:8,shadowColor:'#000',shadowOpacity:0.18,shadowRadius:12,elevation:20,minWidth:220,maxWidth:260 },
+  calDot: { width:4,height:4,borderRadius:2,backgroundColor:'#1a3a6b',position:'absolute',bottom:2,alignSelf:'center' },
+  txHeaderSub: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.50)',marginTop:2 },
+  txRow: { flexDirection:'row',gap:0,minHeight:56 },
+  txTimeCol: { width:52,flexShrink:0,alignItems:'flex-end',paddingRight:8,paddingTop:3,gap:4 },
+  txTime: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'rgba(1,31,75,0.55)',textAlign:'right' },
+  livePip: { width:6,height:6,borderRadius:3,backgroundColor:'#e74c3c' },
+  txLine: { width:16,flexShrink:0,alignItems:'center' },
+  txDot: { width:10,height:10,borderRadius:5,backgroundColor:'#1a3a6b',marginTop:4,flexShrink:0,zIndex:1 },
+  txVLine: { flex:1,width:2,backgroundColor:'rgba(1,31,75,0.12)',marginTop:2 },
+  txContent: { flex:1,backgroundColor:'rgba(255,255,255,0.65)',borderRadius:10,padding:10,marginLeft:8,marginBottom:4,borderWidth:1,borderColor:'rgba(255,255,255,0.85)',gap:4 },
+  txOrderId: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#1a3a6b' },
+  txStatusBadge: { borderRadius:5,paddingHorizontal:6,paddingVertical:2 },
+  txStatusTxt: { fontFamily:'GoogleSans_700Bold',fontSize:9 },
+  txItems: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.60)',lineHeight:15 },
+  txAmount: { fontFamily:'NotoSerif_700Bold',fontSize:13,color:'#c9a84c' },
+  txPay: { fontFamily:'GoogleSans_400Regular',fontSize:10,color:'rgba(1,31,75,0.45)' },
 });
 
-// ─── LEFT PANEL: ORDERING MONITORING ─────────────────────────────────────────
-// ─── STATUS CONFIG for order cards ───────────────────────────────────────────
+// ─── ORDER MONITORING PANEL ───────────────────────────────────────────────────
 const STATUS_CFG = {
   pending:   { label:'PENDING',   color:'#c0392b', btnLabel:'Start Preparing', btnColor:'#e67e22', next:'preparing' },
   preparing: { label:'PREPARING', color:'#b9660a', btnLabel:'Mark as Ready',   btnColor:'#2980b9', next:'ready'     },
@@ -1492,12 +996,8 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
   const preparingCount = orders.filter(o=>o.status==='preparing').length;
   const readyCount     = orders.filter(o=>o.status==='ready').length;
   const doneToday      = orders.filter(o=>{
-    if (o.status!=='done') return false;
-    try {
-      const d = new Date(o.time);
-      const t = new Date();
-      return d.toDateString()===t.toDateString();
-    } catch { return false; }
+    if(o.status!=='done')return false;
+    try{const d=new Date(o.time);const t=new Date();return d.toDateString()===t.toDateString();}catch{return false;}
   }).length;
 
   const STAT_CARDS = [
@@ -1507,151 +1007,95 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
     { key:'done',      label:'DONE',      num:doneToday,      bg:'#1a3a6b', activeBg:'#2e5fa3' },
   ];
 
-  // Filter orders by active tab
   const filteredOrders = orders.filter(o => {
-    if (activeFilter === 'done') {
-      if (o.status !== 'done') return false;
-      try {
-        const d = new Date(o.time);
-        const t = new Date();
-        return d.toDateString() === t.toDateString();
-      } catch { return false; }
+    if(activeFilter==='done'){
+      if(o.status!=='done')return false;
+      try{const d=new Date(o.time);const t=new Date();return d.toDateString()===t.toDateString();}catch{return false;}
     }
-    return o.status === activeFilter;
+    return o.status===activeFilter;
   });
 
   const COLS = 3;
 
   return (
     <View style={lp.root}>
-      {/* Title */}
       <View style={lp.titleRow}>
         <Animated.View style={[lp.liveDot,{opacity:pulseAnim}]}/>
         <Text style={lp.title}>ORDERING MONITORING</Text>
       </View>
-
-      {/* 4 clickable stat filter cards */}
       <View style={lp.statCards}>
         {STAT_CARDS.map(c=>(
-          <TouchableOpacity
-            key={c.key}
-            style={[lp.statCard, { backgroundColor: activeFilter===c.key ? c.activeBg : c.bg },
-              activeFilter===c.key && lp.statCardActive]}
-            onPress={() => setActiveFilter(c.key)}
-            activeOpacity={0.80}
-          >
+          <TouchableOpacity key={c.key} style={[lp.statCard,{backgroundColor:activeFilter===c.key?c.activeBg:c.bg},activeFilter===c.key&&lp.statCardActive]} onPress={()=>setActiveFilter(c.key)} activeOpacity={0.80}>
             <Text style={lp.statLabel}>{c.label}</Text>
             <Text style={lp.statNum}>{String(c.num).padStart(2,'0')}</Text>
-            {activeFilter===c.key && <View style={lp.statCardIndicator}/>}
+            {activeFilter===c.key&&<View style={lp.statCardIndicator}/>}
           </TouchableOpacity>
         ))}
       </View>
-
-      {/* Orders grid filtered by active tab */}
       <WebScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{gap:6,paddingBottom:12}}>
         {filteredOrders.length===0
-          ? <View style={lp.emptyBox}>
-              <Text style={lp.emptyIco}>
-                {activeFilter==='pending'?'⏳':activeFilter==='preparing'?'🔥':activeFilter==='ready'?'✅':'✓'}
-              </Text>
-              <Text style={lp.emptyTxt}>No {activeFilter} orders</Text>
-            </View>
-          : (() => {
-              const rows = [];
-              for (let i = 0; i < filteredOrders.length; i += COLS) rows.push(filteredOrders.slice(i, i + COLS));
-              return rows.map((row, rIdx) => (
-                <View key={rIdx} style={{flexDirection:'row', gap:6}}>
-                  {row.map(order => {
-                    const cfg = STATUS_CFG[order.status] || STATUS_CFG.pending;
-                    const itemsList = (order.items||[]).map(i=>`${i.item?.name||i.name||'?'} x${i.qty}`).join(', ');
-                    const timeStr = (() => {
-                      try {
-                        const d = new Date(order.time);
-                        return isNaN(d) ? '' : d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});
-                      } catch { return ''; }
-                    })();
-                    return (
-                      <View key={order.id} style={[lp.card, {flex:1, borderTopColor:cfg.color}]}>
-                        {/* Order # + time */}
-                        <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}>
-                          <Text style={lp.cardId}>#{order.orderNo||order.id?.slice(-4)||'--'}</Text>
-                          <Text style={lp.cardTime}>{timeStr}</Text>
-                        </View>
-                        {/* Items */}
-                        <Text style={lp.cardItems} numberOfLines={3}>{itemsList}</Text>
-                        {/* Total */}
-                        <Text style={lp.cardTotal}>{'\u20b1'}{Number(order.total).toFixed(0)}</Text>
-                        {/* Payment mode */}
-                        <Text style={lp.cardPay}>{order.payment==='gcash'?'📱 GCash':'💵 Cash'}</Text>
-                        {/* Action button */}
-                        {cfg.btnLabel&&(
-                          <TouchableOpacity
-                            style={[lp.actionBtn,{backgroundColor:cfg.btnColor}]}
-                            onPress={()=>onUpdateStatus(order.id, cfg.next)}
-                            activeOpacity={0.80}>
-                            <Text style={lp.actionBtnTxt}>{cfg.btnLabel}</Text>
-                          </TouchableOpacity>
-                        )}
+          ?<View style={lp.emptyBox}>
+            <Text style={lp.emptyIco}>{activeFilter==='pending'?'⏳':activeFilter==='preparing'?'🔥':activeFilter==='ready'?'✅':'✓'}</Text>
+            <Text style={lp.emptyTxt}>No {activeFilter} orders</Text>
+          </View>
+          :(()=>{
+            const rows=[];
+            for(let i=0;i<filteredOrders.length;i+=COLS)rows.push(filteredOrders.slice(i,i+COLS));
+            return rows.map((row,rIdx)=>(
+              <View key={rIdx} style={{flexDirection:'row',gap:6}}>
+                {row.map(order=>{
+                  const cfg=STATUS_CFG[order.status]||STATUS_CFG.pending;
+                  const itemsList=(order.items||[]).map(i=>`${i.item?.name||i.name||'?'} x${i.qty}`).join(', ');
+                  const timeStr=(()=>{try{const d=new Date(order.time);return isNaN(d)?'':d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});}catch{return'';}})();
+                  return(
+                    <View key={order.id} style={[lp.card,{flex:1,borderTopColor:cfg.color}]}>
+                      <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}>
+                        <Text style={lp.cardId}>#{order.orderNo||order.id?.slice(-4)||'--'}</Text>
+                        <Text style={lp.cardTime}>{timeStr}</Text>
                       </View>
-                    );
-                  })}
-                  {Array.from({length: COLS - row.length}).map((_,i)=>(
-                    <View key={`e-${i}`} style={{flex:1}}/>
-                  ))}
-                </View>
-              ));
-            })()
+                      <Text style={lp.cardItems} numberOfLines={3}>{itemsList}</Text>
+                      <Text style={lp.cardTotal}>{'\u20b1'}{Number(order.total).toFixed(0)}</Text>
+                      <Text style={lp.cardPay}>{order.payment==='gcash'?'📱 GCash':'💵 Cash'}</Text>
+                      {cfg.btnLabel&&(
+                        <TouchableOpacity style={[lp.actionBtn,{backgroundColor:cfg.btnColor}]} onPress={()=>onUpdateStatus(order.id,cfg.next)} activeOpacity={0.80}>
+                          <Text style={lp.actionBtnTxt}>{cfg.btnLabel}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })}
+                {Array.from({length:COLS-row.length}).map((_,i)=>(<View key={`e-${i}`} style={{flex:1}}/>))}
+              </View>
+            ));
+          })()
         }
       </WebScrollView>
     </View>
   );
 };
 
-
 const lp = StyleSheet.create({
-  root: { flex:1, padding:10, minHeight:0, overflow:'hidden' },
-
-  titleRow: { flexDirection:'row', alignItems:'center', gap:5, marginBottom:8, justifyContent:'center' },
-  liveDot:  { width:8, height:8, borderRadius:4, backgroundColor:'#e74c3c' },
-  title:    { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#1a2d4e', letterSpacing:1.5, textDecorationLine:'underline', textAlign:'center' },
-
-  // 4 stat cards — display only
-  statCards: { flexDirection:'row', gap:4, marginBottom:10 },
-  statCard:  { flex:1, borderRadius:10, paddingVertical:8, paddingHorizontal:2, alignItems:'center', gap:2, position:'relative', overflow:'hidden' },
-  statCardActive: { shadowColor:'#000', shadowOpacity:0.25, shadowRadius:6, elevation:6, transform:[{scale:1.03}] },
-  statCardIndicator: { position:'absolute', bottom:0, left:0, right:0, height:3, backgroundColor:'rgba(255,255,255,0.60)' },
-  statLabel: { fontFamily:'GoogleSans_700Bold', fontSize:6, color:'#fff', letterSpacing:0.8, textAlign:'center' },
-  statNum:   { fontFamily:'GoogleSans_700Bold', fontSize:20, color:'#fff', lineHeight:24 },
-
-  emptyBox: { padding:20, alignItems:'center', gap:6 },
+  root: { flex:1,padding:10,minHeight:0,overflow:'hidden' },
+  titleRow: { flexDirection:'row',alignItems:'center',gap:5,marginBottom:8,justifyContent:'center' },
+  liveDot: { width:8,height:8,borderRadius:4,backgroundColor:'#e74c3c' },
+  title: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#1a2d4e',letterSpacing:1.5,textDecorationLine:'underline',textAlign:'center' },
+  statCards: { flexDirection:'row',gap:4,marginBottom:10 },
+  statCard: { flex:1,borderRadius:10,paddingVertical:8,paddingHorizontal:2,alignItems:'center',gap:2,position:'relative',overflow:'hidden' },
+  statCardActive: { shadowColor:'#000',shadowOpacity:0.25,shadowRadius:6,elevation:6,transform:[{scale:1.03}] },
+  statCardIndicator: { position:'absolute',bottom:0,left:0,right:0,height:3,backgroundColor:'rgba(255,255,255,0.60)' },
+  statLabel: { fontFamily:'GoogleSans_700Bold',fontSize:6,color:'#fff',letterSpacing:0.8,textAlign:'center' },
+  statNum: { fontFamily:'GoogleSans_700Bold',fontSize:20,color:'#fff',lineHeight:24 },
+  emptyBox: { padding:20,alignItems:'center',gap:6 },
   emptyIco: { fontSize:28 },
-  emptyTxt: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.35)', textAlign:'center' },
-
-  // Square-ish compact card, top accent border
-  card: {
-    backgroundColor:'rgba(255,255,255,0.88)',
-    borderRadius:10,
-    padding:8,
-    borderTopWidth:3,
-    borderWidth:1,
-    borderColor:'rgba(255,255,255,0.95)',
-    gap:4,
-    shadowColor:'#000', shadowOpacity:0.07, shadowRadius:4, elevation:2,
-    minHeight:110,
-    justifyContent:'space-between',
-  },
-
-  cardId:    { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#0d2540' },
-  cardTime:  { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.40)' },
-  cardItems: { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.65)', lineHeight:13, flex:1 },
-  cardTotal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#c9a84c' },
-  cardPay:   { fontFamily:'GoogleSans_400Regular', fontSize:8, color:'rgba(1,31,75,0.40)' },
-
-  statusBadge:   { borderRadius:5, paddingHorizontal:5, paddingVertical:2, alignSelf:'flex-start' },
-  statusBadgeTxt:{ fontFamily:'GoogleSans_700Bold', fontSize:7, color:'#fff', letterSpacing:0.5 },
-
-  actionBtn:    { borderRadius:6, paddingVertical:5, paddingHorizontal:4, alignItems:'center', justifyContent:'center', marginTop:2 },
-  actionBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#fff', textAlign:'center' },
+  emptyTxt: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.35)',textAlign:'center' },
+  card: { backgroundColor:'rgba(255,255,255,0.88)',borderRadius:10,padding:8,borderTopWidth:3,borderWidth:1,borderColor:'rgba(255,255,255,0.95)',gap:4,shadowColor:'#000',shadowOpacity:0.07,shadowRadius:4,elevation:2,minHeight:110,justifyContent:'space-between' },
+  cardId: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#0d2540' },
+  cardTime: { fontFamily:'GoogleSans_400Regular',fontSize:9,color:'rgba(1,31,75,0.40)' },
+  cardItems: { fontFamily:'GoogleSans_400Regular',fontSize:9,color:'rgba(1,31,75,0.65)',lineHeight:13,flex:1 },
+  cardTotal: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#c9a84c' },
+  cardPay: { fontFamily:'GoogleSans_400Regular',fontSize:8,color:'rgba(1,31,75,0.40)' },
+  actionBtn: { borderRadius:6,paddingVertical:5,paddingHorizontal:4,alignItems:'center',justifyContent:'center',marginTop:2 },
+  actionBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff',textAlign:'center' },
 });
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
@@ -1684,15 +1128,14 @@ export default function ManageCanteenScreen({ navigation }) {
   const bodyFade   = useRef(new Animated.Value(0)).current;
   const adScrollRef = useRef(null);
 
+  // ── FIX: Firestore onSnapshot is always live — no polling needed ──────────
   useFocusEffect(useCallback(()=>{
     reloadFromStorage();
-    const poll = setInterval(()=>{ reloadFromStorage(); }, 3000);
-    return ()=>clearInterval(poll);
   },[reloadFromStorage]));
 
   useEffect(()=>{
     Animated.parallel([
-      Animated.timing(hdrFade, {toValue:1,duration:500,useNativeDriver:true}),
+      Animated.timing(hdrFade,{toValue:1,duration:500,useNativeDriver:true}),
       Animated.timing(hdrTrans,{toValue:0,duration:500,useNativeDriver:true}),
     ]).start();
     Animated.timing(bodyFade,{toValue:1,duration:500,delay:150,useNativeDriver:true}).start();
@@ -1701,7 +1144,7 @@ export default function ManageCanteenScreen({ navigation }) {
   const bannerW = Math.min(width*0.60, 700);
 
   useEffect(()=>{
-    if(!ads.length) return;
+    if(!ads.length)return;
     const t=setInterval(()=>{
       setAdCurrent(prev=>{
         const next=(prev+1)%ads.length;
@@ -1712,55 +1155,45 @@ export default function ManageCanteenScreen({ navigation }) {
     return()=>clearInterval(t);
   },[ads.length,bannerW]);
 
-  const handleSearch = (text)=>{
+  const handleSearch=(text)=>{
     setSearch(text);
-    if(!text.trim()) return;
+    if(!text.trim())return;
     const cats=[...new Set(items.filter(i=>i.name.toLowerCase().includes(text.toLowerCase())).map(i=>i.cat))];
     setActiveCategory(cats.length===1?cats[0]:'All');
   };
 
-  const filtered = items.filter(i=>{
-    if(search.trim()) return i.name.toLowerCase().includes(search.toLowerCase());
-    return activeCategory==='All' || i.cat===activeCategory;
+  const filtered=items.filter(i=>{
+    if(search.trim())return i.name.toLowerCase().includes(search.toLowerCase());
+    return activeCategory==='All'||i.cat===activeCategory;
   });
 
-  const openAddItem  = ()=>{setEditItem(emptyItem());setEditItemModal(true);};
-  const openEditItem = (item)=>{setEditItem({...item,price:String(item.price),stock:String(item.stock)});setEditItemModal(true);};
-  const handleSaveItem = (updated) => {
+  const openAddItem  =()=>{setEditItem(emptyItem());setEditItemModal(true);};
+  const openEditItem =(item)=>{setEditItem({...item,price:String(item.price),stock:String(item.stock)});setEditItemModal(true);};
+  const handleSaveItem=(updated)=>{
     saveItem(updated);
-    if (updated.maxQty !== undefined) setInvMaxQty(p => ({ ...p, [updated.id]: updated.maxQty }));
+    if(updated.maxQty!==undefined)setInvMaxQty(p=>({...p,[updated.id]:updated.maxQty}));
     setEditItemModal(false);
   };
-  const handleDeleteItem = (id) => {
-    if (Platform.OS === 'web') {
-      if (window.confirm('Delete this item? This cannot be undone.')) {
-        deleteItem(id);
-      }
-    } else {
-      Alert.alert('Delete Item', 'Are you sure?', [
-        { text:'Cancel', style:'cancel' },
-        { text:'Delete', style:'destructive', onPress: () => deleteItem(id) },
-      ]);
-    }
+  const handleDeleteItem=(id)=>{
+    if(Platform.OS==='web'){if(window.confirm('Delete this item? This cannot be undone.')){deleteItem(id);}}
+    else{Alert.alert('Delete Item','Are you sure?',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>deleteItem(id)}]);}
   };
 
-  const handleSaveAd = (updated)=>{
+  const handleSaveAd=(updated)=>{
     if(updated.isNew){
       const newAd={...updated,id:Date.now().toString(),isNew:undefined,bg:['#1a3a6b','#2e5fa3'],emoji:updated.emoji||'📢'};
       setAds(prev=>[...prev,newAd]);
-    } else {
-      saveAd(updated);
-    }
+    }else{saveAd(updated);}
     setEditAdModal(false);
   };
 
-  const handleDeleteAd = (id)=>{ setAds(prev=>prev.filter(a=>a.id!==id)); };
+  const handleDeleteAd=(id)=>{setAds(prev=>prev.filter(a=>a.id!==id));};
 
-  const pendingCount = orders.filter(o=>o.status==='pending').length;
+  const pendingCount=orders.filter(o=>o.status==='pending').length;
 
-  if (!fontsLoaded) return null;
+  if(!fontsLoaded)return null;
 
-  const renderContent = ()=>{
+  const renderContent=()=>{
     if(activeTab==='cashier')   return <CashierScreen items={items} categories={categories} addOrder={addOrder} deductStock={deductStock}/>;
     if(activeTab==='menu')      return <ManageMenuScreen items={items} categories={categories} filtered={filtered} search={search} activeCategory={activeCategory} onSearch={handleSearch} onCategoryChange={setActiveCategory} onAddItem={openAddItem} onEditItem={openEditItem} onDeleteItem={handleDeleteItem}/>;
     if(activeTab==='inventory') return <InventoryScreen items={items} maxQtyMap={invMaxQty} onAddItem={openAddItem} onEditItem={openEditItem}/>;
@@ -1778,7 +1211,6 @@ export default function ManageCanteenScreen({ navigation }) {
       <LinearGradient colors={['rgba(50,80,120,0.45)','rgba(50,80,120,0.0)','rgba(50,80,120,0.45)']} locations={[0,0.5,1]} start={{x:0,y:0}} end={{x:1,y:1}} style={StyleSheet.absoluteFillObject}/>
       <LinearGradient colors={['rgba(50,80,120,0.0)','rgba(60,90,130,0.35)']} locations={[0.4,1]} start={{x:0.5,y:0}} end={{x:0.5,y:1}} style={StyleSheet.absoluteFillObject}/>
 
-      {/* HEADER — flexShrink:0 so it never grows into body space */}
       <Animated.View style={{opacity:hdrFade,transform:[{translateY:hdrTrans}],marginTop:Platform.OS==='web'?16:36,marginHorizontal:isSmall?8:10,zIndex:30,flexShrink:0}}>
         <View style={[styles.header,{paddingHorizontal:20,paddingVertical:10}]}>
           <TouchableOpacity style={styles.backBtn} onPress={()=>navigation&&navigation.goBack()}>
@@ -1799,17 +1231,11 @@ export default function ManageCanteenScreen({ navigation }) {
         </View>
       </Animated.View>
 
-      {/* BODY */}
       <Animated.View style={[styles.body,{opacity:bodyFade,flex:1,minHeight:0}]}>
-
-        {/* LEFT PANEL */}
         <View style={styles.leftPanel}>
           <OrderingMonitoring orders={orders} onUpdateStatus={updateOrderStatus}/>
         </View>
-
-        {/* RIGHT PANEL */}
         <View style={styles.rightPanel}>
-          {/* Ad banner */}
           <View style={styles.adWrapper}>
             <ScrollView ref={adScrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
               onMomentumScrollEnd={e=>setAdCurrent(Math.round(e.nativeEvent.contentOffset.x/bannerW))}
@@ -1828,18 +1254,12 @@ export default function ManageCanteenScreen({ navigation }) {
                       <MaterialIcons name="edit" size={12} color="#fff"/>
                     </TouchableOpacity>
                     <View style={styles.adDotsInner}>
-                      {ads.map((_,i)=>(
-                        <TouchableOpacity key={i} onPress={()=>{adScrollRef.current?.scrollTo({x:i*bannerW,animated:true});setAdCurrent(i);}}>
-                          <View style={[styles.adDot,adCurrent===i&&styles.adDotActive]}/>
-                        </TouchableOpacity>
-                      ))}
+                      {ads.map((_,i)=>(<TouchableOpacity key={i} onPress={()=>{adScrollRef.current?.scrollTo({x:i*bannerW,animated:true});setAdCurrent(i);}}><View style={[styles.adDot,adCurrent===i&&styles.adDotActive]}/></TouchableOpacity>))}
                     </View>
                   </LinearGradient>
                 );
               })}
-              {/* Add Ad button */}
-              <TouchableOpacity
-                style={[styles.adSlide,{width:bannerW,backgroundColor:'rgba(26,58,107,0.18)',justifyContent:'center',alignItems:'center',gap:8,borderWidth:2,borderColor:'rgba(255,255,255,0.40)',borderStyle:'dashed'}]}
+              <TouchableOpacity style={[styles.adSlide,{width:bannerW,backgroundColor:'rgba(26,58,107,0.18)',justifyContent:'center',alignItems:'center',gap:8,borderWidth:2,borderColor:'rgba(255,255,255,0.40)',borderStyle:'dashed'}]}
                 onPress={()=>{setEditAd({isNew:true,id:Date.now().toString(),title:'',sub:'',image:null,imageUrl:'',emoji:'📢',bg:['#1a3a6b','#2e5fa3']});setEditAdModal(true);}}>
                 <MaterialIcons name="add-circle-outline" size={28} color="rgba(26,58,107,0.55)"/>
                 <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:12,color:'rgba(26,58,107,0.55)'}}>Add New Ad</Text>
@@ -1847,28 +1267,19 @@ export default function ManageCanteenScreen({ navigation }) {
             </ScrollView>
           </View>
 
-          {/* Folder-style tabs */}
           <View style={styles.tabBar}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:2}} style={{flexGrow:0}}>
               {TABS.map(tab=>(
-                <TouchableOpacity key={tab.key}
-                  style={[styles.tabBtn, activeTab===tab.key&&styles.tabBtnActive]}
-                  onPress={()=>setActiveTab(tab.key)}
-                  activeOpacity={0.80}>
+                <TouchableOpacity key={tab.key} style={[styles.tabBtn,activeTab===tab.key&&styles.tabBtnActive]} onPress={()=>setActiveTab(tab.key)} activeOpacity={0.80}>
                   <MaterialIcons name={tab.icon} size={13} color={activeTab===tab.key?'#1a3a6b':'rgba(255,255,255,0.80)'}/>
-                  <Text style={[styles.tabBtnTxt, activeTab===tab.key&&styles.tabBtnTxtActive]}>{tab.label}</Text>
-                  {tab.key==='cashier'&&pendingCount>0&&(
-                    <View style={styles.tabBadge}><Text style={styles.tabBadgeTxt}>{pendingCount}</Text></View>
-                  )}
+                  <Text style={[styles.tabBtnTxt,activeTab===tab.key&&styles.tabBtnTxtActive]}>{tab.label}</Text>
+                  {tab.key==='cashier'&&pendingCount>0&&(<View style={styles.tabBadge}><Text style={styles.tabBadgeTxt}>{pendingCount}</Text></View>)}
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
 
-          {/* Content area */}
-          <View style={styles.contentArea}>
-            {renderContent()}
-          </View>
+          <View style={styles.contentArea}>{renderContent()}</View>
         </View>
       </Animated.View>
 
@@ -1879,87 +1290,39 @@ export default function ManageCanteenScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex:1, flexDirection:'column' },
-  header: { flexDirection:'row', alignItems:'center', backgroundColor:'rgba(26,58,107,0.92)', borderRadius:16, borderWidth:1, borderColor:'rgba(255,255,255,0.18)', shadowColor:'#011f4b', shadowOpacity:0.25, shadowRadius:12, elevation:8 },
-  backBtn: { width:36, height:36, borderRadius:18, backgroundColor:'rgba(255,255,255,0.15)', borderWidth:1, borderColor:'rgba(255,255,255,0.30)', justifyContent:'center', alignItems:'center', flexShrink:0 },
-  backIcon: { color:'#fff', fontSize:16, fontWeight:'600', textAlign:'center', lineHeight:20 },
-  headerCenter: { flex:1, alignItems:'center', paddingHorizontal:8, minWidth:0 },
-  headerH1: { fontFamily:'NotoSerif_700Bold', color:'#fff', textAlign:'center' },
+  root: { flex:1,flexDirection:'column' },
+  header: { flexDirection:'row',alignItems:'center',backgroundColor:'rgba(26,58,107,0.92)',borderRadius:16,borderWidth:1,borderColor:'rgba(255,255,255,0.18)',shadowColor:'#011f4b',shadowOpacity:0.25,shadowRadius:12,elevation:8 },
+  backBtn: { width:36,height:36,borderRadius:18,backgroundColor:'rgba(255,255,255,0.15)',borderWidth:1,borderColor:'rgba(255,255,255,0.30)',justifyContent:'center',alignItems:'center',flexShrink:0 },
+  backIcon: { color:'#fff',fontSize:16,fontWeight:'600',textAlign:'center',lineHeight:20 },
+  headerCenter: { flex:1,alignItems:'center',paddingHorizontal:8,minWidth:0 },
+  headerH1: { fontFamily:'NotoSerif_700Bold',color:'#fff',textAlign:'center' },
   headerGold: { color:'#c9a84c' },
-  visitorTag: { marginTop:2, paddingHorizontal:8, paddingVertical:2, borderRadius:20, backgroundColor:'rgba(255,255,255,0.18)', borderWidth:1, borderColor:'rgba(255,255,255,0.40)', alignSelf:'center' },
-  visitorTagText: { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#fff', letterSpacing:1.2, textTransform:'uppercase', lineHeight:13 },
-  iconBtn: { width:36, height:36, borderRadius:18, backgroundColor:'rgba(255,255,255,0.15)', borderWidth:1, borderColor:'rgba(255,255,255,0.30)', justifyContent:'center', alignItems:'center', flexShrink:0 },
-  notifBadge: { position:'absolute', top:4, right:4, backgroundColor:'#e74c3c', borderRadius:6, minWidth:14, height:14, alignItems:'center', justifyContent:'center', paddingHorizontal:2 },
-  notifBadgeTxt: { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#fff' },
-
-  body: {
-    flex:1, flexDirection:'row',
-    marginTop:Platform.OS==='web'?10:6,
-    marginBottom:16,
-    minHeight:0,
-    // critical: prevent children from overflowing the screen
-    overflow:'hidden',
-    alignItems:'stretch',
-  },
-
-  leftPanel: {
-    flex:1.4, flexShrink:0,
-    backgroundColor:'rgba(255,255,255,0.22)',
-    borderRadius:16, marginLeft:10, marginRight:0,
-    borderWidth:1, borderColor:'rgba(255,255,255,0.40)',
-    overflow:'hidden',
-    minHeight:0,
-  },
-
-  rightPanel: {
-    flex:3, minWidth:0, minHeight:0,
-    marginHorizontal:10,
-    flexDirection:'column',
-    overflow:'hidden',
-  },
-
-  adWrapper: {
-    height:100, flexShrink:0,
-    borderRadius:16, overflow:'hidden',
-    backgroundColor:'rgba(26,58,107,0.15)',
-  },
-  adSlide: { height:100, flexDirection:'row', alignItems:'center', paddingHorizontal:16, paddingBottom:10, gap:12, overflow:'hidden' },
-  adBgImg: { position:'absolute', top:0, left:0, right:0, bottom:0, borderRadius:16 },
-  adEmoji: { fontSize:40, flexShrink:0 },
-  adTitle: { fontFamily:'GoogleSans_700Bold', fontSize:15, color:'#fff' },
-  adSub:   { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(255,255,255,0.85)' },
-  adBadge: { position:'absolute', top:8, right:38, backgroundColor:'rgba(255,255,255,0.25)', borderRadius:4, paddingHorizontal:6, paddingVertical:2 },
-  adBadgeTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'#fff', letterSpacing:1 },
-  adEditBtn: { position:'absolute', top:6, right:8, backgroundColor:'rgba(0,0,0,0.35)', borderRadius:7, padding:5 },
-  adDotsInner: { position:'absolute', bottom:5, left:0, right:0, flexDirection:'row', justifyContent:'center', gap:4 },
-  adDot: { width:6, height:6, borderRadius:3, backgroundColor:'rgba(255,255,255,0.40)' },
-  adDotActive: { backgroundColor:'#fff', width:16 },
-
-  tabBar: {
-    flexShrink:0,
-    backgroundColor:'rgba(26,58,107,0.50)',
-    borderTopLeftRadius:12, borderTopRightRadius:12,
-    paddingTop:5, paddingHorizontal:4, marginTop:8,
-    flexDirection:'row',
-  },
-  tabBtn: {
-    paddingVertical:8, paddingHorizontal:13,
-    borderTopLeftRadius:10, borderTopRightRadius:10,
-    flexDirection:'row', alignItems:'center', gap:5,
-    backgroundColor:'rgba(255,255,255,0.10)',
-    marginHorizontal:2,
-  },
+  visitorTag: { marginTop:2,paddingHorizontal:8,paddingVertical:2,borderRadius:20,backgroundColor:'rgba(255,255,255,0.18)',borderWidth:1,borderColor:'rgba(255,255,255,0.40)',alignSelf:'center' },
+  visitorTagText: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff',letterSpacing:1.2,textTransform:'uppercase',lineHeight:13 },
+  iconBtn: { width:36,height:36,borderRadius:18,backgroundColor:'rgba(255,255,255,0.15)',borderWidth:1,borderColor:'rgba(255,255,255,0.30)',justifyContent:'center',alignItems:'center',flexShrink:0 },
+  notifBadge: { position:'absolute',top:4,right:4,backgroundColor:'#e74c3c',borderRadius:6,minWidth:14,height:14,alignItems:'center',justifyContent:'center',paddingHorizontal:2 },
+  notifBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff' },
+  body: { flex:1,flexDirection:'row',marginTop:Platform.OS==='web'?10:6,marginBottom:16,minHeight:0,overflow:'hidden',alignItems:'stretch' },
+  leftPanel: { flex:1.4,flexShrink:0,backgroundColor:'rgba(255,255,255,0.22)',borderRadius:16,marginLeft:10,marginRight:0,borderWidth:1,borderColor:'rgba(255,255,255,0.40)',overflow:'hidden',minHeight:0 },
+  rightPanel: { flex:3,minWidth:0,minHeight:0,marginHorizontal:10,flexDirection:'column',overflow:'hidden' },
+  adWrapper: { height:100,flexShrink:0,borderRadius:16,overflow:'hidden',backgroundColor:'rgba(26,58,107,0.15)' },
+  adSlide: { height:100,flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingBottom:10,gap:12,overflow:'hidden' },
+  adBgImg: { position:'absolute',top:0,left:0,right:0,bottom:0,borderRadius:16 },
+  adEmoji: { fontSize:40,flexShrink:0 },
+  adTitle: { fontFamily:'GoogleSans_700Bold',fontSize:15,color:'#fff' },
+  adSub:   { fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(255,255,255,0.85)' },
+  adBadge: { position:'absolute',top:8,right:38,backgroundColor:'rgba(255,255,255,0.25)',borderRadius:4,paddingHorizontal:6,paddingVertical:2 },
+  adBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#fff',letterSpacing:1 },
+  adEditBtn: { position:'absolute',top:6,right:8,backgroundColor:'rgba(0,0,0,0.35)',borderRadius:7,padding:5 },
+  adDotsInner: { position:'absolute',bottom:5,left:0,right:0,flexDirection:'row',justifyContent:'center',gap:4 },
+  adDot: { width:6,height:6,borderRadius:3,backgroundColor:'rgba(255,255,255,0.40)' },
+  adDotActive: { backgroundColor:'#fff',width:16 },
+  tabBar: { flexShrink:0,backgroundColor:'rgba(26,58,107,0.50)',borderTopLeftRadius:12,borderTopRightRadius:12,paddingTop:5,paddingHorizontal:4,marginTop:8,flexDirection:'row' },
+  tabBtn: { paddingVertical:8,paddingHorizontal:13,borderTopLeftRadius:10,borderTopRightRadius:10,flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'rgba(255,255,255,0.10)',marginHorizontal:2 },
   tabBtnActive: { backgroundColor:'#eef2f8' },
-  tabBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(255,255,255,0.80)' },
+  tabBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'rgba(255,255,255,0.80)' },
   tabBtnTxtActive: { color:'#1a3a6b' },
-  tabBadge: { backgroundColor:'#e74c3c', borderRadius:7, minWidth:14, height:14, alignItems:'center', justifyContent:'center', paddingHorizontal:2 },
-  tabBadgeTxt: { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#fff' },
-
-  contentArea: {
-    flex:1, minHeight:0,
-    backgroundColor:'rgba(255,255,255,0.22)',
-    borderBottomLeftRadius:16, borderBottomRightRadius:16, borderTopRightRadius:16,
-    borderWidth:1, borderColor:'rgba(255,255,255,0.40)',
-    overflow:'hidden',
-  },
+  tabBadge: { backgroundColor:'#e74c3c',borderRadius:7,minWidth:14,height:14,alignItems:'center',justifyContent:'center',paddingHorizontal:2 },
+  tabBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff' },
+  contentArea: { flex:1,minHeight:0,backgroundColor:'rgba(255,255,255,0.22)',borderBottomLeftRadius:16,borderBottomRightRadius:16,borderTopRightRadius:16,borderWidth:1,borderColor:'rgba(255,255,255,0.40)',overflow:'hidden' },
 });

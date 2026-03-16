@@ -18,9 +18,11 @@ import { useMerchandise } from '../context/MerchandiseContext';
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 const CATEGORIES = ['All', 'Shirts', 'Mugs', 'Tumbler', 'Bags', 'Pens', 'Caps', 'Umbrellas', 'Stufftoys', 'Others'];
 
-const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-const SIZED_CATS = ['Shirts'];
-const needsSize = (item) => item.sizes && item.sizes.length > 0;
+// Sizes come from item.sizes (set by admin in ManageMerchandiseScreen)
+// These constants are only used for grouping the display in SizePickerModal
+const ADULT_SIZES_REF = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+const KIDS_SIZES_REF  = ['2T', '3T', '4T', '5T', '6', '8', '10', '12', '14'];
+const needsSize = (item) => Array.isArray(item.sizes) && item.sizes.length > 0;
 
 const MERCH_ITEMS = [
   { id:'1',  name:'CESLA Polo Shirt',       cat:'Shirts',    price:350, stock:20, emoji:'👕' },
@@ -50,37 +52,117 @@ const SizePickerModal = ({ visible, item, onConfirm, onClose }) => {
   const [sel, setSel] = React.useState(null);
   React.useEffect(() => { if (visible) setSel(null); }, [visible]);
   if (!item) return null;
+
+  // Use the item's own sizes (set by admin); fall back gracefully
+  const availableSizes = (Array.isArray(item.sizes) && item.sizes.length > 0)
+    ? item.sizes
+    : [];
+
+  // Split into adult vs kids groups for display
+  const adultSizes = availableSizes.filter(s => ADULT_SIZES_REF.includes(s));
+  const kidsSizes  = availableSizes.filter(s => KIDS_SIZES_REF.includes(s));
+  // Any custom sizes not in either reference list
+  const otherSizes = availableSizes.filter(s => !ADULT_SIZES_REF.includes(s) && !KIDS_SIZES_REF.includes(s));
+
+  const SizeChip = ({ size, isKids }) => (
+    <TouchableOpacity
+      key={size}
+      onPress={() => setSel(size)}
+      style={{
+        paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10,
+        backgroundColor: sel === size
+          ? (isKids ? '#1a6b45' : '#1a3a6b')
+          : 'rgba(1,31,75,0.07)',
+        borderWidth: 1.5,
+        borderColor: sel === size
+          ? (isKids ? '#1a6b45' : '#1a3a6b')
+          : 'rgba(1,31,75,0.15)',
+        minWidth: 50, alignItems: 'center',
+      }}
+    >
+      <Text style={{
+        fontFamily: 'GoogleSans_700Bold', fontSize: 13,
+        color: sel === size ? '#fff' : 'rgba(1,31,75,0.65)',
+      }}>{size}</Text>
+    </TouchableOpacity>
+  );
+
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <View style={{ flex:1, backgroundColor:'rgba(1,20,50,0.60)', justifyContent:'center', alignItems:'center', padding:24 }}>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} activeOpacity={1} />
-        <View style={{ backgroundColor:'#fff', borderRadius:18, padding:22, width:300, alignItems:'center', gap:14 }}>
-          <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:15, color:'#1a3a6b' }}>{item.emoji}  Select Size</Text>
-          <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.55)', textAlign:'center' }} numberOfLines={2}>{item.name}</Text>
-          <View style={{ flexDirection:'row', flexWrap:'wrap', gap:8, justifyContent:'center' }}>
-            {SIZES.map(sz => (
-              <TouchableOpacity key={sz} onPress={() => setSel(sz)}
-                style={{ paddingHorizontal:18, paddingVertical:11, borderRadius:10,
-                  backgroundColor: sel===sz ? '#1a3a6b' : 'rgba(1,31,75,0.07)',
-                  borderWidth:1.5, borderColor: sel===sz ? '#1a3a6b' : 'rgba(1,31,75,0.15)',
-                  minWidth:54, alignItems:'center' }}>
-                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:14, color: sel===sz ? '#fff' : 'rgba(1,31,75,0.65)' }}>{sz}</Text>
-              </TouchableOpacity>
-            ))}
+        <View style={{ backgroundColor:'#fff', borderRadius:18, padding:22, width:320, gap:14 }}>
+
+          {/* Header */}
+          <View style={{ alignItems:'center', gap:4 }}>
+            <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:15, color:'#1a3a6b' }}>
+              {item.emoji}  Select Size
+            </Text>
+            <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.55)', textAlign:'center' }} numberOfLines={2}>
+              {item.name}
+            </Text>
           </View>
-          <View style={{ flexDirection:'row', gap:8, width:'100%', marginTop:2 }}>
+
+          {availableSizes.length === 0 ? (
+            <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.45)', textAlign:'center', paddingVertical:8 }}>
+              No sizes set for this item.
+            </Text>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {/* Adult sizes */}
+              {adultSizes.length > 0 && (
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.50)', letterSpacing:1.2, textTransform:'uppercase' }}>
+                    ADULT
+                  </Text>
+                  <View style={{ flexDirection:'row', flexWrap:'wrap', gap:7 }}>
+                    {adultSizes.map(sz => <SizeChip key={sz} size={sz} isKids={false} />)}
+                  </View>
+                </View>
+              )}
+
+              {/* Kids sizes */}
+              {kidsSizes.length > 0 && (
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,107,69,0.60)', letterSpacing:1.2, textTransform:'uppercase' }}>
+                    KIDS
+                  </Text>
+                  <View style={{ flexDirection:'row', flexWrap:'wrap', gap:7 }}>
+                    {kidsSizes.map(sz => <SizeChip key={sz} size={sz} isKids={true} />)}
+                  </View>
+                </View>
+              )}
+
+              {/* Other / custom sizes */}
+              {otherSizes.length > 0 && (
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(1,31,75,0.45)', letterSpacing:1.2, textTransform:'uppercase' }}>
+                    OTHER
+                  </Text>
+                  <View style={{ flexDirection:'row', flexWrap:'wrap', gap:7 }}>
+                    {otherSizes.map(sz => <SizeChip key={sz} size={sz} isKids={false} />)}
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Action buttons */}
+          <View style={{ flexDirection:'row', gap:8, marginTop:2 }}>
             <TouchableOpacity onPress={onClose}
               style={{ flex:1, paddingVertical:11, borderRadius:10, backgroundColor:'rgba(1,31,75,0.07)', alignItems:'center' }}>
               <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'rgba(1,31,75,0.50)' }}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => sel && onConfirm(sel)}
+            <TouchableOpacity
+              onPress={() => sel && onConfirm(sel)}
               style={{ flex:2, paddingVertical:11, borderRadius:10,
                 backgroundColor: sel ? '#1a3a6b' : 'rgba(1,31,75,0.20)', alignItems:'center' }}>
               <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff' }}>
-                {sel ? 'Confirm — ' + sel : 'Pick a size'}
+                {sel ? ('Confirm — ' + sel) : 'Pick a size'}
               </Text>
             </TouchableOpacity>
           </View>
+
         </View>
       </View>
     </Modal>
@@ -119,6 +201,22 @@ const ImageZoomModal = ({ visible, item, onClose }) => {
             <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#fff', textAlign:'center', paddingHorizontal:20 }}>{item.name}</Text>
             <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:22, color:'#c9a84c' }}>₱{item.price}.00</Text>
             <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:13, color:'rgba(255,255,255,0.60)' }}>Stock: {item.stock}</Text>
+            {Array.isArray(item.sizes) && item.sizes.length > 0 && (
+              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:5, justifyContent:'center', marginTop:2 }}>
+                {item.sizes.map(sz => {
+                  const isKids = KIDS_SIZES_REF.includes(sz);
+                  return (
+                    <View key={sz} style={{
+                      paddingHorizontal:10, paddingVertical:4, borderRadius:7,
+                      backgroundColor: isKids ? 'rgba(26,107,69,0.35)' : 'rgba(255,255,255,0.18)',
+                      borderWidth:1, borderColor: isKids ? 'rgba(26,107,69,0.60)' : 'rgba(255,255,255,0.35)',
+                    }}>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#fff' }}>{sz}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
           <TouchableOpacity onPress={onClose} style={{ paddingHorizontal:28, paddingVertical:10, backgroundColor:'rgba(255,255,255,0.15)', borderRadius:20, borderWidth:1, borderColor:'rgba(255,255,255,0.30)' }}>
             <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff' }}>✕  Close</Text>
@@ -152,24 +250,63 @@ const ItemCard = ({ item, onAdd }) => {
   );
 };
 
-const ItemCardBody = ({ item, onAdd, onZoom }) => (
-  <>
-    <TouchableOpacity style={styles.emojiCircle} onPress={onZoom} activeOpacity={0.80}>
-      {item.image
-        ? <Image source={{ uri: item.image }} style={{ width:'100%', height:'100%', borderRadius:99 }} resizeMode="cover" />
-        : <Text style={styles.emojiText}>{item.emoji}</Text>
-      }
-    </TouchableOpacity>
-    <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
-    <Text style={styles.itemStock}>Stock: {item.stock}</Text>
-    <Text style={styles.itemPrice}>₱{item.price}.00</Text>
-    <TouchableOpacity style={styles.addBtn} onPress={onAdd}>
-      <Text style={styles.addBtnText}>Add To Cart</Text>
-    </TouchableOpacity>
-  </>
-);
+const ItemCardBody = ({ item, onAdd, onZoom }) => {
+  const availSizes  = Array.isArray(item.sizes) ? item.sizes : [];
+  const adultSizes  = availSizes.filter(s => ADULT_SIZES_REF.includes(s));
+  const kidsSizes   = availSizes.filter(s => KIDS_SIZES_REF.includes(s));
+  const hasSizes    = availSizes.length > 0;
 
-// ─── RECEIPT MODAL ────────────────────────────────────────────────────────────
+  return (
+    <>
+      <TouchableOpacity style={styles.emojiCircle} onPress={onZoom} activeOpacity={0.80}>
+        {item.image
+          ? <Image source={{ uri: item.image }} style={{ width:'100%', height:'100%', borderRadius:99 }} resizeMode="cover" />
+          : <Text style={styles.emojiText}>{item.emoji}</Text>
+        }
+      </TouchableOpacity>
+      <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+      <Text style={styles.itemPrice}>₱{item.price}.00</Text>
+      <Text style={styles.itemStock}>Stock: {item.stock}</Text>
+
+      {/* Size badges — grouped adult (navy) / kids (green) */}
+      {hasSizes && (
+        <View style={{ width:'100%', gap: 3, marginBottom: 2 }}>
+          {adultSizes.length > 0 && (
+            <View style={{ gap: 2 }}>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize: Platform.OS==='web' ? 7 : 6, color:'rgba(26,58,107,0.45)', letterSpacing: 0.8, textAlign:'center' }}>ADULT</Text>
+              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:2, justifyContent:'center' }}>
+                {adultSizes.map(sz => (
+                  <View key={sz} style={{ backgroundColor:'rgba(26,58,107,0.10)', borderRadius:4, paddingHorizontal:4, paddingVertical:1, borderWidth:1, borderColor:'rgba(26,58,107,0.18)' }}>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize: Platform.OS==='web' ? 7 : 6, color:'#1a3a6b' }}>{sz}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+          {kidsSizes.length > 0 && (
+            <View style={{ gap: 2 }}>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize: Platform.OS==='web' ? 7 : 6, color:'rgba(26,107,69,0.50)', letterSpacing: 0.8, textAlign:'center' }}>KIDS</Text>
+              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:2, justifyContent:'center' }}>
+                {kidsSizes.map(sz => (
+                  <View key={sz} style={{ backgroundColor:'rgba(26,107,69,0.10)', borderRadius:4, paddingHorizontal:4, paddingVertical:1, borderWidth:1, borderColor:'rgba(26,107,69,0.22)' }}>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize: Platform.OS==='web' ? 7 : 6, color:'#1a6b45' }}>{sz}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+
+      <TouchableOpacity style={styles.addBtn} onPress={onAdd}>
+        <Text style={styles.addBtnText}>
+          {hasSizes ? 'Select Size & Add' : 'Add To Cart'}
+        </Text>
+      </TouchableOpacity>
+    </>
+  );
+};
+
 const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) => {
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(60)).current;
@@ -587,18 +724,18 @@ export default function MerchandiseScreen({ navigation }) {
   });
 
   // ── Live data from shared MerchandiseContext ──────────────────────────────
-  const { items: MERCH_ITEMS, categories: CATEGORIES, reloadFromStorage } = useMerchandise();
+  const {
+    items: MERCH_ITEMS,
+    categories: CATEGORIES,
+    reloadFromStorage,
+    addOrder,
+    deductStock,
+  } = useMerchandise();
 
   // Reload on focus so visitor always sees latest items from admin
   useFocusEffect(useCallback(() => {
-    reloadFromStorage(); // immediate on focus
+    reloadFromStorage();
   }, [reloadFromStorage]));
-
-  // ── Global item reload — 500ms poll for near-realtime mobile sync ─────────
-  useEffect(() => {
-    const menuPoll = setInterval(() => reloadFromStorage(), 500);
-    return () => clearInterval(menuPoll);
-  }, []);
 
   const [activeCategory, setActiveCategory] = useState('All');
   const [search, setSearch] = useState('');
@@ -646,12 +783,24 @@ export default function MerchandiseScreen({ navigation }) {
     clearCart();
   };
 
-  // Called by CartPanel after building order data
-  const handlePlaceOrder = (orderData) => {
+  // Called by CartPanel after building order data — saves to Firestore
+  const handlePlaceOrder = async (orderData) => {
+    try {
+      // Save order to Firestore → triggers real-time update on ManageMerchandiseScreen
+      await addOrder({
+        ...orderData,
+        status: 'pending',
+        source: 'visitor', // so admin knows this came from the order screen
+      });
+      // Deduct stock in Firestore
+      await deductStock(orderData.items);
+    } catch (e) {
+      console.warn('handlePlaceOrder error:', e);
+    }
     setLastOrder(orderData);
     setCartOpen(false);
     clearCart();
-    setTimeout(() => setReceiptVisible(true), 300); // slight delay so sheet closes first on mobile
+    setTimeout(() => setReceiptVisible(true), 300);
   };
 
   const handleShowReceipt = () => setReceiptVisible(true);
