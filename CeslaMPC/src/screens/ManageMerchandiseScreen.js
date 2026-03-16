@@ -669,7 +669,7 @@ const CashierSizePickerModal = ({ visible, item, onConfirm, onClose }) => {
 };
 
 // ─── CASHIER SCREEN ───────────────────────────────────────────────────────────
-const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
+const CashierScreen = ({ items, categories, addOrder, deductStock, isWide }) => {
   const [activeCat, setActiveCat]  = useState('All');
   const [search, setSearch]        = useState('');
   const [cart, setCart]            = useState({});
@@ -726,11 +726,11 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
     setTimeout(() => setReceiptVisible(true), 200);
   };
 
-  // FIX: 6 items per row
-  const COLS = 6;
+  // Responsive columns: 3 on mobile, 4 on tablet, 6 on wide
+  const COLS = isWide ? 6 : 3;
 
   return (
-    <View style={{ flex: 1, flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
+    <View style={{ flex: 1, flexDirection: isWide ? 'row' : 'column', minHeight: 0, overflow: 'hidden' }}>
       {/* Items side */}
       <View style={{ flex: 1, minHeight: 0, minWidth: 0, flexDirection: 'column', overflow: 'hidden' }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
@@ -783,7 +783,7 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
       </View>
 
       {/* Cart side */}
-      <View style={cs.cartPanel}>
+      <View style={[cs.cartPanel, !isWide && { width: '100%', borderLeftWidth: 0, borderTopWidth: 1, flex: 0, maxHeight: 280 }]}>
         <Text style={cs.cartTitle}>🛒 CART</Text>
         <View style={cs.cartItemsBox}>
           {cartItems.length === 0
@@ -959,21 +959,34 @@ const cs = StyleSheet.create({
 });
 
 // ─── MANAGE ITEMS SCREEN ──────────────────────────────────────────────────────
-const ManageItemsScreen = ({ items, categories, filtered, search, activeCategory, onSearch, onCategoryChange, onAddItem, onEditItem, onDeleteItem }) => {
-  // FIX: 6 columns
-  const COLS = 6;
+const ManageItemsScreen = ({ items, categories, filtered, search, activeCategory, onSearch, onCategoryChange, onAddItem, onEditItem, onDeleteItem, isWide }) => {
+  // FIX: 6 columns on wide, 3 on mobile
+  const COLS = isWide ? 6 : 3;
   return (
-    <View style={{ flex: 1, minHeight: 0, flexDirection: 'row', overflow: 'hidden' }}>
-      <View style={mm.catPanel}>
-        <Text style={mm.catTitle}>CATEGORIES</Text>
-        <WebScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 4 }}>
+    <View style={{ flex: 1, minHeight: 0, flexDirection: isWide ? 'row' : 'column', overflow: 'hidden' }}>
+      {/* Categories — vertical sidebar on wide, horizontal strip on mobile */}
+      {isWide ? (
+        <View style={mm.catPanel}>
+          <Text style={mm.catTitle}>CATEGORIES</Text>
+          <WebScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 4 }}>
+            {categories.map(cat => (
+              <TouchableOpacity key={cat} style={[mm.catBtn, activeCategory === cat && mm.catBtnActive]} onPress={() => onCategoryChange(cat)}>
+                <Text style={[mm.catBtnTxt, activeCategory === cat && mm.catBtnTxtActive]}>{cat}</Text>
+              </TouchableOpacity>
+            ))}
+          </WebScrollView>
+        </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          style={{ flexGrow: 0, flexShrink: 0 }}
+          contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 6, gap: 5 }}>
           {categories.map(cat => (
-            <TouchableOpacity key={cat} style={[mm.catBtn, activeCategory === cat && mm.catBtnActive]} onPress={() => onCategoryChange(cat)}>
+            <TouchableOpacity key={cat} style={[mm.catBtn, activeCategory === cat && mm.catBtnActive, { paddingVertical: 5, paddingHorizontal: 12 }]} onPress={() => onCategoryChange(cat)}>
               <Text style={[mm.catBtnTxt, activeCategory === cat && mm.catBtnTxtActive]}>{cat}</Text>
             </TouchableOpacity>
           ))}
-        </WebScrollView>
-      </View>
+        </ScrollView>
+      )}
 
       <View style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
         <View style={mm.headerRow}>
@@ -2138,7 +2151,7 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
   const [editAdModal,    setEditAdModal]    = useState(false);
   const [adCurrent,      setAdCurrent]      = useState(0);
   const [invMaxQty,      setInvMaxQty]      = useState({});
-  const [salesCollapsed, setSalesCollapsed] = useState(false);
+  const [salesCollapsed, setSalesCollapsed] = useState(true); // collapsed by default on mobile
 
   const hdrFade    = useRef(new Animated.Value(0)).current;
   const hdrTrans   = useRef(new Animated.Value(-16)).current;
@@ -2213,8 +2226,8 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
   if (!fontsLoaded) return null;
 
   const renderContent = () => {
-    if (activeTab === 'cashier')   return <CashierScreen items={items} categories={categories} addOrder={addOrder} deductStock={deductStock} />;
-    if (activeTab === 'menu')      return <ManageItemsScreen items={items} categories={categories} filtered={filtered} search={search} activeCategory={activeCategory} onSearch={handleSearch} onCategoryChange={setActiveCategory} onAddItem={openAddItem} onEditItem={openEditItem} onDeleteItem={handleDeleteItem} />;
+    if (activeTab === 'cashier')   return <CashierScreen items={items} categories={categories} addOrder={addOrder} deductStock={deductStock} isWide={isWide} />;
+    if (activeTab === 'menu')      return <ManageItemsScreen items={items} categories={categories} filtered={filtered} search={search} activeCategory={activeCategory} onSearch={handleSearch} onCategoryChange={setActiveCategory} onAddItem={openAddItem} onEditItem={openEditItem} onDeleteItem={handleDeleteItem} isWide={isWide} />;
     if (activeTab === 'inventory') return <InventoryScreen items={items} maxQtyMap={invMaxQty} onAddItem={openAddItem} onEditItem={openEditItem}/>;
     if (activeTab === 'history')   return <OrderHistoryScreen orders={orders} />;
     if (activeTab === 'credits')   return <EmployeeCreditsScreen />;
