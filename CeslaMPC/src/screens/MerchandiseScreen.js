@@ -201,22 +201,6 @@ const ImageZoomModal = ({ visible, item, onClose }) => {
             <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#fff', textAlign:'center', paddingHorizontal:20 }}>{item.name}</Text>
             <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:22, color:'#c9a84c' }}>₱{item.price}.00</Text>
             <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:13, color:'rgba(255,255,255,0.60)' }}>Stock: {item.stock}</Text>
-            {Array.isArray(item.sizes) && item.sizes.length > 0 && (
-              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:5, justifyContent:'center', marginTop:2 }}>
-                {item.sizes.map(sz => {
-                  const isKids = KIDS_SIZES_REF.includes(sz);
-                  return (
-                    <View key={sz} style={{
-                      paddingHorizontal:10, paddingVertical:4, borderRadius:7,
-                      backgroundColor: isKids ? 'rgba(26,107,69,0.35)' : 'rgba(255,255,255,0.18)',
-                      borderWidth:1, borderColor: isKids ? 'rgba(26,107,69,0.60)' : 'rgba(255,255,255,0.35)',
-                    }}>
-                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#fff' }}>{sz}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
           </View>
           <TouchableOpacity onPress={onClose} style={{ paddingHorizontal:28, paddingVertical:10, backgroundColor:'rgba(255,255,255,0.15)', borderRadius:20, borderWidth:1, borderColor:'rgba(255,255,255,0.30)' }}>
             <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff' }}>✕  Close</Text>
@@ -268,33 +252,10 @@ const ItemCardBody = ({ item, onAdd, onZoom }) => {
       <Text style={styles.itemPrice}>₱{item.price}.00</Text>
       <Text style={styles.itemStock}>Stock: {item.stock}</Text>
 
-      {/* Size badges — grouped adult (navy) / kids (green) */}
+      {/* Size hint — no badge grid, picker opens on tap */}
       {hasSizes && (
-        <View style={{ width:'100%', gap: 3, marginBottom: 2 }}>
-          {adultSizes.length > 0 && (
-            <View style={{ gap: 2 }}>
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize: Platform.OS==='web' ? 7 : 6, color:'rgba(26,58,107,0.45)', letterSpacing: 0.8, textAlign:'center' }}>ADULT</Text>
-              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:2, justifyContent:'center' }}>
-                {adultSizes.map(sz => (
-                  <View key={sz} style={{ backgroundColor:'rgba(26,58,107,0.10)', borderRadius:4, paddingHorizontal:4, paddingVertical:1, borderWidth:1, borderColor:'rgba(26,58,107,0.18)' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize: Platform.OS==='web' ? 7 : 6, color:'#1a3a6b' }}>{sz}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-          {kidsSizes.length > 0 && (
-            <View style={{ gap: 2 }}>
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize: Platform.OS==='web' ? 7 : 6, color:'rgba(26,107,69,0.50)', letterSpacing: 0.8, textAlign:'center' }}>KIDS</Text>
-              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:2, justifyContent:'center' }}>
-                {kidsSizes.map(sz => (
-                  <View key={sz} style={{ backgroundColor:'rgba(26,107,69,0.10)', borderRadius:4, paddingHorizontal:4, paddingVertical:1, borderWidth:1, borderColor:'rgba(26,107,69,0.22)' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize: Platform.OS==='web' ? 7 : 6, color:'#1a6b45' }}>{sz}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
+        <View style={{ backgroundColor:'rgba(26,58,107,0.10)', borderRadius:4, paddingHorizontal:5, paddingVertical:2, marginBottom:2 }}>
+          <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize: Platform.OS==='web' ? 7 : 6, color:'#1a3a6b', textAlign:'center' }}>👕 Tap to pick size</Text>
         </View>
       )}
 

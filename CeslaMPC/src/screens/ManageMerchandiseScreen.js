@@ -103,7 +103,7 @@ const DEFAULT_ADS = [
 // ─── APPAREL SIZE CONFIG ──────────────────────────────────────────────────────
 // Source of truth: these match exactly what MerchandiseContext exports
 // so admin and visitor always see the same sizes.
-const APPAREL_CATEGORIES = ['Shirts', 'Caps'];
+const APPAREL_CATEGORIES = ['Shirts'];
 
 const ADULT_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 const KIDS_SIZES  = ['2T', '3T', '4T', '5T', '6', '8', '10', '12', '14'];
@@ -765,16 +765,8 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
                   <Text style={cs.itemCardPrice}>₱{item.price}</Text>
                   <Text style={cs.itemCardStock}>{item.stock === 0 ? 'Out of stock' : ('Stock: ' + item.stock)}</Text>
                   {Array.isArray(item.sizes) && item.sizes.length > 0 && (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2, justifyContent: 'center', marginTop: 1 }}>
-                      {item.sizes.slice(0, 5).map(sz => {
-                        const isKids = KIDS_SIZES.includes(sz);
-                        return (
-                          <View key={sz} style={{ backgroundColor: isKids ? 'rgba(26,107,69,0.12)' : 'rgba(26,58,107,0.10)', borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1, borderWidth: 1, borderColor: isKids ? 'rgba(26,107,69,0.22)' : 'rgba(26,58,107,0.15)' }}>
-                            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 6, color: isKids ? '#1a6b45' : '#1a3a6b' }}>{sz}</Text>
-                          </View>
-                        );
-                      })}
-                      {item.sizes.length > 5 && <View style={{ backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1 }}><Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 6, color: '#1a3a6b' }}>+{item.sizes.length - 5}</Text></View>}
+                    <View style={{ backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, marginTop: 1 }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 7, color: '#1a3a6b' }}>👕 Tap to pick size</Text>
                     </View>
                   )}
                   {(() => {
@@ -1022,14 +1014,6 @@ const ManageItemsScreen = ({ items, categories, filtered, search, activeCategory
                         <Text style={mm.itemName} numberOfLines={2}>{item.name}</Text>
                         <Text style={mm.itemStock}>Stock: {item.stock}</Text>
                         <Text style={mm.itemPrice}>₱{item.price}.00</Text>
-                        {Array.isArray(item.sizes) && item.sizes.length > 0 && (
-                          <View style={mm.sizesBadgeRow}>
-                            {item.sizes.slice(0, 5).map(sz => (
-                              <View key={sz} style={mm.sizeBadge}><Text style={mm.sizeBadgeTxt}>{sz}</Text></View>
-                            ))}
-                            {item.sizes.length > 5 && <View style={mm.sizeBadge}><Text style={mm.sizeBadgeTxt}>+{item.sizes.length - 5}</Text></View>}
-                          </View>
-                        )}
                         {Array.isArray(item.colors) && item.colors.length > 0 && (
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3, justifyContent: 'center', marginTop: 2 }}>
                             {(COLOR_OPTIONS[item.cat] || []).filter(c => item.colors.includes(c.label)).map(c => (
