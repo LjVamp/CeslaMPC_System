@@ -1,0 +1,164 @@
+// src/screens/billing/MilkBeansScreen.js
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useBilling, MONTHS, fmt, fmtDate } from '../../context/BillingContext';
+import EntryModal from '../../components/billing/EntryModal';
+
+export default function MilkBeansScreen({ year, month }) {
+  const { entries, getUniqueDates, getEntriesByDate, toggleStatus } = useBilling();
+  const [detailDate, setDetailDate] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editEntry, setEditEntry] = useState(null);
+
+  const dates = useMemo(() => getUniqueDates('milkbeans', year, month), [entries, year, month]);
+
+  const dateSummaries = useMemo(() => dates.map((date, idx) => {
+    const dayEntries = getEntriesByDate('milkbeans', year, month, date);
+    const totalAmt   = dayEntries.reduce((s, e) => s + (e.amount || 0), 0);
+    const status     = dayEntries.length > 0 ? (dayEntries[0].status || 'pending') : 'pending';
+    const mm         = String(month + 1).padStart(2, '0');
+    const billingNo  = `MB ${year}-${mm}-${String(idx + 1).padStart(2, '0')}`;
+    return { date, totalAmt, status, billingNo, id: dayEntries[0]?.id };
+  }), [dates, entries]);
+
+  const grandTotal    = dateSummaries.reduce((s, d) => s + d.totalAmt, 0);
+  const detailEntries = useMemo(() =>
+    detailDate ? getEntriesByDate('milkbeans', year, month, detailDate) : [],
+    [detailDate, entries, year, month]
+  );
+  const detailTotal = detailEntries.reduce((s, e) => s + (e.amount || 0), 0);
+
+  // ── DETAIL VIEW ────────────────────────────────────────────────────────────
+  if (detailDate) return (
+    <View style={{ flex: 1 }}>
+      <View style={mb.detailHeader}>
+        <TouchableOpacity style={mb.backBtn} onPress={() => setDetailDate(null)}>
+          <MaterialIcons name="arrow-back" size={16} color="#1a3a6b" />
+          <Text style={mb.backBtnTxt}>Back</Text>
+        </TouchableOpacity>
+        <Text style={mb.detailTitle} numberOfLines={1}>
+          {fmtDate(detailDate)} — {MONTHS[month]} {year}
+        </Text>
+        <TouchableOpacity style={mb.addBtnSm}
+          onPress={() => { setEditEntry(null); setModalVisible(true); }}>
+          <MaterialIcons name="add" size={14} color="#fff" />
+        </TouchableOpacity>
+      </View>
+      <FlatList
+        data={detailEntries}
+        keyExtractor={item => item.id}
+        contentContainerStyle={{ padding: 10, gap: 6, paddingBottom: 20 }}
+        ListEmptyComponent={<Text style={mb.emptyTxt}>No entries yet.</Text>}
+        renderItem={({ item }) => (
+          <TouchableOpacity style={mb.detailCard}
+            onPress={() => { setEditEntry(item); setModalVisible(true); }}>
+            <View style={{ flex: 1 }}>
+              <Text style={mb.detailDept}>{item.dept}</Text>
+              <Text style={mb.detailSub}>
+                {item.milkType !== 'None' ? `🥛 Milk: ${item.milkQty} × ${fmt(item.milkPrice)}` : ''}
+                {item.milkType !== 'None' && item.beansType !== 'None' ? '   ' : ''}
+                {item.beansType !== 'None' ? `🫘 Beans: ${item.beansQty} × ${fmt(item.beansPrice)}` : ''}
+              </Text>
+            </View>
+            <Text style={mb.detailAmt}>{fmt(item.amount)}</Text>
+          </TouchableOpacity>
+        )}
+        ListFooterComponent={
+          <View style={mb.totalBar}>
+            <Text style={mb.totalLbl}>GRAND TOTAL</Text>
+            <Text style={mb.totalVal}>{fmt(detailTotal)}</Text>
+          </View>
+        }
+      />
+      <EntryModal visible={modalVisible} category="milkbeans"
+        editEntry={editEntry} presetDate={detailDate}
+        year={year} month={month} onClose={() => setModalVisible(false)} />
+    </View>
+  );
+
+  // ── MAIN VIEW ──────────────────────────────────────────────────────────────
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={mb.toolbar}>
+        <TouchableOpacity style={mb.addBtn}
+          onPress={() => { setEditEntry(null); setModalVisible(true); }}>
+          <MaterialIcons name="add" size={15} color="#fff" />
+          <Text style={mb.addBtnTxt}>Add Entry</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={mb.thead}>
+        <Text style={[mb.th, { flex: 1.2 }]}>DATE</Text>
+        <Text style={[mb.th, { flex: 1.5 }]}>BILLING NO.</Text>
+        <Text style={[mb.th, { flex: 1, textAlign: 'right' }]}>AMOUNT</Text>
+        <Text style={[mb.th, { flex: 0.9, textAlign: 'center' }]}>STATUS</Text>
+      </View>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }}>
+        {dateSummaries.length === 0
+          ? <Text style={mb.emptyTxt}>No entries yet for {MONTHS[month]} {year}.</Text>
+          : dateSummaries.map((d, i) => (
+            <TouchableOpacity key={d.date}
+              style={[mb.trow, i % 2 === 0 && mb.trowAlt]}
+              onPress={() => setDetailDate(d.date)}
+              activeOpacity={0.75}>
+              <Text style={[mb.td, { flex: 1.2 }]}>{fmtDate(d.date)}</Text>
+              <Text style={[mb.td, { flex: 1.5, fontFamily: 'GoogleSans_700Bold', color: '#1a3a6b', fontSize: 10 }]}>
+                {d.billingNo}
+              </Text>
+              <Text style={[mb.td, { flex: 1, textAlign: 'right', fontFamily: 'GoogleSans_700Bold', color: '#1a3a6b' }]}>
+                {fmt(d.totalAmt)}
+              </Text>
+              <View style={{ flex: 0.9, alignItems: 'center' }}>
+                <TouchableOpacity
+                  style={[mb.statusBadge, d.status === 'paid' ? mb.statusPaid : mb.statusPending]}
+                  onPress={() => toggleStatus(d.id, d.status)}>
+                  <Text style={[mb.statusTxt, { color: d.status === 'paid' ? '#1a6e2e' : '#b36200' }]}>
+                    {d.status === 'paid' ? '✔ Paid' : '⏳ Pend'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          ))
+        }
+        <View style={mb.totalBar}>
+          <Text style={mb.totalLbl}>GRAND TOTAL</Text>
+          <Text style={mb.totalVal}>{fmt(grandTotal)}</Text>
+        </View>
+      </ScrollView>
+
+      <EntryModal visible={modalVisible} category="milkbeans"
+        editEntry={editEntry} year={year} month={month}
+        onClose={() => setModalVisible(false)} />
+    </View>
+  );
+}
+
+const mb = StyleSheet.create({
+  toolbar: { flexDirection: 'row', padding: 10, paddingBottom: 6, borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.10)' },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#8e44ad', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 14 },
+  addBtnSm: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#1a3a6b', justifyContent: 'center', alignItems: 'center' },
+  addBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#fff' },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: 'rgba(26,58,107,0.20)' },
+  backBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#1a3a6b' },
+  detailHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.10)' },
+  detailTitle: { flex: 1, fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#1a3a6b' },
+  thead: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(26,58,107,0.14)', paddingVertical: 8, paddingHorizontal: 10 },
+  th: { fontFamily: 'GoogleSans_700Bold', fontSize: 8, color: 'rgba(26,58,107,0.60)', letterSpacing: 0.8, textTransform: 'uppercase' },
+  trow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 1, borderColor: 'rgba(26,58,107,0.07)' },
+  trowAlt: { backgroundColor: 'rgba(255,255,255,0.35)' },
+  td: { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: '#1a2d4e' },
+  statusBadge: { borderRadius: 10, paddingHorizontal: 6, paddingVertical: 3, alignItems: 'center', minWidth: 55 },
+  statusPaid: { backgroundColor: '#d4f5e2', borderWidth: 1.5, borderColor: '#1a6e2e' },
+  statusPending: { backgroundColor: '#fff4e0', borderWidth: 1.5, borderColor: '#e0a800' },
+  statusTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 8, letterSpacing: 0.3 },
+  detailCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.90)', gap: 8 },
+  detailDept: { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#1a3a6b' },
+  detailSub: { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.55)', marginTop: 2 },
+  detailAmt: { fontFamily: 'NotoSerif_700Bold', fontSize: 14, color: '#c9a84c' },
+  totalBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1a6e2e', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, margin: 10 },
+  totalLbl: { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff', letterSpacing: 0.5 },
+  totalVal: { fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#fff' },
+  emptyTxt: { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(1,31,75,0.40)', textAlign: 'center', padding: 20 },
+});

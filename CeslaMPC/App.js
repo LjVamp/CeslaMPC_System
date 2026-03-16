@@ -13,8 +13,11 @@ import ManageCanteenScreen from "./src/screens/ManageCanteenScreen";
 import ManageMerchandiseScreen from "./src/screens/ManageMerchandiseScreen";
 import ManageBillingScreen from "./src/screens/ManageBillingScreen";
 import MerchandiseScreen from "./src/screens/MerchandiseScreen";
+import BillingDashboardScreen from "./src/screens/BillingDashboardScreen";
+
 import { CanteenProvider } from "./src/context/CanteenContext";
 import { MerchandiseProvider } from "./src/context/MerchandiseContext";
+import { BillingProvider } from "./src/context/BillingContext"; // ← IDUGANG NI
 
 const Stack = createStackNavigator();
 
@@ -22,6 +25,7 @@ export default function App() {
   return (
     <CanteenProvider>
     <MerchandiseProvider>
+    <BillingProvider>  {/* ← IDUGANG NI */}
     <NavigationContainer>
       <Stack.Navigator
         initialRouteName="Home"
@@ -37,23 +41,16 @@ export default function App() {
         <Stack.Screen name="CoopScreen" component={CoopScreen} />
         <Stack.Screen name="AdminScreen" component={AdminScreen} />
         <Stack.Screen name="ManageCoopScreen" component={ManageCoopScreen} />
-        <Stack.Screen
-          name="ManageCanteenScreen"
-          component={ManageCanteenScreen}
-        />
-        <Stack.Screen
-          name="ManageMerchandiseScreen"
-          component={ManageMerchandiseScreen}
-        />
-        <Stack.Screen
-          name="ManageBillingScreen"
-          component={ManageBillingScreen}
-        />
+        <Stack.Screen name="ManageCanteenScreen" component={ManageCanteenScreen} />
+        <Stack.Screen name="ManageMerchandiseScreen" component={ManageMerchandiseScreen} />
+        <Stack.Screen name="ManageBillingScreen" component={ManageBillingScreen} />
         <Stack.Screen name="CanteenScreen" component={CanteenScreen} />
         <Stack.Screen name="CanteenVisitorScreen" component={CanteenVisitor} />
         <Stack.Screen name="MerchandiseScreen" component={MerchandiseScreen} />
+        <Stack.Screen name="BillingDashboardScreen" component={BillingDashboardScreen} />
       </Stack.Navigator>
     </NavigationContainer>
+    </BillingProvider>  {/* ← CLOSING TAG */}
     </MerchandiseProvider>
     </CanteenProvider>
   );
