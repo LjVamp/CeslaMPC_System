@@ -15,11 +15,10 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.cesla.mpc",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#E6F4FE"
       }
     },
     "web": {
@@ -27,6 +26,11 @@
     },
     "plugins": [
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "43afb360-0152-46f2-bae0-ea4af04472de"
+      }
+    }
   }
 }
