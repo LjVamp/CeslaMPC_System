@@ -9,7 +9,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Animated, StatusBar, useWindowDimensions, Platform,
-  TextInput, ActivityIndicator, KeyboardAvoidingView,
+  TextInput, ActivityIndicator, KeyboardAvoidingView, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -17,6 +17,9 @@ import { useFonts } from 'expo-font';
 import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/noto-serif';
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 // ─── Firebase ────────────────────────────────────────────────────────────────
 import {
@@ -42,10 +45,39 @@ const C = {
   textMuted: 'rgba(15,30,53,0.42)',
 };
 
+// ── Responsive hook — use anywhere ──────────────────────────────────────────
+const useRwd = () => {
+  const { width, height } = useWindowDimensions();
+  const isMobile = width < 600;
+  return {
+    width, height,
+    isWide:   width >= 768,
+    isMobile,
+    isSmall:  width < 400,
+    // 'column' on mobile, 'row' on wide — use for side-by-side field rows
+    rowDir:   isMobile ? 'column' : 'row',
+    // pass to a View child instead of `half` prop when in a row
+    halfStyle: isMobile ? { width: '100%' } : { flex: 1 },
+    col: (wide, mobile) => width >= 600 ? wide : mobile,
+  };
+};
 const fmtCur  = v => '₱' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 });
 const fmtDate = ts => { if (!ts) return '—'; const d = ts?.toDate?.() || new Date(ts); return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }); };
 const fmtTime = ts => { if (!ts) return '—'; const d = ts?.toDate?.() || new Date(ts); return d.toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); };
 const mkInit  = name => (name || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+// Photo-aware avatar — shows profile picture if set, else initials circle
+const MemberAvatar = ({ member, size = 52, style }) => {
+  const r = size / 2;
+  if (member?.photoURL) {
+    return <Image source={{ uri: member.photoURL }} style={[{ width: size, height: size, borderRadius: r, borderWidth: 2, borderColor: C.gold }, style]} />;
+  }
+  return (
+    <View style={[{ width: size, height: size, borderRadius: r, backgroundColor: 'rgba(201,168,76,0.25)', borderWidth: 2, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }, style]}>
+      <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: size * 0.34, color: C.gold }}>{mkInit(member?.name)}</Text>
+    </View>
+  );
+};
 
 // ═════════════════════════════════════════════════════════════════════════════
 // FIRESTORE HELPERS
@@ -268,17 +300,17 @@ const TipsCarousel = () => {
   );
 };
 
-const OverviewView = ({ member, onNav }) => {
+const OverviewView = ({ member, onNav, contentHeight, isMobile }) => {
   const lp = member.loan > 0 ? (member.loan - (member.loanBalance || 0)) / member.loan : 0;
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
       {/* Welcome */}
       <View style={{ borderRadius: 16, overflow: 'hidden', marginBottom: 14, shadowColor: '#1a2d4e', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } }}>
-        <LinearGradient colors={['#1a2d4e', '#243554']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 }}>
-          <View style={s.wAvatar}><Text style={s.wAvatarTxt}>{mkInit(member.name)}</Text></View>
+        <LinearGradient colors={['#1a2d4e', '#243554']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: isMobile ? 14 : 18 }}>
+          <MemberAvatar member={member} size={52} style={{ flexShrink: 0 }} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>Welcome back,</Text>
-            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#fff', lineHeight: 22 }} numberOfLines={2}>{member.name}</Text>
+            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: isMobile ? 14 : 16, color: '#fff', lineHeight: 22 }} numberOfLines={2}>{member.name}</Text>
             <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.50)', marginTop: 2 }}>{member.userId}</Text>
           </View>
           <View style={{ paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, backgroundColor: 'rgba(26,138,74,0.35)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
@@ -287,17 +319,17 @@ const OverviewView = ({ member, onNav }) => {
         </LinearGradient>
       </View>
 
-      {/* Financial tiles */}
+      {/* Financial tiles — 2x2 on mobile, 4 in a row on wide */}
       <Text style={s.sHead}>💰 FINANCIAL SUMMARY</Text>
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         {[
           { l: 'Savings',       v: fmtCur(member.savings),      c: C.green },
           { l: 'Share Capital', v: fmtCur(member.shares),       c: C.gold },
           { l: 'Total Assets',  v: fmtCur((member.savings || 0) + (member.shares || 0)), c: C.blueLt },
           { l: 'Loan Balance',  v: fmtCur(member.loanBalance),  c: member.loanBalance > 0 ? C.red : C.green },
         ].map(t => (
-          <GCard key={t.l} style={{ flex: 1, minWidth: 130, padding: 12, marginBottom: 0, borderTopWidth: 3, borderTopColor: t.c }}>
-            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 17, color: t.c, marginBottom: 3 }}>{t.v}</Text>
+          <GCard key={t.l} style={{ flexBasis: isMobile ? '47%' : '22%', flex: 1, padding: 12, marginBottom: 0, borderTopWidth: 3, borderTopColor: t.c }}>
+            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: isMobile ? 14 : 17, color: t.c, marginBottom: 3 }} numberOfLines={1} adjustsFontSizeToFit>{t.v}</Text>
             <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec }}>{t.l}</Text>
           </GCard>
         ))}
@@ -315,7 +347,7 @@ const OverviewView = ({ member, onNav }) => {
             <View style={{ height: 10, backgroundColor: 'rgba(15,30,53,0.12)', borderRadius: 5, overflow: 'hidden' }}>
               <View style={{ height: 10, backgroundColor: C.green, borderRadius: 5, width: `${Math.round(lp * 100)}%` }} />
             </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, flexWrap: 'wrap', gap: 4 }}>
               <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted }}>Paid: {fmtCur((member.loan || 0) - (member.loanBalance || 0))}</Text>
               <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted }}>Remaining: {fmtCur(member.loanBalance)}</Text>
             </View>
@@ -323,12 +355,12 @@ const OverviewView = ({ member, onNav }) => {
         </>
       )}
 
-      {/* Quick actions */}
+      {/* Quick actions — 2x2 on mobile */}
       <Text style={s.sHead}>⚡ QUICK ACTIONS</Text>
-      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         {[{ label: 'Apply Loan', icon: '📝', key: 'applyloan', c: C.blue }, { label: 'My Profile', icon: '👤', key: 'profile', c: C.navyMid }, { label: 'App Form', icon: '📋', key: 'appform', c: C.orange }, { label: 'Notifs', icon: '🔔', key: 'notifs', c: C.gold }].map(q => (
-          <TouchableOpacity key={q.key} style={[s.quickBtn, { flex: 1, minWidth: 130, borderTopWidth: 3, borderTopColor: q.c }]} onPress={() => onNav(q.key)} activeOpacity={0.8}>
-            <Text style={{ fontSize: 22, marginBottom: 5 }}>{q.icon}</Text>
+          <TouchableOpacity key={q.key} style={[s.quickBtn, { flexBasis: isMobile ? '47%' : '22%', flex: 1, borderTopWidth: 3, borderTopColor: q.c }]} onPress={() => onNav(q.key)} activeOpacity={0.8}>
+            <Text style={{ fontSize: isMobile ? 20 : 22, marginBottom: 5 }}>{q.icon}</Text>
             <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.navy, textAlign: 'center' }}>{q.label}</Text>
           </TouchableOpacity>
         ))}
@@ -341,35 +373,117 @@ const OverviewView = ({ member, onNav }) => {
   );
 };
 
-const ProfileView = ({ member }) => (
-  <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={false}>
-    <Text style={s.pageTitle}>My Profile</Text>
-    <GCard style={{ padding: 0, overflow: 'hidden' }}>
-      <LinearGradient colors={['#1a2d4e', '#243554']} style={{ padding: 20 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <View style={s.profAvatar}><Text style={s.profAvatarTxt}>{mkInit(member.name)}</Text></View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: '#fff' }} numberOfLines={2}>{member.name}</Text>
-            <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 3 }}>{member.userId}</Text>
+const ProfileView = ({ member, contentHeight }) => {
+  const af = member.appForm || {};
+  const fullName = [af.salutation, member.firstName, member.middleName ? member.middleName + ' ' : '', member.lastName, af.suffix].filter(Boolean).join(' ') || member.name || '—';
+  const address  = af.presentAddress ? `${af.presentAddress}${af.presentZip ? ', ' + af.presentZip : ''}` : (member.address || '—');
+  const contact  = af.contactNo || member.contact || '—';
+  const email    = member.email || '—';
+
+  const empLabel = af.empType === 'Employed'
+    ? [af.positionRank, af.employerName].filter(Boolean).join(' @ ') || 'Employed'
+    : af.empType === 'Self-Employed'
+    ? [af.bizName, af.bizNature].filter(Boolean).join(' — ') || 'Self-Employed'
+    : af.unemployedType || af.empType || '—';
+
+  const InfoRow = ({ label, value, color }) => (
+    <View style={s.infoRow}>
+      <Text style={s.infoLabel}>{label}</Text>
+      <Text style={[s.infoVal, color && { color, fontFamily: 'GoogleSans_700Bold' }]}>{value || '—'}</Text>
+    </View>
+  );
+
+  const SectionTitle = ({ title, mt }) => (
+    <Text style={[s.secTitle, mt && { marginTop: mt }]}>{title}</Text>
+  );
+
+  return (
+    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+      <Text style={s.pageTitle}>My Profile</Text>
+
+      {/* ── Header card ── */}
+      <GCard style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
+        <LinearGradient colors={['#1a2d4e', '#243554']} style={{ padding: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <MemberAvatar member={member} size={56} style={{ flexShrink: 0 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: '#fff' }} numberOfLines={2}>{fullName}</Text>
+              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>{member.userId}</Text>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.40)', marginTop: 1 }}>Member since {fmtDate(member.approvedAt || member.createdAt)}</Text>
+            </View>
+            <View style={{ paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, backgroundColor: 'rgba(26,138,74,0.35)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#4cde8a' }}>{member.status || 'Active'}</Text>
+            </View>
           </View>
-          <View style={{ paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, backgroundColor: 'rgba(26,138,74,0.35)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#4cde8a' }}>{member.status || 'Active'}</Text>
-          </View>
+        </LinearGradient>
+
+        <View style={{ padding: 14 }}>
+
+          {/* ── Personal Information ── */}
+          <SectionTitle title="👤  Personal Information" />
+          <InfoRow label="Full Name"        value={fullName} />
+          <InfoRow label="Gender"           value={af.gender} />
+          <InfoRow label="Civil Status"     value={af.civilStatus} />
+          <InfoRow label="Date of Birth"    value={af.dob} />
+          <InfoRow label="Place of Birth"   value={af.placeOfBirth} />
+          <InfoRow label="Nationality"      value={af.nationality === 'Others' ? af.nationalityOther : af.nationality} />
+          <InfoRow label="Religion"         value={af.religion === 'Others' ? af.religionOther : af.religion} />
+          <InfoRow label="No. of Dependents" value={af.numDependents} />
+          <InfoRow label="Recommended By"  value={af.recommendedBy} />
+
+          {/* ── Contact Details ── */}
+          <SectionTitle title="📞  Contact Details" mt={14} />
+          <InfoRow label="Contact No."     value={contact} />
+          <InfoRow label="Email"           value={email} />
+          <InfoRow label="Present Address" value={address} />
+          {af.permanentAddress ? <InfoRow label="Permanent Address" value={`${af.permanentAddress}${af.permanentZip ? ', ' + af.permanentZip : ''}`} /> : null}
+
+          {/* ── Government IDs ── */}
+          <SectionTitle title="🪪  Government IDs" mt={14} />
+          {(af.govIds && af.govIds.length > 0)
+            ? af.govIds.filter(g => g.type || g.number).map((g, i) => (
+                <InfoRow key={i} label={g.type || `ID #${i + 1}`} value={g.number} />
+              ))
+            : [['SSS / GSIS', af.sssGsis], ['TIN', af.tin], ['PhilHealth', af.philHealth], ['Pag-IBIG', af.pagIbig]]
+                .map(([l, v]) => <InfoRow key={l} label={l} value={v} />)
+          }
+
+          {/* ── Employment ── */}
+          <SectionTitle title="💼  Employment" mt={14} />
+          <InfoRow label="Status"      value={af.empType} />
+          {af.empType === 'Employed' && <>
+            <InfoRow label="Employer"        value={af.employerName} />
+            <InfoRow label="Office Address"  value={af.officeAddress} />
+            <InfoRow label="Nature of Biz"   value={af.natureOfBiz} />
+            <InfoRow label="Employment Type" value={af.employmentType === 'Others' ? af.employmentTypeOther : af.employmentType} />
+            <InfoRow label="Position / Rank" value={af.positionRank} />
+            <InfoRow label="Monthly Income"  value={af.monthlyIncome ? '₱' + Number(af.monthlyIncome).toLocaleString('en-PH') : undefined} color={C.green} />
+          </>}
+          {af.empType === 'Self-Employed' && <>
+            <InfoRow label="Business Name"   value={af.bizName} />
+            <InfoRow label="Business Type"   value={af.bizType} />
+            <InfoRow label="Nature of Biz"   value={af.bizNature} />
+            <InfoRow label="Asset Size"      value={af.assetSize ? '₱' + Number(af.assetSize).toLocaleString('en-PH') : undefined} />
+            <InfoRow label="Share in Biz"    value={af.shareInBiz ? af.shareInBiz + '%' : undefined} />
+            <InfoRow label="Monthly Income"  value={af.selfMonthlyIncome ? '₱' + Number(af.selfMonthlyIncome).toLocaleString('en-PH') : undefined} color={C.green} />
+          </>}
+          {af.empType === 'Unemployed' && <>
+            <InfoRow label="Type" value={af.unemployedType === 'Others' ? af.unemployedOther : af.unemployedType} />
+          </>}
+
+          {/* ── Financial Overview ── */}
+          <SectionTitle title="💰  Financial Overview" mt={14} />
+          <InfoRow label="Share Capital"  value={fmtCur(member.shares)}       color={C.gold} />
+          <InfoRow label="Savings"        value={fmtCur(member.savings)}      color={C.green} />
+          <InfoRow label="Active Loan"    value={fmtCur(member.loan)}         color={member.loan > 0 ? C.orange : undefined} />
+          <InfoRow label="Loan Balance"   value={fmtCur(member.loanBalance)}  color={member.loanBalance > 0 ? C.red : C.green} />
+          <InfoRow label="Credit Balance" value={fmtCur(member.creditBalance)} color={C.orange} />
+
         </View>
-      </LinearGradient>
-      <View style={{ padding: 14 }}>
-        <Text style={s.secTitle}>Personal Information</Text>
-        {[['Contact', member.contact || '—'], ['Email', member.email || '—'], ['Address', member.address || '—'], ['Member Since', fmtDate(member.approvedAt || member.createdAt)]].map(([l, v]) => (
-          <View key={l} style={s.infoRow}><Text style={s.infoLabel}>{l}</Text><Text style={s.infoVal}>{v}</Text></View>
-        ))}
-        <Text style={[s.secTitle, { marginTop: 14 }]}>Financial Overview</Text>
-        {[['Share Capital', fmtCur(member.shares), C.gold], ['Savings', fmtCur(member.savings), C.green], ['Active Loan', fmtCur(member.loan), C.orange], ['Loan Balance', fmtCur(member.loanBalance), member.loanBalance > 0 ? C.red : C.green], ['Credit Balance', fmtCur(member.creditBalance), C.orange]].map(([l, v, c]) => (
-          <View key={l} style={s.infoRow}><Text style={s.infoLabel}>{l}</Text><Text style={[s.infoVal, c && { color: c, fontFamily: 'GoogleSans_700Bold' }]}>{v}</Text></View>
-        ))}
-      </View>
-    </GCard>
-  </ScrollView>
-);
+      </GCard>
+    </ScrollView>
+  );
+};
 
 // ── Radio Button Row ────────────────────────────────────────────────────────
 const RadioRow = ({ label: rowLabel, options, selected, onSelect }) => (
@@ -417,7 +531,7 @@ const DropdownPicker = ({ label: l, options, value, onSelect, placeholder, half 
   );
 };
 
-// ── Date Picker (calendar dropdown) ────────────────────────────────────────
+// ── Date Picker (compact) ───────────────────────────────────────────────────
 const DatePicker = ({ label: l, value, onChange, half }) => {
   const [open, setOpen] = useState(false);
   const currentYear = new Date().getFullYear();
@@ -425,16 +539,13 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const days   = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
 
-  // Parse stored value "MM/DD/YYYY"
-  const parts   = (value || '').split('/');
-  const selMonth= parts[0] ? months[parseInt(parts[0]) - 1] || '' : '';
-  const selDay  = parts[1] || '';
-  const selYear = parts[2] || '';
+  const parts    = (value || '').split('/');
+  const selMonth = parts[0] ? months[parseInt(parts[0]) - 1] || '' : '';
+  const selDay   = parts[1] || '';
+  const selYear  = parts[2] || '';
 
-  const buildDate = (m, d, y) => {
-    const mIdx = String(months.indexOf(m) + 1).padStart(2, '0');
-    return `${mIdx}/${d}/${y}`;
-  };
+  const buildDate = (m, d, y) => `${String(months.indexOf(m) + 1).padStart(2, '0')}/${d}/${y}`;
+  const displayVal = value ? `${selMonth} ${selDay}, ${selYear}` : '';
 
   const [tmpM, setTmpM] = useState(selMonth);
   const [tmpD, setTmpD] = useState(selDay);
@@ -444,8 +555,6 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
     if (tmpM && tmpD && tmpY) { onChange(buildDate(tmpM, tmpD, tmpY)); setOpen(false); }
   };
 
-  const displayVal = value ? `${selMonth} ${selDay}, ${selYear}` : '';
-
   return (
     <View style={[{ marginBottom: 12 }, half && { flex: 1 }]}>
       <Text style={af.fieldLabel}>{l}</Text>
@@ -454,49 +563,58 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
         <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: displayVal ? C.navy : C.textMuted, flex: 1 }}>
           {displayVal || 'Select date'}
         </Text>
-        <Text style={{ fontSize: 14 }}>📅</Text>
+        <Text style={{ fontSize: 13 }}>📅</Text>
       </TouchableOpacity>
       {open && (
-        <View style={[af.dropdownList, { padding: 12 }]}>
-          <Text style={[af.fieldLabel, { marginBottom: 8 }]}>SELECT DATE</Text>
-          {/* Month */}
-          <Text style={[af.fieldLabel, { fontSize: 8 }]}>MONTH</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+        <View style={[af.dropdownList, { padding: 10 }]}>
+          {/* Month row */}
+          <Text style={[af.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>MONTH</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
             {months.map(m => (
               <TouchableOpacity key={m} onPress={() => setTmpM(m)}
-                style={{ paddingHorizontal: 10, paddingVertical: 6, marginRight: 6, borderRadius: 8, backgroundColor: tmpM === m ? C.gold : 'rgba(15,30,53,0.08)', borderWidth: 1, borderColor: tmpM === m ? C.gold : 'transparent' }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: tmpM === m ? '#fff' : C.navy }}>{m.slice(0,3)}</Text>
+                style={{ paddingHorizontal: 8, paddingVertical: 5, marginRight: 4, borderRadius: 6,
+                  backgroundColor: tmpM === m ? C.gold : 'rgba(15,30,53,0.08)',
+                  borderWidth: 1, borderColor: tmpM === m ? C.gold : 'transparent' }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: tmpM === m ? '#fff' : C.navy }}>{m.slice(0,3)}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
-          {/* Day */}
-          <Text style={[af.fieldLabel, { fontSize: 8 }]}>DAY</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+
+          {/* Day row */}
+          <Text style={[af.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>DAY</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
             {days.map(d => (
               <TouchableOpacity key={d} onPress={() => setTmpD(d)}
-                style={{ width: 34, paddingVertical: 6, marginRight: 5, borderRadius: 8, alignItems: 'center', backgroundColor: tmpD === d ? C.navyMid : 'rgba(15,30,53,0.08)', borderWidth: 1, borderColor: tmpD === d ? C.navyMid : 'transparent' }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: tmpD === d ? '#fff' : C.navy }}>{d}</Text>
+                style={{ width: 28, height: 28, marginRight: 4, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: tmpD === d ? C.navyMid : 'rgba(15,30,53,0.08)',
+                  borderWidth: 1, borderColor: tmpD === d ? C.navyMid : 'transparent' }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: tmpD === d ? '#fff' : C.navy }}>{d}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
-          {/* Year */}
-          <Text style={[af.fieldLabel, { fontSize: 8 }]}>YEAR</Text>
-          <ScrollView style={{ maxHeight: 130, marginBottom: 12 }} showsVerticalScrollIndicator>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+
+          {/* Year — compact 2-column scroll */}
+          <Text style={[af.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>YEAR</Text>
+          <ScrollView style={{ maxHeight: 88, marginBottom: 8 }} showsVerticalScrollIndicator nestedScrollEnabled>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
               {years.map(y => (
                 <TouchableOpacity key={y} onPress={() => setTmpY(y)}
-                  style={{ width: 58, paddingVertical: 6, borderRadius: 8, alignItems: 'center', backgroundColor: tmpY === y ? C.navyDeep : 'rgba(15,30,53,0.08)', borderWidth: 1, borderColor: tmpY === y ? C.navyDeep : 'transparent' }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: tmpY === y ? '#fff' : C.navy }}>{y}</Text>
+                  style={{ width: 50, paddingVertical: 5, borderRadius: 6, alignItems: 'center',
+                    backgroundColor: tmpY === y ? C.navyDeep : 'rgba(15,30,53,0.08)',
+                    borderWidth: 1, borderColor: tmpY === y ? C.navyDeep : 'transparent' }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: tmpY === y ? '#fff' : C.navy }}>{y}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </ScrollView>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity style={{ flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(15,30,53,0.20)', alignItems: 'center' }} onPress={() => setOpen(false)}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.textSec }}>Cancel</Text>
+
+          {/* Buttons */}
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity style={{ flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5, borderColor: 'rgba(15,30,53,0.20)', alignItems: 'center' }} onPress={() => setOpen(false)}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textSec }}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={{ flex: 2, paddingVertical: 10, borderRadius: 10, backgroundColor: C.navyMid, alignItems: 'center' }} onPress={apply}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold }}>✓ Apply Date</Text>
+            <TouchableOpacity style={{ flex: 2, paddingVertical: 8, borderRadius: 8, backgroundColor: C.navyMid, alignItems: 'center' }} onPress={apply}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.gold }}>✓ Apply Date</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -522,7 +640,199 @@ const AF = ({ label: l, value, onChangeText, placeholder, keyboardType, half, ed
 const RELIGIONS = ['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Born Again Christian','Baptist','Methodist','Jehovah\'s Witness','Buddhism','Others'];
 const PROVINCES_PH = ['Agusan del Norte','Agusan del Sur','Bukidnon','Camiguin','Davao de Oro','Davao del Norte','Davao del Sur','Davao Occidental','Davao Oriental','Dinagat Islands','Lanao del Norte','Lanao del Sur','Maguindanao','Misamis Occidental','Misamis Oriental','North Cotabato','Sarangani','South Cotabato','Sultan Kudarat','Surigao del Norte','Surigao del Sur','Zamboanga del Norte','Zamboanga del Sur','Zamboanga Sibugay','Others'];
 
-const AppFormView = ({ member }) => {
+const GOV_ID_TYPES = [
+  'SSS', 'GSIS', 'TIN', 'PhilHealth', 'Pag-IBIG (HDMF)',
+  'Philippine Passport', 'Driver\'s License', 'Voter\'s ID',
+  'PRC ID', 'Postal ID', 'Senior Citizen ID', 'PWD ID',
+  'UMID', 'National ID (PhilSys)', 'OFW ID', 'Others',
+];
+
+// ── Gov ID Picker — dropdown type + number input ────────────────────────────
+const GovIdPicker = ({ label: l, idType, idNumber, onTypeChange, onNumberChange, placeholder }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ flex: 1, minWidth: 0 }}>
+      {l ? <Text style={af.fieldLabel}>{l}</Text> : null}
+      <TouchableOpacity
+        style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }]}
+        onPress={() => setOpen(o => !o)} activeOpacity={0.8}>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: idType ? C.navy : C.textMuted, flex: 1 }}>
+          {idType || 'Select ID type'}
+        </Text>
+        <Text style={{ fontSize: 11, color: C.textMuted }}>{open ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+      {open && (
+        <View style={[af.dropdownList, { marginBottom: 5 }]}>
+          <ScrollView style={{ maxHeight: 160 }} nestedScrollEnabled showsVerticalScrollIndicator>
+            {GOV_ID_TYPES.map(opt => (
+              <TouchableOpacity key={opt} style={[af.dropdownItem, idType === opt && af.dropdownItemActive]}
+                onPress={() => { onTypeChange(opt); setOpen(false); }} activeOpacity={0.8}>
+                <Text style={[af.dropdownTxt, idType === opt && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{opt}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+      {/* ID Number input */}
+      <TextInput
+        style={[af.input, { fontSize: 12 }]}
+        value={idNumber} onChangeText={onNumberChange}
+        placeholder={placeholder || 'Enter ID number'}
+        placeholderTextColor={C.textMuted}
+        autoCorrect={false} autoCapitalize="characters"
+      />
+    </View>
+  );
+};
+
+// ─── Application Form HTML Generator (for Print/PDF) ─────────────────────────
+const generateAppFormHTML = (member, form) => {
+  const af = form;
+  const govIds = (af.govIds || []).filter(g => g.type || g.number);
+  const fullName = [af.salutation, member.firstName, member.middleName, member.lastName, af.suffix].filter(Boolean).join(' ') || member.name;
+  const fieldStyle = 'border-bottom:1px solid #333;min-width:160px;display:inline-block;padding:2px 4px;font-size:11px;';
+  const labelStyle = 'font-size:9px;font-weight:bold;color:#444;text-transform:uppercase;letter-spacing:1px;';
+  const row = (label, value, width = '45%') => `
+    <div style="display:inline-block;width:${width};margin-bottom:8px;padding-right:10px;">
+      <div style="${labelStyle}">${label}</div>
+      <div style="${fieldStyle}">${value || '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</div>
+    </div>`;
+  const check = (label, checked) => `
+    <span style="margin-right:12px;font-size:11px;">
+      <span style="display:inline-block;width:12px;height:12px;border:1.5px solid #333;text-align:center;line-height:12px;font-size:10px;vertical-align:middle;">${checked ? '✓' : ''}</span>
+      <span style="margin-left:3px;">${label}</span>
+    </span>`;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Arial, sans-serif; font-size:11px; color:#1a1a1a; padding:18px 24px; }
+    h1 { font-size:14px; font-weight:bold; text-align:center; letter-spacing:2px; text-transform:uppercase; margin-bottom:2px; }
+    h2 { font-size:11px; text-align:center; color:#555; margin-bottom:4px; }
+    .effective { font-size:9px; text-align:center; color:#777; margin-bottom:12px; }
+    .section { font-size:9px; font-weight:bold; text-transform:uppercase; letter-spacing:2px; color:#1a2d4e; border-bottom:2px solid #1a2d4e; margin:12px 0 8px; padding-bottom:2px; }
+    table { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:10px; }
+    th { background:#1a2d4e; color:#c9a84c; padding:5px 6px; font-size:9px; text-align:center; font-weight:bold; letter-spacing:1px; }
+    td { border:1px solid #aaa; padding:5px 6px; vertical-align:middle; }
+    .sig-block { display:flex; gap:20px; margin-top:24px; }
+    .sig-line { flex:1; border-top:1px solid #333; padding-top:3px; font-size:9px; text-align:center; color:#555; }
+    @media print { body { padding: 10px 16px; } }
+  </style></head><body>
+
+  <h1>CESLA Multi-Purpose Cooperative</h1>
+  <h2>Membership Application Form</h2>
+  <div class="effective">Effective January 1, 2026 &nbsp;|&nbsp; User ID: ${member.userId}</div>
+
+  <div class="section">Personal Details</div>
+  <div style="display:flex;flex-wrap:wrap;">
+    ${row('Salutation', af.salutation, '20%')}
+    ${row('Last Name', member.lastName, '30%')}
+    ${row('First Name', member.firstName, '30%')}
+    ${row('Middle Name', member.middleName, '20%')}
+    ${row('Suffix', af.suffix, '15%')}
+    ${row('Date of Birth', af.dob, '25%')}
+    ${row('Place of Birth', af.placeOfBirth, '35%')}
+    ${row('Nationality', af.nationality === 'Others' ? af.nationalityOther : af.nationality, '25%')}
+    ${row('Religion', af.religion === 'Others' ? af.religionOther : af.religion, '30%')}
+    ${row('No. of Dependents', af.numDependents, '20%')}
+    ${row('Contact No.', af.contactNo || member.contact, '30%')}
+    ${row('Recommended By', af.recommendedBy, '35%')}
+  </div>
+  <div style="margin-bottom:8px;">
+    <div style="${labelStyle}">Civil Status</div>
+    <div style="margin-top:4px;">
+      ${check('Single', af.civilStatus === 'Single')}
+      ${check('Married', af.civilStatus === 'Married')}
+      ${check('Legally Separated', af.civilStatus === 'Legally Separated')}
+      ${check('Others', af.civilStatus === 'Others')}
+    </div>
+  </div>
+  <div style="margin-bottom:8px;">
+    <div style="${labelStyle}">Gender</div>
+    <div style="margin-top:4px;">
+      ${check('Male', af.gender === 'Male')}
+      ${check('Female', af.gender === 'Female')}
+    </div>
+  </div>
+
+  <div class="section">Government IDs</div>
+  <table>
+    <tr><th style="width:40%">ID Type</th><th>ID Number</th></tr>
+    ${govIds.length > 0
+      ? govIds.map(g => `<tr><td>${g.type || ''}</td><td>${g.number || ''}</td></tr>`).join('')
+      : '<tr><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr>'}
+  </table>
+
+  <div class="section">Contact Details</div>
+  <div style="display:flex;flex-wrap:wrap;">
+    ${row('Present Address', af.presentAddress, '55%')}
+    ${row('ZIP Code', af.presentZip, '15%')}
+    ${row('Years of Stay', af.stayYears, '15%')}
+    ${row('Months of Stay', af.stayMonths, '15%')}
+    ${row('Permanent Address', af.permanentAddress || '(Same as present)', '55%')}
+    ${row('ZIP Code', af.permanentZip, '15%')}
+  </div>
+
+  <div class="section">Family Members</div>
+  <table>
+    <tr><th style="width:35%">Name</th><th style="width:20%">Relation</th><th style="width:10%">Age</th><th>Occupation</th></tr>
+    ${(af.family || []).map(f => `<tr><td>${f.name || '&nbsp;'}</td><td>${f.relation || '&nbsp;'}</td><td>${f.age || '&nbsp;'}</td><td>${f.occupation || '&nbsp;'}</td></tr>`).join('')}
+  </table>
+
+  <div class="section">Employment Details</div>
+  <div style="margin-bottom:8px;">
+    <div style="${labelStyle}">Employment Status</div>
+    <div style="margin-top:4px;">
+      ${check('Employed', af.empType === 'Employed')}
+      ${check('Self-Employed', af.empType === 'Self-Employed')}
+      ${check('Unemployed', af.empType === 'Unemployed')}
+    </div>
+  </div>
+  ${af.empType === 'Employed' ? `
+  <div style="display:flex;flex-wrap:wrap;">
+    ${row('Employer / Business Name', af.employerName, '55%')}
+    ${row('Nature of Business', af.natureOfBiz, '40%')}
+    ${row('Office Address', af.officeAddress, '55%')}
+    ${row('Office No.', af.officeNo, '22%')}
+    ${row('Fax No.', af.faxNo, '22%')}
+    ${row('Employment Type', af.employmentType === 'Others' ? af.employmentTypeOther : af.employmentType, '30%')}
+    ${row('Position / Rank', af.positionRank, '30%')}
+    ${row('Monthly Income (₱)', af.monthlyIncome, '25%')}
+    ${row('Previous Employer', af.prevEmployer, '40%')}
+    ${row('Yrs in Company', af.yrsInCompany, '20%')}
+    ${row('Prev. Position', af.prevPosition, '30%')}
+  </div>` : ''}
+  ${af.empType === 'Self-Employed' ? `
+  <div style="display:flex;flex-wrap:wrap;">
+    ${row('Business Name', af.bizName, '45%')}
+    ${row('Type', af.bizType, '20%')}
+    ${row('Nature', af.bizNature, '30%')}
+    ${row('Asset Size (₱)', af.assetSize, '30%')}
+    ${row('Share in Business (%)', af.shareInBiz, '25%')}
+    ${row('Monthly Income (₱)', af.selfMonthlyIncome, '30%')}
+  </div>` : ''}
+  ${af.empType === 'Unemployed' ? `
+  <div style="margin-bottom:8px;">${check('Housewife', af.unemployedType === 'Housewife')}${check('Student', af.unemployedType === 'Student')}${check('Others', af.unemployedType === 'Others')}${af.unemployedOther ? ` — ${af.unemployedOther}` : ''}</div>` : ''}
+
+  <div style="margin-top:16px;border:1px solid #aaa;padding:10px;font-size:10px;line-height:1.6;color:#333;">
+    I/We hereby certify that all the data and statements in this application are correct and are made for obtaining credit, and the signature(s) appearing thereon is(are) genuine. I/We authorize you to obtain such information as you may require connecting the statements made in this application and that the sources which you may apply are authorized to provide any information relative to this application. <strong>I/We agree this will remain your property whether the credit is granted or not.</strong>
+  </div>
+
+  <div class="sig-block">
+    <div class="sig-line">Applicant's Signature over Printed Name / Date</div>
+    <div class="sig-line">Processed by / Date</div>
+    <div class="sig-line">Approved by / Date</div>
+  </div>
+
+  <div style="text-align:center;margin-top:16px;font-size:8px;color:#999;">
+    CESLA Multi-Purpose Cooperative &nbsp;|&nbsp; CLIMBS Employee Cooperative &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
+  </div>
+</body></html>`;
+};
+
+const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
+  const { isMobile: rwdMobile, rowDir, halfStyle } = useRwd();
+  const isMobile = isMobileProp ?? rwdMobile;
   const af0 = member.appForm || {};
   const [form, setForm] = useState({
     appDate: af0.appDate || '', appNo: af0.appNo || '',
@@ -532,12 +842,15 @@ const AppFormView = ({ member }) => {
     placeOfBirth: af0.placeOfBirth || '',
     nationality: af0.nationality || 'Filipino', nationalityOther: af0.nationalityOther || '',
     religion: af0.religion || '', religionOther: af0.religionOther || '',
-    numDependents: af0.numDependents || '',
+    numDependents: af0.numDependents || '0',
     civilStatus: af0.civilStatus || '',
-    sssGsis: af0.sssGsis || '',
-    tin: af0.tin || '',
-    philHealth: af0.philHealth || '',
-    pagIbig: af0.pagIbig || '',
+    // Gov IDs — array of { type, number }
+    govIds: af0.govIds || [
+      { type: af0.sssGsis ? 'SSS' : '', number: af0.sssGsis || '' },
+      { type: af0.tin ? 'TIN' : '', number: af0.tin || '' },
+      { type: af0.philHealth ? 'PhilHealth' : '', number: af0.philHealth || '' },
+      { type: af0.pagIbig ? 'Pag-IBIG (HDMF)' : '', number: af0.pagIbig || '' },
+    ],
     recommendedBy: af0.recommendedBy || '',
     contactNo: af0.contactNo || '',
     family: af0.family || Array(5).fill(null).map(() => ({ name: '', relation: '', age: '', occupation: '' })),
@@ -558,6 +871,29 @@ const AppFormView = ({ member }) => {
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
   const [page,   setPage]   = useState(1);
+  const [printing, setPrinting] = useState(false);
+
+  const handlePrint = async () => {
+    setPrinting(true);
+    try {
+      const html = generateAppFormHTML(member, form);
+      if (Platform.OS === 'web') {
+        const win = window.open('', '_blank');
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => win.print(), 500);
+      } else {
+        const { uri } = await Print.printToFileAsync({ html, base64: false });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Save or Share Application Form' });
+        } else {
+          await Print.printAsync({ html });
+        }
+      }
+    } catch (e) { console.warn('Print error:', e); }
+    finally { setPrinting(false); }
+  };
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
   const setFamily = (idx, key, val) => setForm(f => {
@@ -565,6 +901,12 @@ const AppFormView = ({ member }) => {
     fam[idx] = { ...fam[idx], [key]: val };
     return { ...f, family: fam };
   });
+  const setGovId = (idx, field, val) => setForm(f => {
+    const ids = [...f.govIds];
+    ids[idx] = { ...ids[idx], [field]: val };
+    return { ...f, govIds: ids };
+  });
+  const addGovId = () => setForm(f => ({ ...f, govIds: [...f.govIds, { type: '', number: '' }] }));
 
   const save = async () => {
     setSaving(true);
@@ -578,13 +920,14 @@ const AppFormView = ({ member }) => {
 
   return (
     <ScrollView
-      contentContainerStyle={[s.pageOuter, { paddingBottom: 60 }]}
-      showsVerticalScrollIndicator
-      indicatorStyle="black"
-      persistentScrollbar
+      contentContainerStyle={[s.pageOuter, { paddingBottom: 80 }]}
+      showsVerticalScrollIndicator={true}
+      nestedScrollEnabled={true}
+      keyboardShouldPersistTaps="handled"
+      style={contentHeight ? { height: contentHeight } : undefined}
     >
       <Text style={s.pageTitle}>📋 Application Form</Text>
-      <Text style={s.pageSub}>CESLA Multi-Purpose Cooperative \u2014 Official Membership Application</Text>
+      <Text style={s.pageSub}>CESLA Multi-Purpose Cooperative — Official Membership Application</Text>
 
       {/* Tab selector */}
       <View style={af.pageTabs}>
@@ -603,9 +946,9 @@ const AppFormView = ({ member }) => {
       {page === 1 && (
         <>
           <GCard>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <AF l="APPLICATION DATE" value={form.appDate} onChangeText={v => set('appDate', v)} placeholder="e.g. 01/15/2026" half />
-              <AF l="APPLICATION NO."  value={form.appNo}   onChangeText={v => set('appNo', v)}   placeholder="Auto-assigned"   half />
+            <View style={{ flexDirection: rowDir, gap: 10 }}>
+              <View style={halfStyle}><AF l="APPLICATION DATE" value={form.appDate} onChangeText={v => set('appDate', v)} placeholder="e.g. 01/15/2026" /></View>
+              <View style={halfStyle}><AF l="APPLICATION NO."  value={form.appNo}   onChangeText={v => set('appNo', v)}   placeholder="Auto-assigned"   /></View>
             </View>
           </GCard>
 
@@ -613,13 +956,13 @@ const AppFormView = ({ member }) => {
           <GCard>
             <RadioRow label="Salutation" options={['Mr.', 'Mrs.', 'Ms.']} selected={form.salutation} onSelect={v => set('salutation', v)} />
             <RadioRow label="Gender" options={['Male', 'Female']} selected={form.gender} onSelect={v => set('gender', v)} />
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <AF l="LAST NAME"   value={member.lastName || member.name?.split(',')[0] || ''} placeholder="\u2014" editable={false} half />
-              <AF l="FIRST NAME"  value={member.firstName || ''}  placeholder="\u2014" editable={false} half />
+            <View style={{ flexDirection: rowDir, gap: 8 }}>
+              <View style={halfStyle}><AF l="LAST NAME"  value={member.lastName || member.name?.split(',')[0] || ''} placeholder="—" editable={false} /></View>
+              <View style={halfStyle}><AF l="FIRST NAME" value={member.firstName || ''} placeholder="—" editable={false} /></View>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <AF l="MIDDLE NAME" value={member.middleName || ''} placeholder="\u2014" editable={false} half />
-              <AF l="SUFFIX"      value={form.suffix} onChangeText={v => set('suffix', v)} placeholder="Jr., Sr., II" half />
+            <View style={{ flexDirection: rowDir, gap: 8 }}>
+              <View style={halfStyle}><AF l="MIDDLE NAME" value={member.middleName || ''} placeholder="—" editable={false} /></View>
+              <View style={halfStyle}><AF l="SUFFIX"      value={form.suffix} onChangeText={v => set('suffix', v)} placeholder="Jr., Sr., II" /></View>
             </View>
 
             <DatePicker l="DATE OF BIRTH" value={form.dob} onChange={v => set('dob', v)} />
@@ -635,22 +978,44 @@ const AppFormView = ({ member }) => {
               <AF l="SPECIFY RELIGION" value={form.religionOther} onChangeText={v => set('religionOther', v)} placeholder="Enter religion" />
             )}
 
-            <AF l="NUMBER OF DEPENDENTS" value={form.numDependents} onChangeText={v => set('numDependents', v)} placeholder="0" keyboardType="numeric" />
+            <DropdownPicker l="NUMBER OF DEPENDENTS" options={['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15+']} value={form.numDependents} onSelect={v => set('numDependents', v)} placeholder="Select number" />
             <RadioRow label="Civil Status" options={['Single', 'Married', 'Legally Separated', 'Others']} selected={form.civilStatus} onSelect={v => set('civilStatus', v)} />
 
             <Text style={[af.secHeader, { marginTop: 4 }]}>GOVERNMENT IDs</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <AF l="SSS / GSIS NUMBER"  value={form.sssGsis}    onChangeText={v => set('sssGsis', v)}    placeholder="12-3456789-0"    half />
-              <AF l="TAX ID (TIN)"       value={form.tin}        onChangeText={v => set('tin', v)}        placeholder="123-456-789"     half />
+            {/* 2-col on wide, 1-col on mobile */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {form.govIds.map((gid, idx) => (
+                <View key={idx} style={{ flex: 1, flexBasis: isMobile ? '100%' : '48%', minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3, height: 18 }}>
+                    <Text style={[af.fieldLabel, { marginBottom: 0 }]}>ID #{idx + 1}</Text>
+                    <TouchableOpacity
+                      onPress={() => setForm(f => ({ ...f, govIds: f.govIds.filter((_, i) => i !== idx) }))}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      style={{ opacity: idx === 0 ? 0 : 1 }}
+                      disabled={idx === 0}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.red }}>✕ Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <GovIdPicker
+                    l=""
+                    idType={gid.type}
+                    idNumber={gid.number}
+                    onTypeChange={v => setGovId(idx, 'type', v)}
+                    onNumberChange={v => setGovId(idx, 'number', v)}
+                    placeholder="Enter ID number"
+                  />
+                </View>
+              ))}
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <AF l="PHILHEALTH NO."     value={form.philHealth} onChangeText={v => set('philHealth', v)} placeholder="01-234567890-1"   half />
-              <AF l="PAG-IBIG (HDMF)"   value={form.pagIbig}   onChangeText={v => set('pagIbig', v)}    placeholder="1234-5678-9012"  half />
-            </View>
+            <TouchableOpacity onPress={addGovId}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, marginBottom: 4 }}>
+              <Text style={{ fontSize: 15, color: C.blue }}>＋</Text>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.blue }}>Add Another ID</Text>
+            </TouchableOpacity>
 
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <AF l="RECOMMENDED BY (CEC)" value={form.recommendedBy} onChangeText={v => set('recommendedBy', v)} placeholder="Name of referrer" half />
-              <AF l="CONTACT NO."          value={form.contactNo}     onChangeText={v => set('contactNo', v)}     placeholder="09XXXXXXXXX" keyboardType="phone-pad" half />
+            <View style={{ flexDirection: rowDir, gap: 8 }}>
+              <View style={halfStyle}><AF l="RECOMMENDED BY (CEC)" value={form.recommendedBy} onChangeText={v => set('recommendedBy', v)} placeholder="Name of referrer" /></View>
+              <View style={halfStyle}><AF l="CONTACT NO."          value={form.contactNo}     onChangeText={v => set('contactNo', v)}     placeholder="09XXXXXXXXX" keyboardType="phone-pad" /></View>
             </View>
           </GCard>
 
@@ -674,20 +1039,33 @@ const AppFormView = ({ member }) => {
           <Text style={af.secHeader}>CONTACT DETAILS</Text>
           <GCard>
             <AF l="PRESENT ADDRESS" value={form.presentAddress} onChangeText={v => set('presentAddress', v)} placeholder="House No., Street, Barangay, City" />
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <AF l="ZIP CODE"    value={form.presentZip}  onChangeText={v => set('presentZip', v)}  placeholder="9000" keyboardType="numeric" half />
-              <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
-                <AF l="STAY (YRS)" value={form.stayYears}  onChangeText={v => set('stayYears', v)}  placeholder="0" keyboardType="numeric" half />
-                <AF l="STAY (MOS)" value={form.stayMonths} onChangeText={v => set('stayMonths', v)} placeholder="0" keyboardType="numeric" half />
+            <View style={{ flexDirection: rowDir, gap: 8 }}>
+              <View style={isMobile ? {} : { flex: 1.2 }}>
+                <Text style={af.fieldLabel}>ZIP CODE</Text>
+                <TextInput style={[af.input, { marginBottom: 0 }]} value={form.presentZip} onChangeText={v => set('presentZip', v)} placeholder="e.g. 9000" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
+              </View>
+              <View style={isMobile ? {} : { flex: 1 }}>
+                <Text style={af.fieldLabel}>YEARS OF STAY</Text>
+                <TextInput style={[af.input, { marginBottom: 0 }]} value={form.stayYears} onChangeText={v => set('stayYears', v)} placeholder="e.g. 3" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
+              </View>
+              <View style={isMobile ? {} : { flex: 1 }}>
+                <Text style={af.fieldLabel}>MONTHS OF STAY</Text>
+                <TextInput style={[af.input, { marginBottom: 0 }]} value={form.stayMonths} onChangeText={v => set('stayMonths', v)} placeholder="e.g. 6" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
               </View>
             </View>
-            <AF l="PERMANENT ADDRESS" value={form.permanentAddress} onChangeText={v => set('permanentAddress', v)} placeholder="If same, leave blank" />
-            <AF l="ZIP CODE"          value={form.permanentZip}     onChangeText={v => set('permanentZip', v)}     placeholder="9000" keyboardType="numeric" half />
+            <View style={{ height: 12 }} />
+            <Text style={[af.fieldLabel, { color: C.textSec, fontSize: 9 }]}>PERMANENT ADDRESS</Text>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginBottom: 4, fontStyle: 'italic' }}>Leave blank if same as present address</Text>
+            <TextInput style={af.input} value={form.permanentAddress} onChangeText={v => set('permanentAddress', v)} placeholder="House No., Street, Barangay, City" placeholderTextColor={C.textMuted} autoCorrect={false} />
+            <View style={{ flex: 1, maxWidth: '50%' }}>
+              <Text style={af.fieldLabel}>ZIP CODE (PERMANENT)</Text>
+              <TextInput style={af.input} value={form.permanentZip} onChangeText={v => set('permanentZip', v)} placeholder="e.g. 9000" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
+            </View>
           </GCard>
 
           <TouchableOpacity style={af.fullBtn} onPress={() => setPage(2)} activeOpacity={0.85}>
             <LinearGradient colors={['#1a2d4e', '#243554']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
-              <Text style={af.fullBtnTxt}>Next: Employment Details  \u2192</Text>
+              <Text style={af.fullBtnTxt}>Next: Employment Details  →</Text>
             </LinearGradient>
           </TouchableOpacity>
         </>
@@ -707,25 +1085,25 @@ const AppFormView = ({ member }) => {
               <AF l="EMPLOYER / BUSINESS NAME" value={form.employerName}  onChangeText={v => set('employerName', v)}  placeholder="Name of employer" />
               <AF l="OFFICE ADDRESS"           value={form.officeAddress} onChangeText={v => set('officeAddress', v)} placeholder="Complete office address" />
               <AF l="NATURE OF BUSINESS"       value={form.natureOfBiz}   onChangeText={v => set('natureOfBiz', v)}   placeholder="e.g. Government Agency" />
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <AF l="OFFICE NO." value={form.officeNo} onChangeText={v => set('officeNo', v)} placeholder="(088) XXX-XXXX" keyboardType="phone-pad" half />
-                <AF l="FAX NO."    value={form.faxNo}    onChangeText={v => set('faxNo', v)}    placeholder="(088) XXX-XXXX" keyboardType="phone-pad" half />
+              <View style={{ flexDirection: rowDir, gap: 8 }}>
+                <View style={halfStyle}><AF l="OFFICE NO." value={form.officeNo} onChangeText={v => set('officeNo', v)} placeholder="(088) XXX-XXXX" keyboardType="phone-pad" /></View>
+                <View style={halfStyle}><AF l="FAX NO."    value={form.faxNo}    onChangeText={v => set('faxNo', v)}    placeholder="(088) XXX-XXXX" keyboardType="phone-pad" /></View>
               </View>
               <RadioRow label="Employment Type" options={['Private', 'Government', 'Others']} selected={form.employmentType} onSelect={v => set('employmentType', v)} />
               {form.employmentType === 'Others' && (
                 <AF l="SPECIFY TYPE" value={form.employmentTypeOther} onChangeText={v => set('employmentTypeOther', v)} placeholder="Specify" />
               )}
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <AF l="POSITION / RANK"    value={form.positionRank}  onChangeText={v => set('positionRank', v)}  placeholder="e.g. Teacher I"  half />
-                <AF l="MONTHLY INCOME (\u20B1)" value={form.monthlyIncome} onChangeText={v => set('monthlyIncome', v)} placeholder="e.g. 25000" keyboardType="numeric" half />
+              <View style={{ flexDirection: rowDir, gap: 8 }}>
+                <View style={halfStyle}><AF l="POSITION / RANK"    value={form.positionRank}  onChangeText={v => set('positionRank', v)}  placeholder="e.g. Teacher I"  /></View>
+                <View style={halfStyle}><AF l="MONTHLY INCOME (₱)" value={form.monthlyIncome} onChangeText={v => set('monthlyIncome', v)} placeholder="e.g. 25000" keyboardType="numeric" /></View>
               </View>
               <View style={af.noteBox}>
                 <Text style={af.noteTxt}>* If less than 6 months in current employment, fill in previous employer below.</Text>
               </View>
               <AF l="PREVIOUS EMPLOYER" value={form.prevEmployer} onChangeText={v => set('prevEmployer', v)} placeholder="Previous employer name" />
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <AF l="YRS IN COMPANY"  value={form.yrsInCompany} onChangeText={v => set('yrsInCompany', v)} placeholder="0" keyboardType="numeric" half />
-                <AF l="POSITION / RANK" value={form.prevPosition} onChangeText={v => set('prevPosition', v)} placeholder="Previous position" half />
+              <View style={{ flexDirection: rowDir, gap: 8 }}>
+                <View style={halfStyle}><AF l="YRS IN COMPANY"  value={form.yrsInCompany} onChangeText={v => set('yrsInCompany', v)} placeholder="0" keyboardType="numeric" /></View>
+                <View style={halfStyle}><AF l="POSITION / RANK" value={form.prevPosition} onChangeText={v => set('prevPosition', v)} placeholder="Previous position" /></View>
               </View>
             </GCard>
           )}
@@ -736,11 +1114,11 @@ const AppFormView = ({ member }) => {
               <AF l="NAME OF BUSINESS" value={form.bizName}   onChangeText={v => set('bizName', v)}   placeholder="Business name" />
               <RadioRow label="Type of Business" options={['Sole Prop', 'Partnership', 'Corp']} selected={form.bizType} onSelect={v => set('bizType', v)} />
               <AF l="NATURE OF BUSINESS" value={form.bizNature} onChangeText={v => set('bizNature', v)} placeholder="e.g. Retail, Trading" />
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <AF l="ASSET SIZE (\u20B1)"   value={form.assetSize}  onChangeText={v => set('assetSize', v)}  placeholder="e.g. 500000" keyboardType="numeric" half />
-                <AF l="SHARE IN BIZ (%)"  value={form.shareInBiz} onChangeText={v => set('shareInBiz', v)} placeholder="e.g. 50"     keyboardType="numeric" half />
+              <View style={{ flexDirection: rowDir, gap: 8 }}>
+                <View style={halfStyle}><AF l="ASSET SIZE (₱)"  value={form.assetSize}  onChangeText={v => set('assetSize', v)}  placeholder="e.g. 500000" keyboardType="numeric" /></View>
+                <View style={halfStyle}><AF l="SHARE IN BIZ (%)" value={form.shareInBiz} onChangeText={v => set('shareInBiz', v)} placeholder="e.g. 50"     keyboardType="numeric" /></View>
               </View>
-              <AF l="MONTHLY INCOME (\u20B1)" value={form.selfMonthlyIncome} onChangeText={v => set('selfMonthlyIncome', v)} placeholder="e.g. 30000" keyboardType="numeric" />
+              <AF l="MONTHLY INCOME (₱)" value={form.selfMonthlyIncome} onChangeText={v => set('selfMonthlyIncome', v)} placeholder="e.g. 30000" keyboardType="numeric" />
             </GCard>
           )}
 
@@ -764,7 +1142,7 @@ const AppFormView = ({ member }) => {
           {/* Buttons — stacked, no overlap */}
           <TouchableOpacity style={[af.fullBtn, { marginBottom: 10 }]} onPress={() => setPage(1)} activeOpacity={0.85}>
             <LinearGradient colors={['#304674', '#1a2d4e']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
-              <Text style={af.fullBtnTxt}>\u2190  Back to Personal Details</Text>
+              <Text style={af.fullBtnTxt}>←  Back to Personal Details</Text>
             </LinearGradient>
           </TouchableOpacity>
 
@@ -777,7 +1155,22 @@ const AppFormView = ({ member }) => {
               {saving
                 ? <ActivityIndicator color={C.navy} />
                 : <Text style={[af.fullBtnTxt, { color: saved ? '#fff' : C.navy }]}>
-                    {saved ? '\u2713  Application Saved!' : '\u{1F4BE}  Save Application Form'}
+                    {saved ? '✓  Application Saved!' : '💾  Save Application Form'}
+                  </Text>}
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {/* Print / Save as PDF */}
+          <TouchableOpacity
+            style={[af.fullBtn, { marginBottom: 24, opacity: printing ? 0.7 : 1 }]}
+            onPress={handlePrint} disabled={printing} activeOpacity={0.85}>
+            <LinearGradient
+              colors={['#1a2d4e', '#243554']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
+              {printing
+                ? <ActivityIndicator color={C.gold} />
+                : <Text style={[af.fullBtnTxt, { color: C.gold }]}>
+                    🖨️  {Platform.OS === 'web' ? 'Print / Save as PDF' : 'Save as PDF'}
                   </Text>}
             </LinearGradient>
           </TouchableOpacity>
@@ -816,8 +1209,8 @@ const af = StyleSheet.create({
   tableCell:        { flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.navy, paddingHorizontal: 7, paddingVertical: 8 },
 });
 
-const FinanceView = ({ title, icon, value, label, color, member }) => (
-  <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={false}>
+const FinanceView = ({ title, icon, value, label, color, member, contentHeight }) => (
+  <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
     <Text style={s.pageTitle}>{title}</Text>
     <GCard style={{ alignItems: 'center', padding: 28, borderTopWidth: 4, borderTopColor: color }}>
       <Text style={{ fontSize: 32, marginBottom: 10 }}>{icon}</Text>
@@ -833,7 +1226,7 @@ const FinanceView = ({ title, icon, value, label, color, member }) => (
   </ScrollView>
 );
 
-const ApplyLoanView = ({ member }) => {
+const ApplyLoanView = ({ member, contentHeight }) => {
   const [amount, setAmount] = useState('');
   const [purpose, setPurpose] = useState('');
   const [term, setTerm] = useState('');
@@ -854,7 +1247,7 @@ const ApplyLoanView = ({ member }) => {
     finally { setLoading(false); }
   };
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
       <Text style={s.pageTitle}>📝 Apply for a Loan</Text>
       <Text style={s.pageSub}>Your application will be reviewed by the admin.</Text>
       <GCard style={{ backgroundColor: 'rgba(37,99,176,0.10)', borderColor: 'rgba(37,99,176,0.30)' }}>
@@ -875,7 +1268,7 @@ const ApplyLoanView = ({ member }) => {
   );
 };
 
-const MyLoansView = ({ member }) => {
+const MyLoansView = ({ member, contentHeight }) => {
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -883,7 +1276,7 @@ const MyLoansView = ({ member }) => {
   }, [member.uid]);
   const prog = member.loan > 0 ? (member.loan - (member.loanBalance || 0)) / member.loan : 0;
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
       <Text style={s.pageTitle}>💳 My Loans</Text>
       {member.loan > 0 ? (
         <GCard style={{ borderTopWidth: 4, borderTopColor: C.orange }}>
@@ -915,46 +1308,605 @@ const MyLoansView = ({ member }) => {
   );
 };
 
-const GuidelinesView = () => (
-  <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={false}>
-    <Text style={s.pageTitle}>📖 Loan Guidelines</Text>
-    <Text style={s.pageSub}>Read carefully before applying.</Text>
-    {[
-      { title: 'Eligibility', color: C.blue, items: ['Active member for at least 3 months.', 'No outstanding overdue loans.', 'Savings balance meets minimum requirement.', 'Must be a regular CLIMBS employee.'] },
-      { title: 'Loan Amount & Terms', color: C.gold, items: ['Minimum: ₱5,000', 'Maximum: up to 3x share capital.', 'Interest rate: as set by the board.', 'Processing fee may apply.'] },
-      { title: 'Repayment Policy', color: C.green, items: ['Monthly via salary deduction or OTC.', 'Late payment penalty applies.', 'Early full payment allowed — no penalty.', 'Failure to pay affects membership standing.'] },
-      { title: 'Required Documents', color: C.orange, items: ['Filled loan application form.', 'Valid government-issued ID.', 'Latest payslip or certificate of employment.', 'Co-maker may be required.'] },
-    ].map(sec => (
-      <GCard key={sec.title} style={{ borderLeftWidth: 4, borderLeftColor: sec.color }}>
-        <Text style={[s.secTitle, { color: sec.color }]}>{sec.title}</Text>
-        {sec.items.map((item, i) => (<View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}><Text style={{ color: sec.color, fontSize: 14, lineHeight: 20 }}>•</Text><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec, lineHeight: 20, flex: 1 }}>{item}</Text></View>))}
-      </GCard>
-    ))}
-  </ScrollView>
-);
+// ── Per-loan guideline data ───────────────────────────────────────────────
+const LOAN_TYPES = [
+  {
+    key: 'regular',
+    title: 'Regular Loan',
+    icon: '🏦',
+    color: C.blue,
+    effective: 'January 1, 2026',
+    terms: { term: '36 months', amount: '₱300,000.00', interest: '8% per annum', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
+    loanAmount: 'Times 2 of the Share Capital, max ₱300,000.00',
+    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
+    processingTime: '7 working days upon receipt of application form',
+    renewal: '6 months',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization'],
+    modeOfPayment: 'Monthly salary deduction every 15th & 30th',
+  },
+  {
+    key: 'salary',
+    title: 'Salary Loan',
+    icon: '💼',
+    color: C.navyMid,
+    effective: 'January 1, 2026',
+    terms: { term: '36 months', amount: '₱200,000.00', interest: '10% per annum', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
+    loanAmount: 'Maximum amount of ₱200,000.00',
+    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
+    processingTime: '5 working days upon receipt of application form',
+    renewal: '6 months',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'vehicle',
+    title: 'Vehicle Loan',
+    icon: '🚗',
+    color: '#2a6496',
+    effective: 'January 1, 2026',
+    terms: { term: '60 months', amount: 'Max ₱1M (20% of total price)', interest: '8% per annum', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
+    loanAmount: 'Variable',
+    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 to ₱1,000,000.00'],
+    processingTime: '7 working days upon receipt of application form',
+    renewal: 'Upon full payment of the loan',
+    documents: ['Brand New: Loan Application Form & Co-Maker Form (with photo)', 'Certificate of Net Take Home Pay', 'Proof of Quotation with photo of the unit', 'Proof of engine and chassis number', '2nd Hand: Accomplished Loan App & Co-Maker Form (with photo)', 'Proof of unit last price with photo (include plate #)', 'Photocopy of latest OR & CR', 'Stencil of engine & chassis number', 'Latest Cedula (seller), TIN ID or 2 gov\'t IDs (seller)', 'Unit must be year 2000 and up', 'TMG/PNP clearance of the unit'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'petty',
+    title: 'Petty Cash Loan',
+    icon: '💵',
+    color: C.orange,
+    effective: 'January 1, 2026',
+    terms: { term: '3 months', amount: '₱5,000.00', interest: '1% per month', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00',
+    loanAmount: 'Maximum amount of ₱5,000.00',
+    approvalLimits: ['Manager'],
+    processingTime: 'Within 24 hours from receipt of loan application form',
+    renewal: '50% payment',
+    documents: ['Petty Cash Application Form'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'special',
+    title: 'Special Loan (DTI)',
+    icon: '⭐',
+    color: '#7b3fa0',
+    effective: 'January 1, 2026',
+    terms: { term: '18 months', amount: '₱20,000.00', interest: '12% per annum', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
+    loanAmount: 'Maximum amount of ₱20,000.00',
+    approvalLimits: ['Manager'],
+    processingTime: '5 working days upon receipt of application form',
+    renewal: '6 months or 50% payment',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'appliance',
+    title: 'Appliance Loan',
+    icon: '📺',
+    color: '#16847a',
+    effective: 'January 1, 2026',
+    terms: { term: '12 months', amount: '₱30,000.00', interest: '12% per annum', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
+    loanAmount: 'Maximum amount of ₱30,000.00',
+    approvalLimits: ['Manager'],
+    processingTime: '5 working days upon receipt of application form',
+    renewal: '6 months or 50% payment',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Photo of desired appliance with price quotation from the store', 'After payment, submit photocopy of receipt'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'healthcare',
+    title: 'Healthcare Loan',
+    icon: '🏥',
+    color: C.red,
+    effective: 'January 1, 2026',
+    terms: { term: '12 months', amount: 'Variable', interest: 'N/A', serviceCharge: '2%' },
+    qualification: 'Principal: Regular employee of CLIMBS with at least 6 months of service. Dependents: ages up to 70 y.o. only. Member of Good Standing (no past due amort. in all CEC loans).',
+    security: 'Share Capital at least ₱5,000.00',
+    loanAmount: 'Variable',
+    approvalLimits: ['Manager — ₱50,000.00 and below'],
+    processingTime: 'N/A',
+    renewal: 'Upon full payment, annual',
+    documents: ['Certificate of Net Take Home Pay'],
+    modeOfPayment: 'Monthly Salary Deduction 15th & 30th',
+  },
+  {
+    key: 'emergency',
+    title: 'Emergency Loan',
+    icon: '🚨',
+    color: '#c0392b',
+    effective: 'January 1, 2026',
+    terms: [
+      { term: '6 months', amount: 'Less than ₱10,000.00', interest: 'No interest', serviceCharge: '2%' },
+      { term: '24 months', amount: '₱10,000.01 to ₱25,000.00', interest: '8% per annum', serviceCharge: '2%' },
+      { term: '36 months', amount: '₱25,000.01 to ₱50,000.00', interest: '8% per annum', serviceCharge: '2%' },
+    ],
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00',
+    loanAmount: 'Variable',
+    approvalLimits: ['Manager — ₱50,000.00 and below'],
+    processingTime: '1 working day upon receipt of application form',
+    renewal: 'Anytime',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Doctor\'s prescription for medicines', 'Medical Certificate', 'Photocopy of receipts (laboratory & MC)', 'Admission Slip & Billing', 'Reasons for availment: Calamity / Death (immediate family) / Chronic Diseases & Ailments / Fortuitous events'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'educational',
+    title: 'Educational Loan',
+    icon: '🎓',
+    color: '#1a6b3a',
+    effective: 'January 1, 2026',
+    terms: { term: '10 months', amount: '₱50,000.00', interest: '10% per annum', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 1 year membership in CEC',
+    security: 'Share Capital at least ₱5,000.00 + Retirement Pay Computation',
+    loanAmount: 'Maximum amount of ₱50,000.00',
+    approvalLimits: ['Manager — ₱50,000.00 and below'],
+    processingTime: '5 working days upon receipt of application form',
+    renewal: 'Semester (college) / Annual (K-12)',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Billing Statement &/or School Assessment duly signed by the School Registrar', 'Official Receipt'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'cashadvance',
+    title: 'Cash Advance Loan',
+    icon: '💸',
+    color: C.gold,
+    effective: 'January 1, 2026',
+    terms: { term: 'Payment upon release', amount: '80% of Actual Amount', interest: '1% per month', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS',
+    security: 'Share Capital at least ₱5,000.00',
+    loanAmount: '80% of Actual Amount',
+    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00'],
+    processingTime: 'Within 24 hours from receipt of loan application form',
+    renewal: 'N/A',
+    documents: ['Loan Application Form', 'Certificate from HR Manager or Comp. Ben Officer'],
+    modeOfPayment: 'Every Incentive/Bonus released. Settlement of payment at the end of the year.',
+  },
+  {
+    key: 'buyout',
+    title: 'Buy Out Loan',
+    icon: '🔄',
+    color: '#c47d0e',
+    effective: 'January 1, 2026',
+    terms: { term: '60 months', amount: '80% Retirement Benefits', interest: '18%, diminishing', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00 + Retirement Pay Computation',
+    loanAmount: 'Retirement Benefit',
+    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
+    processingTime: '7 working days upon receipt of application form',
+    renewal: 'Upon full payment of the loan',
+    documents: ['Loan Application Form', 'Co-maker Statement Form', 'Certificate of Net Take Home Pay', 'Outstanding Statement of Account', 'If loan amount equals retirement benefit: collateral required (TCT or OR/CR of vehicle less than 3 years, free of encumbrance)'],
+    modeOfPayment: 'Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'rice',
+    title: 'Rice Loan',
+    icon: '🍚',
+    color: '#8a6a1a',
+    effective: 'January 1, 2026',
+    terms: { term: '1 month', amount: 'Variable', interest: '1% per month', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS & CEC members',
+    security: 'Share Capital at least ₱5,000.00',
+    loanAmount: 'Variable',
+    approvalLimits: ['Manager'],
+    processingTime: '3 working days upon receipt of application form',
+    renewal: 'Upon full payment of the loan',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'grocery',
+    title: 'Grocery Loan',
+    icon: '🛒',
+    color: '#2e7d32',
+    effective: 'January 1, 2026',
+    terms: { term: '1 month', amount: '₱5,000.00', interest: '1% per month', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS & CEC members',
+    security: 'Share Capital at least ₱5,000.00',
+    loanAmount: '₱5,000.00',
+    approvalLimits: ['Manager'],
+    processingTime: 'Within 24 hours from receipt of loan application form',
+    renewal: 'Full payment of previous grocery loan',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'travel',
+    title: 'Travel Loan',
+    icon: '✈️',
+    color: '#1565c0',
+    effective: 'January 1, 2026',
+    terms: { term: '12 months', amount: '₱25,000.00', interest: '12% per annum', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS',
+    security: 'Share Capital at least ₱5,000.00',
+    loanAmount: '₱25,000.00',
+    approvalLimits: ['Manager — ₱50,000.00 and below'],
+    processingTime: '7 working days upon receipt of application form',
+    renewal: 'Upon full payment of the loan',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'lad',
+    title: 'Loan Against Deposit (LAD)',
+    icon: '🏧',
+    color: C.green,
+    effective: 'January 1, 2026',
+    terms: { term: '12 months', amount: '85% of total deposits', interest: '6% per annum', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS, CEC Members, No existing regular loan',
+    security: 'Share Capital at least ₱5,000.00 + Savings',
+    loanAmount: '85% of total deposits',
+    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
+    processingTime: '5 working days upon receipt of application form',
+    renewal: '6 months or 50% payment',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'housing',
+    title: 'Housing / Home Improvement Loan',
+    icon: '🏠',
+    color: '#5d4037',
+    effective: 'January 1, 2026',
+    terms: { term: '60 months', amount: '80% Retirement Benefits', interest: '8% per annum', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
+    loanAmount: 'Maximum amount of retirement benefits',
+    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
+    processingTime: '7 working days upon receipt of application form',
+    renewal: '50% payment',
+    documents: ['Loan Application Form & Co-Maker Form', 'Bill of Materials signed by Carpenter/Contractor (Home Improvement)', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization', 'New/Additional: Contractor\'s Equity Quotation, Vicinity Map/Sketch of property', 'If loan = retirement benefit: collateral required'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+  },
+  {
+    key: 'solar',
+    title: 'Solar Solutions Loan',
+    icon: '☀️',
+    color: '#e65100',
+    effective: 'February 1, 2026',
+    terms: { term: '36 months', amount: '80% Retirement Benefits', interest: '8% per annum', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
+    loanAmount: 'Maximum amount of retirement benefits',
+    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
+    processingTime: '7 working days upon receipt of application form',
+    renewal: 'Full payment',
+    documents: ['Loan Application Form & Co-Maker Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization', 'If loan = retirement benefit: collateral required'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+    badge: 'NEW',
+  },
+  {
+    key: 'nonlife',
+    title: 'Non-Life Insurance Loan',
+    icon: '🛡️',
+    color: '#37474f',
+    effective: 'February 1, 2026',
+    terms: { term: '12 months', amount: '₱50,000.00', interest: 'N/A', serviceCharge: '2%' },
+    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
+    security: 'Share Capital at least ₱5,000.00',
+    loanAmount: '₱50,000.00',
+    approvalLimits: ['Manager — ₱50,000.00 and below'],
+    processingTime: '7 working days upon receipt of application form',
+    renewal: 'Full payment',
+    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Photocopy of SOA from NL department', 'Photocopy of Policy from NL department'],
+    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+    badge: 'NEW',
+  },
+];
 
-const EditProfileView = ({ member }) => {
-  const [contact, setContact] = useState(member.contact || '');
-  const [email,   setEmail]   = useState(member.email   || '');
-  const [address, setAddress] = useState(member.address || '');
-  const [saving, setSaving] = useState(false);
-  const [saved,  setSaved]  = useState(false);
-  const save = async () => { setSaving(true); try { await updateDoc(doc(db, 'members', member.uid), { contact, email, address, updatedAt: serverTimestamp() }); setSaved(true); setTimeout(() => setSaved(false), 2500); } catch (e) {} finally { setSaving(false); } };
+const LoanCard = ({ loan, expanded, onToggle }) => {
+  const anim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: expanded ? 1 : 0, duration: 220, useNativeDriver: false }).start();
+  }, [expanded]);
+
+  const isMultiTerm = Array.isArray(loan.terms);
+
+  const Row = ({ label, value }) => (
+    <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
+      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, width: 110, flexShrink: 0 }}>{label}</Text>
+      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.text, flex: 1, lineHeight: 18 }}>{value}</Text>
+    </View>
+  );
+
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={false}>
-      <Text style={s.pageTitle}>✏️ Edit Profile</Text>
-      <Text style={s.pageSub}>Changes saved directly to Firebase.</Text>
-      <GCard>
-        <DField label="CONTACT NUMBER" value={contact} onChangeText={setContact} placeholder="e.g. 09171234567" keyboardType="phone-pad" />
-        <DField label="EMAIL ADDRESS"  value={email}   onChangeText={setEmail}   placeholder="e.g. juan@email.com" keyboardType="email-address" />
-        <DField label="ADDRESS"        value={address} onChangeText={setAddress} placeholder="e.g. Cagayan de Oro City" />
-        <SaveBtn onPress={save} loading={saving} done={saved} label="Save Changes" />
-      </GCard>
+    <GCard style={{ padding: 0, overflow: 'hidden', marginBottom: 12, borderTopWidth: 3, borderTopColor: loan.color }}>
+      {/* Header — always visible */}
+      <TouchableOpacity onPress={onToggle} activeOpacity={0.8}
+        style={{ flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }}>
+        <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: loan.color + '22', justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 20 }}>{loan.icon}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: loan.color }}>{loan.title}</Text>
+            {loan.badge && (
+              <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: C.green }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>{loan.badge}</Text>
+              </View>
+            )}
+          </View>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 1 }}>Effective: {loan.effective}</Text>
+          {!expanded && (
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, marginTop: 3 }} numberOfLines={1}>
+              {isMultiTerm ? 'Variable terms' : `${loan.terms.term} · ${loan.terms.amount} · ${loan.terms.interest}`}
+            </Text>
+          )}
+        </View>
+        <Text style={{ fontSize: 18, color: C.textMuted }}>{expanded ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+
+      {/* Expandable body */}
+      {expanded && (
+        <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
+          {/* Term table */}
+          <View style={{ backgroundColor: loan.color + '15', borderRadius: 10, padding: 10, marginBottom: 12 }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: loan.color, letterSpacing: 1.5, marginBottom: 8 }}>TERM OF LOAN & RATES</Text>
+            {isMultiTerm ? (
+              <>
+                <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+                  {['Term', 'Amount', 'Interest', 'Service'].map(h => (
+                    <Text key={h} style={{ flex: 1, fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: loan.color, textAlign: 'center' }}>{h}</Text>
+                  ))}
+                </View>
+                {loan.terms.map((t, i) => (
+                  <View key={i} style={{ flexDirection: 'row', paddingVertical: 4, borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.08)' }}>
+                    {[t.term, t.amount, t.interest, t.serviceCharge].map((v, j) => (
+                      <Text key={j} style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.text, textAlign: 'center', lineHeight: 15 }}>{v}</Text>
+                    ))}
+                  </View>
+                ))}
+              </>
+            ) : (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {[['Max Term', loan.terms.term], ['Max Amount', loan.terms.amount], ['Interest', loan.terms.interest], ['Service Charge', loan.terms.serviceCharge]].map(([l, v]) => (
+                  <View key={l} style={{ minWidth: 120, flex: 1 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: loan.color }}>{l}</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.text, marginTop: 2 }}>{v}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          <Row label="Qualification" value={loan.qualification} />
+          <Row label="Security" value={loan.security} />
+          <Row label="Loan Amount" value={loan.loanAmount} />
+          <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, width: 110, flexShrink: 0 }}>Approval Limits</Text>
+            <View style={{ flex: 1 }}>
+              {loan.approvalLimits.map((a, i) => (
+                <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.text, lineHeight: 20 }}>• {a}</Text>
+              ))}
+            </View>
+          </View>
+          <Row label="Processing Time" value={loan.processingTime} />
+          <Row label="Renewal" value={loan.renewal} />
+          <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, width: 110, flexShrink: 0 }}>Documents</Text>
+            <View style={{ flex: 1 }}>
+              {loan.documents.map((d, i) => (
+                <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.text, lineHeight: 20 }}>• {d}</Text>
+              ))}
+            </View>
+          </View>
+          <Row label="Mode of Payment" value={loan.modeOfPayment} />
+        </View>
+      )}
+    </GCard>
+  );
+};
+
+const GuidelinesView = ({ contentHeight }) => {
+  const [expanded, setExpanded] = useState(null);
+  const toggle = key => setExpanded(prev => prev === key ? null : key);
+  return (
+    <ScrollView contentContainerStyle={[s.pageOuter, { paddingBottom: 80 }]} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+      <Text style={s.pageTitle}>📖 Loan Guidelines</Text>
+      <Text style={s.pageSub}>Tap each loan type to view full details. Effective January 1, 2026.</Text>
+      {LOAN_TYPES.map(loan => (
+        <LoanCard key={loan.key} loan={loan} expanded={expanded === loan.key} onToggle={() => toggle(loan.key)} />
+      ))}
     </ScrollView>
   );
 };
 
-const ChangePasswordView = ({ member }) => {
+const EditProfileView = ({ member, contentHeight }) => {
+  const af0 = member.appForm || {};
+
+  // Basic contact fields
+  const [contact, setContact] = useState(member.contact || af0.contactNo || '');
+  const [email,   setEmail]   = useState(member.email   || '');
+  const [address, setAddress] = useState(member.address || af0.presentAddress || '');
+
+  // Photo
+  const [photoUri,   setPhotoUri]   = useState(member.photoURL || null);
+  const [uploading,  setUploading]  = useState(false);
+
+  // App form editable fields
+  const [salutation,  setSalutation]  = useState(af0.salutation  || '');
+  const [suffix,      setSuffix]      = useState(af0.suffix      || '');
+  const [dob,         setDob]         = useState(af0.dob         || '');
+  const [placeOfBirth,setPlaceOfBirth]= useState(af0.placeOfBirth|| '');
+  const [religion,    setReligion]    = useState(af0.religion    || '');
+  const [religionOther,setReligionOther]=useState(af0.religionOther||'');
+  const [civilStatus, setCivilStatus] = useState(af0.civilStatus || '');
+  const [numDependents,setNumDependents]=useState(af0.numDependents||'0');
+  const [presentAddress,setPresentAddress]=useState(af0.presentAddress||'');
+  const [presentZip,  setPresentZip]  = useState(af0.presentZip  || '');
+  const [empType,     setEmpType]     = useState(af0.empType     || '');
+  const [employerName,setEmployerName]= useState(af0.employerName|| '');
+  const [positionRank,setPositionRank]= useState(af0.positionRank|| '');
+  const [monthlyIncome,setMonthlyIncome]=useState(af0.monthlyIncome||'');
+
+  const [saving, setSaving] = useState(false);
+  const [saved,  setSaved]  = useState(false);
+
+  const pickPhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') { alert('Permission needed to access photos.'); return; }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        const dataUri = `data:image/jpeg;base64,${asset.base64}`;
+        setPhotoUri(dataUri);
+      }
+    } catch (e) { console.warn('Photo pick error:', e); }
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const updatedAppForm = {
+        ...af0,
+        salutation, suffix, dob, placeOfBirth,
+        religion, religionOther, civilStatus, numDependents,
+        presentAddress, presentZip,
+        contactNo: contact,
+        empType, employerName, positionRank, monthlyIncome,
+      };
+      await updateDoc(doc(db, 'members', member.uid), {
+        contact, email, address,
+        photoURL: photoUri || member.photoURL || null,
+        appForm: updatedAppForm,
+        updatedAt: serverTimestamp(),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) { console.warn(e); }
+    finally { setSaving(false); }
+  };
+
+  const SectionHead = ({ title }) => (
+    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10, marginTop: 14, paddingBottom: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.10)' }}>{title}</Text>
+  );
+
+  return (
+    <ScrollView contentContainerStyle={[s.pageOuter, { paddingBottom: 60 }]}
+      showsVerticalScrollIndicator={true}
+      style={contentHeight ? { height: contentHeight } : undefined}
+      keyboardShouldPersistTaps="handled">
+
+      <Text style={s.pageTitle}>✏️ Edit Profile</Text>
+      <Text style={s.pageSub}>Changes will reflect automatically in My Profile.</Text>
+
+      {/* ── Profile Photo ── */}
+      <GCard style={{ alignItems: 'center', padding: 20 }}>
+        <TouchableOpacity onPress={pickPhoto} activeOpacity={0.85} style={{ alignItems: 'center', gap: 10 }}>
+          {photoUri
+            ? <Image source={{ uri: photoUri }} style={{ width: 90, height: 90, borderRadius: 45, borderWidth: 3, borderColor: C.gold }} />
+            : (
+              <View style={{ width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(201,168,76,0.25)', borderWidth: 3, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 30, color: C.gold }}>{mkInit(member.name)}</Text>
+              </View>
+            )
+          }
+          <View style={{ backgroundColor: C.navyMid, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold }}>📷  {photoUri ? 'Change Photo' : 'Upload Photo'}</Text>
+          </View>
+        </TouchableOpacity>
+        {photoUri && (
+          <TouchableOpacity onPress={() => setPhotoUri(null)} style={{ marginTop: 6 }}>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.red }}>✕ Remove photo</Text>
+          </TouchableOpacity>
+        )}
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 6, textAlign: 'center' }}>
+          Square photo recommended · max 1MB
+        </Text>
+      </GCard>
+
+      {/* ── Contact Info ── */}
+      <GCard>
+        <SectionHead title="📞 Contact Information" />
+        <DField label="CONTACT NUMBER" value={contact} onChangeText={setContact} placeholder="e.g. 09171234567" keyboardType="phone-pad" />
+        <DField label="EMAIL ADDRESS"  value={email}   onChangeText={setEmail}   placeholder="e.g. juan@email.com" keyboardType="email-address" />
+        <DField label="HOME ADDRESS"   value={address} onChangeText={setAddress} placeholder="e.g. Cagayan de Oro City" />
+      </GCard>
+
+      {/* ── Personal Details ── */}
+      <GCard>
+        <SectionHead title="👤 Personal Details" />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.fieldLabel}>SALUTATION</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
+              {['Mr.','Mrs.','Ms.'].map(opt => (
+                <TouchableOpacity key={opt} onPress={() => setSalutation(opt)}
+                  style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: salutation === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: salutation === opt ? 'rgba(201,168,76,0.15)' : C.surface }}>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <DField label="SUFFIX" value={suffix} onChangeText={setSuffix} placeholder="Jr., Sr., II" />
+        </View>
+        <DField label="DATE OF BIRTH (MM/DD/YYYY)" value={dob} onChangeText={setDob} placeholder="e.g. 01/15/1990" />
+        <DField label="PLACE OF BIRTH" value={placeOfBirth} onChangeText={setPlaceOfBirth} placeholder="City / Municipality, Province" />
+        <Text style={s.fieldLabel}>CIVIL STATUS</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
+          {['Single','Married','Legally Separated','Others'].map(opt => (
+            <TouchableOpacity key={opt} onPress={() => setCivilStatus(opt)}
+              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: civilStatus === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: civilStatus === opt ? 'rgba(201,168,76,0.15)' : C.surface }}>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <DField label="NUMBER OF DEPENDENTS" value={numDependents} onChangeText={setNumDependents} placeholder="0" keyboardType="numeric" />
+        <DField label="RELIGION" value={religion} onChangeText={setReligion} placeholder="e.g. Roman Catholic" />
+        {religion === 'Others' && <DField label="SPECIFY RELIGION" value={religionOther} onChangeText={setReligionOther} placeholder="Enter religion" />}
+      </GCard>
+
+      {/* ── Present Address ── */}
+      <GCard>
+        <SectionHead title="🏠 Present Address" />
+        <DField label="PRESENT ADDRESS" value={presentAddress} onChangeText={setPresentAddress} placeholder="House No., Street, Barangay, City" />
+        <DField label="ZIP CODE" value={presentZip} onChangeText={setPresentZip} placeholder="e.g. 9000" keyboardType="numeric" />
+      </GCard>
+
+      {/* ── Employment ── */}
+      <GCard>
+        <SectionHead title="💼 Employment" />
+        <Text style={s.fieldLabel}>EMPLOYMENT STATUS</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
+          {['Employed','Self-Employed','Unemployed'].map(opt => (
+            <TouchableOpacity key={opt} onPress={() => setEmpType(opt)}
+              style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: empType === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: empType === opt ? 'rgba(201,168,76,0.15)' : C.surface }}>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {empType === 'Employed' && <>
+          <DField label="EMPLOYER NAME"    value={employerName}   onChangeText={setEmployerName}   placeholder="Name of employer" />
+          <DField label="POSITION / RANK"  value={positionRank}   onChangeText={setPositionRank}   placeholder="e.g. Teacher I" />
+          <DField label="MONTHLY INCOME (₱)" value={monthlyIncome} onChangeText={setMonthlyIncome} placeholder="e.g. 25000" keyboardType="numeric" />
+        </>}
+      </GCard>
+
+      <SaveBtn onPress={save} loading={saving} done={saved} label="Save All Changes" doneLabel="Profile Updated!" />
+    </ScrollView>
+  );
+};
+
+const ChangePasswordView = ({ member, contentHeight }) => {
   const [oldPw, setOldPw]   = useState('');
   const [newPw, setNewPw]   = useState('');
   const [confPw, setConfPw] = useState('');
@@ -978,7 +1930,7 @@ const ChangePasswordView = ({ member }) => {
     finally { setLoading(false); }
   };
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
       <Text style={s.pageTitle}>🔑 Change Password</Text>
       <GCard>
         <DField label="CURRENT PASSWORD"     value={oldPw}  onChangeText={v => { setOldPw(v);  setError(''); }} placeholder="Current password"    secureEntry={!showOld} showToggle onToggle={() => setShowOld(p => !p)} />
@@ -992,7 +1944,7 @@ const ChangePasswordView = ({ member }) => {
   );
 };
 
-const NotifsView = ({ member }) => {
+const NotifsView = ({ member, contentHeight }) => {
   const [notifs,  setNotifs]  = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -1003,7 +1955,7 @@ const NotifsView = ({ member }) => {
   const all = [...sysNotifs, ...notifs];
   if (loading) return <Spinner msg="Loading notifications..." />;
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
       <Text style={s.pageTitle}>🔔 Notifications</Text>
       <Text style={s.pageSub}>{all.filter(n => !n.read).length} unread.</Text>
       {all.length === 0 && <GCard style={{ alignItems: 'center', padding: 40 }}><Text style={{ fontSize: 36, marginBottom: 10 }}>🔔</Text><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: C.textMuted, textAlign: 'center' }}>No notifications yet.</Text></GCard>}
@@ -1028,6 +1980,10 @@ const NotifsView = ({ member }) => {
 // MEMBER DASHBOARD SHELL
 // ═════════════════════════════════════════════════════════════════════════════
 const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
+  const { height, isMobile } = useRwd();
+  const topbarHeight = Platform.OS === 'web' ? 62 : isSmall ? 58 : 62;
+  const contentHeight = height - topbarHeight;
+
   const [nav,    setNav]    = useState('overview');
   const [member, setMember] = useState(memberInit);
   const [drawer, setDrawer] = useState(false);
@@ -1048,20 +2004,22 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   };
 
   const renderContent = () => {
+    const h = contentHeight;
+    const m = isMobile;
     switch (nav) {
-      case 'overview':     return <OverviewView     member={member} onNav={switchNav} />;
-      case 'profile':      return <ProfileView      member={member} />;
-      case 'appform':      return <AppFormView       member={member} />;
-      case 'savings':      return <FinanceView title="Savings"       icon="💰" value={member.savings} label="Total Savings Balance" color={C.green}  member={member} />;
-      case 'sharecap':     return <FinanceView title="Share Capital" icon="📊" value={member.shares}  label="Total Share Capital"   color={C.gold}   member={member} />;
-      case 'timedeposit':  return <FinanceView title="Time Deposit"  icon="🏦" value={0}              label="Time Deposit Balance"  color={C.blueLt} member={member} />;
-      case 'applyloan':    return <ApplyLoanView     member={member} />;
-      case 'myloans':      return <MyLoansView       member={member} />;
-      case 'guidelines':   return <GuidelinesView />;
-      case 'editprofile':  return <EditProfileView   member={member} />;
-      case 'changepw':     return <ChangePasswordView member={member} />;
-      case 'notifs':       return <NotifsView        member={member} />;
-      default:             return <OverviewView      member={member} onNav={switchNav} />;
+      case 'overview':     return <OverviewView     member={member} onNav={switchNav} contentHeight={h} isMobile={m} />;
+      case 'profile':      return <ProfileView      member={member} contentHeight={h} isMobile={m} />;
+      case 'appform':      return <AppFormView       member={member} contentHeight={h} isMobile={m} />;
+      case 'savings':      return <FinanceView title="Savings"       icon="💰" value={member.savings} label="Total Savings Balance" color={C.green}  member={member} contentHeight={h} isMobile={m} />;
+      case 'sharecap':     return <FinanceView title="Share Capital" icon="📊" value={member.shares}  label="Total Share Capital"   color={C.gold}   member={member} contentHeight={h} isMobile={m} />;
+      case 'timedeposit':  return <FinanceView title="Time Deposit"  icon="🏦" value={0}              label="Time Deposit Balance"  color={C.blueLt} member={member} contentHeight={h} isMobile={m} />;
+      case 'applyloan':    return <ApplyLoanView     member={member} contentHeight={h} isMobile={m} />;
+      case 'myloans':      return <MyLoansView       member={member} contentHeight={h} isMobile={m} />;
+      case 'guidelines':   return <GuidelinesView    contentHeight={h} isMobile={m} />;
+      case 'editprofile':  return <EditProfileView   member={member} contentHeight={h} isMobile={m} />;
+      case 'changepw':     return <ChangePasswordView member={member} contentHeight={h} isMobile={m} />;
+      case 'notifs':       return <NotifsView        member={member} contentHeight={h} isMobile={m} />;
+      default:             return <OverviewView      member={member} onNav={switchNav} contentHeight={h} isMobile={m} />;
     }
   };
 
@@ -1082,7 +2040,7 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
             <Text style={{ fontSize: 16 }}>🔔</Text>
             {unread > 0 && <View style={s.bellBadge}><Text style={s.bellBadgeTxt}>{unread > 9 ? '9+' : unread}</Text></View>}
           </TouchableOpacity>
-          <View style={s.memAvatar}><Text style={s.memAvatarTxt}>{mkInit(member.name)}</Text></View>
+          <MemberAvatar member={member} size={32} />
           {isWide && <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)', maxWidth: 120 }} numberOfLines={1}>{member.name}</Text>}
           <TouchableOpacity style={s.logoutBtn} onPress={onLogout}><Text style={s.logoutTxt}>{isSmall ? '↩' : 'Logout'}</Text></TouchableOpacity>
         </View>
@@ -1090,7 +2048,9 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       {/* Body */}
       <View style={{ flex: 1, flexDirection: 'row' }}>
         {isWide && <MemberSidebar active={nav} onNav={switchNav} unread={unread} />}
-        <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>{renderContent()}</Animated.View>
+        <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+          {renderContent()}
+        </Animated.View>
       </View>
       {/* Mobile drawer */}
       {!isWide && drawer && (

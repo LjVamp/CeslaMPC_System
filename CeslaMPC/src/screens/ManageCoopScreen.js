@@ -254,9 +254,15 @@ const NAV = [
   { key: 'claims_grp',    label: 'Claims',            icon: '🧾', children: [
     { key: 'claims',      label: 'Claims',            icon: '🧾' },
   ]},
+  { key: 'reports_grp',   label: 'Reports',           icon: '📊', children: [
+    { key: 'reports',     label: 'Reports & Analytics', icon: '📊' },
+    { key: 'documents',   label: 'Document Monitoring', icon: '📁' },
+  ]},
   { key: 'system_grp',    label: 'System',            icon: '⚙️', children: [
+    { key: 'audit',       label: 'Audit Trail',       icon: '🧾' },
+    { key: 'performance', label: 'Agent Performance', icon: '🏢' },
+    { key: 'settings',    label: 'System Settings',   icon: '⚙️' },
     { key: 'notifications', label: 'Notifications',   icon: '🔔' },
-    { key: 'audit',         label: 'Audit Log',       icon: '📜' },
   ]},
 ];
 
@@ -551,147 +557,389 @@ const PendingView = ({ members }) => {
 };
 
 // ── 3. ALL MEMBERS ────────────────────────────────────────────────────────────
-const AllMembersView = ({ members }) => {
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('All');
-  const [sel,    setSel]    = useState(null);
-  const [action, setAction] = useState(null); // 'deactivate'|'activate'|'resetpw'
-  const [newPw,  setNewPw]  = useState('');
-  const [busy,   setBusy]   = useState(false);
 
-  const filtered = members.filter(m => {
-    const name = (m.name || '').toLowerCase();
-    const matchSearch = name.includes(search.toLowerCase()) || (m.userId || '').includes(search);
-    const matchFilter = filter === 'All' || m.status === filter;
-    return matchSearch && matchFilter;
-  });
+// Generate unique transaction number
+const genTxnNo = (type, idx) => {
+  const prefix = { savings: 'SAV', shares: 'SHR', loan: 'LNS' }[type] || 'TXN';
+  const ts = Date.now().toString(36).toUpperCase().slice(-5);
+  return `${prefix}-${ts}-${String(idx + 1).padStart(4, '0')}`;
+};
 
-  const doAction = async () => {
-    if (!sel || !action) return;
-    setBusy(true);
+// ── Member Detail Modal ──────────────────────────────────────────────────────
+const MemberDetailModal = ({ member, onClose, height }) => {
+  const [tab, setTab]       = useState('details'); // 'details' | 'savings' | 'shares' | 'loan'
+  const [txns, setTxns]     = useState([]);
+  const [txnLoad, setTxnLoad] = useState(false);
+  const [resetPw, setResetPw] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
+  const [resetErr, setResetErr]   = useState('');
+
+  const af = member.appForm || {};
+  const hasAppForm = !!(af.dob || af.placeOfBirth || af.civilStatus || af.contactNo || af.empType);
+
+  // Load transactions when switching to financial tab
+  useEffect(() => {
+    if (tab === 'savings' || tab === 'shares' || tab === 'loan') {
+      setTxnLoad(true);
+      const unsub = onSnapshot(
+        query(collection(db, 'transactions'),
+          where('memberId', '==', member.id),
+          where('type', '==', tab),
+          orderBy('createdAt', 'desc')
+        ),
+        snap => {
+          setTxns(snap.docs.map((d, i) => ({
+            id: d.id,
+            txnNo: d.data().txnNo || genTxnNo(tab, i),
+            ...d.data(),
+          })));
+          setTxnLoad(false);
+        },
+        () => setTxnLoad(false)
+      );
+      return unsub;
+    }
+  }, [tab, member.id]);
+
+  const doReset = async () => {
+    if (resetPw.length < 6) { setResetErr('Min. 6 characters required.'); return; }
+    setResetting(true); setResetErr('');
     try {
-      if (action === 'deactivate') await deactivateMember(sel.id, sel.name, sel.userId);
-      if (action === 'activate')   await activateMember(sel.id, sel.name, sel.userId);
-      if (action === 'resetpw' && newPw.length >= 6) await resetPassword(sel.id, sel.name, newPw);
-      setSel(null); setAction(null); setNewPw('');
-    } catch (e) { console.error(e); }
-    finally { setBusy(false); }
+      await resetPassword(member.id, member.name, resetPw);
+      setResetDone(true); setResetPw('');
+      setTimeout(() => setResetDone(false), 3000);
+    } catch (e) { setResetErr(e.message || 'Reset failed.'); }
+    finally { setResetting(false); }
   };
 
+  const Row = ({ label, value, color }) => (
+    <View style={{ flexDirection: 'row', paddingVertical: 7, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
+      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, width: 130, flexShrink: 0 }}>{label}</Text>
+      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: color || C.navy, flex: 1, lineHeight: 18 }}>{value || '—'}</Text>
+    </View>
+  );
+
+  const TABS = [
+    { key: 'details', label: '👤 Details' },
+    { key: 'savings', label: '💰 Savings' },
+    { key: 'shares',  label: '📊 Shares' },
+    { key: 'loan',    label: '💳 Loan' },
+    { key: 'reset',   label: '🔑 Reset PW' },
+  ];
+
+  const statusColor = member.status === 'Active' ? C.green : member.status === 'Inactive' ? C.red : C.orange;
+
   return (
-    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={false}>
-      <Text style={a.pageTitle}>👥 All Members</Text>
+    <Modal visible transparent animationType="fade">
+      <View style={{ flex: 1, backgroundColor: 'rgba(10,20,40,0.60)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+        <View style={{
+          width: '100%', maxWidth: 620,
+          maxHeight: height ? height * 0.90 : 600,
+          backgroundColor: '#deeaf3',
+          borderRadius: 20, overflow: 'hidden',
+          borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)',
+          shadowColor: '#0f1e35', shadowOpacity: 0.25, shadowRadius: 24, shadowOffset: { width: 0, height: 8 },
+        }}>
 
-      {/* Search + filter */}
-      <View style={a.searchWrap}>
-        <Text style={{ color: C.textMuted, fontSize: 14, marginRight: 6 }}>🔍</Text>
-        <TextInput
-          style={a.searchInput}
-          value={search} onChangeText={setSearch}
-          placeholder="Search name or User ID..."
-          placeholderTextColor={C.textMuted}
-          autoCapitalize="none"
-        />
-      </View>
-      <View style={a.filterRow}>
-        {['All','Active','Pending','Inactive','Rejected'].map(f => (
-          <TouchableOpacity key={f}
-            style={[a.filterChip, filter === f && a.filterChipOn]}
-            onPress={() => setFilter(f)}>
-            <Text style={[a.filterChipTxt, filter === f && a.filterChipTxtOn]}>{f}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginBottom: 10 }}>
-        {filtered.length} member{filtered.length !== 1 ? 's' : ''} found
-      </Text>
-
-      {filtered.map(m => (
-        <GCard key={m.id}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
-            <View style={[a.memberAvatar, { backgroundColor: m.status === 'Active' ? 'rgba(26,138,74,0.20)' : 'rgba(201,168,76,0.18)' }]}>
-              <Text style={a.memberAvatarTxt}>{initials(m.name)}</Text>
+          {/* ── Header ── */}
+          <LinearGradient colors={['#1a2d4e', '#243554']} style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(201,168,76,0.28)', borderWidth: 2, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: C.gold }}>{initials(member.name)}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={a.memberName}>{m.name}</Text>
-              <Text style={a.memberUserId}>{m.userId}</Text>
-              <Text style={a.memberMeta}>Joined: {fmtDate(m.createdAt)}</Text>
-              <Text style={a.memberMeta}>Last login: {fmtTime(m.lastLogin)}</Text>
+              <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#fff' }} numberOfLines={1}>{member.name}</Text>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>{member.userId}</Text>
             </View>
-            <StatusPill status={m.status || 'Pending'} />
-          </View>
+            {/* Status pill */}
+            <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: statusColor + '33', borderWidth: 1, borderColor: statusColor }}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: statusColor }}>{member.status}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={{ marginLeft: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontSize: 16, lineHeight: 20 }}>✕</Text>
+            </TouchableOpacity>
+          </LinearGradient>
 
-          {/* Financial summary */}
-          <View style={a.finRow}>
+          {/* ── Financial summary strip ── */}
+          <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.45)', borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.10)' }}>
             {[
-              { l: 'Savings', v: fmtCur(m.savings), c: C.green },
-              { l: 'Shares',  v: fmtCur(m.shares),  c: C.gold },
-              { l: 'Loan Bal',v: fmtCur(m.loanBalance), c: m.loanBalance > 0 ? C.red : C.textMuted },
+              { l: 'Savings',    v: fmtCur(member.savings),     c: C.green,  tab: 'savings' },
+              { l: 'Shares',     v: fmtCur(member.shares),      c: C.gold,   tab: 'shares'  },
+              { l: 'Loan Bal.',  v: fmtCur(member.loanBalance), c: member.loanBalance > 0 ? C.red : C.textMuted, tab: 'loan' },
             ].map(f => (
-              <View key={f.l} style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginBottom: 2 }}>{f.l}</Text>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: f.c }}>{f.v}</Text>
-              </View>
+              <TouchableOpacity key={f.l} onPress={() => setTab(f.tab)}
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderBottomWidth: tab === f.tab ? 2 : 0, borderColor: f.c }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: f.c }}>{f.v}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 1 }}>{f.l}</Text>
+              </TouchableOpacity>
             ))}
           </View>
 
-          {/* Admin actions */}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-            {m.status === 'Active' && (
-              <TouchableOpacity style={[a.btnSm, { borderColor: 'rgba(192,57,43,0.45)', backgroundColor: 'rgba(192,57,43,0.10)' }]}
-                onPress={() => { setSel(m); setAction('deactivate'); }}>
-                <Text style={[a.btnSmTxt, { color: C.red }]}>🚫 Deactivate</Text>
-              </TouchableOpacity>
+          {/* ── Tabs ── */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.10)', flexGrow: 0 }}>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 4 }}>
+              {TABS.map(t => (
+                <TouchableOpacity key={t.key} onPress={() => setTab(t.key)}
+                  style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 2, borderColor: tab === t.key ? C.gold : 'transparent' }}>
+                  <Text style={{ fontFamily: tab === t.key ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize: 12, color: tab === t.key ? C.navy : C.textMuted }}>
+                    {t.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+
+          {/* ── Tab Body ── */}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator>
+
+            {/* DETAILS TAB */}
+            {tab === 'details' && (
+              <>
+                {/* Basic info — always shown */}
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.8, marginBottom: 8 }}>ACCOUNT INFO</Text>
+                <Row label="User ID"       value={member.userId} />
+                <Row label="Status"        value={member.status} color={statusColor} />
+                <Row label="Member Since"  value={fmtDate(member.approvedAt || member.createdAt)} />
+                <Row label="Last Login"    value={fmtTime(member.lastLogin)} />
+                <Row label="Email"         value={member.email} />
+                <Row label="Contact"       value={member.contact || af.contactNo} />
+                <Row label="Address"       value={member.address || af.presentAddress} />
+
+                {/* App Form details — only if application form was filled */}
+                {hasAppForm ? (
+                  <>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.8, marginTop: 14, marginBottom: 8 }}>PERSONAL DETAILS (APPLICATION FORM)</Text>
+                    <Row label="Full Name"       value={[af.salutation, member.firstName, member.middleName, member.lastName, af.suffix].filter(Boolean).join(' ')} />
+                    <Row label="Gender"          value={af.gender} />
+                    <Row label="Civil Status"    value={af.civilStatus} />
+                    <Row label="Date of Birth"   value={af.dob} />
+                    <Row label="Place of Birth"  value={af.placeOfBirth} />
+                    <Row label="Nationality"     value={af.nationality === 'Others' ? af.nationalityOther : af.nationality} />
+                    <Row label="Religion"        value={af.religion === 'Others' ? af.religionOther : af.religion} />
+                    <Row label="No. Dependents"  value={af.numDependents} />
+                    <Row label="Present Address" value={af.presentAddress ? `${af.presentAddress}${af.presentZip ? ', ' + af.presentZip : ''}` : undefined} />
+
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.8, marginTop: 14, marginBottom: 8 }}>GOVERNMENT IDs</Text>
+                    {(af.govIds && af.govIds.length > 0)
+                      ? af.govIds.filter(g => g.type || g.number).map((g, i) => (
+                          <Row key={i} label={g.type || `ID #${i+1}`} value={g.number} />
+                        ))
+                      : [['SSS/GSIS', af.sssGsis], ['TIN', af.tin], ['PhilHealth', af.philHealth], ['Pag-IBIG', af.pagIbig]]
+                          .filter(([, v]) => v).map(([l, v]) => <Row key={l} label={l} value={v} />)
+                    }
+
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.8, marginTop: 14, marginBottom: 8 }}>EMPLOYMENT</Text>
+                    <Row label="Status"        value={af.empType} />
+                    {af.empType === 'Employed' && <>
+                      <Row label="Employer"      value={af.employerName} />
+                      <Row label="Position"      value={af.positionRank} />
+                      <Row label="Monthly Income" value={af.monthlyIncome ? '₱' + Number(af.monthlyIncome).toLocaleString('en-PH') : undefined} color={C.green} />
+                    </>}
+                    {af.empType === 'Self-Employed' && <>
+                      <Row label="Business"      value={af.bizName} />
+                      <Row label="Nature"        value={af.bizNature} />
+                      <Row label="Monthly Income" value={af.selfMonthlyIncome ? '₱' + Number(af.selfMonthlyIncome).toLocaleString('en-PH') : undefined} color={C.green} />
+                    </>}
+                  </>
+                ) : (
+                  <View style={{ marginTop: 14, backgroundColor: 'rgba(196,125,14,0.12)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(196,125,14,0.35)', padding: 12 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.orange, marginBottom: 4 }}>⚠️ Application Form Not Yet Submitted</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
+                      This member has not yet filled out their Application Form. Personal details, government IDs, and employment info will appear here once submitted.
+                    </Text>
+                  </View>
+                )}
+              </>
             )}
-            {(m.status === 'Inactive' || m.status === 'Rejected') && (
-              <TouchableOpacity style={[a.btnSm, { borderColor: 'rgba(26,138,74,0.45)', backgroundColor: 'rgba(26,138,74,0.12)' }]}
-                onPress={() => { setSel(m); setAction('activate'); }}>
-                <Text style={[a.btnSmTxt, { color: C.green }]}>✅ Activate</Text>
-              </TouchableOpacity>
+
+            {/* SAVINGS / SHARES / LOAN TABS */}
+            {(tab === 'savings' || tab === 'shares' || tab === 'loan') && (
+              <>
+                {/* Balance card */}
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: 12, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.80)', alignItems: 'center' }}>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textMuted, marginBottom: 4 }}>
+                    {tab === 'savings' ? 'Total Savings Balance' : tab === 'shares' ? 'Total Share Capital' : 'Outstanding Loan Balance'}
+                  </Text>
+                  <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 28, color: tab === 'savings' ? C.green : tab === 'shares' ? C.gold : C.red }}>
+                    {tab === 'savings' ? fmtCur(member.savings) : tab === 'shares' ? fmtCur(member.shares) : fmtCur(member.loanBalance)}
+                  </Text>
+                  {tab === 'loan' && member.loan > 0 && (
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+                      Original: {fmtCur(member.loan)} · Paid: {fmtCur((member.loan || 0) - (member.loanBalance || 0))}
+                    </Text>
+                  )}
+                </View>
+
+                {/* Transaction list */}
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.8, marginBottom: 10 }}>TRANSACTION HISTORY</Text>
+                {txnLoad && <ActivityIndicator color={C.gold} style={{ marginVertical: 20 }} />}
+                {!txnLoad && txns.length === 0 && (
+                  <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+                    <Text style={{ fontSize: 28, marginBottom: 8 }}>📄</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center' }}>
+                      No transactions yet.{'\n'}Contact admin for manual entries.
+                    </Text>
+                  </View>
+                )}
+                {!txnLoad && txns.map((txn, i) => {
+                  const isCredit = txn.amount > 0;
+                  return (
+                    <View key={txn.id} style={{ backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.80)', borderLeftWidth: 3, borderLeftColor: isCredit ? C.green : C.red }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.navy }}>{txn.description || (isCredit ? 'Credit' : 'Debit')}</Text>
+                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 2 }}>TXN# {txn.txnNo}</Text>
+                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>{fmtTime(txn.createdAt)}</Text>
+                        </View>
+                        <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 14, color: isCredit ? C.green : C.red }}>
+                          {isCredit ? '+' : ''}{fmtCur(txn.amount)}
+                        </Text>
+                      </View>
+                      {txn.remarks ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, marginTop: 6, fontStyle: 'italic' }}>{txn.remarks}</Text> : null}
+                    </View>
+                  );
+                })}
+              </>
             )}
-            <TouchableOpacity style={[a.btnSm, { borderColor: C.borderGold, backgroundColor: 'rgba(201,168,76,0.12)' }]}
-              onPress={() => { setSel(m); setAction('resetpw'); setNewPw(''); }}>
-              <Text style={[a.btnSmTxt, { color: C.navy }]}>🔑 Reset PW</Text>
+
+            {/* RESET PASSWORD TAB */}
+            {tab === 'reset' && (
+              <View>
+                <View style={{ backgroundColor: 'rgba(201,168,76,0.12)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.35)', padding: 12, marginBottom: 16 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.orange, marginBottom: 4 }}>🔑 Reset Member Password</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
+                    Use this only if the member forgot their password. The new password will take effect immediately.
+                  </Text>
+                </View>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.5, marginBottom: 6 }}>MEMBER</Text>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy, marginBottom: 14 }}>{member.name} · {member.userId}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.5, marginBottom: 6 }}>NEW PASSWORD (MIN. 6 CHARACTERS)</Text>
+                <TextInput
+                  style={{ backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(15,30,53,0.18)', padding: 12, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy, marginBottom: 6 }}
+                  value={resetPw} onChangeText={v => { setResetPw(v); setResetErr(''); }}
+                  placeholder="Enter new password"
+                  placeholderTextColor={C.textMuted}
+                  secureTextEntry
+                />
+                {resetErr ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.red, marginBottom: 8 }}>{resetErr}</Text> : null}
+                {resetDone ? <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, marginBottom: 8 }}>✓ Password reset successfully!</Text> : null}
+                <TouchableOpacity
+                  onPress={doReset}
+                  disabled={resetting}
+                  style={{ backgroundColor: C.navyMid, borderRadius: 10, paddingVertical: 13, alignItems: 'center', opacity: resetting ? 0.65 : 1 }}>
+                  {resetting
+                    ? <ActivityIndicator color={C.gold} />
+                    : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.gold }}>🔑 Reset Password</Text>
+                  }
+                </TouchableOpacity>
+              </View>
+            )}
+
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const AllMembersView = ({ members, contentHeight }) => {
+  const [search,  setSearch]  = useState('');
+  const [selMember, setSelMember] = useState(null);
+  const { height } = useWindowDimensions();
+
+  // Only show Active members in the list
+  const filtered = members.filter(m => {
+    if (m.status !== 'Active') return false;
+    const q = search.toLowerCase();
+    return (m.name || '').toLowerCase().includes(q) || (m.userId || '').includes(q);
+  });
+
+  return (
+    <>
+      <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]}
+        showsVerticalScrollIndicator={true}
+        style={contentHeight ? { height: contentHeight } : undefined}>
+
+        <Text style={a.pageTitle}>👥 All Members</Text>
+        <Text style={a.pageSub}>Showing Active members only. Tap a name to view full details.</Text>
+
+        {/* Search */}
+        <View style={a.searchWrap}>
+          <Text style={{ color: C.textMuted, fontSize: 14, marginRight: 6 }}>🔍</Text>
+          <TextInput
+            style={a.searchInput}
+            value={search} onChangeText={setSearch}
+            placeholder="Search name or User ID..."
+            placeholderTextColor={C.textMuted}
+            autoCapitalize="none"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Text style={{ color: C.textMuted, fontSize: 14 }}>✕</Text>
             </TouchableOpacity>
-          </View>
-        </GCard>
-      ))}
+          )}
+        </View>
 
-      {filtered.length === 0 && (
-        <GCard style={{ alignItems: 'center', padding: 36 }}>
-          <Text style={a.emptyTxt}>No members match your search.</Text>
-        </GCard>
-      )}
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginBottom: 12 }}>
+          {filtered.length} active member{filtered.length !== 1 ? 's' : ''} found
+        </Text>
 
-      {/* Action modal */}
-      <ActionModal
-        visible={!!action}
-        title={action === 'deactivate' ? '🚫 Deactivate Member'
-             : action === 'activate'   ? '✅ Activate Member'
-             : '🔑 Reset Password'}
-        message={action !== 'resetpw'
-          ? `${action === 'deactivate' ? 'Deactivate' : 'Activate'} account for ${sel?.name}?`
-          : `Set a new password for ${sel?.name}.`}
-        confirmLabel={action === 'deactivate' ? 'Deactivate' : action === 'activate' ? 'Activate' : 'Reset'}
-        confirmColor={action === 'deactivate' ? C.red : C.green}
-        onConfirm={doAction}
-        onCancel={() => { setSel(null); setAction(null); }}
-        loading={busy}
-      >
-        {action === 'resetpw' && (
-          <View style={{ marginTop: 12 }}>
-            <Text style={a.modalFieldLbl}>New Password (min. 6 characters)</Text>
-            <TextInput
-              style={a.modalInput}
-              value={newPw} onChangeText={setNewPw}
-              placeholder="Enter new password"
-              placeholderTextColor={C.textMuted}
-              secureTextEntry
-            />
-          </View>
+        {/* Member rows — compact, click to open modal */}
+        {filtered.map(m => (
+          <TouchableOpacity key={m.id} onPress={() => setSelMember(m)} activeOpacity={0.80}>
+            <GCard style={{ marginBottom: 8, padding: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={[a.memberAvatar, { backgroundColor: 'rgba(26,138,74,0.20)' }]}>
+                  <Text style={a.memberAvatarTxt}>{initials(m.name)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[a.memberName, { color: C.blue }]}>{m.name}</Text>
+                  <Text style={a.memberUserId}>{m.userId}</Text>
+                  <Text style={a.memberMeta}>
+                    {m.appForm?.empType ? `${m.appForm.empType}` : 'App form pending'}
+                    {' · '}Joined {fmtDate(m.createdAt)}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <StatusPill status={m.status} />
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>Tap to view →</Text>
+                </View>
+              </View>
+              {/* Mini financials */}
+              <View style={[a.finRow, { marginTop: 8 }]}>
+                {[
+                  { l: 'Savings',  v: fmtCur(m.savings),     c: C.green },
+                  { l: 'Shares',   v: fmtCur(m.shares),      c: C.gold },
+                  { l: 'Loan Bal', v: fmtCur(m.loanBalance), c: m.loanBalance > 0 ? C.red : C.textMuted },
+                ].map(f => (
+                  <View key={f.l} style={{ flex: 1, alignItems: 'center' }}>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginBottom: 2 }}>{f.l}</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: f.c }}>{f.v}</Text>
+                  </View>
+                ))}
+              </View>
+            </GCard>
+          </TouchableOpacity>
+        ))}
+
+        {filtered.length === 0 && (
+          <GCard style={{ alignItems: 'center', padding: 40 }}>
+            <Text style={{ fontSize: 32, marginBottom: 10 }}>👥</Text>
+            <Text style={a.emptyTxt}>{search ? 'No members match your search.' : 'No active members yet.'}</Text>
+          </GCard>
         )}
-      </ActionModal>
-    </ScrollView>
+
+      </ScrollView>
+
+      {/* Member Detail Modal */}
+      {selMember && (
+        <MemberDetailModal
+          member={selMember}
+          onClose={() => setSelMember(null)}
+          height={height}
+        />
+      )}
+    </>
   );
 };
 
@@ -1102,10 +1350,583 @@ const AuditView = () => {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
+// ── 10. REPORTS & ANALYTICS ──────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+
+const ReportsView = ({ members, claims, loans }) => {
+  const [reportType, setReportType] = useState('financial'); // financial | member | claims
+  const [dateFrom,   setDateFrom]   = useState('');
+  const [dateTo,     setDateTo]     = useState('');
+  const [exported,   setExported]   = useState('');
+
+  const now = new Date();
+  const thisMonth = members.filter(m => {
+    const d = m.createdAt?.toDate?.() || new Date(m.createdAt || 0);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
+  const lastMonth = members.filter(m => {
+    const d = m.createdAt?.toDate?.() || new Date(m.createdAt || 0);
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
+  });
+
+  const totalSavings = members.reduce((s, m) => s + (m.savings || 0), 0);
+  const totalShares  = members.reduce((s, m) => s + (m.shares  || 0), 0);
+  const totalLoans   = members.reduce((s, m) => s + (m.loan    || 0), 0);
+  const totalLoanBal = members.reduce((s, m) => s + (m.loanBalance || 0), 0);
+  const activeCount  = members.filter(m => m.status === 'Active').length;
+  const pendClaims   = claims.filter(c => c.status === 'Pending').length;
+  const apprClaims   = claims.filter(c => c.status === 'Approved').length;
+  const totalClaims  = claims.reduce((s, c) => s + (c.amount || 0), 0);
+
+  const growthPct = lastMonth.length > 0
+    ? Math.round(((thisMonth.length - lastMonth.length) / lastMonth.length) * 100)
+    : thisMonth.length > 0 ? 100 : 0;
+
+  const claimsThisMonth = claims.filter(c => {
+    const d = c.filedAt?.toDate?.() || new Date(c.filedAt || 0);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+  const claimsLastMonth = claims.filter(c => {
+    const d = c.filedAt?.toDate?.() || new Date(c.filedAt || 0);
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
+  }).length;
+  const claimsChange = claimsLastMonth > 0 ? Math.round(((claimsThisMonth - claimsLastMonth) / claimsLastMonth) * 100) : 0;
+
+  // Risk alerts
+  const memberClaimCounts = {};
+  claims.forEach(c => { memberClaimCounts[c.memberId] = (memberClaimCounts[c.memberId] || 0) + 1; });
+  const frequentClaimers = members.filter(m => (memberClaimCounts[m.id] || 0) >= 3);
+  const overdueMembers   = members.filter(m => m.loanBalance > 0 && m.overdue);
+
+  const handleExport = (format) => {
+    setExported(format);
+    setTimeout(() => setExported(''), 2500);
+  };
+
+  const REPORT_TABS = [
+    { key: 'financial', label: '💰 Financial' },
+    { key: 'member',    label: '👥 Member' },
+    { key: 'claims',    label: '🧾 Claims' },
+  ];
+
+  const InsightCard = ({ icon, text, color }) => (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: color + '18', borderRadius: 10, borderWidth: 1, borderColor: color + '44', padding: 12, marginBottom: 8 }}>
+      <Text style={{ fontSize: 18 }}>{icon}</Text>
+      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.text, flex: 1, lineHeight: 18 }}>{text}</Text>
+    </View>
+  );
+
+  const StatRow = ({ label, value, color }) => (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
+      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec }}>{label}</Text>
+      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: color || C.navy }}>{value}</Text>
+    </View>
+  );
+
+  return (
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={false}>
+      <Text style={a.pageTitle}>📊 Reports & Analytics</Text>
+
+      {/* Smart Insights */}
+      <Text style={a.sHead}>🧠 SMART INSIGHTS</Text>
+      <InsightCard icon="📈" color={growthPct >= 0 ? C.green : C.red}
+        text={growthPct >= 0
+          ? `Member growth is up ${growthPct}% this month compared to last month (${thisMonth.length} new vs ${lastMonth.length}).`
+          : `Member registrations dropped by ${Math.abs(growthPct)}% this month vs last month.`} />
+      {claimsChange !== 0 && (
+        <InsightCard icon={claimsChange > 0 ? '🚨' : '✅'} color={claimsChange > 0 ? C.orange : C.green}
+          text={claimsChange > 0
+            ? `Claims are ${claimsChange}% higher this month (${claimsThisMonth} vs ${claimsLastMonth} last month). Review may be needed.`
+            : `Claims decreased by ${Math.abs(claimsChange)}% this month. Good trend!`} />
+      )}
+      {totalLoanBal > 0 && (
+        <InsightCard icon="💳" color={C.blue}
+          text={`Total outstanding loan balance is ${fmtCur(totalLoanBal)} across ${members.filter(m => m.loanBalance > 0).length} member(s).`} />
+      )}
+      {frequentClaimers.length > 0 && (
+        <InsightCard icon="⚠️" color={C.red}
+          text={`${frequentClaimers.length} member(s) have filed 3 or more claims. Recommend review: ${frequentClaimers.slice(0,3).map(m => m.name).join(', ')}.`} />
+      )}
+      {overdueMembers.length > 0 && (
+        <InsightCard icon="🚨" color={C.red}
+          text={`${overdueMembers.length} member(s) have overdue loan payments. Immediate action recommended.`} />
+      )}
+
+      {/* Date Range Filter */}
+      <Text style={a.sHead}>📅 DATE RANGE FILTER</Text>
+      <GCard>
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-end' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.5, marginBottom: 5 }}>FROM</Text>
+            <TextInput style={{ backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(15,30,53,0.18)', padding: 10, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy }}
+              value={dateFrom} onChangeText={setDateFrom} placeholder="MM/DD/YYYY" placeholderTextColor={C.textMuted} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.5, marginBottom: 5 }}>TO</Text>
+            <TextInput style={{ backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(15,30,53,0.18)', padding: 10, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy }}
+              value={dateTo} onChangeText={setDateTo} placeholder="MM/DD/YYYY" placeholderTextColor={C.textMuted} />
+          </View>
+          <TouchableOpacity style={{ backgroundColor: C.navyMid, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11 }} onPress={() => { setDateFrom(''); setDateTo(''); }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold }}>Reset</Text>
+          </TouchableOpacity>
+        </View>
+      </GCard>
+
+      {/* Report Type Tabs */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+        {REPORT_TABS.map(t => (
+          <TouchableOpacity key={t.key} onPress={() => setReportType(t.key)}
+            style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: reportType === t.key ? C.navyMid : C.surface, borderWidth: 1.5, borderColor: reportType === t.key ? C.gold : 'rgba(255,255,255,0.70)' }}>
+            <Text style={{ fontFamily: reportType === t.key ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize: 11, color: reportType === t.key ? '#fff' : C.textSec }}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Financial Report */}
+      {reportType === 'financial' && (
+        <GCard>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy, marginBottom: 12 }}>💰 Financial Summary Report</Text>
+          <StatRow label="Total Savings"              value={fmtCur(totalSavings)}  color={C.green} />
+          <StatRow label="Total Share Capital"         value={fmtCur(totalShares)}   color={C.gold} />
+          <StatRow label="Total Loans Released"        value={fmtCur(totalLoans)}    color={C.orange} />
+          <StatRow label="Outstanding Loan Balance"    value={fmtCur(totalLoanBal)}  color={C.red} />
+          <StatRow label="Loan Collection Rate"        value={totalLoans > 0 ? Math.round(((totalLoans - totalLoanBal) / totalLoans) * 100) + '%' : '—'} color={C.green} />
+          <StatRow label="Active Loan Holders"         value={members.filter(m => m.loanBalance > 0).length} />
+          <StatRow label="Total Assets (Savings+Shares)" value={fmtCur(totalSavings + totalShares)} color={C.blue} />
+        </GCard>
+      )}
+
+      {/* Member Report */}
+      {reportType === 'member' && (
+        <GCard>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy, marginBottom: 12 }}>👥 Member Summary Report</Text>
+          <StatRow label="Total Members"     value={members.length} />
+          <StatRow label="Active"            value={activeCount}    color={C.green} />
+          <StatRow label="Pending Approval"  value={members.filter(m => m.status === 'Pending').length}  color={C.orange} />
+          <StatRow label="Inactive"          value={members.filter(m => m.status === 'Inactive').length} color={C.red} />
+          <StatRow label="Rejected"          value={members.filter(m => m.status === 'Rejected').length} color={C.red} />
+          <StatRow label="New This Month"    value={thisMonth.length} color={C.blue} />
+          <StatRow label="New Last Month"    value={lastMonth.length} />
+          <StatRow label="Month-over-Month Growth" value={(growthPct >= 0 ? '+' : '') + growthPct + '%'} color={growthPct >= 0 ? C.green : C.red} />
+          <StatRow label="With App Form Submitted" value={members.filter(m => m.appForm && Object.keys(m.appForm).length > 0).length} color={C.blue} />
+        </GCard>
+      )}
+
+      {/* Claims Report */}
+      {reportType === 'claims' && (
+        <GCard>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy, marginBottom: 12 }}>🧾 Claims Summary Report</Text>
+          <StatRow label="Total Claims Filed"    value={claims.length} />
+          <StatRow label="Pending"               value={pendClaims}  color={C.orange} />
+          <StatRow label="Approved"              value={apprClaims}  color={C.green} />
+          <StatRow label="Rejected"              value={claims.filter(c => c.status === 'Rejected').length} color={C.red} />
+          <StatRow label="Total Claims Amount"   value={fmtCur(totalClaims)} color={C.orange} />
+          <StatRow label="Filed This Month"      value={claimsThisMonth} color={C.blue} />
+          <StatRow label="Filed Last Month"      value={claimsLastMonth} />
+          <StatRow label="Month-over-Month"      value={(claimsChange >= 0 ? '+' : '') + claimsChange + '%'} color={claimsChange > 20 ? C.red : C.green} />
+          <StatRow label="Members w/ 3+ Claims"  value={frequentClaimers.length} color={frequentClaimers.length > 0 ? C.red : C.green} />
+        </GCard>
+      )}
+
+      {/* Export Buttons */}
+      <Text style={a.sHead}>📤 EXPORT REPORT</Text>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <TouchableOpacity onPress={() => handleExport('PDF')}
+          style={{ flex: 1, backgroundColor: exported === 'PDF' ? C.green : 'rgba(192,57,43,0.15)', borderRadius: 10, borderWidth: 1.5, borderColor: exported === 'PDF' ? C.green : 'rgba(192,57,43,0.50)', paddingVertical: 14, alignItems: 'center' }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: exported === 'PDF' ? '#fff' : C.red }}>
+            {exported === 'PDF' ? '✓ Exported!' : '📄 Export PDF'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => handleExport('Excel')}
+          style={{ flex: 1, backgroundColor: exported === 'Excel' ? C.green : 'rgba(26,138,74,0.15)', borderRadius: 10, borderWidth: 1.5, borderColor: exported === 'Excel' ? C.green : 'rgba(26,138,74,0.50)', paddingVertical: 14, alignItems: 'center' }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: exported === 'Excel' ? '#fff' : C.green }}>
+            {exported === 'Excel' ? '✓ Exported!' : '📊 Export Excel'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, textAlign: 'center', marginTop: 8 }}>
+        Note: Connect to a file export service (e.g. react-native-fs or expo-print) to enable actual file downloads.
+      </Text>
+    </ScrollView>
+  );
+};
+
+// ─── 11. DOCUMENT MONITORING ──────────────────────────────────────────────────
+const DocumentsView = ({ members }) => {
+  const [filter, setFilter] = useState('All'); // All | Complete | Incomplete
+
+  const REQUIRED_DOCS = ['Application Form', 'Government ID', 'Certificate of Net Take Home Pay', 'Share Capital Ledger'];
+
+  const membersWithStatus = members.filter(m => m.status === 'Active').map(m => {
+    const af = m.appForm || {};
+    const hasAppForm   = !!(af.dob || af.civilStatus || af.empType);
+    const hasGovIds    = !!(af.govIds?.some(g => g.type && g.number) || af.sssGsis || af.tin);
+    const hasCertNTHP  = !!(af.employerName || af.empType === 'Self-Employed' || af.empType === 'Unemployed');
+    const hasShareCap  = (m.shares || 0) > 0;
+
+    const docs = [
+      { label: 'Application Form',             done: hasAppForm },
+      { label: 'Government ID(s)',              done: hasGovIds },
+      { label: 'Cert. of Net Take Home Pay',   done: hasCertNTHP },
+      { label: 'Share Capital (₱5,000 min)',   done: hasShareCap },
+    ];
+    const complete = docs.filter(d => d.done).length;
+    const isComplete = complete === docs.length;
+    return { ...m, docs, complete, total: docs.length, isComplete };
+  });
+
+  const incomplete = membersWithStatus.filter(m => !m.isComplete);
+  const complete   = membersWithStatus.filter(m => m.isComplete);
+
+  const shown = filter === 'All' ? membersWithStatus
+    : filter === 'Complete' ? complete
+    : incomplete;
+
+  return (
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={false}>
+      <Text style={a.pageTitle}>📁 Document Monitoring</Text>
+      <Text style={a.pageSub}>Track document completeness for all active members.</Text>
+
+      {/* Summary tiles */}
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {[
+          { l: 'Total Active', v: membersWithStatus.length, c: C.blue },
+          { l: 'Complete',     v: complete.length,    c: C.green },
+          { l: 'Incomplete',   v: incomplete.length,  c: C.red },
+        ].map(s => (
+          <GCard key={s.l} style={{ flex: 1, minWidth: 100, alignItems: 'center', padding: 12, marginBottom: 0 }}>
+            <Text style={[a.tileVal, { color: s.c, fontSize: 22 }]}>{s.v}</Text>
+            <Text style={[a.tileLbl, { textAlign: 'center' }]}>{s.l}</Text>
+          </GCard>
+        ))}
+      </View>
+
+      {/* Incomplete alert banner */}
+      {incomplete.length > 0 && (
+        <View style={{ backgroundColor: 'rgba(192,57,43,0.12)', borderRadius: 12, borderLeftWidth: 4, borderLeftColor: C.red, borderWidth: 1, borderColor: 'rgba(192,57,43,0.30)', padding: 12, marginBottom: 14 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.red, marginBottom: 3 }}>⚠️ Incomplete Documents Alert</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
+            {incomplete.length} active member{incomplete.length !== 1 ? 's have' : ' has'} missing documents. Please follow up.
+          </Text>
+        </View>
+      )}
+
+      {/* Filter chips */}
+      <View style={a.filterRow}>
+        {['All', 'Complete', 'Incomplete'].map(f => (
+          <TouchableOpacity key={f} style={[a.filterChip, filter === f && a.filterChipOn]} onPress={() => setFilter(f)}>
+            <Text style={[a.filterChipTxt, filter === f && a.filterChipTxtOn]}>{f}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Member document cards */}
+      {shown.map(m => (
+        <GCard key={m.id} style={{ borderLeftWidth: 3, borderLeftColor: m.isComplete ? C.green : C.red }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <View style={[a.memberAvatar, { backgroundColor: m.isComplete ? 'rgba(26,138,74,0.20)' : 'rgba(192,57,43,0.18)' }]}>
+              <Text style={a.memberAvatarTxt}>{initials(m.name)}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={a.memberName}>{m.name}</Text>
+              <Text style={a.memberUserId}>{m.userId}</Text>
+            </View>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: m.isComplete ? C.green : C.red }}>{m.complete}/{m.total}</Text>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>docs</Text>
+            </View>
+          </View>
+          {/* Progress bar */}
+          <View style={{ height: 6, backgroundColor: 'rgba(15,30,53,0.12)', borderRadius: 3, overflow: 'hidden', marginBottom: 10 }}>
+            <View style={{ height: 6, borderRadius: 3, backgroundColor: m.isComplete ? C.green : C.orange, width: `${Math.round((m.complete / m.total) * 100)}%` }} />
+          </View>
+          {/* Doc checklist */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {m.docs.map((d, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: d.done ? 'rgba(26,138,74,0.12)' : 'rgba(192,57,43,0.10)', borderWidth: 1, borderColor: d.done ? 'rgba(26,138,74,0.35)' : 'rgba(192,57,43,0.30)' }}>
+                <Text style={{ fontSize: 10 }}>{d.done ? '✅' : '❌'}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: d.done ? C.green : C.red }}>{d.label}</Text>
+              </View>
+            ))}
+          </View>
+        </GCard>
+      ))}
+      {shown.length === 0 && (
+        <GCard style={{ alignItems: 'center', padding: 36 }}>
+          <Text style={{ fontSize: 32, marginBottom: 10 }}>📁</Text>
+          <Text style={a.emptyTxt}>No members in this category.</Text>
+        </GCard>
+      )}
+    </ScrollView>
+  );
+};
+
+// ─── 12. ENHANCED AUDIT TRAIL ─────────────────────────────────────────────────
+const AuditTrailView = () => {
+  const { data: logs, loading } = useCollection('auditLogs', orderBy('time', 'desc'));
+  const [filter, setFilter] = useState('All');
+
+  const actionTypes = ['All', 'Member Approved', 'Member Rejected', 'Password Reset', 'Member Activated', 'Member Deactivated', 'Loan Approved'];
+  const iconMap = {
+    'Member Approved':    { icon: '✅', color: C.green  },
+    'Member Rejected':    { icon: '❌', color: C.red    },
+    'Member Activated':   { icon: '🔓', color: C.green  },
+    'Member Deactivated': { icon: '🚫', color: C.red    },
+    'Password Reset':     { icon: '🔑', color: C.orange },
+    'New Registration':   { icon: '🆕', color: C.blue   },
+    'Loan Approved':      { icon: '💳', color: C.green  },
+    'Loan Rejected':      { icon: '💳', color: C.red    },
+    'Claim Approved':     { icon: '🧾', color: C.green  },
+    'Claim Rejected':     { icon: '🧾', color: C.red    },
+  };
+
+  const filtered = filter === 'All' ? logs : logs.filter(l => l.action === filter);
+
+  if (loading) return <Spinner msg="Loading audit trail..." />;
+
+  return (
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={false}>
+      <Text style={a.pageTitle}>🧾 Audit Trail</Text>
+      <Text style={a.pageSub}>Complete system activity log for full accountability.</Text>
+
+      {/* Stats */}
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        {[
+          { l: 'Total Logs',      v: logs.length,                               c: C.blue   },
+          { l: 'Today',           v: logs.filter(l => { const d = l.time?.toDate?.() || new Date(l.time || 0); const n = new Date(); return d.toDateString() === n.toDateString(); }).length, c: C.navy },
+          { l: 'Approvals',       v: logs.filter(l => l.action?.includes('Approved')).length, c: C.green },
+          { l: 'Rejections',      v: logs.filter(l => l.action?.includes('Rejected')).length, c: C.red },
+        ].map(s => (
+          <GCard key={s.l} style={{ flex: 1, minWidth: 80, alignItems: 'center', padding: 10, marginBottom: 0 }}>
+            <Text style={[a.tileVal, { color: s.c, fontSize: 18 }]}>{s.v}</Text>
+            <Text style={[a.tileLbl, { textAlign: 'center', fontSize: 9 }]}>{s.l}</Text>
+          </GCard>
+        ))}
+      </View>
+
+      {/* Filter */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+        <View style={{ flexDirection: 'row', gap: 8, paddingRight: 16 }}>
+          {actionTypes.map(f => (
+            <TouchableOpacity key={f} style={[a.filterChip, filter === f && a.filterChipOn]} onPress={() => setFilter(f)}>
+              <Text style={[a.filterChipTxt, filter === f && a.filterChipTxtOn, { fontSize: 11 }]}>{f}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Log entries */}
+      <GCard style={{ padding: 0, overflow: 'hidden' }}>
+        {filtered.map((l, i) => {
+          const meta = iconMap[l.action] || { icon: '📋', color: C.textMuted };
+          return (
+            <View key={l.id || i} style={[a.auditRow, i === filtered.length - 1 && { borderBottomWidth: 0 }, { alignItems: 'center' }]}>
+              <View style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: meta.color + '20', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                <Text style={{ fontSize: 14 }}>{meta.icon}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: meta.color }}>{l.action}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, marginTop: 1 }}>
+                  {l.adminName ? `Admin ${l.adminName} ` : ''}{l.target ? `→ ${l.target}` : ''}
+                </Text>
+                {l.userId && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>{l.userId}</Text>}
+                {l.reason && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, fontStyle: 'italic' }}>Reason: {l.reason}</Text>}
+              </View>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, textAlign: 'right', flexShrink: 0, maxWidth: 80 }}>{fmtTime(l.time)}</Text>
+            </View>
+          );
+        })}
+        {filtered.length === 0 && <Text style={[a.emptyTxt, { padding: 24 }]}>No activity logs found.</Text>}
+      </GCard>
+    </ScrollView>
+  );
+};
+
+// ─── 13. AGENT / BRANCH PERFORMANCE ──────────────────────────────────────────
+const PerformanceView = ({ members, loans, claims }) => {
+  const [tab, setTab] = useState('agents');
+
+  // Compute agent scores from appForm recommendedBy field
+  const agentMap = {};
+  members.filter(m => m.status === 'Active').forEach(m => {
+    const agent = m.appForm?.recommendedBy?.trim() || 'Unassigned';
+    if (!agentMap[agent]) agentMap[agent] = { name: agent, members: 0, savings: 0, shares: 0, loans: 0 };
+    agentMap[agent].members++;
+    agentMap[agent].savings += m.savings || 0;
+    agentMap[agent].shares  += m.shares  || 0;
+    agentMap[agent].loans   += m.loan    || 0;
+  });
+  const agents = Object.values(agentMap).sort((a, b) => b.members - a.members);
+
+  const RankBadge = ({ rank }) => {
+    const colors = { 1: ['#FFD700', '#B8860B'], 2: ['#C0C0C0', '#808080'], 3: ['#CD7F32', '#8B4513'] };
+    const c = colors[rank] || ['rgba(15,30,53,0.15)', C.textMuted];
+    return (
+      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c[0], justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: rank <= 3 ? '#fff' : C.textMuted }}>#{rank}</Text>
+      </View>
+    );
+  };
+
+  return (
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={false}>
+      <Text style={a.pageTitle}>🏢 Agent Performance</Text>
+      <Text style={a.pageSub}>Rankings based on members referred and collections.</Text>
+
+      {/* Tab */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+        {[{ key: 'agents', label: '👤 Top Agents' }, { key: 'collections', label: '💰 Collections' }].map(t => (
+          <TouchableOpacity key={t.key} onPress={() => setTab(t.key)}
+            style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: tab === t.key ? C.navyMid : C.surface, borderWidth: 1.5, borderColor: tab === t.key ? C.gold : 'rgba(255,255,255,0.70)' }}>
+            <Text style={{ fontFamily: tab === t.key ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize: 12, color: tab === t.key ? '#fff' : C.textSec }}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {tab === 'agents' && (
+        <>
+          <Text style={a.sHead}>🏆 TOP 5 AGENTS (BY MEMBERS REFERRED)</Text>
+          {agents.slice(0, 5).map((ag, i) => (
+            <GCard key={ag.name} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <RankBadge rank={i + 1} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy }}>{ag.name}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted }}>{ag.members} member{ag.members !== 1 ? 's' : ''} referred</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green }}>{fmtCur(ag.savings + ag.shares)}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>Total Assets</Text>
+              </View>
+            </GCard>
+          ))}
+          {agents.length === 0 && (
+            <GCard style={{ alignItems: 'center', padding: 32 }}>
+              <Text style={{ fontSize: 28, marginBottom: 8 }}>🏢</Text>
+              <Text style={a.emptyTxt}>No agent data yet. Ensure members fill the "Recommended By" field in the Application Form.</Text>
+            </GCard>
+          )}
+        </>
+      )}
+
+      {tab === 'collections' && (
+        <>
+          <Text style={a.sHead}>💰 COLLECTIONS BY AGENT</Text>
+          <GCard style={{ padding: 0, overflow: 'hidden' }}>
+            <View style={[a.tableHdr]}>
+              {['Agent', 'Members', 'Savings', 'Shares', 'Loans'].map((h, i) => (
+                <Text key={h} style={[a.tableHdrTxt, { flex: i === 0 ? 2 : 1 }]}>{h}</Text>
+              ))}
+            </View>
+            {agents.map((ag, i) => (
+              <View key={ag.name} style={[a.tableRow, { backgroundColor: i % 2 === 1 ? 'rgba(255,255,255,0.30)' : 'transparent' }]}>
+                <Text style={[a.tableCell, { flex: 2, fontFamily: 'GoogleSans_700Bold', color: C.navy, fontSize: 12 }]} numberOfLines={1}>{ag.name}</Text>
+                <Text style={[a.tableCell, { flex: 1, textAlign: 'center' }]}>{ag.members}</Text>
+                <Text style={[a.tableCell, { flex: 1, color: C.green, fontSize: 11 }]} numberOfLines={1}>{fmtCur(ag.savings)}</Text>
+                <Text style={[a.tableCell, { flex: 1, color: C.gold, fontSize: 11  }]} numberOfLines={1}>{fmtCur(ag.shares)}</Text>
+                <Text style={[a.tableCell, { flex: 1, color: C.orange, fontSize: 11}]} numberOfLines={1}>{fmtCur(ag.loans)}</Text>
+              </View>
+            ))}
+            {agents.length === 0 && <Text style={[a.emptyTxt, { padding: 24 }]}>No data available.</Text>}
+          </GCard>
+        </>
+      )}
+    </ScrollView>
+  );
+};
+
+// ─── 14. SYSTEM SETTINGS ──────────────────────────────────────────────────────
+const SettingsView = () => {
+  const [rates, setRates] = useState({ regular: '8', salary: '10', vehicle: '8', petty: '1', emergency: '0', educational: '10', housing: '8', solar: '8' });
+  const [penalties, setPenalties]   = useState({ latePayment: '2', penaltyGrace: '3' });
+  const [sysInfo, setSysInfo]       = useState({ orgName: 'CESLA Multi-Purpose Cooperative', address: 'Cagayan de Oro City', contact: '', email: '' });
+  const [savedSection, setSavedSection] = useState('');
+
+  const save = (section) => { setSavedSection(section); setTimeout(() => setSavedSection(''), 2500); };
+
+  const SettingField = ({ label, value, onChangeText, keyboardType, suffix }) => (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.5, marginBottom: 5 }}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(15,30,53,0.18)', paddingHorizontal: 12, paddingVertical: 10 }}>
+        <TextInput style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy }}
+          value={value} onChangeText={onChangeText}
+          keyboardType={keyboardType || 'default'} autoCorrect={false} />
+        {suffix && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textMuted }}>{suffix}</Text>}
+      </View>
+    </View>
+  );
+
+  const SaveBtn = ({ section }) => (
+    <TouchableOpacity onPress={() => save(section)}
+      style={{ backgroundColor: savedSection === section ? C.green : C.navyMid, borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginTop: 4 }}>
+      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: savedSection === section ? '#fff' : C.gold }}>
+        {savedSection === section ? '✓ Saved!' : '💾 Save Changes'}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={false}>
+      <Text style={a.pageTitle}>⚙️ System Settings</Text>
+      <Text style={a.pageSub}>Manage cooperative-wide configurations.</Text>
+
+      {/* Org Info */}
+      <Text style={a.sHead}>🏢 ORGANIZATION INFO</Text>
+      <GCard>
+        <SettingField label="ORGANIZATION NAME" value={sysInfo.orgName} onChangeText={v => setSysInfo(s => ({ ...s, orgName: v }))} />
+        <SettingField label="ADDRESS"           value={sysInfo.address} onChangeText={v => setSysInfo(s => ({ ...s, address: v }))} />
+        <SettingField label="CONTACT NUMBER"    value={sysInfo.contact} onChangeText={v => setSysInfo(s => ({ ...s, contact: v }))} keyboardType="phone-pad" />
+        <SettingField label="EMAIL ADDRESS"     value={sysInfo.email}   onChangeText={v => setSysInfo(s => ({ ...s, email: v }))}   keyboardType="email-address" />
+        <SaveBtn section="orginfo" />
+      </GCard>
+
+      {/* Interest Rates */}
+      <Text style={a.sHead}>💰 LOAN INTEREST RATES</Text>
+      <GCard>
+        {[
+          ['Regular Loan',   'regular'],
+          ['Salary Loan',    'salary'],
+          ['Vehicle Loan',   'vehicle'],
+          ['Petty Cash',     'petty'],
+          ['Emergency Loan', 'emergency'],
+          ['Educational',    'educational'],
+          ['Housing/Home',   'housing'],
+          ['Solar Solutions','solar'],
+        ].map(([label, key]) => (
+          <SettingField key={key} label={label.toUpperCase()} value={rates[key]}
+            onChangeText={v => setRates(r => ({ ...r, [key]: v }))}
+            keyboardType="numeric" suffix="% p.a." />
+        ))}
+        <SaveBtn section="rates" />
+      </GCard>
+
+      {/* Penalties */}
+      <Text style={a.sHead}>⚠️ PENALTIES</Text>
+      <GCard>
+        <SettingField label="LATE PAYMENT PENALTY" value={penalties.latePayment}
+          onChangeText={v => setPenalties(p => ({ ...p, latePayment: v }))} keyboardType="numeric" suffix="% of amort." />
+        <SettingField label="GRACE PERIOD (DAYS)" value={penalties.penaltyGrace}
+          onChangeText={v => setPenalties(p => ({ ...p, penaltyGrace: v }))} keyboardType="numeric" suffix="days" />
+        <SaveBtn section="penalties" />
+      </GCard>
+
+      <View style={{ backgroundColor: 'rgba(201,168,76,0.12)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.35)', padding: 12 }}>
+        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.orange, marginBottom: 4 }}>ℹ️ Note</Text>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
+          Settings are stored locally in this session. To persist settings across sessions, connect to a Firestore "settings" collection in Firebase.
+        </Text>
+      </View>
+    </ScrollView>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
 // ─── ADMIN DASHBOARD SHELL ────────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════
 
 const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
+  const { height } = useWindowDimensions();
   const [activeNav, setActiveNav] = useState('overview');
   const [drawer,    setDrawer]    = useState(false);
   const fadeAnim  = useRef(new Animated.Value(1)).current;
@@ -1137,13 +1958,17 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
     switch (activeNav) {
       case 'overview':      return <OverviewView     members={members} claims={claims} loans={loans} />;
       case 'pending':       return <PendingView      members={members} />;
-      case 'all_members':   return <AllMembersView   members={members} />;
+      case 'all_members':   return <AllMembersView   members={members} contentHeight={height - 62} />;
       case 'delinquency':   return <DelinquencyView  members={members} />;
       case 'collections':   return <CollectionsView  members={members} />;
       case 'loans':         return <LoansView        loans={loans} />;
       case 'claims':        return <ClaimsView />;
+      case 'reports':       return <ReportsView      members={members} claims={claims} loans={loans} />;
+      case 'documents':     return <DocumentsView    members={members} />;
+      case 'audit':         return <AuditTrailView />;
+      case 'performance':   return <PerformanceView  members={members} loans={loans} claims={claims} />;
+      case 'settings':      return <SettingsView />;
       case 'notifications': return <NotifsView       members={members} />;
-      case 'audit':         return <AuditView />;
       default:              return <OverviewView     members={members} claims={claims} loans={loans} />;
     }
   };
