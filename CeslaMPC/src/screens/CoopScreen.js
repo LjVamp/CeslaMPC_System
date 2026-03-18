@@ -246,7 +246,7 @@ const SidebarGroup = ({ group, active, onNav, onClose }) => {
 };
 
 const MemberSidebar = ({ active, onNav, onClose, unread, onLogout, onBack, canGoBack }) => (
-  <View style={[s.sidebar, { flex: 1, flexDirection: 'column' }]}>
+  <View style={[s.sidebar, { flexDirection: 'column' }]}>
     <View style={s.sidebarBrand}>
       <View style={s.sidebarLogo}><Text style={s.sidebarLogoTxt}>CS</Text></View>
       <View style={{ flex: 1 }}>
@@ -270,25 +270,7 @@ const MemberSidebar = ({ active, onNav, onClose, unread, onLogout, onBack, canGo
         <Text style={s.sideNotifTxt}>🔔 {unread} unread notification{unread !== 1 ? 's' : ''}</Text>
       </TouchableOpacity>
     )}
-    {/* Bottom actions: Back + Logout */}
-    <View style={{ borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 10, gap: 6 }}>
-      {canGoBack && (
-        <TouchableOpacity onPress={onBack}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.10)' }}
-          activeOpacity={0.8}>
-          <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.70)' }}>←</Text>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: 'rgba(255,255,255,0.70)' }}>Back</Text>
-        </TouchableOpacity>
-      )}
-      {onLogout && (
-        <TouchableOpacity onPress={onLogout}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)' }}
-          activeOpacity={0.8}>
-          <Text style={{ fontSize: 13 }}>↩</Text>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#e8c87a' }}>Logout</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+
   </View>
 );
 
@@ -2085,7 +2067,13 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
           </TouchableOpacity>
           <MemberAvatar member={member} size={32} />
           {isWide && <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)', maxWidth: 120 }} numberOfLines={1}>{member.name}</Text>}
-          <TouchableOpacity style={s.logoutBtn} onPress={onLogout}><Text style={s.logoutTxt}>{isSmall ? '↩' : 'Logout'}</Text></TouchableOpacity>
+          {/* Logout — always visible on all screen sizes */}
+          <TouchableOpacity
+            style={[s.logoutBtn, !isWide && { paddingHorizontal: 10, paddingVertical: 6 }]}
+            onPress={onLogout}
+          >
+            <Text style={s.logoutTxt}>↩ Logout</Text>
+          </TouchableOpacity>
         </View>
       </View>
       {/* Body */}
@@ -2101,7 +2089,7 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
           <TouchableOpacity
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' }}
             activeOpacity={1} onPress={() => setDrawer(false)} />
-          <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 220, zIndex: 21 }}>
+          <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 220, zIndex: 21, overflow: 'hidden' }}>
             <MemberSidebar active={nav} onNav={switchNav} onClose={() => setDrawer(false)} unread={unread}
               onLogout={() => { setDrawer(false); onLogout(); }}
               onBack={() => { goBack(); setDrawer(false); }}
@@ -2469,7 +2457,7 @@ const s = StyleSheet.create({
   logoutTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c9a84c' },
 
   // Sidebar
-  sidebar:        { width: 175, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)', flexDirection: 'column' },
+  sidebar:        { width: 175, flexShrink: 0, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)', flexDirection: 'column' },
   sidebarBrand:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, paddingTop: 18 },
   sidebarLogo:    { width: 30, height: 30, borderRadius: 7, backgroundColor: '#c9a84c', justifyContent: 'center', alignItems: 'center' },
   sidebarLogoTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35' },

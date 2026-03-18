@@ -302,7 +302,7 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide: csIsW
   const COLS=6;
 
   return (
-    <View style={{flex:1,flexDirection:'row',minHeight:0,overflow:'hidden'}}>
+    <View style={{flex:1,flexDirection: csIsWide ? 'row' : 'column',minHeight:0,overflow:'hidden'}}>
       {/* Items side */}
       <View style={{flex:1,minHeight:0,minWidth:0,flexDirection:'column',overflow:'hidden'}}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{flexGrow:0,marginBottom:6}} contentContainerStyle={{paddingHorizontal:10,gap:5,paddingVertical:4}}>
@@ -339,15 +339,47 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide: csIsW
         </WebScrollView>
       </View>
 
-      {/* Cart side - collapsible on mobile */}
-      <View style={[cs.cartPanel, !csIsWide && { width: '100%', borderLeftWidth: 0, borderTopWidth: 1, flex: 0, maxHeight: cartCollapsed ? 42 : 300 }]}>
+      {/* Cart side - collapsible on mobile, floats at bottom */}
+      <View style={[cs.cartPanel, !csIsWide && {
+        width: '100%', borderLeftWidth: 0, borderTopWidth: 1,
+        flex: 0, maxHeight: cartCollapsed ? 46 : 320,
+        borderTopLeftRadius: 16, borderTopRightRadius: 16,
+        shadowColor: '#011f4b', shadowOpacity: 0.18, shadowRadius: 12,
+        shadowOffset: { width: 0, height: -3 }, elevation: 10,
+      }]}>
         <TouchableOpacity
-          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 6, borderBottomWidth: cartCollapsed ? 0 : 1, borderColor: 'rgba(1,31,75,0.10)' }}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+            paddingVertical: cartCollapsed ? 0 : 0,
+            paddingBottom: cartCollapsed ? 0 : 8,
+            borderBottomWidth: cartCollapsed ? 0 : 1,
+            borderColor: 'rgba(1,31,75,0.10)',
+            minHeight: 46,
+          }}
           onPress={!csIsWide ? () => setCartCollapsed(v => !v) : undefined}
           activeOpacity={csIsWide ? 1 : 0.8}
         >
-          <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
-          {!csIsWide && <MaterialIcons name={cartCollapsed ? 'expand-more' : 'expand-less'} size={18} color="rgba(1,31,75,0.50)" />}
+          {/* Collapsed: show pill-style cart summary */}
+          {!csIsWide && cartCollapsed ? (
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 16 }}>🛒</Text>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#1a3a6b' }}>
+                  View Cart {cartItems.length > 0 ? `(${cartItems.length})` : ''}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#c9a84c' }}>
+                  ₱{total.toFixed(2)}
+                </Text>
+                <MaterialIcons name="expand-less" size={20} color="rgba(1,31,75,0.50)" />
+              </View>
+            </View>
+          ) : (
+            <>
+              <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
+              {!csIsWide && <MaterialIcons name="expand-more" size={18} color="rgba(1,31,75,0.50)" />}
+            </>
+          )}
         </TouchableOpacity>
         <View style={cs.cartItemsBox}>
           {cartItems.length===0
@@ -488,20 +520,24 @@ const cs = StyleSheet.create({
 });
 
 // ─── MANAGE MENU SCREEN ───────────────────────────────────────────────────────
-const ManageMenuScreen = ({ items, categories, filtered, search, activeCategory, onSearch, onCategoryChange, onAddItem, onEditItem, onDeleteItem }) => {
-  const COLS = 6;
+const ManageMenuScreen = ({ items, categories, filtered, search, activeCategory, onSearch, onCategoryChange, onAddItem, onEditItem, onDeleteItem, isWide: mmIsWide }) => {
+  const COLS = mmIsWide ? 6 : 3;
   return (
-    <View style={{flex:1,minHeight:0,flexDirection:'row',overflow:'hidden'}}>
-      <View style={mm.catPanel}>
-        <Text style={mm.catTitle}>CATEGORIES</Text>
-        <WebScrollView style={{flex:1}} contentContainerStyle={{gap:4}}>
-          {categories.map(cat=>(
-            <TouchableOpacity key={cat} style={[mm.catBtn,activeCategory===cat&&mm.catBtnActive]} onPress={()=>onCategoryChange(cat)}>
-              <Text style={[mm.catBtnTxt,activeCategory===cat&&mm.catBtnTxtActive]}>{cat}</Text>
-            </TouchableOpacity>
-          ))}
-        </WebScrollView>
-      </View>
+    <View style={{flex:1,minHeight:0,flexDirection:'column',overflow:'hidden'}}>
+
+      {/* ── Category tabs — horizontal scroll (same as Merchandise) ── */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        style={{ flexGrow: 0, flexShrink: 0, backgroundColor: 'rgba(255,255,255,0.12)' }}
+        contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 6, gap: 5 }}>
+        {categories.map(cat => (
+          <TouchableOpacity key={cat}
+            style={[mm.catTabH, activeCategory === cat && mm.catTabHActive]}
+            onPress={() => onCategoryChange(cat)}>
+            <Text style={[mm.catTabHTxt, activeCategory === cat && mm.catTabHTxtActive]}>{cat}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
       <View style={{flex:1,minHeight:0,minWidth:0,overflow:'hidden'}}>
         <View style={mm.headerRow}>
           <Text style={mm.headerLbl} numberOfLines={1}>
@@ -561,6 +597,11 @@ const mm = StyleSheet.create({
   catBtnActive: { backgroundColor:'rgba(26,58,107,0.18)' },
   catBtnTxt: { fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(1,31,75,0.60)' },
   catBtnTxtActive: { fontFamily:'GoogleSans_700Bold',color:'#1a3a6b' },
+  // Horizontal tab style (same as Merchandise)
+  catTabH: { paddingVertical:7, paddingHorizontal:14, borderRadius:16, backgroundColor:'rgba(255,255,255,0.35)', borderWidth:1, borderColor:'rgba(255,255,255,0.55)', alignItems:'center', justifyContent:'center' },
+  catTabHActive: { backgroundColor:'#304674', borderColor:'#c9a84c' },
+  catTabHTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.70)' },
+  catTabHTxtActive: { color:'#fff' },
   headerRow: { flexDirection:'row',alignItems:'center',gap:8,padding:8,paddingBottom:0 },
   headerLbl: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#011f4b',letterSpacing:2,flexShrink:0 },
   searchBox: { flex:1,flexDirection:'row',alignItems:'center',backgroundColor:'rgba(255,255,255,0.75)',borderRadius:8,paddingHorizontal:8,paddingVertical:5,borderWidth:1,borderColor:'rgba(255,255,255,0.90)' },
@@ -1206,7 +1247,7 @@ export default function ManageCanteenScreen({ navigation }) {
 
   const renderContent=()=>{
     if(activeTab==='cashier')   return <CashierScreen items={items} categories={categories} addOrder={addOrder} deductStock={deductStock} isWide={isWide}/>;
-    if(activeTab==='menu')      return <ManageMenuScreen items={items} categories={categories} filtered={filtered} search={search} activeCategory={activeCategory} onSearch={handleSearch} onCategoryChange={setActiveCategory} onAddItem={openAddItem} onEditItem={openEditItem} onDeleteItem={handleDeleteItem}/>;
+    if(activeTab==='menu')      return <ManageMenuScreen items={items} categories={categories} filtered={filtered} search={search} activeCategory={activeCategory} onSearch={handleSearch} onCategoryChange={setActiveCategory} onAddItem={openAddItem} onEditItem={openEditItem} onDeleteItem={handleDeleteItem} isWide={isWide}/>;
     if(activeTab==='inventory') return <InventoryScreen items={items} maxQtyMap={invMaxQty} onAddItem={openAddItem} onEditItem={openEditItem}/>;
     if(activeTab==='history')   return <OrderHistoryScreen orders={orders}/>;
     if(activeTab==='credits')   return <EmployeeCreditsScreen/>;
