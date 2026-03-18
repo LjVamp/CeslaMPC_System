@@ -2085,11 +2085,13 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       </View>
       {/* Mobile drawer — full screen height */}
       {!isWide && drawer && (
-        <View style={{ ...StyleSheet.absoluteFillObject, zIndex: 20 }}>
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}>
+          {/* Backdrop */}
           <TouchableOpacity
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.50)' }}
             activeOpacity={1} onPress={() => setDrawer(false)} />
-          <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 220, zIndex: 21, overflow: 'hidden' }}>
+          {/* Sidebar panel */}
+          <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 220, flexDirection: 'column' }}>
             <MemberSidebar active={nav} onNav={switchNav} onClose={() => setDrawer(false)} unread={unread}
               onLogout={() => { setDrawer(false); onLogout(); }}
               onBack={() => { goBack(); setDrawer(false); }}
@@ -2457,7 +2459,7 @@ const s = StyleSheet.create({
   logoutTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c9a84c' },
 
   // Sidebar
-  sidebar:        { width: 175, flexShrink: 0, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)', flexDirection: 'column' },
+  sidebar:        { width: 175, flexShrink: 0, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)', flexDirection: 'column', flex: 1 },
   sidebarBrand:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, paddingTop: 18 },
   sidebarLogo:    { width: 30, height: 30, borderRadius: 7, backgroundColor: '#c9a84c', justifyContent: 'center', alignItems: 'center' },
   sidebarLogoTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35' },

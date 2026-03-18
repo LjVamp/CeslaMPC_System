@@ -299,7 +299,7 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide: csIsW
     setTimeout(()=>setReceiptVisible(true),200);
   };
 
-  const COLS=6;
+  const COLS = csIsWide ? 6 : 3;
 
   return (
     <View style={{flex:1,flexDirection: csIsWide ? 'row' : 'column',minHeight:0,overflow:'hidden'}}>
@@ -339,48 +339,10 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide: csIsW
         </WebScrollView>
       </View>
 
-      {/* Cart side - collapsible on mobile, floats at bottom */}
-      <View style={[cs.cartPanel, !csIsWide && {
-        width: '100%', borderLeftWidth: 0, borderTopWidth: 1,
-        flex: 0, maxHeight: cartCollapsed ? 46 : 320,
-        borderTopLeftRadius: 16, borderTopRightRadius: 16,
-        shadowColor: '#011f4b', shadowOpacity: 0.18, shadowRadius: 12,
-        shadowOffset: { width: 0, height: -3 }, elevation: 10,
-      }]}>
-        <TouchableOpacity
-          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-            paddingVertical: cartCollapsed ? 0 : 0,
-            paddingBottom: cartCollapsed ? 0 : 8,
-            borderBottomWidth: cartCollapsed ? 0 : 1,
-            borderColor: 'rgba(1,31,75,0.10)',
-            minHeight: 46,
-          }}
-          onPress={!csIsWide ? () => setCartCollapsed(v => !v) : undefined}
-          activeOpacity={csIsWide ? 1 : 0.8}
-        >
-          {/* Collapsed: show pill-style cart summary */}
-          {!csIsWide && cartCollapsed ? (
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={{ fontSize: 16 }}>🛒</Text>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#1a3a6b' }}>
-                  View Cart {cartItems.length > 0 ? `(${cartItems.length})` : ''}
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#c9a84c' }}>
-                  ₱{total.toFixed(2)}
-                </Text>
-                <MaterialIcons name="expand-less" size={20} color="rgba(1,31,75,0.50)" />
-              </View>
-            </View>
-          ) : (
-            <>
-              <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
-              {!csIsWide && <MaterialIcons name="expand-more" size={18} color="rgba(1,31,75,0.50)" />}
-            </>
-          )}
-        </TouchableOpacity>
+      {/* Cart — wide: side panel | mobile: floating pill (CanteenVisitor style) + bottom sheet */}
+      {csIsWide ? (
+        <View style={cs.cartPanel}>
+          <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
         <View style={cs.cartItemsBox}>
           {cartItems.length===0
             ? <Text style={cs.cartEmpty}>No items added yet</Text>
@@ -430,6 +392,93 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide: csIsW
           </TouchableOpacity>
         )}
       </View>
+      ) : (
+        <>
+          {/* Mobile floating pill button — same as CanteenVisitor.js */}
+          {cartCollapsed && (
+            <TouchableOpacity
+              style={{ position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 50 }}
+              onPress={() => setCartCollapsed(false)}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['#c9a84c', '#e8c87a']}
+                start={{x:0,y:0}} end={{x:1,y:0}}
+                style={{ borderRadius: 30, paddingVertical: 11, paddingHorizontal: 32, alignItems: 'center' }}
+              >
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#0d1b3e' }}>
+                  🛒  View Cart  {cartItems.length > 0 ? `(${cartItems.length})` : ''}  •  ₱{total.toFixed(2)}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+          {/* Mobile expanded bottom sheet */}
+          {!cartCollapsed && (
+            <View style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 50,
+              backgroundColor: '#f0f5f9',
+              borderTopLeftRadius: 20, borderTopRightRadius: 20,
+              maxHeight: 400, paddingHorizontal: 0, paddingBottom: 10,
+              shadowColor: '#011f4b', shadowOpacity: 0.25, shadowRadius: 16,
+              shadowOffset: { width: 0, height: -4 }, elevation: 14,
+            }}>
+              {/* Drag handle */}
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(1,31,75,0.20)', alignSelf: 'center', marginTop: 10, marginBottom: 2 }} />
+              {/* Cart title row */}
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.10)' }}
+                onPress={() => setCartCollapsed(true)} activeOpacity={0.8}>
+                <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
+                <MaterialIcons name="expand-more" size={20} color="rgba(1,31,75,0.45)" />
+              </TouchableOpacity>
+              <View style={[cs.cartPanel, { borderRadius: 0, backgroundColor: 'transparent', borderLeftWidth: 0 }]}>
+                <View style={cs.cartItemsBox}>
+                  {cartItems.length===0
+                    ? <Text style={cs.cartEmpty}>No items added yet</Text>
+                    : <WebScrollView style={{flex:1}}>
+                        {cartItems.map(({item,qty})=>(
+                          <View key={item.id} style={cs.cartRow}>
+                            <Text style={cs.cartEmoji}>{item.emoji}</Text>
+                            <View style={{flex:1,minWidth:0}}>
+                              <Text style={cs.cartName} numberOfLines={1}>{item.name}</Text>
+                              <Text style={cs.cartSub}>₱{item.price} × {qty} = ₱{item.price*qty}</Text>
+                            </View>
+                            <View style={cs.qtyRow}>
+                              <TouchableOpacity style={cs.qBtn} onPress={()=>removeFromCart(item)}><Text style={cs.qBtnTxt}>−</Text></TouchableOpacity>
+                              <Text style={cs.qVal}>{qty}</Text>
+                              <TouchableOpacity style={[cs.qBtn,{backgroundColor:'#1a3a6b'}]} onPress={()=>addToCart(item)}><Text style={[cs.qBtnTxt,{color:'#fff'}]}>+</Text></TouchableOpacity>
+                            </View>
+                          </View>
+                        ))}
+                      </WebScrollView>
+                  }
+                </View>
+                <View style={cs.totalRow}><Text style={cs.totalLbl}>TOTAL</Text><Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text></View>
+                <View style={{gap:3}}>
+                  <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:9,color:'rgba(1,31,75,0.50)',letterSpacing:1,textTransform:'uppercase'}}>Amount Paid (Cash)</Text>
+                  <TextInput style={cs.amtInput} value={amountPaid} onChangeText={setAmountPaid} keyboardType="numeric" placeholder="₱ 0.00" placeholderTextColor="rgba(1,31,75,0.30)"/>
+                </View>
+                {amountPaid!==''&&(
+                  <View style={[cs.changeRow,{backgroundColor:change<0?'rgba(231,76,60,0.10)':'rgba(39,174,96,0.10)',borderRadius:8,padding:8}]}>
+                    <Text style={cs.changeLbl}>Change</Text>
+                    <Text style={[cs.changeVal,{color:change<0?'#e74c3c':'#27ae60'}]}>₱ {change.toFixed(2)}</Text>
+                  </View>
+                )}
+                <TouchableOpacity style={[cs.orderBtn,cartItems.length===0&&{opacity:0.45}]} onPress={handlePlaceOrder} activeOpacity={0.80}>
+                  <LinearGradient colors={cartItems.length>0?['#27ae60','#2ecc71']:['#aaa','#bbb']} start={{x:0,y:0}} end={{x:1,y:0}} style={cs.orderBtnGrad}>
+                    <MaterialIcons name="check-circle" size={16} color="#fff"/>
+                    <Text style={cs.orderBtnTxt}>Place Order</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity style={cs.clearBtn} onPress={clearCart}>
+                  <MaterialIcons name="delete-sweep" size={14} color="#e74c3c"/>
+                  <Text style={cs.clearBtnTxt}>Clear Cart</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </>
+      )}
 
       {receiptVisible&&lastOrder&&(
         <Modal transparent visible animationType="fade" onRequestClose={()=>setReceiptVisible(false)}>
@@ -473,11 +522,11 @@ const cs = StyleSheet.create({
   catTabTxtActive: { color:'#fff' },
   searchRow: { flexDirection:'row',alignItems:'center',backgroundColor:'rgba(255,255,255,0.70)',borderRadius:8,paddingHorizontal:10,paddingVertical:7,marginHorizontal:8,marginBottom:4,borderWidth:1,borderColor:'rgba(255,255,255,0.90)' },
   searchInput: { flex:1,fontFamily:'GoogleSans_400Regular',fontSize:12,color:'#011f4b',paddingVertical:0 },
-  itemCard: { flex:1,alignSelf:'stretch',backgroundColor:'rgba(255,255,255,0.70)',borderRadius:12,padding:8,alignItems:'center',justifyContent:'space-between',gap:2,borderWidth:1,borderColor:'rgba(255,255,255,0.85)',position:'relative',minHeight:130 },
-  itemImgCircle: { width:44,height:44,borderRadius:22,backgroundColor:'rgba(240,246,252,0.90)',justifyContent:'center',alignItems:'center',overflow:'hidden',borderWidth:1,borderColor:'rgba(255,255,255,0.80)',flexShrink:0 },
-  itemEmoji: { fontSize:20 },
-  itemCardName: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#1a2d4e',textAlign:'center',lineHeight:12,minHeight:24,width:'100%' },
-  itemCardPrice: { fontFamily:'NotoSerif_700Bold',fontSize:12,color:'#c9a84c' },
+  itemCard: { flex:1,alignSelf:'stretch',backgroundColor:'rgba(255,255,255,0.70)',borderRadius:12,padding:8,alignItems:'center',justifyContent:'space-between',gap:3,borderWidth:1,borderColor:'rgba(255,255,255,0.85)',position:'relative',minHeight:140 },
+  itemImgCircle: { width:52,height:52,borderRadius:26,backgroundColor:'rgba(240,246,252,0.90)',justifyContent:'center',alignItems:'center',overflow:'hidden',borderWidth:1,borderColor:'rgba(255,255,255,0.80)',flexShrink:0 },
+  itemEmoji: { fontSize:24 },
+  itemCardName: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#1a2d4e',textAlign:'center',lineHeight:14,minHeight:28,width:'100%' },
+  itemCardPrice: { fontFamily:'NotoSerif_700Bold',fontSize:14,color:'#c9a84c' },
   itemCardStock: { fontFamily:'GoogleSans_400Regular',fontSize:8,color:'rgba(1,31,75,0.45)' },
   cartBadge: { position:'absolute',top:4,right:4,backgroundColor:'#e74c3c',borderRadius:8,width:16,height:16,justifyContent:'center',alignItems:'center' },
   cartBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#fff' },
