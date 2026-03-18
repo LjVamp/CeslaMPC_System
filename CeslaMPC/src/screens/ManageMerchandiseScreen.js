@@ -681,6 +681,14 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide }) => 
   const [sizePickerItem, setSizePickerItem] = useState(null);
   // Mobile: cart panel collapsed state
   const [cartCollapsed, setCartCollapsed] = useState(true);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const openCart = () => {
+    setCartCollapsed(false);
+    Animated.spring(slideAnim, { toValue: 1, tension: 65, friction: 11, useNativeDriver: true }).start();
+  };
+  const closeCart = () => {
+    Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setCartCollapsed(true));
+  };
 
   const needsSize = (item) => Array.isArray(item.sizes) && item.sizes.length > 0;
 
@@ -784,84 +792,159 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide }) => 
         </WebScrollView>
       </View>
 
-      {/* Cart side - collapsible on mobile */}
-      <View style={[cs.cartPanel, !isWide && { width: '100%', borderLeftWidth: 0, borderTopWidth: 1, flex: 0, maxHeight: cartCollapsed ? 42 : 300 }]}>
-        <TouchableOpacity
-          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 6, borderBottomWidth: cartCollapsed ? 0 : 1, borderColor: 'rgba(1,31,75,0.10)' }}
-          onPress={!isWide ? () => setCartCollapsed(v => !v) : undefined}
-          activeOpacity={isWide ? 1 : 0.8}
-        >
+      {/* Wide: side cart panel */}
+      {isWide && (
+        <View style={cs.cartPanel}>
           <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
-          {!isWide && <MaterialIcons name={cartCollapsed ? 'expand-more' : 'expand-less'} size={18} color="rgba(1,31,75,0.50)" />}
-        </TouchableOpacity>
-        <View style={cs.cartItemsBox}>
-          {cartItems.length === 0
-            ? <Text style={cs.cartEmpty}>No items added yet</Text>
-            : <WebScrollView style={{ flex: 1 }}>
-                {cartItems.map(({ item, qty, size }) => (
-                  <View key={size ? item.id + '-' + size : item.id} style={cs.cartRow}>
-                    <Text style={cs.cartEmoji}>{item.emoji}</Text>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={cs.cartName} numberOfLines={1}>{item.name}{size ? ' [' + size + ']' : ''}</Text>
-                      <Text style={cs.cartSub}>₱{item.price} × {qty} = ₱{item.price * qty}</Text>
+          <View style={cs.cartItemsBox}>
+            {cartItems.length === 0
+              ? <Text style={cs.cartEmpty}>No items added yet</Text>
+              : <WebScrollView style={{ flex: 1 }}>
+                  {cartItems.map(({ item, qty, size }) => (
+                    <View key={size ? item.id + '-' + size : item.id} style={cs.cartRow}>
+                      <Text style={cs.cartEmoji}>{item.emoji}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={cs.cartName} numberOfLines={1}>{item.name}{size ? ' [' + size + ']' : ''}</Text>
+                        <Text style={cs.cartSub}>₱{item.price} × {qty} = ₱{item.price * qty}</Text>
+                      </View>
+                      <View style={cs.qtyRow}>
+                        <TouchableOpacity style={cs.qBtn} onPress={() => removeFromCart(item, size)}><Text style={cs.qBtnTxt}>−</Text></TouchableOpacity>
+                        <Text style={cs.qVal}>{qty}</Text>
+                        <TouchableOpacity style={[cs.qBtn, { backgroundColor: '#1a3a6b' }]} onPress={() => addToCart(item, size)}><Text style={[cs.qBtnTxt, { color: '#fff' }]}>+</Text></TouchableOpacity>
+                      </View>
                     </View>
-                    <View style={cs.qtyRow}>
-                      <TouchableOpacity style={cs.qBtn} onPress={() => removeFromCart(item, size)}><Text style={cs.qBtnTxt}>−</Text></TouchableOpacity>
-                      <Text style={cs.qVal}>{qty}</Text>
-                      <TouchableOpacity style={[cs.qBtn, { backgroundColor: '#1a3a6b' }]} onPress={() => addToCart(item, size)}><Text style={[cs.qBtnTxt, { color: '#fff' }]}>+</Text></TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </WebScrollView>
-          }
-        </View>
-
-        <View style={cs.totalRow}><Text style={cs.totalLbl}>TOTAL</Text><Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text></View>
-
-        {/* Payment Mode */}
-        <View style={{ gap: 4 }}>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.50)', letterSpacing: 1, textTransform: 'uppercase' }}>Payment Mode</Text>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            {[{ k: 'cash', l: '💵 Cash' }, { k: 'gcash', l: '📱 GCash' }, { k: 'credit', l: '💳 Credit' }].map(p => (
-              <TouchableOpacity key={p.k} onPress={() => setPaymentMode(p.k)}
-                style={[cs.payChip, paymentMode === p.k && cs.payChipActive]}>
-                <Text style={[cs.payChipTxt, paymentMode === p.k && cs.payChipTxtActive]}>{p.l}</Text>
-              </TouchableOpacity>
-            ))}
+                  ))}
+                </WebScrollView>
+            }
           </View>
-        </View>
-
-        {paymentMode === 'cash' && (
-          <View style={{ gap: 3 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.50)', letterSpacing: 1, textTransform: 'uppercase' }}>Amount Paid (Cash)</Text>
-            <TextInput style={cs.amtInput} value={amountPaid} onChangeText={setAmountPaid} keyboardType="numeric" placeholder="₱ 0.00" placeholderTextColor="rgba(1,31,75,0.30)" />
+          <View style={cs.totalRow}><Text style={cs.totalLbl}>TOTAL</Text><Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text></View>
+          <View style={{ gap: 4 }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.50)', letterSpacing: 1, textTransform: 'uppercase' }}>Payment Mode</Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {[{ k: 'cash', l: '💵 Cash' }, { k: 'gcash', l: '📱 GCash' }, { k: 'credit', l: '💳 Credit' }].map(p => (
+                <TouchableOpacity key={p.k} onPress={() => setPaymentMode(p.k)} style={[cs.payChip, paymentMode === p.k && cs.payChipActive]}>
+                  <Text style={[cs.payChipTxt, paymentMode === p.k && cs.payChipTxtActive]}>{p.l}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        )}
-
-        {paymentMode === 'cash' && amountPaid !== '' && (
-          <View style={[cs.changeRow, { backgroundColor: change < 0 ? 'rgba(231,76,60,0.10)' : 'rgba(39,174,96,0.10)', borderRadius: 8, padding: 8 }]}>
-            <Text style={cs.changeLbl}>Change</Text>
-            <Text style={[cs.changeVal, { color: change < 0 ? '#e74c3c' : '#27ae60' }]}>₱ {change.toFixed(2)}</Text>
-          </View>
-        )}
-
-        <TouchableOpacity style={[cs.orderBtn, cartItems.length === 0 && { opacity: 0.45 }]} onPress={handlePlaceOrder} activeOpacity={0.80}>
-          <LinearGradient colors={cartItems.length > 0 ? ['#27ae60', '#2ecc71'] : ['#aaa', '#bbb']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cs.orderBtnGrad}>
-            <MaterialIcons name="check-circle" size={16} color="#fff" />
-            <Text style={cs.orderBtnTxt}>Place Order</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-        <TouchableOpacity style={cs.clearBtn} onPress={clearCart}>
-          <MaterialIcons name="delete-sweep" size={14} color="#e74c3c" />
-          <Text style={cs.clearBtnTxt}>Clear Cart</Text>
-        </TouchableOpacity>
-        {lastOrder && (
-          <TouchableOpacity style={cs.receiptBtn} onPress={() => setReceiptVisible(true)}>
-            <MaterialIcons name="receipt" size={14} color="#1a3a6b" />
-            <Text style={cs.receiptBtnTxt}>Last Receipt</Text>
+          {paymentMode === 'cash' && (
+            <View style={{ gap: 3 }}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.50)', letterSpacing: 1, textTransform: 'uppercase' }}>Amount Paid (Cash)</Text>
+              <TextInput style={cs.amtInput} value={amountPaid} onChangeText={setAmountPaid} keyboardType="numeric" placeholder="₱ 0.00" placeholderTextColor="rgba(1,31,75,0.30)" />
+            </View>
+          )}
+          {paymentMode === 'cash' && amountPaid !== '' && (
+            <View style={[cs.changeRow, { backgroundColor: change < 0 ? 'rgba(231,76,60,0.10)' : 'rgba(39,174,96,0.10)', borderRadius: 8, padding: 8 }]}>
+              <Text style={cs.changeLbl}>Change</Text>
+              <Text style={[cs.changeVal, { color: change < 0 ? '#e74c3c' : '#27ae60' }]}>₱ {change.toFixed(2)}</Text>
+            </View>
+          )}
+          <TouchableOpacity style={[cs.orderBtn, cartItems.length === 0 && { opacity: 0.45 }]} onPress={handlePlaceOrder} activeOpacity={0.80}>
+            <LinearGradient colors={cartItems.length > 0 ? ['#27ae60', '#2ecc71'] : ['#aaa', '#bbb']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cs.orderBtnGrad}>
+              <MaterialIcons name="check-circle" size={16} color="#fff" />
+              <Text style={cs.orderBtnTxt}>Place Order</Text>
+            </LinearGradient>
           </TouchableOpacity>
-        )}
-      </View>
+          <TouchableOpacity style={cs.clearBtn} onPress={clearCart}>
+            <MaterialIcons name="delete-sweep" size={14} color="#e74c3c" />
+            <Text style={cs.clearBtnTxt}>Clear Cart</Text>
+          </TouchableOpacity>
+          {lastOrder && (
+            <TouchableOpacity style={cs.receiptBtn} onPress={() => setReceiptVisible(true)}>
+              <MaterialIcons name="receipt" size={14} color="#1a3a6b" />
+              <Text style={cs.receiptBtnTxt}>Last Receipt</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Mobile: floating pill + animated bottom sheet (same as CanteenVisitor) */}
+      {!isWide && (
+        <>
+          {/* Floating gold pill */}
+          <TouchableOpacity style={cs.floatCart} onPress={openCart} activeOpacity={0.85}>
+            <LinearGradient colors={['#c9a84c','#e8c87a']} start={{x:0,y:0}} end={{x:1,y:0}} style={cs.floatCartGrad}>
+              <Text style={cs.floatCartTxt}>
+                🛒  View Cart  {cartItems.length > 0 ? `(${cartItems.length})` : ''}  •  ₱{total.toFixed(2)}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          {/* Bottom sheet */}
+          {!cartCollapsed && (
+            <View style={cs.sheetOverlay}>
+              <TouchableOpacity style={cs.sheetBackdrop} onPress={closeCart} activeOpacity={1} />
+              <Animated.View style={[cs.sheet, { transform: [{ translateY: slideAnim.interpolate({ inputRange:[0,1], outputRange:[600,0] }) }] }]}>
+                <View style={cs.sheetHandle} />
+                <View style={cs.sheetHeader}>
+                  <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
+                  <TouchableOpacity onPress={closeCart} style={cs.sheetClose}>
+                    <Text style={{ color:'rgba(1,31,75,0.6)', fontSize:14 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{flexGrow:1}}>
+                  <View style={{ padding: 12, gap: 8 }}>
+                    <View style={cs.cartItemsBox}>
+                      {cartItems.length === 0
+                        ? <Text style={cs.cartEmpty}>No items added yet</Text>
+                        : <WebScrollView style={{ flex: 1 }}>
+                            {cartItems.map(({ item, qty, size }) => (
+                              <View key={size ? item.id + '-' + size : item.id} style={cs.cartRow}>
+                                <Text style={cs.cartEmoji}>{item.emoji}</Text>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <Text style={cs.cartName} numberOfLines={1}>{item.name}{size ? ' [' + size + ']' : ''}</Text>
+                                  <Text style={cs.cartSub}>₱{item.price} × {qty} = ₱{item.price * qty}</Text>
+                                </View>
+                                <View style={cs.qtyRow}>
+                                  <TouchableOpacity style={cs.qBtn} onPress={() => removeFromCart(item, size)}><Text style={cs.qBtnTxt}>−</Text></TouchableOpacity>
+                                  <Text style={cs.qVal}>{qty}</Text>
+                                  <TouchableOpacity style={[cs.qBtn, { backgroundColor: '#1a3a6b' }]} onPress={() => addToCart(item, size)}><Text style={[cs.qBtnTxt, { color: '#fff' }]}>+</Text></TouchableOpacity>
+                                </View>
+                              </View>
+                            ))}
+                          </WebScrollView>
+                      }
+                    </View>
+                    <View style={cs.totalRow}><Text style={cs.totalLbl}>TOTAL</Text><Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text></View>
+                    <View style={{ gap: 4 }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.50)', letterSpacing: 1, textTransform: 'uppercase' }}>Payment Mode</Text>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {[{ k: 'cash', l: '💵 Cash' }, { k: 'gcash', l: '📱 GCash' }, { k: 'credit', l: '💳 Credit' }].map(p => (
+                          <TouchableOpacity key={p.k} onPress={() => setPaymentMode(p.k)} style={[cs.payChip, paymentMode === p.k && cs.payChipActive]}>
+                            <Text style={[cs.payChipTxt, paymentMode === p.k && cs.payChipTxtActive]}>{p.l}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                    {paymentMode === 'cash' && (
+                      <View style={{ gap: 3 }}>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.50)', letterSpacing: 1, textTransform: 'uppercase' }}>Amount Paid (Cash)</Text>
+                        <TextInput style={cs.amtInput} value={amountPaid} onChangeText={setAmountPaid} keyboardType="numeric" placeholder="₱ 0.00" placeholderTextColor="rgba(1,31,75,0.30)" />
+                      </View>
+                    )}
+                    {paymentMode === 'cash' && amountPaid !== '' && (
+                      <View style={[cs.changeRow, { backgroundColor: change < 0 ? 'rgba(231,76,60,0.10)' : 'rgba(39,174,96,0.10)', borderRadius: 8, padding: 8 }]}>
+                        <Text style={cs.changeLbl}>Change</Text>
+                        <Text style={[cs.changeVal, { color: change < 0 ? '#e74c3c' : '#27ae60' }]}>₱ {change.toFixed(2)}</Text>
+                      </View>
+                    )}
+                    <TouchableOpacity style={[cs.orderBtn, cartItems.length === 0 && { opacity: 0.45 }]} onPress={handlePlaceOrder} activeOpacity={0.80}>
+                      <LinearGradient colors={cartItems.length > 0 ? ['#27ae60', '#2ecc71'] : ['#aaa', '#bbb']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cs.orderBtnGrad}>
+                        <MaterialIcons name="check-circle" size={16} color="#fff" />
+                        <Text style={cs.orderBtnTxt}>Place Order</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={cs.clearBtn} onPress={clearCart}>
+                      <MaterialIcons name="delete-sweep" size={14} color="#e74c3c" />
+                      <Text style={cs.clearBtnTxt}>Clear Cart</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </Animated.View>
+            </View>
+          )}
+        </>
+      )}
 
       {receiptVisible && lastOrder && (
         <Modal transparent visible animationType="fade" onRequestClose={() => setReceiptVisible(false)}>

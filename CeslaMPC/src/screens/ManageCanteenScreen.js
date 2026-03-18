@@ -265,6 +265,16 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide: csIsW
   const [receiptVisible,setReceiptVisible] = useState(false);
   const [lastOrder, setLastOrder]  = useState(null);
   const [cartCollapsed, setCartCollapsed] = useState(true);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  // Animate bottom sheet when cart opens
+  const openCart = () => {
+    setCartCollapsed(false);
+    Animated.spring(slideAnim, { toValue: 1, tension: 65, friction: 11, useNativeDriver: true }).start();
+  };
+  const closeCart = () => {
+    Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setCartCollapsed(true));
+  };
 
   const filtered = items.filter(i => {
     if (search.trim()) return i.name.toLowerCase().includes(search.toLowerCase());
@@ -339,8 +349,8 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide: csIsW
         </WebScrollView>
       </View>
 
-      {/* Cart — wide: side panel | mobile: floating pill (CanteenVisitor style) + bottom sheet */}
-      {csIsWide ? (
+      {/* Wide: side panel cart */}
+      {csIsWide && (
         <View style={cs.cartPanel}>
           <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
         <View style={cs.cartItemsBox}>
@@ -391,90 +401,94 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide: csIsW
             <Text style={cs.receiptBtnTxt}>Last Receipt</Text>
           </TouchableOpacity>
         )}
-      </View>
-      ) : (
+        </View>
+      )}
+
+      {/* Mobile: floating pill + animated bottom sheet (same as CanteenVisitor) */}
+      {!csIsWide && (
         <>
-          {/* Mobile floating pill button — same as CanteenVisitor.js */}
-          {cartCollapsed && (
-            <TouchableOpacity
-              style={{ position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 50 }}
-              onPress={() => setCartCollapsed(false)}
-              activeOpacity={0.85}
+          {/* Floating gold pill button */}
+          <TouchableOpacity
+            style={cs.floatCart}
+            onPress={openCart}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={['#c9a84c','#e8c87a']}
+              start={{x:0,y:0}} end={{x:1,y:0}}
+              style={cs.floatCartGrad}
             >
-              <LinearGradient
-                colors={['#c9a84c', '#e8c87a']}
-                start={{x:0,y:0}} end={{x:1,y:0}}
-                style={{ borderRadius: 30, paddingVertical: 11, paddingHorizontal: 32, alignItems: 'center' }}
-              >
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#0d1b3e' }}>
-                  🛒  View Cart  {cartItems.length > 0 ? `(${cartItems.length})` : ''}  •  ₱{total.toFixed(2)}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-          {/* Mobile expanded bottom sheet */}
+              <Text style={cs.floatCartTxt}>
+                🛒  View Cart  {cartItems.length > 0 ? `(${cartItems.length})` : ''}  •  ₱{total.toFixed(2)}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {/* Bottom sheet with slide animation */}
           {!cartCollapsed && (
-            <View style={{
-              position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 50,
-              backgroundColor: '#f0f5f9',
-              borderTopLeftRadius: 20, borderTopRightRadius: 20,
-              maxHeight: 400, paddingHorizontal: 0, paddingBottom: 10,
-              shadowColor: '#011f4b', shadowOpacity: 0.25, shadowRadius: 16,
-              shadowOffset: { width: 0, height: -4 }, elevation: 14,
-            }}>
-              {/* Drag handle */}
-              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(1,31,75,0.20)', alignSelf: 'center', marginTop: 10, marginBottom: 2 }} />
-              {/* Cart title row */}
-              <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.10)' }}
-                onPress={() => setCartCollapsed(true)} activeOpacity={0.8}>
-                <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
-                <MaterialIcons name="expand-more" size={20} color="rgba(1,31,75,0.45)" />
-              </TouchableOpacity>
-              <View style={[cs.cartPanel, { borderRadius: 0, backgroundColor: 'transparent', borderLeftWidth: 0 }]}>
-                <View style={cs.cartItemsBox}>
-                  {cartItems.length===0
-                    ? <Text style={cs.cartEmpty}>No items added yet</Text>
-                    : <WebScrollView style={{flex:1}}>
-                        {cartItems.map(({item,qty})=>(
-                          <View key={item.id} style={cs.cartRow}>
-                            <Text style={cs.cartEmoji}>{item.emoji}</Text>
-                            <View style={{flex:1,minWidth:0}}>
-                              <Text style={cs.cartName} numberOfLines={1}>{item.name}</Text>
-                              <Text style={cs.cartSub}>₱{item.price} × {qty} = ₱{item.price*qty}</Text>
-                            </View>
-                            <View style={cs.qtyRow}>
-                              <TouchableOpacity style={cs.qBtn} onPress={()=>removeFromCart(item)}><Text style={cs.qBtnTxt}>−</Text></TouchableOpacity>
-                              <Text style={cs.qVal}>{qty}</Text>
-                              <TouchableOpacity style={[cs.qBtn,{backgroundColor:'#1a3a6b'}]} onPress={()=>addToCart(item)}><Text style={[cs.qBtnTxt,{color:'#fff'}]}>+</Text></TouchableOpacity>
-                            </View>
-                          </View>
-                        ))}
-                      </WebScrollView>
-                  }
+            <View style={cs.sheetOverlay}>
+              <TouchableOpacity style={cs.sheetBackdrop} onPress={closeCart} activeOpacity={1} />
+              <Animated.View style={[cs.sheet, { transform: [{ translateY: slideAnim.interpolate({ inputRange:[0,1], outputRange:[600,0] }) }] }]}>
+                <View style={cs.sheetHandle} />
+                <View style={cs.sheetHeader}>
+                  <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
+                  <TouchableOpacity onPress={closeCart} style={cs.sheetClose}>
+                    <Text style={{ color:'rgba(1,31,75,0.6)', fontSize:14 }}>✕</Text>
+                  </TouchableOpacity>
                 </View>
-                <View style={cs.totalRow}><Text style={cs.totalLbl}>TOTAL</Text><Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text></View>
-                <View style={{gap:3}}>
-                  <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:9,color:'rgba(1,31,75,0.50)',letterSpacing:1,textTransform:'uppercase'}}>Amount Paid (Cash)</Text>
-                  <TextInput style={cs.amtInput} value={amountPaid} onChangeText={setAmountPaid} keyboardType="numeric" placeholder="₱ 0.00" placeholderTextColor="rgba(1,31,75,0.30)"/>
-                </View>
-                {amountPaid!==''&&(
-                  <View style={[cs.changeRow,{backgroundColor:change<0?'rgba(231,76,60,0.10)':'rgba(39,174,96,0.10)',borderRadius:8,padding:8}]}>
-                    <Text style={cs.changeLbl}>Change</Text>
-                    <Text style={[cs.changeVal,{color:change<0?'#e74c3c':'#27ae60'}]}>₱ {change.toFixed(2)}</Text>
+                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{flexGrow:1}}>
+                  <View style={{ padding: 12, gap: 8 }}>
+        <View style={cs.cartItemsBox}>
+          {cartItems.length===0
+            ? <Text style={cs.cartEmpty}>No items added yet</Text>
+            : <WebScrollView style={{flex:1}}>
+                {cartItems.map(({item,qty})=>(
+                  <View key={item.id} style={cs.cartRow}>
+                    <Text style={cs.cartEmoji}>{item.emoji}</Text>
+                    <View style={{flex:1,minWidth:0}}>
+                      <Text style={cs.cartName} numberOfLines={1}>{item.name}</Text>
+                      <Text style={cs.cartSub}>₱{item.price} × {qty} = ₱{item.price*qty}</Text>
+                    </View>
+                    <View style={cs.qtyRow}>
+                      <TouchableOpacity style={cs.qBtn} onPress={()=>removeFromCart(item)}><Text style={cs.qBtnTxt}>−</Text></TouchableOpacity>
+                      <Text style={cs.qVal}>{qty}</Text>
+                      <TouchableOpacity style={[cs.qBtn,{backgroundColor:'#1a3a6b'}]} onPress={()=>addToCart(item)}><Text style={[cs.qBtnTxt,{color:'#fff'}]}>+</Text></TouchableOpacity>
+                    </View>
                   </View>
-                )}
-                <TouchableOpacity style={[cs.orderBtn,cartItems.length===0&&{opacity:0.45}]} onPress={handlePlaceOrder} activeOpacity={0.80}>
-                  <LinearGradient colors={cartItems.length>0?['#27ae60','#2ecc71']:['#aaa','#bbb']} start={{x:0,y:0}} end={{x:1,y:0}} style={cs.orderBtnGrad}>
-                    <MaterialIcons name="check-circle" size={16} color="#fff"/>
-                    <Text style={cs.orderBtnTxt}>Place Order</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-                <TouchableOpacity style={cs.clearBtn} onPress={clearCart}>
-                  <MaterialIcons name="delete-sweep" size={14} color="#e74c3c"/>
-                  <Text style={cs.clearBtnTxt}>Clear Cart</Text>
-                </TouchableOpacity>
-              </View>
+                ))}
+              </WebScrollView>
+          }
+        </View>
+        <View style={cs.totalRow}><Text style={cs.totalLbl}>TOTAL</Text><Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text></View>
+        <View style={{gap:3}}>
+          <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:9,color:'rgba(1,31,75,0.50)',letterSpacing:1,textTransform:'uppercase'}}>Amount Paid (Cash)</Text>
+          <TextInput style={cs.amtInput} value={amountPaid} onChangeText={setAmountPaid} keyboardType="numeric" placeholder="₱ 0.00" placeholderTextColor="rgba(1,31,75,0.30)"/>
+        </View>
+        {amountPaid!==''&&(
+          <View style={[cs.changeRow,{backgroundColor:change<0?'rgba(231,76,60,0.10)':'rgba(39,174,96,0.10)',borderRadius:8,padding:8}]}>
+            <Text style={cs.changeLbl}>Change</Text>
+            <Text style={[cs.changeVal,{color:change<0?'#e74c3c':'#27ae60'}]}>₱ {change.toFixed(2)}</Text>
+          </View>
+        )}
+        <TouchableOpacity style={[cs.orderBtn,cartItems.length===0&&{opacity:0.45}]} onPress={handlePlaceOrder} activeOpacity={0.80}>
+          <LinearGradient colors={cartItems.length>0?['#27ae60','#2ecc71']:['#aaa','#bbb']} start={{x:0,y:0}} end={{x:1,y:0}} style={cs.orderBtnGrad}>
+            <MaterialIcons name="check-circle" size={16} color="#fff"/>
+            <Text style={cs.orderBtnTxt}>Place Order</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+        <TouchableOpacity style={cs.clearBtn} onPress={clearCart}>
+          <MaterialIcons name="delete-sweep" size={14} color="#e74c3c"/>
+          <Text style={cs.clearBtnTxt}>Clear Cart</Text>
+        </TouchableOpacity>
+        {lastOrder&&(
+          <TouchableOpacity style={cs.receiptBtn} onPress={()=>setReceiptVisible(true)}>
+            <MaterialIcons name="receipt" size={14} color="#1a3a6b"/>
+            <Text style={cs.receiptBtnTxt}>Last Receipt</Text>
+          </TouchableOpacity>
+        )}
+                  </View>
+                </ScrollView>
+              </Animated.View>
             </View>
           )}
         </>
@@ -556,6 +570,16 @@ const cs = StyleSheet.create({
   clearBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#e74c3c' },
   receiptBtn: { flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4,paddingVertical:7,backgroundColor:'rgba(26,58,107,0.10)',borderRadius:8,borderWidth:1,borderColor:'rgba(26,58,107,0.20)' },
   receiptBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#1a3a6b' },
+  // Floating cart + bottom sheet (same as CanteenVisitor)
+  floatCart: { position:'absolute', bottom:24, left:0, right:0, alignItems:'center', zIndex:50 },
+  floatCartGrad: { borderRadius:30, paddingVertical:11, paddingHorizontal:32, alignItems:'center' },
+  floatCartTxt: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:'#0d1b3e', fontWeight:'700' },
+  sheetOverlay: { position:'absolute', top:0, left:0, right:0, bottom:0, justifyContent:'flex-end', zIndex:100 },
+  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(1,20,50,0.45)' },
+  sheet: { backgroundColor:'#f0f5f9', borderTopLeftRadius:24, borderTopRightRadius:24, paddingBottom:34, maxHeight:'92%', shadowColor:'#000', shadowOpacity:0.35, shadowRadius:20, shadowOffset:{width:0,height:-4}, elevation:20 },
+  sheetHandle: { width:40, height:4, borderRadius:2, backgroundColor:'rgba(1,31,75,0.20)', alignSelf:'center', marginTop:10, marginBottom:6 },
+  sheetHeader: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal:20, paddingVertical:10, borderBottomWidth:1, borderColor:'rgba(1,31,75,0.10)' },
+  sheetClose: { width:30, height:30, borderRadius:15, backgroundColor:'rgba(1,31,75,0.08)', justifyContent:'center', alignItems:'center' },
   receipt: { backgroundColor:'#fffef8',borderRadius:16,padding:20,width:'100%',maxWidth:360,shadowColor:'#000',shadowOpacity:0.25,shadowRadius:20,elevation:14 },
   receiptTitle: { fontFamily:'NotoSerif_700Bold',fontSize:18,color:'#1a2d4e',textAlign:'center' },
   receiptSub: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.50)',textAlign:'center',marginTop:2 },
