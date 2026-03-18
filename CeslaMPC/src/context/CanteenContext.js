@@ -123,7 +123,14 @@ export const CanteenProvider = ({ children }) => {
   };
 
   const saveAd = async (ad) => {
-    try { await setDoc(doc(db, 'canteen_ads', ad.id), ad); }
+    try {
+      // Strip undefined values before saving to Firestore
+      const clean = Object.fromEntries(
+        Object.entries(ad).filter(([_, v]) => v !== undefined)
+      );
+      await setDoc(doc(db, 'canteen_ads', clean.id), clean);
+      console.log('Ad saved to Firestore:', clean.id, clean.title);
+    }
     catch (e) { console.warn('saveAd error:', e); }
   };
 

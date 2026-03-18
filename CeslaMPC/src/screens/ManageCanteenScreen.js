@@ -983,10 +983,21 @@ const SalesReportScreen = ({ orders, items }) => {
   const[showCredits,setShowCredits]=useState(true);
   const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const years=Array.from({length:30},(_,i)=>2025+i);
-  const parseDate=(timeStr)=>{if(!timeStr)return null;try{const d=new Date(timeStr);return isNaN(d.getTime())?null:d;}catch{return null;}};
+  const parseDate=(timeStr)=>{
+    if(!timeStr)return null;
+    try{
+      if(typeof timeStr==='number')return new Date(timeStr);
+      const d=new Date(timeStr);
+      return isNaN(d.getTime())?null:d;
+    }catch{return null;}
+  };
+  const getDate=(order)=>{
+    if(order.createdAt)return parseDate(order.createdAt);
+    return parseDate(order.time);
+  };
   const fmtDateKey=(d)=>String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'-'+d.getFullYear();
-  const monthOrders=orders.filter(o=>{const d=parseDate(o.time);return d&&d.getFullYear()===year&&d.getMonth()===activeMonth;});
-  const txByDay=React.useMemo(()=>{const map={};monthOrders.forEach(o=>{const d=parseDate(o.time);if(!d)return;const k=fmtDateKey(d);if(!map[k])map[k]={key:k,orders:[]};map[k].orders.push(o);});return Object.values(map).sort((a,b)=>a.key.localeCompare(b.key));},[monthOrders.length,activeMonth,year]);
+  const monthOrders=orders.filter(o=>{const d=getDate(o);return d&&d.getFullYear()===year&&d.getMonth()===activeMonth;});
+  const txByDay=React.useMemo(()=>{const map={};monthOrders.forEach(o=>{const d=getDate(o);if(!d)return;const k=fmtDateKey(d);if(!map[k])map[k]={key:k,orders:[]};map[k].orders.push(o);});return Object.values(map).sort((a,b)=>a.key.localeCompare(b.key));},[monthOrders.length,activeMonth,year]);
   const invByDay=React.useMemo(()=>txByDay.map(g=>{const totalStock=(items||[]).reduce((s,i)=>s+(i.stock||0),0);const totalValue=(items||[]).reduce((s,i)=>s+(i.price||0)*(i.stock||0),0);return{key:g.key,totalStock,totalValue};}),[txByDay,items]);
   const printTxDay=(dayGroup)=>{if(typeof window==='undefined')return;const total=dayGroup.orders.reduce((s,o)=>s+Number(o.total),0);const rows=dayGroup.orders.map((o,i)=>{const its=(o.items||[]).map(it=>(it.item?.name||it.name||'Item')+' x'+it.qty).join(', ');return'<tr><td>'+(i+1)+'</td><td>#'+(o.orderNo||o.id)+'</td><td>'+(o.time||'')+'</td><td>'+its+'</td><td>&#8369;'+Number(o.total).toFixed(2)+'</td></tr>';}).join('');const html='<html><head><title>Transaction Report '+dayGroup.key+'</title><style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style></head><body><h2>Transaction History Report</h2><p><b>Date:</b> '+dayGroup.key+' &nbsp;|&nbsp; <b>Total Orders:</b> '+dayGroup.orders.length+' &nbsp;|&nbsp; <b>Total Earnings:</b> &#8369;'+total.toFixed(2)+'</p><table><thead><tr><th>#</th><th>Order No</th><th>Time</th><th>Items</th><th>Amount</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4">TOTAL</td><td>&#8369;'+total.toFixed(2)+'</td></tr></tfoot></table></body></html>';const w=window.open('','_blank');w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);};
   const printInvDay=(invDay)=>{if(typeof window==='undefined')return;const rows=(items||[]).map(it=>'<tr><td>'+(it.emoji||'')+' '+(it.name||'')+'</td><td>'+(it.cat||'')+'</td><td>'+(it.stock||0)+'</td><td>&#8369;'+(it.price||0).toLocaleString()+'</td><td>&#8369;'+((it.price||0)*(it.stock||0)).toLocaleString()+'</td></tr>').join('');const totalStock=(items||[]).reduce((s,i)=>s+(i.stock||0),0);const totalValue=(items||[]).reduce((s,i)=>s+(i.price||0)*(i.stock||0),0);const html='<html><head><title>Inventory Report '+invDay.key+'</title><style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style></head><body><h2>Inventory Report</h2><p><b>Date:</b> '+invDay.key+' &nbsp;|&nbsp; <b>Total Stock:</b> '+invDay.totalStock+' &nbsp;|&nbsp; <b>Total Value:</b> &#8369;'+invDay.totalValue.toLocaleString()+'</p><table><thead><tr><th>Item</th><th>Category</th><th>Stock</th><th>Price</th><th>Value</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="2">TOTAL</td><td>'+totalStock+'</td><td></td><td>&#8369;'+totalValue.toLocaleString()+'</td></tr></tfoot></table></body></html>';const w=window.open('','_blank');w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);};
@@ -1304,15 +1315,46 @@ export default function ManageCanteenScreen({ navigation }) {
     else{Alert.alert('Delete Item','Are you sure?',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>deleteItem(id)}]);}
   };
 
-  const handleSaveAd=(updated)=>{
-    if(updated.isNew){
-      const newAd={...updated,id:Date.now().toString(),isNew:undefined,bg:['#1a3a6b','#2e5fa3'],emoji:updated.emoji||'📢'};
-      setAds(prev=>[...prev,newAd]);
-    }else{saveAd(updated);}
+  const handleSaveAd = async (updated) => {
+    if (updated.isNew) {
+      // New ad — clean object then save to Firestore
+      const newAd = {
+        id: Date.now().toString(),
+        title: updated.title || '',
+        sub: updated.sub || '',
+        emoji: updated.emoji || '📢',
+        image: updated.image || null,
+        imageUrl: updated.imageUrl || '',
+        bg: updated.bg || ['#1a3a6b', '#2e5fa3'],
+      };
+      await saveAd(newAd);
+    } else {
+      // Existing ad — clean object (remove isNew, undefined fields)
+      const cleanAd = {
+        id: updated.id,
+        title: updated.title || '',
+        sub: updated.sub || '',
+        emoji: updated.emoji || '📢',
+        image: updated.image || null,
+        imageUrl: updated.imageUrl || '',
+        bg: updated.bg || ['#1a3a6b', '#2e5fa3'],
+      };
+      await saveAd(cleanAd);
+    }
     setEditAdModal(false);
   };
 
-  const handleDeleteAd=(id)=>{setAds(prev=>prev.filter(a=>a.id!==id));};
+  const handleDeleteAd = async (id) => {
+    // Delete from Firestore directly
+    try {
+      const { deleteDoc, doc } = await import('firebase/firestore');
+      const { db } = await import('../config/firebase');
+      await deleteDoc(doc(db, 'canteen_ads', id));
+    } catch (e) {
+      // Fallback to context setAds
+      setAds(prev => prev.filter(a => a.id !== id));
+    }
+  };
 
   const pendingCount=orders.filter(o=>o.status==='pending').length;
 

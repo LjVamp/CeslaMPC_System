@@ -270,7 +270,17 @@ const MemberSidebar = ({ active, onNav, onClose, unread, onLogout, onBack, canGo
         <Text style={s.sideNotifTxt}>🔔 {unread} unread notification{unread !== 1 ? 's' : ''}</Text>
       </TouchableOpacity>
     )}
-
+    {/* Logout button at bottom of sidebar */}
+    {onLogout && (
+      <TouchableOpacity
+        onPress={onLogout}
+        style={{ margin: 10, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)' }}
+        activeOpacity={0.8}
+      >
+        <Text style={{ fontSize: 14 }}>↩</Text>
+        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e8c87a' }}>Logout</Text>
+      </TouchableOpacity>
+    )}
   </View>
 );
 
@@ -2065,15 +2075,17 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
             <Text style={{ fontSize: 16 }}>🔔</Text>
             {unread > 0 && <View style={s.bellBadge}><Text style={s.bellBadgeTxt}>{unread > 9 ? '9+' : unread}</Text></View>}
           </TouchableOpacity>
-          <MemberAvatar member={member} size={32} />
-          {isWide && <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)', maxWidth: 120 }} numberOfLines={1}>{member.name}</Text>}
-          {/* Logout — always visible on all screen sizes */}
-          <TouchableOpacity
-            style={[s.logoutBtn, !isWide && { paddingHorizontal: 10, paddingVertical: 6 }]}
-            onPress={onLogout}
-          >
-            <Text style={s.logoutTxt}>↩ Logout</Text>
+          {/* Profile avatar — tappable → goes to My Profile */}
+          <TouchableOpacity onPress={() => switchNav('profile')} activeOpacity={0.8}>
+            <MemberAvatar member={member} size={32} />
           </TouchableOpacity>
+          {isWide && <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)', maxWidth: 120 }} numberOfLines={1}>{member.name}</Text>}
+          {/* Logout — wide screen only; mobile uses sidebar */}
+          {isWide && (
+            <TouchableOpacity style={s.logoutBtn} onPress={onLogout}>
+              <Text style={s.logoutTxt}>↩ Logout</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
       {/* Body */}

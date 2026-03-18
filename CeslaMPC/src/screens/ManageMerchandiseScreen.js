@@ -1679,9 +1679,17 @@ const SalesReportScreen = ({ orders, items }) => {
   const parseDate = (timeStr) => {
     if (!timeStr) return null;
     try {
+      // Handle numeric timestamp (Date.now() stored as createdAt)
+      if (typeof timeStr === 'number') return new Date(timeStr);
       const d = new Date(timeStr);
       return isNaN(d.getTime()) ? null : d;
     } catch { return null; }
+  };
+
+  // Use createdAt (reliable number) first, fallback to time string
+  const getDate = (order) => {
+    if (order.createdAt) return parseDate(order.createdAt);
+    return parseDate(order.time);
   };
 
   const fmtDateKey = (d) =>
@@ -1691,7 +1699,7 @@ const SalesReportScreen = ({ orders, items }) => {
 
   // All done orders for selected year + month
   const monthOrders = orders.filter(o => {
-    const d = parseDate(o.time);
+    const d = getDate(o);
     return d && d.getFullYear() === year && d.getMonth() === activeMonth;
   });
 
@@ -1699,7 +1707,7 @@ const SalesReportScreen = ({ orders, items }) => {
   const txByDay = React.useMemo(() => {
     const map = {};
     monthOrders.forEach(o => {
-      const d = parseDate(o.time);
+      const d = getDate(o);
       if (!d) return;
       const k = fmtDateKey(d);
       if (!map[k]) map[k] = { key: k, orders: [] };
