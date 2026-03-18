@@ -194,11 +194,22 @@ const AdEditModal = ({ visible, ad, onSave, onClose, onDelete }) => {
   const [form, setForm] = useState(ad || {});
   useEffect(() => { if (ad) setForm(ad); }, [ad]);
 
+  const [uploading, setUploading] = useState(false);
+
   const pickImage = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing:true, aspect:[16,5], quality:0.85,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, aspect: [16, 5], quality: 0.6,
+      base64: true, // ← get base64 directly
     });
-    if (!res.canceled) setForm(f=>({...f,image:res.assets[0].uri,imageUrl:''}));
+    if (!res.canceled) {
+      const asset = res.assets[0];
+      // Use base64 string as imageUrl — works across all devices
+      const ext = asset.uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+      const base64url = `data:${mime};base64,${asset.base64}`;
+      setForm(f => ({ ...f, imageUrl: base64url, image: null }));
+    }
   };
 
   return (
@@ -208,8 +219,8 @@ const AdEditModal = ({ visible, ad, onSave, onClose, onDelete }) => {
         <View style={[ms.modalCard,{maxWidth:420,alignSelf:'center',width:'90%'}]}>
           <Text style={ms.modalTitle}>{ad?.isNew ? 'Add New Ad' : 'Edit Ad Banner'}</Text>
           <TouchableOpacity style={[ms.imgPicker,{width:'100%',height:80,borderRadius:12}]} onPress={pickImage}>
-            {form.image
-              ? <Image source={{uri:form.image}} style={{width:'100%',height:80,borderRadius:12}} resizeMode="cover"/>
+            {(form.image || form.imageUrl)
+              ? <Image source={{uri: form.image || form.imageUrl}} style={{width:'100%',height:80,borderRadius:12}} resizeMode="cover"/>
               : <View style={{alignItems:'center',gap:3}}><Text style={{fontSize:28}}>{form.emoji||'📢'}</Text><Text style={ms.imgHint}>Tap to upload banner image</Text></View>
             }
           </TouchableOpacity>
@@ -223,9 +234,9 @@ const AdEditModal = ({ visible, ad, onSave, onClose, onDelete }) => {
                 <Text style={[ms.cancelTxt,{color:'#e74c3c'}]}>Delete</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={{flex:2,borderRadius:10,overflow:'hidden'}} onPress={()=>onSave(form)}>
+            <TouchableOpacity style={{flex:2,borderRadius:10,overflow:'hidden'}} onPress={()=>onSave(form)} disabled={uploading}>
               <LinearGradient colors={['#1a3a6b','#2e5fa3']} start={{x:0,y:0}} end={{x:1,y:0}} style={{paddingVertical:11,alignItems:'center'}}>
-                <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:13,color:'#fff'}}>Save Ad</Text>
+                <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:13,color:'#fff'}}>{uploading ? 'Saving...' : 'Save Ad'}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
