@@ -2083,14 +2083,14 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
           {renderContent()}
         </Animated.View>
       </View>
-      {/* Mobile drawer — full screen height */}
+      {/* Mobile drawer — starts BELOW topbar so it doesn't cover it */}
       {!isWide && drawer && (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}>
+        <View style={{ position: 'absolute', top: topbarHeight, left: 0, right: 0, bottom: 0, zIndex: 999 }}>
           {/* Backdrop */}
           <TouchableOpacity
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.50)' }}
             activeOpacity={1} onPress={() => setDrawer(false)} />
-          {/* Sidebar panel */}
+          {/* Sidebar panel — full height below topbar */}
           <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 220, flexDirection: 'column' }}>
             <MemberSidebar active={nav} onNav={switchNav} onClose={() => setDrawer(false)} unread={unread}
               onLogout={() => { setDrawer(false); onLogout(); }}

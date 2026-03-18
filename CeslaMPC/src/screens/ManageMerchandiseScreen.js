@@ -151,10 +151,10 @@ const TABS = [
 ];
 
 const ORDER_STATUSES = {
-  pending:   { label:'⏳ Pending',         color:'#e67e22', bg:'rgba(230,126,34,0.12)', next:'preparing', nextLabel:'🔥 Start Preparing', nextColor:'#e67e22' },
-  preparing: { label:'🔥 Preparing',       color:'#2980b9', bg:'rgba(41,128,185,0.12)', next:'ready',    nextLabel:'✅ Mark as Ready',    nextColor:'#27ae60' },
-  ready:     { label:'✅ Ready to Pick Up',color:'#27ae60', bg:'rgba(39,174,96,0.12)',  next:'done',     nextLabel:'✓ Mark as Done',      nextColor:'#1a3a6b' },
-  done:      { label:'✓ Done',             color:'rgba(1,31,75,0.35)', bg:'rgba(1,31,75,0.06)', next:null, nextLabel:null, nextColor:null },
+  pending:   { label:'✓ Done', color:'rgba(1,31,75,0.35)', bg:'rgba(1,31,75,0.06)', next:null, nextLabel:null, nextColor:null },
+  preparing: { label:'✓ Done', color:'rgba(1,31,75,0.35)', bg:'rgba(1,31,75,0.06)', next:null, nextLabel:null, nextColor:null },
+  ready:     { label:'✓ Done', color:'rgba(1,31,75,0.35)', bg:'rgba(1,31,75,0.06)', next:null, nextLabel:null, nextColor:null },
+  done:      { label:'✓ Done', color:'rgba(1,31,75,0.35)', bg:'rgba(1,31,75,0.06)', next:null, nextLabel:null, nextColor:null },
 };
 
 const emptyItem = () => ({
@@ -728,7 +728,7 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide }) => 
     const orderNo = Math.floor(1000 + Math.random() * 9000);
     const now = new Date();
     const time = now.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) + '  ' + now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-    const order = { id: Date.now().toString(), orderNo, time, items: cartItems, total, amountPaid: paymentMode === 'cash' ? paid : total, change: paymentMode === 'cash' ? change : 0, payment: paymentMode, status: 'pending', source: 'cashier' };
+    const order = { id: Date.now().toString(), orderNo, time, items: cartItems, total, amountPaid: paymentMode === 'cash' ? paid : total, change: paymentMode === 'cash' ? change : 0, payment: paymentMode, status: 'done', source: 'cashier' };
     await addOrder(order);
     await deductStock(cartItems);
     setLastOrder(order);
@@ -1491,11 +1491,19 @@ const OrderHistoryScreen = ({ orders, onUpdateStatus }) => {
   const parseOrderDate = (timeStr) => {
     if (!timeStr) return null;
     try {
+      // Handle numeric timestamp (Date.now())
+      if (typeof timeStr === 'number') return new Date(timeStr);
       const d = new Date(timeStr);
       if (!isNaN(d.getTime())) return d;
       const d2 = new Date(timeStr.replace(/\s+/g,' ').trim());
       return isNaN(d2.getTime()) ? null : d2;
     } catch { return null; }
+  };
+
+  // Use createdAt (number) as primary date, fallback to time (string)
+  const getOrderDate = (order) => {
+    if (order.createdAt) return new Date(order.createdAt);
+    return parseOrderDate(order.time);
   };
 
   const dateKey = (d) => {
@@ -1518,13 +1526,13 @@ const OrderHistoryScreen = ({ orders, onUpdateStatus }) => {
   const grouped = React.useMemo(() => {
     const map = {};
     [...orders].forEach(o => {
-      const d = parseOrderDate(o.time);
+      const d = getOrderDate(o);
       const k = dateKey(d);
       if (!map[k]) map[k] = { key:k, date:d, orders:[] };
       map[k].orders.push(o);
     });
     Object.values(map).forEach(g => g.orders.sort((a,b)=>{
-      return ((parseOrderDate(b.time)||{getTime:()=>0}).getTime())-((parseOrderDate(a.time)||{getTime:()=>0}).getTime());
+      return (getOrderDate(b)||new Date(0)).getTime() - (getOrderDate(a)||new Date(0)).getTime();
     }));
     return Object.values(map).sort((a,b)=>((b.date&&b.date.getTime()||0))-((a.date&&a.date.getTime()||0)));
   }, [orders]);
@@ -1600,7 +1608,7 @@ const OrderHistoryScreen = ({ orders, onUpdateStatus }) => {
         : <WebScrollView contentContainerStyle={{gap:4, paddingBottom:20}}>
             {displayOrders.map((order, idx) => {
               const timeOnly = (() => {
-                const d = parseOrderDate(order.time);
+                const d = getOrderDate(order);
                 return d ? d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}) : (order.time||'');
               })();
               const itemsSummary = (order.items||[]).map(i=>(i.item&&i.item.name||i.name||'Item') + ' ×' + i.qty).join(' · ');
@@ -1631,22 +1639,7 @@ const OrderHistoryScreen = ({ orders, onUpdateStatus }) => {
                       <Text style={hst.txAmount}>₱{Number(order.total).toFixed(2)}</Text>
                       <Text style={hst.txPay}>{order.payment==='gcash'?'📱 GCash':order.payment==='credit'?'💳 Credit':'💵 Cash'}</Text>
                     </View>
-                    {/* Status update button — only show if not done */}
-                    {st.next && onUpdateStatus && (
-                      <TouchableOpacity
-                        onPress={() => onUpdateStatus(order.id, st.next)}
-                        style={{
-                          marginTop: 6, paddingVertical: 7, paddingHorizontal: 12,
-                          borderRadius: 8, alignItems: 'center',
-                          backgroundColor: st.nextColor,
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#fff' }}>
-                          {st.nextLabel}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
+
                   </View>
                 </View>
               );
@@ -2112,7 +2105,13 @@ const MerchandiseSalesPanel = ({ orders, items }) => {
   const todayKey = now.toDateString();
 
   const todayOrders = orders.filter(o => {
-    try { return new Date(o.time || o.createdAt).toDateString() === todayKey; }
+    try {
+      // createdAt is Date.now() number — most reliable
+      if (o.createdAt) return new Date(o.createdAt).toDateString() === todayKey;
+      // fallback to time string
+      if (o.time) return new Date(o.time).toDateString() === todayKey;
+      return false;
+    }
     catch { return false; }
   });
 
@@ -2124,7 +2123,11 @@ const MerchandiseSalesPanel = ({ orders, items }) => {
 
   // ── Recent orders (last 8) ────────────────────────────────────────────────
   const recentOrders = [...orders]
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .sort((a, b) => {
+      const ta = b.createdAt || new Date(b.time || 0).getTime() || 0;
+      const tb = a.createdAt || new Date(a.time || 0).getTime() || 0;
+      return ta - tb;
+    })
     .slice(0, 8);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -2173,7 +2176,8 @@ const MerchandiseSalesPanel = ({ orders, items }) => {
           : recentOrders.map(order => {
               const timeStr = (() => {
                 try {
-                  const d = new Date(order.time || order.createdAt);
+                  const ts = order.createdAt || order.time;
+                  const d = new Date(ts);
                   return isNaN(d) ? '' : d.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit' });
                 } catch { return ''; }
               })();

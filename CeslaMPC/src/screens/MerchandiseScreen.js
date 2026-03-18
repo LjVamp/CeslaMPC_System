@@ -768,7 +768,7 @@ export default function MerchandiseScreen({ navigation, route }) {
       // Save order to Firestore → triggers real-time update on ManageMerchandiseScreen
       await addOrder({
         ...orderData,
-        status: 'pending',
+        status: 'done',
         source: 'visitor', // so admin knows this came from the order screen
       });
       // Deduct stock in Firestore
