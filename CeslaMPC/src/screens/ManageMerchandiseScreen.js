@@ -679,6 +679,8 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide }) => 
   const [paymentMode, setPaymentMode] = useState('cash');
   // Size picker state
   const [sizePickerItem, setSizePickerItem] = useState(null);
+  // Mobile: cart panel collapsed state
+  const [cartCollapsed, setCartCollapsed] = useState(true);
 
   const needsSize = (item) => Array.isArray(item.sizes) && item.sizes.length > 0;
 
@@ -782,9 +784,16 @@ const CashierScreen = ({ items, categories, addOrder, deductStock, isWide }) => 
         </WebScrollView>
       </View>
 
-      {/* Cart side */}
-      <View style={[cs.cartPanel, !isWide && { width: '100%', borderLeftWidth: 0, borderTopWidth: 1, flex: 0, maxHeight: 280 }]}>
-        <Text style={cs.cartTitle}>🛒 CART</Text>
+      {/* Cart side - collapsible on mobile */}
+      <View style={[cs.cartPanel, !isWide && { width: '100%', borderLeftWidth: 0, borderTopWidth: 1, flex: 0, maxHeight: cartCollapsed ? 42 : 300 }]}>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 6, borderBottomWidth: cartCollapsed ? 0 : 1, borderColor: 'rgba(1,31,75,0.10)' }}
+          onPress={!isWide ? () => setCartCollapsed(v => !v) : undefined}
+          activeOpacity={isWide ? 1 : 0.8}
+        >
+          <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
+          {!isWide && <MaterialIcons name={cartCollapsed ? 'expand-more' : 'expand-less'} size={18} color="rgba(1,31,75,0.50)" />}
+        </TouchableOpacity>
         <View style={cs.cartItemsBox}>
           {cartItems.length === 0
             ? <Text style={cs.cartEmpty}>No items added yet</Text>
@@ -2355,9 +2364,7 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
                   style={[styles.tabBtn, activeTab === tab.key && styles.tabBtnActive, isSmall && { paddingHorizontal: 8, paddingVertical: 7 }]}
                   onPress={() => setActiveTab(tab.key)} activeOpacity={0.80}>
                   <MaterialIcons name={tab.icon} size={isSmall ? 12 : 13} color={activeTab === tab.key ? '#1a3a6b' : 'rgba(255,255,255,0.80)'} />
-                  {(!isSmall || activeTab === tab.key) && (
-                    <Text style={[styles.tabBtnTxt, activeTab === tab.key && styles.tabBtnTxtActive, isSmall && { fontSize: 10 }]}>{tab.label}</Text>
-                  )}
+                  <Text style={[styles.tabBtnTxt, activeTab === tab.key && styles.tabBtnTxtActive, isSmall && { fontSize: 9 }]}>{tab.label}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>

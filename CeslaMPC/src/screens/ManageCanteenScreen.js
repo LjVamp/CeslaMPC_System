@@ -257,13 +257,14 @@ const ms = StyleSheet.create({
 });
 
 // ─── CASHIER SCREEN ───────────────────────────────────────────────────────────
-const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
+const CashierScreen = ({ items, categories, addOrder, deductStock, isWide: csIsWide }) => {
   const [activeCat, setActiveCat]  = useState('All');
   const [search,    setSearch]     = useState('');
   const [cart,      setCart]       = useState({});
   const [amountPaid,setAmountPaid] = useState('');
   const [receiptVisible,setReceiptVisible] = useState(false);
   const [lastOrder, setLastOrder]  = useState(null);
+  const [cartCollapsed, setCartCollapsed] = useState(true);
 
   const filtered = items.filter(i => {
     if (search.trim()) return i.name.toLowerCase().includes(search.toLowerCase());
@@ -338,9 +339,16 @@ const CashierScreen = ({ items, categories, addOrder, deductStock }) => {
         </WebScrollView>
       </View>
 
-      {/* Cart side */}
-      <View style={cs.cartPanel}>
-        <Text style={cs.cartTitle}>🛒 CART</Text>
+      {/* Cart side - collapsible on mobile */}
+      <View style={[cs.cartPanel, !csIsWide && { width: '100%', borderLeftWidth: 0, borderTopWidth: 1, flex: 0, maxHeight: cartCollapsed ? 42 : 300 }]}>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 6, borderBottomWidth: cartCollapsed ? 0 : 1, borderColor: 'rgba(1,31,75,0.10)' }}
+          onPress={!csIsWide ? () => setCartCollapsed(v => !v) : undefined}
+          activeOpacity={csIsWide ? 1 : 0.8}
+        >
+          <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
+          {!csIsWide && <MaterialIcons name={cartCollapsed ? 'expand-more' : 'expand-less'} size={18} color="rgba(1,31,75,0.50)" />}
+        </TouchableOpacity>
         <View style={cs.cartItemsBox}>
           {cartItems.length===0
             ? <Text style={cs.cartEmpty}>No items added yet</Text>
@@ -1101,7 +1109,9 @@ const lp = StyleSheet.create({
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 export default function ManageCanteenScreen({ navigation }) {
   const { width } = useWindowDimensions();
-  const isSmall = width < 400;
+  const isSmall  = width < 400;
+  const isTablet = width >= 600 && width < 900;
+  const isWide   = width >= 900;
 
   const {
     items, ads, categories, orders,
@@ -1122,6 +1132,7 @@ export default function ManageCanteenScreen({ navigation }) {
   const [editAdModal,    setEditAdModal]    = useState(false);
   const [invMaxQty,      setInvMaxQty]      = useState({});
   const [adCurrent,      setAdCurrent]      = useState(0);
+  const [salesCollapsed, setSalesCollapsed] = useState(true); // collapsed by default on mobile
 
   const hdrFade    = useRef(new Animated.Value(0)).current;
   const hdrTrans   = useRef(new Animated.Value(-16)).current;
@@ -1141,7 +1152,7 @@ export default function ManageCanteenScreen({ navigation }) {
     Animated.timing(bodyFade,{toValue:1,duration:500,delay:150,useNativeDriver:true}).start();
   },[]);
 
-  const bannerW = Math.min(width*0.60, 700);
+  const bannerW = isWide ? Math.min(width * 0.60, 700) : width - 16;
 
   useEffect(()=>{
     if(!ads.length)return;
@@ -1194,7 +1205,7 @@ export default function ManageCanteenScreen({ navigation }) {
   if(!fontsLoaded)return null;
 
   const renderContent=()=>{
-    if(activeTab==='cashier')   return <CashierScreen items={items} categories={categories} addOrder={addOrder} deductStock={deductStock}/>;
+    if(activeTab==='cashier')   return <CashierScreen items={items} categories={categories} addOrder={addOrder} deductStock={deductStock} isWide={isWide}/>;
     if(activeTab==='menu')      return <ManageMenuScreen items={items} categories={categories} filtered={filtered} search={search} activeCategory={activeCategory} onSearch={handleSearch} onCategoryChange={setActiveCategory} onAddItem={openAddItem} onEditItem={openEditItem} onDeleteItem={handleDeleteItem}/>;
     if(activeTab==='inventory') return <InventoryScreen items={items} maxQtyMap={invMaxQty} onAddItem={openAddItem} onEditItem={openEditItem}/>;
     if(activeTab==='history')   return <OrderHistoryScreen orders={orders}/>;
@@ -1232,10 +1243,48 @@ export default function ManageCanteenScreen({ navigation }) {
       </Animated.View>
 
       <Animated.View style={[styles.body,{opacity:bodyFade,flex:1,minHeight:0}]}>
-        <View style={styles.leftPanel}>
-          <OrderingMonitoring orders={orders} onUpdateStatus={updateOrderStatus}/>
-        </View>
-        <View style={styles.rightPanel}>
+        <View style={{ flex:1, flexDirection: isWide ? 'row' : 'column', minHeight:0, overflow:'hidden' }}>
+
+        {/* LEFT PANEL — Order Monitoring */}
+        {isWide ? (
+          <View style={styles.leftPanel}>
+            <OrderingMonitoring orders={orders} onUpdateStatus={updateOrderStatus}/>
+          </View>
+        ) : (
+          /* Mobile/Tablet: collapsible ordering overview */
+          <View style={[
+            styles.leftPanelMobile,
+            salesCollapsed && { height: 36 },
+            isTablet && !salesCollapsed && { height: 170 },
+          ]}>
+            {/* Collapse toggle header */}
+            <TouchableOpacity
+              onPress={() => setSalesCollapsed(v => !v)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                paddingHorizontal: 12, paddingVertical: 6,
+                backgroundColor: 'rgba(26,58,107,0.15)',
+                borderBottomWidth: salesCollapsed ? 0 : 1,
+                borderColor: 'rgba(255,255,255,0.30)',
+              }}
+              activeOpacity={0.80}
+            >
+              <View style={{ flexDirection:'row', alignItems:'center', gap:6 }}>
+                <View style={{ width:6, height:6, borderRadius:3, backgroundColor:'#e74c3c' }} />
+                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#1a2d4e', letterSpacing:1.2 }}>ORDERING MONITORING</Text>
+              </View>
+              <MaterialIcons name={salesCollapsed ? 'expand-more' : 'expand-less'} size={18} color="rgba(26,58,107,0.60)" />
+            </TouchableOpacity>
+            {!salesCollapsed && (
+              <View style={{ flex:1, minHeight:0, overflow:'hidden' }}>
+                <OrderingMonitoring orders={orders} onUpdateStatus={updateOrderStatus}/>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* RIGHT PANEL */}
+        <View style={isWide ? styles.rightPanel : styles.rightPanelMobile}>
           <View style={styles.adWrapper}>
             <ScrollView ref={adScrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
               onMomentumScrollEnd={e=>setAdCurrent(Math.round(e.nativeEvent.contentOffset.x/bannerW))}
@@ -1281,6 +1330,7 @@ export default function ManageCanteenScreen({ navigation }) {
 
           <View style={styles.contentArea}>{renderContent()}</View>
         </View>
+        </View>
       </Animated.View>
 
       <ItemEditModal visible={editItemModal} item={editItem} categories={categories} onSave={handleSaveItem} onClose={()=>setEditItemModal(false)}/>
@@ -1302,10 +1352,12 @@ const styles = StyleSheet.create({
   iconBtn: { width:36,height:36,borderRadius:18,backgroundColor:'rgba(255,255,255,0.15)',borderWidth:1,borderColor:'rgba(255,255,255,0.30)',justifyContent:'center',alignItems:'center',flexShrink:0 },
   notifBadge: { position:'absolute',top:4,right:4,backgroundColor:'#e74c3c',borderRadius:6,minWidth:14,height:14,alignItems:'center',justifyContent:'center',paddingHorizontal:2 },
   notifBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff' },
-  body: { flex:1,flexDirection:'row',marginTop:Platform.OS==='web'?10:6,marginBottom:16,minHeight:0,overflow:'hidden',alignItems:'stretch' },
+  body: { flex:1, marginTop:Platform.OS==='web'?10:6, marginBottom:16, minHeight:0, overflow:'hidden' },
+  leftPanelMobile: { height: 220, flexShrink: 0, backgroundColor:'rgba(255,255,255,0.22)', borderRadius:12, marginHorizontal:8, marginTop:4, marginBottom:0, borderWidth:1, borderColor:'rgba(255,255,255,0.40)', overflow:'hidden' },
+  rightPanelMobile: { flex:1, minWidth:0, minHeight:0, marginHorizontal:8, marginTop:6, marginBottom:8, flexDirection:'column', overflow:'hidden' },
   leftPanel: { flex:1.4,flexShrink:0,backgroundColor:'rgba(255,255,255,0.22)',borderRadius:16,marginLeft:10,marginRight:0,borderWidth:1,borderColor:'rgba(255,255,255,0.40)',overflow:'hidden',minHeight:0 },
   rightPanel: { flex:3,minWidth:0,minHeight:0,marginHorizontal:10,flexDirection:'column',overflow:'hidden' },
-  adWrapper: { height:100,flexShrink:0,borderRadius:16,overflow:'hidden',backgroundColor:'rgba(26,58,107,0.15)' },
+  adWrapper: { height:100,flexShrink:0,borderRadius:16,overflow:'hidden',backgroundColor:'rgba(26,58,107,0.15)',marginBottom:0 },
   adSlide: { height:100,flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingBottom:10,gap:12,overflow:'hidden' },
   adBgImg: { position:'absolute',top:0,left:0,right:0,bottom:0,borderRadius:16 },
   adEmoji: { fontSize:40,flexShrink:0 },

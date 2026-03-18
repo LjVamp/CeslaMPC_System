@@ -311,23 +311,48 @@ const SidebarItem = ({ group, active, onNav, onClose, badge }) => {
   );
 };
 
-const Sidebar = ({ active, onNav, onClose, pendingCount, notifsCount }) => (
-  <View style={a.sidebar}>
+const Sidebar = ({ active, onNav, onClose, pendingCount, notifsCount, onLogout, onBack, canGoBack }) => (
+  <View style={[a.sidebar, { flex: 1 }]}>
     <View style={a.sidebarBrand}>
       <View style={a.sidebarLogo}><Text style={a.sidebarLogoTxt}>CS</Text></View>
-      <View>
+      <View style={{ flex: 1 }}>
         <Text style={a.sidebarName}>CESLA MPC</Text>
         <Text style={a.sidebarRole}>Admin Portal</Text>
       </View>
+      {onClose && (
+        <TouchableOpacity onPress={onClose}
+          style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: '#fff', fontSize: 14, lineHeight: 18 }}>✕</Text>
+        </TouchableOpacity>
+      )}
     </View>
     <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 14, marginBottom: 6 }} />
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }} style={{ flex: 1 }}>
       {NAV.map(g => (
         <SidebarItem key={g.key} group={g} active={active} onNav={onNav} onClose={onClose}
           badge={g.key === 'members_grp' ? pendingCount : g.key === 'system_grp' ? notifsCount : 0}
         />
       ))}
     </ScrollView>
+    {/* Bottom actions: Back + Logout */}
+    <View style={{ borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 10, gap: 6 }}>
+      {canGoBack && (
+        <TouchableOpacity onPress={onBack}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.10)' }}
+          activeOpacity={0.8}>
+          <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.70)' }}>←</Text>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: 'rgba(255,255,255,0.70)' }}>Back</Text>
+        </TouchableOpacity>
+      )}
+      {onLogout && (
+        <TouchableOpacity onPress={onLogout}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)' }}
+          activeOpacity={0.8}>
+          <Text style={{ fontSize: 13 }}>↩</Text>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold }}>Logout</Text>
+        </TouchableOpacity>
+      )}
+    </View>
   </View>
 );
 
@@ -1928,6 +1953,7 @@ const SettingsView = () => {
 const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
   const { height } = useWindowDimensions();
   const [activeNav, setActiveNav] = useState('overview');
+  const [navHistory, setNavHistory] = useState(['overview']); // track nav history for back button
   const [drawer,    setDrawer]    = useState(false);
   const fadeAnim  = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -1946,7 +1972,26 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
       Animated.timing(fadeAnim,  { toValue: 0,  duration: 130, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 10, duration: 130, useNativeDriver: true }),
     ]).start(() => {
+      setNavHistory(prev => [...prev, key]);
       setActiveNav(key);
+      Animated.parallel([
+        Animated.timing(fadeAnim,  { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      ]).start();
+    });
+  };
+
+  // Go back in nav history
+  const goBack = () => {
+    if (navHistory.length <= 1) return;
+    const newHistory = navHistory.slice(0, -1);
+    const prevNav = newHistory[newHistory.length - 1];
+    Animated.parallel([
+      Animated.timing(fadeAnim,  { toValue: 0,  duration: 130, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 10, duration: 130, useNativeDriver: true }),
+    ]).start(() => {
+      setNavHistory(newHistory);
+      setActiveNav(prevNav);
       Animated.parallel([
         Animated.timing(fadeAnim,  { toValue: 1, duration: 220, useNativeDriver: true }),
         Animated.timing(slideAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
@@ -2017,22 +2062,28 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
       <View style={{ flex: 1, flexDirection: 'row' }}>
         {isWide && (
           <Sidebar active={activeNav} onNav={switchNav}
-            pendingCount={pendingCount} notifsCount={unreadNotifs} />
+            pendingCount={pendingCount} notifsCount={unreadNotifs}
+            onLogout={onLogout} onBack={goBack} canGoBack={navHistory.length > 1} />
         )}
         <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
           {renderContent()}
         </Animated.View>
       </View>
 
-      {/* ── MOBILE DRAWER ── */}
+      {/* ── MOBILE DRAWER — full screen height ── */}
       {!isWide && drawer && (
-        <TouchableOpacity style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 20 }}
-          activeOpacity={1} onPress={() => setDrawer(false)}>
-          <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 185, zIndex: 21 }}>
+        <View style={{ ...StyleSheet.absoluteFillObject, zIndex: 20, flexDirection: 'row' }}>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' }}
+            activeOpacity={1} onPress={() => setDrawer(false)} />
+          <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 220, zIndex: 21, flexDirection: 'column' }}>
             <Sidebar active={activeNav} onNav={switchNav} onClose={() => setDrawer(false)}
-              pendingCount={pendingCount} notifsCount={unreadNotifs} />
+              pendingCount={pendingCount} notifsCount={unreadNotifs}
+              onLogout={() => { setDrawer(false); onLogout(); }}
+              onBack={() => { goBack(); setDrawer(false); }}
+              canGoBack={navHistory.length > 1} />
           </View>
-        </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -2097,7 +2148,7 @@ const a = StyleSheet.create({
   logoutTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold },
 
   // ── Sidebar ──
-  sidebar:       { width: 178, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)' },
+  sidebar:       { width: 178, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)', flexDirection: 'column' },
   sidebarBrand:  { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, paddingTop: 18 },
   sidebarLogo:   { width: 30, height: 30, borderRadius: 7, backgroundColor: C.gold, justifyContent: 'center', alignItems: 'center' },
   sidebarLogoTxt:{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35' },

@@ -1,2434 +1,1380 @@
-// src/screens/CoopScreen.js
-// CESLA MPC — Employee Cooperative Portal (ALL-IN-ONE)
-// Login → Register → Member Dashboard — Firebase Firestore
-// view: 'login' | 'register' | 'success' | 'dashboard'
-// After login, member stays in this screen — no navigation needed
-// ─────────────────────────────────────────────────────────────────────────────
+// src/screens/ManageCanteenScreen.js
+// CESLA MPC — Manage Canteen (Admin)
+// Firebase Firestore connected — real-time sync
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Animated, StatusBar, useWindowDimensions, Platform,
-  TextInput, ActivityIndicator, KeyboardAvoidingView, Image,
+  View, Text, StyleSheet, TouchableOpacity, StatusBar, Platform,
+  ScrollView, TextInput, Modal, Alert, Animated, Image,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
-import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/noto-serif';
+import { NotoSerif_700Bold } from '@expo-google-fonts/noto-serif';
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
-import * as Clipboard from 'expo-clipboard';
+import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
+import { useCanteen } from '../context/CanteenContext';
+import { useFocusEffect } from '@react-navigation/native';
 
-// ─── Firebase ────────────────────────────────────────────────────────────────
-import {
-  collection, query, where, getDocs, addDoc, doc,
-  updateDoc, serverTimestamp, orderBy, limit, onSnapshot,
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
-
-// ═════════════════════════════════════════════════════════════════════════════
-// PALETTE — #98bad5 light steel-blue background
-// ═════════════════════════════════════════════════════════════════════════════
-const C = {
-  navy:      '#0f1e35', navyMid:  '#1a2d4e', navyDeep: '#243554',
-  gold:      '#c9a84c', goldLt:   '#e8c87a',
-  green:     '#1a8a4a', greenLt:  '#25a85a',
-  red:       '#c0392b', redLt:    '#e74c3c',
-  orange:    '#c47d0e', orangeLt: '#e8960f',
-  blue:      '#2563b0', blueLt:   '#3b7dd8',
-  surface:   'rgba(255,255,255,0.50)',
-  border:    'rgba(15,30,53,0.14)',
-  text:      '#0f1e35',
-  textSec:   'rgba(15,30,53,0.65)',
-  textMuted: 'rgba(15,30,53,0.42)',
-};
-
-// ── Responsive hook — use anywhere ──────────────────────────────────────────
-const useRwd = () => {
-  const { width, height } = useWindowDimensions();
-  const isMobile = width < 600;
-  return {
-    width, height,
-    isWide:   width >= 768,
-    isMobile,
-    isSmall:  width < 400,
-    // 'column' on mobile, 'row' on wide — use for side-by-side field rows
-    rowDir:   isMobile ? 'column' : 'row',
-    // pass to a View child instead of `half` prop when in a row
-    halfStyle: isMobile ? { width: '100%' } : { flex: 1 },
-    col: (wide, mobile) => width >= 600 ? wide : mobile,
-  };
-};
-const fmtCur  = v => '₱' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 });
-const fmtDate = ts => { if (!ts) return '—'; const d = ts?.toDate?.() || new Date(ts); return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }); };
-const fmtTime = ts => { if (!ts) return '—'; const d = ts?.toDate?.() || new Date(ts); return d.toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); };
-const mkInit  = name => (name || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
-
-// Photo-aware avatar — shows profile picture if set, else initials circle
-const MemberAvatar = ({ member, size = 52, style }) => {
-  const r = size / 2;
-  if (member?.photoURL) {
-    return <Image source={{ uri: member.photoURL }} style={[{ width: size, height: size, borderRadius: r, borderWidth: 2, borderColor: C.gold }, style]} />;
+// ─── WEB SCROLL VIEW ──────────────────────────────────────────────────────────
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const styleEl = document.createElement('style');
+  styleEl.textContent = `.cesla-sub-scroll::-webkit-scrollbar{width:7px;display:block!important}.cesla-sub-scroll::-webkit-scrollbar-thumb{background:rgba(1,31,75,0.40);border-radius:4px}.cesla-sub-scroll::-webkit-scrollbar-thumb:hover{background:rgba(1,31,75,0.65)}.cesla-sub-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,0.20);border-radius:4px}.cesla-sub-scroll{scrollbar-width:thin;scrollbar-color:rgba(1,31,75,0.40) rgba(255,255,255,0.20)}`;
+  document.head.appendChild(styleEl);
+}
+const WebScrollView = ({ children, style, contentContainerStyle, ...rest }) => {
+  if (Platform.OS !== 'web') {
+    return <ScrollView style={style} contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator {...rest}>{children}</ScrollView>;
   }
+  const flat = StyleSheet.flatten(contentContainerStyle) || {};
+  const pH = flat.paddingHorizontal !== undefined ? flat.paddingHorizontal : (flat.padding !== undefined ? flat.padding : undefined);
   return (
-    <View style={[{ width: size, height: size, borderRadius: r, backgroundColor: 'rgba(201,168,76,0.25)', borderWidth: 2, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }, style]}>
-      <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: size * 0.34, color: C.gold }}>{mkInit(member?.name)}</Text>
+    <View style={[{ flex:1, minHeight:0, position:'relative', overflow:'hidden' }, style]}>
+      <div className="cesla-sub-scroll" style={{
+        position:'absolute', top:0, left:0, right:0, bottom:0,
+        overflowY:'auto', overflowX:'hidden', display:'flex', flexDirection:'column',
+      }}>
+        <div style={{
+          display:'flex', flexDirection:'column', flexShrink:0,
+          width:'100%', boxSizing:'border-box',
+          paddingTop:    flat.paddingTop    !== undefined ? `${flat.paddingTop}px`    : (flat.padding !== undefined ? `${flat.padding}px` : undefined),
+          paddingBottom: flat.paddingBottom !== undefined ? `${flat.paddingBottom}px` : (flat.padding !== undefined ? `${flat.padding}px` : '12px'),
+          paddingLeft:   pH !== undefined ? `${pH}px` : undefined,
+          paddingRight:  pH !== undefined ? `${pH}px` : undefined,
+          gap:           flat.gap !== undefined ? `${flat.gap}px` : undefined,
+        }}>
+          {children}
+        </div>
+      </div>
     </View>
   );
 };
 
-// ═════════════════════════════════════════════════════════════════════════════
-// FIRESTORE HELPERS
-// ═════════════════════════════════════════════════════════════════════════════
-const hashPw = pw => { let h = 0; for (let i = 0; i < pw.length; i++) { h = (h << 5) - h + pw.charCodeAt(i); h |= 0; } return 'h_' + Math.abs(h).toString(36) + pw.length; };
-
-const generateNextUserId = async () => {
-  const year = new Date().getFullYear();
-  const prefix = `CESLA-${year}-`;
-  const snap = await getDocs(query(collection(db, 'members'), where('userId', '>=', prefix), where('userId', '<', `CESLA-${year + 1}-`), orderBy('userId', 'desc'), limit(1)));
-  if (snap.empty) return `${prefix}00001`;
-  return `${prefix}${String(parseInt(snap.docs[0].data().userId.replace(prefix, ''), 10) + 1).padStart(5, '0')}`;
-};
-
-const registerMemberFS = async ({ lastName, firstName, middleName, password }) => {
-  const userId = await generateNextUserId();
-  const mid  = middleName?.trim() ? ' ' + middleName.trim()[0].toUpperCase() + '.' : '';
-  const name = `${lastName.trim()}, ${firstName.trim()}${mid}`;
-  const ref  = await addDoc(collection(db, 'members'), {
-    userId, name, lastName: lastName.trim(), firstName: firstName.trim(), middleName: middleName?.trim() || '',
-    passwordHash: hashPw(password), role: 'member', status: 'Pending',
-    shares: 0, savings: 0, loan: 0, loanBalance: 0, creditBalance: 0,
-    contact: '', email: '', address: '', appForm: {},
-    createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-    approvedAt: null, lastLogin: null, overdue: false, daysOverdue: 0,
-  });
-  await addDoc(collection(db, 'adminNotifications'), {
-    type: 'registration', icon: '🆕', title: 'New Member Registration',
-    message: `${name} (${userId}) registered and is awaiting approval.`,
-    memberId: ref.id, memberUserId: userId, createdAt: serverTimestamp(), read: false,
-  });
-  return { uid: ref.id, userId, name };
-};
-
-const loginByUserIdFS = async (userId, password) => {
-  const snap = await getDocs(query(collection(db, 'members'), where('userId', '==', userId.trim())));
-  if (snap.empty) throw new Error('User ID not found. Please check your ID.');
-  const d = snap.docs[0];
-  const m = { uid: d.id, ...d.data() };
-  if (hashPw(password) !== m.passwordHash) throw new Error('Incorrect password. Please try again.');
-  if (m.status === 'Pending')  throw new Error('Your account is pending admin approval. Please wait.');
-  if (m.status === 'Rejected') throw new Error('Your registration was rejected. Please contact admin.');
-  if (m.status === 'Inactive') throw new Error('Your account is inactive. Please contact admin.');
-  await updateDoc(doc(db, 'members', d.id), { lastLogin: serverTimestamp() });
-  const { passwordHash, ...safe } = m;
-  return safe;
-};
-
-// ═════════════════════════════════════════════════════════════════════════════
-// SHARED UI
-// ═════════════════════════════════════════════════════════════════════════════
-const AppBg = () => (
-  <>
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#98bad5' }]} />
-    <LinearGradient colors={['rgba(198,220,235,0.85)', 'rgba(152,186,213,0.40)', 'rgba(80,110,150,0.0)']} locations={[0, 0.45, 1]} start={{ x: 0.5, y: 0.1 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFillObject} />
-    <LinearGradient colors={['rgba(50,80,120,0.45)', 'rgba(50,80,120,0.0)', 'rgba(50,80,120,0.45)']} locations={[0, 0.5, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
-    <LinearGradient colors={['rgba(50,80,120,0.0)', 'rgba(60,90,130,0.35)']} locations={[0.4, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFillObject} />
-  </>
-);
-
-const Spinner = ({ msg = 'Loading...' }) => (
-  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 }}>
-    <ActivityIndicator size="large" color={C.gold} />
-    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec }}>{msg}</Text>
-  </View>
-);
-
-const GCard = ({ style, children }) => (
-  <View style={[{ backgroundColor: C.surface, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.78)', padding: 14, marginBottom: 12, shadowColor: '#1a2d4e', shadowOpacity: 0.07, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }, style]}>
-    {children}
-  </View>
-);
-
-// Field for auth screens
-const Field = ({ label, value, onChangeText, placeholder, secureEntry, showToggle, onToggle, error, autoCapitalize, keyboardType }) => (
-  <View style={s.fieldGroup}>
-    <Text style={s.fieldLabel}>{label}</Text>
-    <View style={[s.fieldRow, error && s.fieldRowErr]}>
-      <TextInput style={[s.fieldInput, { flex: 1 }]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(15,30,53,0.35)" secureTextEntry={!!secureEntry} autoCapitalize={autoCapitalize || 'none'} autoCorrect={false} keyboardType={keyboardType || 'default'} />
-      {showToggle && <TouchableOpacity onPress={onToggle} style={{ padding: 6 }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}><MaterialIcons name={!secureEntry ? 'visibility-off' : 'visibility'} size={20} color="rgba(15,30,53,0.40)" /></TouchableOpacity>}
-    </View>
-    {error ? <Text style={s.fieldErr}>{error}</Text> : null}
-  </View>
-);
-
-const FieldReg = ({ label, value, onChangeText, placeholder, secureEntry, showToggle, onToggle, error, autoCapitalize }) => (
-  <View style={[s.fieldGroup, { flex: 1, minWidth: 0 }]}>
-    <Text style={s.fieldLabel} numberOfLines={1}>{label}</Text>
-    <View style={[s.fieldRow, error && s.fieldRowErr]}>
-      <TextInput style={[s.fieldInput, { flex: 1, minWidth: 0 }]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(15,30,53,0.35)" secureTextEntry={!!secureEntry} autoCapitalize={autoCapitalize || 'none'} autoCorrect={false} />
-      {showToggle && <TouchableOpacity onPress={onToggle} style={{ padding: 3 }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}><MaterialIcons name={secureEntry ? 'visibility' : 'visibility-off'} size={16} color="rgba(15,30,53,0.40)" /></TouchableOpacity>}
-    </View>
-    {error ? <Text style={s.fieldErr}>{error}</Text> : null}
-  </View>
-);
-
-// Field for dashboard forms
-const DField = ({ label, value, onChangeText, placeholder, secureEntry, showToggle, onToggle, editable = true, keyboardType }) => (
-  <View style={{ marginBottom: 11 }}>
-    <Text style={s.fieldLabel}>{label}</Text>
-    <View style={[s.fieldRow, !editable && { opacity: 0.55 }]}>
-      <TextInput style={[s.fieldInput, { flex: 1 }]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.textMuted} secureTextEntry={!!secureEntry} editable={editable} keyboardType={keyboardType || 'default'} autoCapitalize="none" autoCorrect={false} />
-      {showToggle && <TouchableOpacity onPress={onToggle} style={{ padding: 8 }}><Text style={{ fontSize: 16 }}>{secureEntry ? '👁' : '🙈'}</Text></TouchableOpacity>}
-    </View>
-  </View>
-);
-
-const SaveBtn = ({ onPress, loading, done, label, doneLabel }) => (
-  <TouchableOpacity style={[s.saveBtn, done && { backgroundColor: C.green }]} onPress={onPress} disabled={loading} activeOpacity={0.85}>
-    {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtnTxt}>{done ? `✓ ${doneLabel || 'Saved!'}` : label}</Text>}
-  </TouchableOpacity>
-);
-
-// ═════════════════════════════════════════════════════════════════════════════
-// SIDEBAR
-// ═════════════════════════════════════════════════════════════════════════════
-const NAV = [
-  { key: 'overview',     label: 'Overview',         icon: '⊞', single: true },
-  { key: 'acct_grp',     label: 'My Account',       icon: '👤', children: [
-    { key: 'profile',    label: 'My Profile',       icon: '👤' },
-    { key: 'appform',    label: 'Application Form', icon: '📋' },
-  ]},
-  { key: 'fin_grp',      label: 'Savings & Shares', icon: '💰', children: [
-    { key: 'savings',    label: 'Savings',          icon: '💰' },
-    { key: 'sharecap',   label: 'Share Capital',    icon: '📊' },
-    { key: 'timedeposit',label: 'Time Deposit',     icon: '🏦' },
-  ]},
-  { key: 'loans_grp',    label: 'Loans',            icon: '💳', children: [
-    { key: 'applyloan',  label: 'Apply for Loan',   icon: '📝' },
-    { key: 'myloans',    label: 'My Loans',         icon: '💳' },
-    { key: 'guidelines', label: 'Guidelines',       icon: '📖' },
-  ]},
-  { key: 'settings_grp', label: 'Settings',         icon: '⚙️', children: [
-    { key: 'editprofile',label: 'Edit Profile',     icon: '✏️' },
-    { key: 'changepw',   label: 'Change Password',  icon: '🔑' },
-    { key: 'notifs',     label: 'Notifications',    icon: '🔔' },
-  ]},
-];
-
-const SidebarGroup = ({ group, active, onNav, onClose }) => {
-  const isActive = group.single ? active === group.key : !!(group.children?.find(c => c.key === active));
-  const [open, setOpen] = useState(isActive && !group.single);
-  const anim    = useRef(new Animated.Value(isActive && !group.single ? 1 : 0)).current;
-  const toggle  = () => { if (group.single) { onNav(group.key); onClose?.(); return; } const next = !open; setOpen(next); Animated.timing(anim, { toValue: next ? 1 : 0, duration: 200, useNativeDriver: false }).start(); };
-  const maxH    = anim.interpolate({ inputRange: [0, 1], outputRange: [0, (group.children?.length || 0) * 42] });
-  const chevRot = anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '90deg'] });
-  return (
-    <View style={{ marginHorizontal: 6, marginBottom: 1 }}>
-      <TouchableOpacity style={[s.sideHead, group.single && active === group.key && s.sideActive]} onPress={toggle} activeOpacity={0.8}>
-        <Text style={[s.sideIcon, group.single && active === group.key && { color: C.navy }]}>{group.icon}</Text>
-        <Text style={[s.sideLabel, group.single && active === group.key && { color: C.navy, fontFamily: 'GoogleSans_700Bold' }, !group.single && isActive && { color: C.gold }]}>{group.label}</Text>
-        {!group.single && <Animated.Text style={[{ color: 'rgba(255,255,255,0.40)', fontSize: 17 }, { transform: [{ rotate: chevRot }] }]}>›</Animated.Text>}
-      </TouchableOpacity>
-      {!group.single && (
-        <Animated.View style={{ maxHeight: maxH, overflow: 'hidden' }}>
-          {group.children.map(c => (
-            <TouchableOpacity key={c.key} style={[s.sideChild, active === c.key && s.sideChildActive]} onPress={() => { onNav(c.key); onClose?.(); }} activeOpacity={0.8}>
-              <Text style={{ fontSize: 7, color: active === c.key ? C.gold : 'rgba(255,255,255,0.30)', width: 12, textAlign: 'center' }}>{active === c.key ? '◆' : '◇'}</Text>
-              <Text style={[s.sideChildTxt, active === c.key && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{c.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </Animated.View>
-      )}
-    </View>
-  );
-};
-
-const MemberSidebar = ({ active, onNav, onClose, unread }) => (
-  <View style={s.sidebar}>
-    <View style={s.sidebarBrand}>
-      <View style={s.sidebarLogo}><Text style={s.sidebarLogoTxt}>CS</Text></View>
-      <View><Text style={s.sidebarName}>CESLA MPC</Text><Text style={s.sidebarRole}>Member Portal</Text></View>
-    </View>
-    <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 14, marginBottom: 6 }} />
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
-      {NAV.map(g => <SidebarGroup key={g.key} group={g} active={active} onNav={onNav} onClose={onClose} />)}
-    </ScrollView>
-    {unread > 0 && (
-      <TouchableOpacity style={s.sideNotifBadge} onPress={() => { onNav('notifs'); onClose?.(); }}>
-        <Text style={s.sideNotifTxt}>🔔 {unread} unread notification{unread !== 1 ? 's' : ''}</Text>
-      </TouchableOpacity>
-    )}
-  </View>
-);
-
-// ═════════════════════════════════════════════════════════════════════════════
-// DASHBOARD VIEWS
-// ═════════════════════════════════════════════════════════════════════════════
-
-const TIPS = [
-  { icon: '💡', title: 'Quick Tips', bullets: ['Fill your Application Form to complete membership.', 'Monitor savings and shares regularly.', 'Check guidelines before applying for a loan.'], colors: ['#1a3a6b', '#304674'] },
-  { icon: '💰', title: 'Savings', bullets: ['Regular savings strengthen your standing.', 'Maintain your minimum monthly savings.', 'Contact admin for inquiries.'], colors: ['#1a6b3a', '#1a8a4a'] },
-  { icon: '💳', title: 'Loan Tips', bullets: ['Loan amount is based on your share capital.', 'Timely payments maintain good standing.', 'Late payments may incur penalties.'], colors: ['#6b1a1a', '#c0392b'] },
-  { icon: '📋', title: 'App Form', bullets: ['Complete all fields accurately.', 'Submit supporting documents if needed.', 'Wait for admin processing.'], colors: ['#6b440a', '#c47d0e'] },
-];
-
-const TipsCarousel = () => {
-  const [idx, setIdx] = useState(0);
-  const fade = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const t = setInterval(() => {
-      Animated.timing(fade, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => { setIdx(i => (i + 1) % TIPS.length); Animated.timing(fade, { toValue: 1, duration: 200, useNativeDriver: true }).start(); });
-    }, 4500);
-    return () => clearInterval(t);
-  }, []);
-  const tip = TIPS[idx];
-  return (
-    <View style={{ padding: 14 }}>
-      <Animated.View style={{ opacity: fade }}>
-        <LinearGradient colors={tip.colors} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ borderRadius: 18, padding: 22, alignItems: 'center', minHeight: 170, justifyContent: 'center' }}>
-          <Text style={{ fontSize: 36, marginBottom: 8 }}>{tip.icon}</Text>
-          <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#fff', marginBottom: 12, textAlign: 'center' }}>{tip.title}</Text>
-          {tip.bullets.map((b, i) => (<View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 5, alignSelf: 'flex-start' }}><Text style={{ color: 'rgba(255,255,255,0.70)', fontSize: 14, lineHeight: 20 }}>•</Text><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.92)', lineHeight: 20, flex: 1 }}>{b}</Text></View>))}
-        </LinearGradient>
-      </Animated.View>
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginTop: 12 }}>
-        {TIPS.map((_, i) => <TouchableOpacity key={i} onPress={() => setIdx(i)} style={{ width: i === idx ? 20 : 7, height: 7, borderRadius: 4, backgroundColor: i === idx ? C.gold : 'rgba(15,30,53,0.22)' }} />)}
-      </View>
-    </View>
-  );
-};
-
-const OverviewView = ({ member, onNav, contentHeight, isMobile }) => {
-  const lp = member.loan > 0 ? (member.loan - (member.loanBalance || 0)) / member.loan : 0;
-  return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-      {/* Welcome */}
-      <View style={{ borderRadius: 16, overflow: 'hidden', marginBottom: 14, shadowColor: '#1a2d4e', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } }}>
-        <LinearGradient colors={['#1a2d4e', '#243554']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: isMobile ? 14 : 18 }}>
-          <MemberAvatar member={member} size={52} style={{ flexShrink: 0 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>Welcome back,</Text>
-            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: isMobile ? 14 : 16, color: '#fff', lineHeight: 22 }} numberOfLines={2}>{member.name}</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.50)', marginTop: 2 }}>{member.userId}</Text>
-          </View>
-          <View style={{ paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, backgroundColor: 'rgba(26,138,74,0.35)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#4cde8a' }}>{member.status || 'Active'}</Text>
-          </View>
-        </LinearGradient>
-      </View>
-
-      {/* Financial tiles — 2x2 on mobile, 4 in a row on wide */}
-      <Text style={s.sHead}>💰 FINANCIAL SUMMARY</Text>
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        {[
-          { l: 'Savings',       v: fmtCur(member.savings),      c: C.green },
-          { l: 'Share Capital', v: fmtCur(member.shares),       c: C.gold },
-          { l: 'Total Assets',  v: fmtCur((member.savings || 0) + (member.shares || 0)), c: C.blueLt },
-          { l: 'Loan Balance',  v: fmtCur(member.loanBalance),  c: member.loanBalance > 0 ? C.red : C.green },
-        ].map(t => (
-          <GCard key={t.l} style={{ flexBasis: isMobile ? '47%' : '22%', flex: 1, padding: 12, marginBottom: 0, borderTopWidth: 3, borderTopColor: t.c }}>
-            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: isMobile ? 14 : 17, color: t.c, marginBottom: 3 }} numberOfLines={1} adjustsFontSizeToFit>{t.v}</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec }}>{t.l}</Text>
-          </GCard>
-        ))}
-      </View>
-
-      {/* Loan progress */}
-      {member.loan > 0 && (
-        <>
-          <Text style={s.sHead}>📈 LOAN REPAYMENT PROGRESS</Text>
-          <GCard>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec }}>Repaid</Text>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.green }}>{Math.round(lp * 100)}%</Text>
-            </View>
-            <View style={{ height: 10, backgroundColor: 'rgba(15,30,53,0.12)', borderRadius: 5, overflow: 'hidden' }}>
-              <View style={{ height: 10, backgroundColor: C.green, borderRadius: 5, width: `${Math.round(lp * 100)}%` }} />
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, flexWrap: 'wrap', gap: 4 }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted }}>Paid: {fmtCur((member.loan || 0) - (member.loanBalance || 0))}</Text>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted }}>Remaining: {fmtCur(member.loanBalance)}</Text>
-            </View>
-          </GCard>
-        </>
-      )}
-
-      {/* Quick actions — 2x2 on mobile */}
-      <Text style={s.sHead}>⚡ QUICK ACTIONS</Text>
-      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {[{ label: 'Apply Loan', icon: '📝', key: 'applyloan', c: C.blue }, { label: 'My Profile', icon: '👤', key: 'profile', c: C.navyMid }, { label: 'App Form', icon: '📋', key: 'appform', c: C.orange }, { label: 'Notifs', icon: '🔔', key: 'notifs', c: C.gold }].map(q => (
-          <TouchableOpacity key={q.key} style={[s.quickBtn, { flexBasis: isMobile ? '47%' : '22%', flex: 1, borderTopWidth: 3, borderTopColor: q.c }]} onPress={() => onNav(q.key)} activeOpacity={0.8}>
-            <Text style={{ fontSize: isMobile ? 20 : 22, marginBottom: 5 }}>{q.icon}</Text>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.navy, textAlign: 'center' }}>{q.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Tips */}
-      <Text style={s.sHead}>💡 TIPS & REMINDERS</Text>
-      <GCard style={{ padding: 0, overflow: 'hidden' }}><TipsCarousel /></GCard>
-    </ScrollView>
-  );
-};
-
-const ProfileView = ({ member, contentHeight }) => {
-  const af = member.appForm || {};
-  const fullName = [af.salutation, member.firstName, member.middleName ? member.middleName + ' ' : '', member.lastName, af.suffix].filter(Boolean).join(' ') || member.name || '—';
-  const address  = af.presentAddress ? `${af.presentAddress}${af.presentZip ? ', ' + af.presentZip : ''}` : (member.address || '—');
-  const contact  = af.contactNo || member.contact || '—';
-  const email    = member.email || '—';
-
-  const empLabel = af.empType === 'Employed'
-    ? [af.positionRank, af.employerName].filter(Boolean).join(' @ ') || 'Employed'
-    : af.empType === 'Self-Employed'
-    ? [af.bizName, af.bizNature].filter(Boolean).join(' — ') || 'Self-Employed'
-    : af.unemployedType || af.empType || '—';
-
-  const InfoRow = ({ label, value, color }) => (
-    <View style={s.infoRow}>
-      <Text style={s.infoLabel}>{label}</Text>
-      <Text style={[s.infoVal, color && { color, fontFamily: 'GoogleSans_700Bold' }]}>{value || '—'}</Text>
-    </View>
-  );
-
-  const SectionTitle = ({ title, mt }) => (
-    <Text style={[s.secTitle, mt && { marginTop: mt }]}>{title}</Text>
-  );
-
-  return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-      <Text style={s.pageTitle}>My Profile</Text>
-
-      {/* ── Header card ── */}
-      <GCard style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
-        <LinearGradient colors={['#1a2d4e', '#243554']} style={{ padding: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            <MemberAvatar member={member} size={56} style={{ flexShrink: 0 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: '#fff' }} numberOfLines={2}>{fullName}</Text>
-              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>{member.userId}</Text>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.40)', marginTop: 1 }}>Member since {fmtDate(member.approvedAt || member.createdAt)}</Text>
-            </View>
-            <View style={{ paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, backgroundColor: 'rgba(26,138,74,0.35)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#4cde8a' }}>{member.status || 'Active'}</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        <View style={{ padding: 14 }}>
-
-          {/* ── Personal Information ── */}
-          <SectionTitle title="👤  Personal Information" />
-          <InfoRow label="Full Name"        value={fullName} />
-          <InfoRow label="Gender"           value={af.gender} />
-          <InfoRow label="Civil Status"     value={af.civilStatus} />
-          <InfoRow label="Date of Birth"    value={af.dob} />
-          <InfoRow label="Place of Birth"   value={af.placeOfBirth} />
-          <InfoRow label="Nationality"      value={af.nationality === 'Others' ? af.nationalityOther : af.nationality} />
-          <InfoRow label="Religion"         value={af.religion === 'Others' ? af.religionOther : af.religion} />
-          <InfoRow label="No. of Dependents" value={af.numDependents} />
-          <InfoRow label="Recommended By"  value={af.recommendedBy} />
-
-          {/* ── Contact Details ── */}
-          <SectionTitle title="📞  Contact Details" mt={14} />
-          <InfoRow label="Contact No."     value={contact} />
-          <InfoRow label="Email"           value={email} />
-          <InfoRow label="Present Address" value={address} />
-          {af.permanentAddress ? <InfoRow label="Permanent Address" value={`${af.permanentAddress}${af.permanentZip ? ', ' + af.permanentZip : ''}`} /> : null}
-
-          {/* ── Government IDs ── */}
-          <SectionTitle title="🪪  Government IDs" mt={14} />
-          {(af.govIds && af.govIds.length > 0)
-            ? af.govIds.filter(g => g.type || g.number).map((g, i) => (
-                <InfoRow key={i} label={g.type || `ID #${i + 1}`} value={g.number} />
-              ))
-            : [['SSS / GSIS', af.sssGsis], ['TIN', af.tin], ['PhilHealth', af.philHealth], ['Pag-IBIG', af.pagIbig]]
-                .map(([l, v]) => <InfoRow key={l} label={l} value={v} />)
-          }
-
-          {/* ── Employment ── */}
-          <SectionTitle title="💼  Employment" mt={14} />
-          <InfoRow label="Status"      value={af.empType} />
-          {af.empType === 'Employed' && <>
-            <InfoRow label="Employer"        value={af.employerName} />
-            <InfoRow label="Office Address"  value={af.officeAddress} />
-            <InfoRow label="Nature of Biz"   value={af.natureOfBiz} />
-            <InfoRow label="Employment Type" value={af.employmentType === 'Others' ? af.employmentTypeOther : af.employmentType} />
-            <InfoRow label="Position / Rank" value={af.positionRank} />
-            <InfoRow label="Monthly Income"  value={af.monthlyIncome ? '₱' + Number(af.monthlyIncome).toLocaleString('en-PH') : undefined} color={C.green} />
-          </>}
-          {af.empType === 'Self-Employed' && <>
-            <InfoRow label="Business Name"   value={af.bizName} />
-            <InfoRow label="Business Type"   value={af.bizType} />
-            <InfoRow label="Nature of Biz"   value={af.bizNature} />
-            <InfoRow label="Asset Size"      value={af.assetSize ? '₱' + Number(af.assetSize).toLocaleString('en-PH') : undefined} />
-            <InfoRow label="Share in Biz"    value={af.shareInBiz ? af.shareInBiz + '%' : undefined} />
-            <InfoRow label="Monthly Income"  value={af.selfMonthlyIncome ? '₱' + Number(af.selfMonthlyIncome).toLocaleString('en-PH') : undefined} color={C.green} />
-          </>}
-          {af.empType === 'Unemployed' && <>
-            <InfoRow label="Type" value={af.unemployedType === 'Others' ? af.unemployedOther : af.unemployedType} />
-          </>}
-
-          {/* ── Financial Overview ── */}
-          <SectionTitle title="💰  Financial Overview" mt={14} />
-          <InfoRow label="Share Capital"  value={fmtCur(member.shares)}       color={C.gold} />
-          <InfoRow label="Savings"        value={fmtCur(member.savings)}      color={C.green} />
-          <InfoRow label="Active Loan"    value={fmtCur(member.loan)}         color={member.loan > 0 ? C.orange : undefined} />
-          <InfoRow label="Loan Balance"   value={fmtCur(member.loanBalance)}  color={member.loanBalance > 0 ? C.red : C.green} />
-          <InfoRow label="Credit Balance" value={fmtCur(member.creditBalance)} color={C.orange} />
-
-        </View>
-      </GCard>
-    </ScrollView>
-  );
-};
-
-// ── Radio Button Row ────────────────────────────────────────────────────────
-const RadioRow = ({ label: rowLabel, options, selected, onSelect }) => (
-  <View style={{ marginBottom: 12 }}>
-    {rowLabel ? <Text style={af.fieldLabel}>{rowLabel}</Text> : null}
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 5 }}>
-      {options.map(opt => (
-        <TouchableOpacity key={opt} onPress={() => onSelect(opt)}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 20, borderWidth: 1.5, borderColor: selected === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: selected === opt ? 'rgba(201,168,76,0.15)' : 'rgba(255,255,255,0.55)' }}
-          activeOpacity={0.7}>
-          <View style={[af.radio, selected === opt && af.radioActive]}>
-            {selected === opt && <View style={af.radioDot} />}
-          </View>
-          <Text style={[af.radioLabel, selected === opt && { color: C.navyMid, fontFamily: 'GoogleSans_700Bold' }]}>{opt}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  </View>
-);
-
-// ── Dropdown Picker ─────────────────────────────────────────────────────────
-const DropdownPicker = ({ label: l, options, value, onSelect, placeholder, half }) => {
-  const [open, setOpen] = useState(false);
-  return (
-    <View style={[{ marginBottom: 12 }, half && { flex: 1 }]}>
-      <Text style={af.fieldLabel}>{l}</Text>
-      <TouchableOpacity style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-        onPress={() => setOpen(o => !o)} activeOpacity={0.8}>
-        <Text style={{ fontFamily: value ? 'GoogleSans_400Regular' : 'GoogleSans_400Regular', fontSize: 13, color: value ? C.navy : C.textMuted, flex: 1 }}>{value || placeholder}</Text>
-        <Text style={{ fontSize: 12, color: C.textMuted }}>{open ? '▲' : '▼'}</Text>
-      </TouchableOpacity>
-      {open && (
-        <View style={af.dropdownList}>
-          <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled showsVerticalScrollIndicator>
-            {options.map(opt => (
-              <TouchableOpacity key={opt} style={[af.dropdownItem, value === opt && af.dropdownItemActive]}
-                onPress={() => { onSelect(opt); setOpen(false); }} activeOpacity={0.8}>
-                <Text style={[af.dropdownTxt, value === opt && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{opt}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-    </View>
-  );
-};
-
-// ── Date Picker (compact) ───────────────────────────────────────────────────
-const DatePicker = ({ label: l, value, onChange, half }) => {
-  const [open, setOpen] = useState(false);
-  const currentYear = new Date().getFullYear();
-  const years  = Array.from({ length: 80 }, (_, i) => String(currentYear - i));
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const days   = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
-
-  const parts    = (value || '').split('/');
-  const selMonth = parts[0] ? months[parseInt(parts[0]) - 1] || '' : '';
-  const selDay   = parts[1] || '';
-  const selYear  = parts[2] || '';
-
-  const buildDate = (m, d, y) => `${String(months.indexOf(m) + 1).padStart(2, '0')}/${d}/${y}`;
-  const displayVal = value ? `${selMonth} ${selDay}, ${selYear}` : '';
-
-  const [tmpM, setTmpM] = useState(selMonth);
-  const [tmpD, setTmpD] = useState(selDay);
-  const [tmpY, setTmpY] = useState(selYear);
-
-  const apply = () => {
-    if (tmpM && tmpD && tmpY) { onChange(buildDate(tmpM, tmpD, tmpY)); setOpen(false); }
-  };
-
-  return (
-    <View style={[{ marginBottom: 12 }, half && { flex: 1 }]}>
-      <Text style={af.fieldLabel}>{l}</Text>
-      <TouchableOpacity style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-        onPress={() => setOpen(o => !o)} activeOpacity={0.8}>
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: displayVal ? C.navy : C.textMuted, flex: 1 }}>
-          {displayVal || 'Select date'}
-        </Text>
-        <Text style={{ fontSize: 13 }}>📅</Text>
-      </TouchableOpacity>
-      {open && (
-        <View style={[af.dropdownList, { padding: 10 }]}>
-          {/* Month row */}
-          <Text style={[af.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>MONTH</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-            {months.map(m => (
-              <TouchableOpacity key={m} onPress={() => setTmpM(m)}
-                style={{ paddingHorizontal: 8, paddingVertical: 5, marginRight: 4, borderRadius: 6,
-                  backgroundColor: tmpM === m ? C.gold : 'rgba(15,30,53,0.08)',
-                  borderWidth: 1, borderColor: tmpM === m ? C.gold : 'transparent' }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: tmpM === m ? '#fff' : C.navy }}>{m.slice(0,3)}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Day row */}
-          <Text style={[af.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>DAY</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-            {days.map(d => (
-              <TouchableOpacity key={d} onPress={() => setTmpD(d)}
-                style={{ width: 28, height: 28, marginRight: 4, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: tmpD === d ? C.navyMid : 'rgba(15,30,53,0.08)',
-                  borderWidth: 1, borderColor: tmpD === d ? C.navyMid : 'transparent' }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: tmpD === d ? '#fff' : C.navy }}>{d}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Year — compact 2-column scroll */}
-          <Text style={[af.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>YEAR</Text>
-          <ScrollView style={{ maxHeight: 88, marginBottom: 8 }} showsVerticalScrollIndicator nestedScrollEnabled>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-              {years.map(y => (
-                <TouchableOpacity key={y} onPress={() => setTmpY(y)}
-                  style={{ width: 50, paddingVertical: 5, borderRadius: 6, alignItems: 'center',
-                    backgroundColor: tmpY === y ? C.navyDeep : 'rgba(15,30,53,0.08)',
-                    borderWidth: 1, borderColor: tmpY === y ? C.navyDeep : 'transparent' }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: tmpY === y ? '#fff' : C.navy }}>{y}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-
-          {/* Buttons */}
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <TouchableOpacity style={{ flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5, borderColor: 'rgba(15,30,53,0.20)', alignItems: 'center' }} onPress={() => setOpen(false)}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textSec }}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={{ flex: 2, paddingVertical: 8, borderRadius: 8, backgroundColor: C.navyMid, alignItems: 'center' }} onPress={apply}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.gold }}>✓ Apply Date</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-    </View>
-  );
-};
-
-// ── Text Field ──────────────────────────────────────────────────────────────
-const AF = ({ label: l, value, onChangeText, placeholder, keyboardType, half, editable = true, multiline }) => (
-  <View style={[{ marginBottom: 12 }, half && { flex: 1 }]}>
-    <Text style={af.fieldLabel}>{l}</Text>
-    <TextInput
-      style={[af.input, !editable && { opacity: 0.55, backgroundColor: 'rgba(15,30,53,0.06)' }, multiline && { minHeight: 60, textAlignVertical: 'top', paddingTop: 9 }]}
-      value={value} onChangeText={onChangeText}
-      placeholder={placeholder} placeholderTextColor={C.textMuted}
-      keyboardType={keyboardType || 'default'} autoCorrect={false}
-      editable={editable} multiline={multiline}
-    />
-  </View>
-);
-
-const RELIGIONS = ['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Born Again Christian','Baptist','Methodist','Jehovah\'s Witness','Buddhism','Others'];
-const PROVINCES_PH = ['Agusan del Norte','Agusan del Sur','Bukidnon','Camiguin','Davao de Oro','Davao del Norte','Davao del Sur','Davao Occidental','Davao Oriental','Dinagat Islands','Lanao del Norte','Lanao del Sur','Maguindanao','Misamis Occidental','Misamis Oriental','North Cotabato','Sarangani','South Cotabato','Sultan Kudarat','Surigao del Norte','Surigao del Sur','Zamboanga del Norte','Zamboanga del Sur','Zamboanga Sibugay','Others'];
-
-const GOV_ID_TYPES = [
-  'SSS', 'GSIS', 'TIN', 'PhilHealth', 'Pag-IBIG (HDMF)',
-  'Philippine Passport', 'Driver\'s License', 'Voter\'s ID',
-  'PRC ID', 'Postal ID', 'Senior Citizen ID', 'PWD ID',
-  'UMID', 'National ID (PhilSys)', 'OFW ID', 'Others',
-];
-
-// ── Gov ID Picker — dropdown type + number input ────────────────────────────
-const GovIdPicker = ({ label: l, idType, idNumber, onTypeChange, onNumberChange, placeholder }) => {
-  const [open, setOpen] = useState(false);
-  return (
-    <View style={{ flex: 1, minWidth: 0 }}>
-      {l ? <Text style={af.fieldLabel}>{l}</Text> : null}
-      <TouchableOpacity
-        style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }]}
-        onPress={() => setOpen(o => !o)} activeOpacity={0.8}>
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: idType ? C.navy : C.textMuted, flex: 1 }}>
-          {idType || 'Select ID type'}
-        </Text>
-        <Text style={{ fontSize: 11, color: C.textMuted }}>{open ? '▲' : '▼'}</Text>
-      </TouchableOpacity>
-      {open && (
-        <View style={[af.dropdownList, { marginBottom: 5 }]}>
-          <ScrollView style={{ maxHeight: 160 }} nestedScrollEnabled showsVerticalScrollIndicator>
-            {GOV_ID_TYPES.map(opt => (
-              <TouchableOpacity key={opt} style={[af.dropdownItem, idType === opt && af.dropdownItemActive]}
-                onPress={() => { onTypeChange(opt); setOpen(false); }} activeOpacity={0.8}>
-                <Text style={[af.dropdownTxt, idType === opt && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{opt}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-      {/* ID Number input */}
-      <TextInput
-        style={[af.input, { fontSize: 12 }]}
-        value={idNumber} onChangeText={onNumberChange}
-        placeholder={placeholder || 'Enter ID number'}
-        placeholderTextColor={C.textMuted}
-        autoCorrect={false} autoCapitalize="characters"
-      />
-    </View>
-  );
-};
-
-// ─── Application Form HTML Generator (for Print/PDF) ─────────────────────────
-const generateAppFormHTML = (member, form) => {
-  const af = form;
-  const govIds = (af.govIds || []).filter(g => g.type || g.number);
-  const fullName = [af.salutation, member.firstName, member.middleName, member.lastName, af.suffix].filter(Boolean).join(' ') || member.name;
-  const fieldStyle = 'border-bottom:1px solid #333;min-width:160px;display:inline-block;padding:2px 4px;font-size:11px;';
-  const labelStyle = 'font-size:9px;font-weight:bold;color:#444;text-transform:uppercase;letter-spacing:1px;';
-  const row = (label, value, width = '45%') => `
-    <div style="display:inline-block;width:${width};margin-bottom:8px;padding-right:10px;">
-      <div style="${labelStyle}">${label}</div>
-      <div style="${fieldStyle}">${value || '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</div>
-    </div>`;
-  const check = (label, checked) => `
-    <span style="margin-right:12px;font-size:11px;">
-      <span style="display:inline-block;width:12px;height:12px;border:1.5px solid #333;text-align:center;line-height:12px;font-size:10px;vertical-align:middle;">${checked ? '✓' : ''}</span>
-      <span style="margin-left:3px;">${label}</span>
-    </span>`;
-
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: Arial, sans-serif; font-size:11px; color:#1a1a1a; padding:18px 24px; }
-    h1 { font-size:14px; font-weight:bold; text-align:center; letter-spacing:2px; text-transform:uppercase; margin-bottom:2px; }
-    h2 { font-size:11px; text-align:center; color:#555; margin-bottom:4px; }
-    .effective { font-size:9px; text-align:center; color:#777; margin-bottom:12px; }
-    .section { font-size:9px; font-weight:bold; text-transform:uppercase; letter-spacing:2px; color:#1a2d4e; border-bottom:2px solid #1a2d4e; margin:12px 0 8px; padding-bottom:2px; }
-    table { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:10px; }
-    th { background:#1a2d4e; color:#c9a84c; padding:5px 6px; font-size:9px; text-align:center; font-weight:bold; letter-spacing:1px; }
-    td { border:1px solid #aaa; padding:5px 6px; vertical-align:middle; }
-    .sig-block { display:flex; gap:20px; margin-top:24px; }
-    .sig-line { flex:1; border-top:1px solid #333; padding-top:3px; font-size:9px; text-align:center; color:#555; }
-    @media print { body { padding: 10px 16px; } }
-  </style></head><body>
-
-  <h1>CESLA Multi-Purpose Cooperative</h1>
-  <h2>Membership Application Form</h2>
-  <div class="effective">Effective January 1, 2026 &nbsp;|&nbsp; User ID: ${member.userId}</div>
-
-  <div class="section">Personal Details</div>
-  <div style="display:flex;flex-wrap:wrap;">
-    ${row('Salutation', af.salutation, '20%')}
-    ${row('Last Name', member.lastName, '30%')}
-    ${row('First Name', member.firstName, '30%')}
-    ${row('Middle Name', member.middleName, '20%')}
-    ${row('Suffix', af.suffix, '15%')}
-    ${row('Date of Birth', af.dob, '25%')}
-    ${row('Place of Birth', af.placeOfBirth, '35%')}
-    ${row('Nationality', af.nationality === 'Others' ? af.nationalityOther : af.nationality, '25%')}
-    ${row('Religion', af.religion === 'Others' ? af.religionOther : af.religion, '30%')}
-    ${row('No. of Dependents', af.numDependents, '20%')}
-    ${row('Contact No.', af.contactNo || member.contact, '30%')}
-    ${row('Recommended By', af.recommendedBy, '35%')}
-  </div>
-  <div style="margin-bottom:8px;">
-    <div style="${labelStyle}">Civil Status</div>
-    <div style="margin-top:4px;">
-      ${check('Single', af.civilStatus === 'Single')}
-      ${check('Married', af.civilStatus === 'Married')}
-      ${check('Legally Separated', af.civilStatus === 'Legally Separated')}
-      ${check('Others', af.civilStatus === 'Others')}
-    </div>
-  </div>
-  <div style="margin-bottom:8px;">
-    <div style="${labelStyle}">Gender</div>
-    <div style="margin-top:4px;">
-      ${check('Male', af.gender === 'Male')}
-      ${check('Female', af.gender === 'Female')}
-    </div>
-  </div>
-
-  <div class="section">Government IDs</div>
-  <table>
-    <tr><th style="width:40%">ID Type</th><th>ID Number</th></tr>
-    ${govIds.length > 0
-      ? govIds.map(g => `<tr><td>${g.type || ''}</td><td>${g.number || ''}</td></tr>`).join('')
-      : '<tr><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr>'}
-  </table>
-
-  <div class="section">Contact Details</div>
-  <div style="display:flex;flex-wrap:wrap;">
-    ${row('Present Address', af.presentAddress, '55%')}
-    ${row('ZIP Code', af.presentZip, '15%')}
-    ${row('Years of Stay', af.stayYears, '15%')}
-    ${row('Months of Stay', af.stayMonths, '15%')}
-    ${row('Permanent Address', af.permanentAddress || '(Same as present)', '55%')}
-    ${row('ZIP Code', af.permanentZip, '15%')}
-  </div>
-
-  <div class="section">Family Members</div>
-  <table>
-    <tr><th style="width:35%">Name</th><th style="width:20%">Relation</th><th style="width:10%">Age</th><th>Occupation</th></tr>
-    ${(af.family || []).map(f => `<tr><td>${f.name || '&nbsp;'}</td><td>${f.relation || '&nbsp;'}</td><td>${f.age || '&nbsp;'}</td><td>${f.occupation || '&nbsp;'}</td></tr>`).join('')}
-  </table>
-
-  <div class="section">Employment Details</div>
-  <div style="margin-bottom:8px;">
-    <div style="${labelStyle}">Employment Status</div>
-    <div style="margin-top:4px;">
-      ${check('Employed', af.empType === 'Employed')}
-      ${check('Self-Employed', af.empType === 'Self-Employed')}
-      ${check('Unemployed', af.empType === 'Unemployed')}
-    </div>
-  </div>
-  ${af.empType === 'Employed' ? `
-  <div style="display:flex;flex-wrap:wrap;">
-    ${row('Employer / Business Name', af.employerName, '55%')}
-    ${row('Nature of Business', af.natureOfBiz, '40%')}
-    ${row('Office Address', af.officeAddress, '55%')}
-    ${row('Office No.', af.officeNo, '22%')}
-    ${row('Fax No.', af.faxNo, '22%')}
-    ${row('Employment Type', af.employmentType === 'Others' ? af.employmentTypeOther : af.employmentType, '30%')}
-    ${row('Position / Rank', af.positionRank, '30%')}
-    ${row('Monthly Income (₱)', af.monthlyIncome, '25%')}
-    ${row('Previous Employer', af.prevEmployer, '40%')}
-    ${row('Yrs in Company', af.yrsInCompany, '20%')}
-    ${row('Prev. Position', af.prevPosition, '30%')}
-  </div>` : ''}
-  ${af.empType === 'Self-Employed' ? `
-  <div style="display:flex;flex-wrap:wrap;">
-    ${row('Business Name', af.bizName, '45%')}
-    ${row('Type', af.bizType, '20%')}
-    ${row('Nature', af.bizNature, '30%')}
-    ${row('Asset Size (₱)', af.assetSize, '30%')}
-    ${row('Share in Business (%)', af.shareInBiz, '25%')}
-    ${row('Monthly Income (₱)', af.selfMonthlyIncome, '30%')}
-  </div>` : ''}
-  ${af.empType === 'Unemployed' ? `
-  <div style="margin-bottom:8px;">${check('Housewife', af.unemployedType === 'Housewife')}${check('Student', af.unemployedType === 'Student')}${check('Others', af.unemployedType === 'Others')}${af.unemployedOther ? ` — ${af.unemployedOther}` : ''}</div>` : ''}
-
-  <div style="margin-top:16px;border:1px solid #aaa;padding:10px;font-size:10px;line-height:1.6;color:#333;">
-    I/We hereby certify that all the data and statements in this application are correct and are made for obtaining credit, and the signature(s) appearing thereon is(are) genuine. I/We authorize you to obtain such information as you may require connecting the statements made in this application and that the sources which you may apply are authorized to provide any information relative to this application. <strong>I/We agree this will remain your property whether the credit is granted or not.</strong>
-  </div>
-
-  <div class="sig-block">
-    <div class="sig-line">Applicant's Signature over Printed Name / Date</div>
-    <div class="sig-line">Processed by / Date</div>
-    <div class="sig-line">Approved by / Date</div>
-  </div>
-
-  <div style="text-align:center;margin-top:16px;font-size:8px;color:#999;">
-    CESLA Multi-Purpose Cooperative &nbsp;|&nbsp; CLIMBS Employee Cooperative &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
-  </div>
-</body></html>`;
-};
-
-const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
-  const { isMobile: rwdMobile, rowDir, halfStyle } = useRwd();
-  const isMobile = isMobileProp ?? rwdMobile;
-  const af0 = member.appForm || {};
-  const [form, setForm] = useState({
-    appDate: af0.appDate || '', appNo: af0.appNo || '',
-    salutation: af0.salutation || '', gender: af0.gender || '',
-    suffix: af0.suffix || '',
-    dob: af0.dob || '',
-    placeOfBirth: af0.placeOfBirth || '',
-    nationality: af0.nationality || 'Filipino', nationalityOther: af0.nationalityOther || '',
-    religion: af0.religion || '', religionOther: af0.religionOther || '',
-    numDependents: af0.numDependents || '0',
-    civilStatus: af0.civilStatus || '',
-    // Gov IDs — array of { type, number }
-    govIds: af0.govIds || [
-      { type: af0.sssGsis ? 'SSS' : '', number: af0.sssGsis || '' },
-      { type: af0.tin ? 'TIN' : '', number: af0.tin || '' },
-      { type: af0.philHealth ? 'PhilHealth' : '', number: af0.philHealth || '' },
-      { type: af0.pagIbig ? 'Pag-IBIG (HDMF)' : '', number: af0.pagIbig || '' },
-    ],
-    recommendedBy: af0.recommendedBy || '',
-    contactNo: af0.contactNo || '',
-    family: af0.family || Array(5).fill(null).map(() => ({ name: '', relation: '', age: '', occupation: '' })),
-    presentAddress: af0.presentAddress || '', presentZip: af0.presentZip || '',
-    stayYears: af0.stayYears || '', stayMonths: af0.stayMonths || '',
-    permanentAddress: af0.permanentAddress || '', permanentZip: af0.permanentZip || '',
-    empType: af0.empType || '',
-    employerName: af0.employerName || '', officeAddress: af0.officeAddress || '',
-    natureOfBiz: af0.natureOfBiz || '', officeNo: af0.officeNo || '', faxNo: af0.faxNo || '',
-    employmentType: af0.employmentType || '', employmentTypeOther: af0.employmentTypeOther || '',
-    positionRank: af0.positionRank || '', monthlyIncome: af0.monthlyIncome || '',
-    prevEmployer: af0.prevEmployer || '', yrsInCompany: af0.yrsInCompany || '', prevPosition: af0.prevPosition || '',
-    bizName: af0.bizName || '', bizType: af0.bizType || '', bizNature: af0.bizNature || '',
-    assetSize: af0.assetSize || '', shareInBiz: af0.shareInBiz || '', selfMonthlyIncome: af0.selfMonthlyIncome || '',
-    unemployedType: af0.unemployedType || '', unemployedOther: af0.unemployedOther || '',
-  });
-
-  const [saving, setSaving] = useState(false);
-  const [saved,  setSaved]  = useState(false);
-  const [page,   setPage]   = useState(1);
-  const [printing, setPrinting] = useState(false);
-
-  const handlePrint = async () => {
-    setPrinting(true);
-    try {
-      const html = generateAppFormHTML(member, form);
-      if (Platform.OS === 'web') {
-        const win = window.open('', '_blank');
-        win.document.write(html);
-        win.document.close();
-        win.focus();
-        setTimeout(() => win.print(), 500);
-      } else {
-        const { uri } = await Print.printToFileAsync({ html, base64: false });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Save or Share Application Form' });
-        } else {
-          await Print.printAsync({ html });
-        }
-      }
-    } catch (e) { console.warn('Print error:', e); }
-    finally { setPrinting(false); }
-  };
-
-  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
-  const setFamily = (idx, key, val) => setForm(f => {
-    const fam = [...f.family];
-    fam[idx] = { ...fam[idx], [key]: val };
-    return { ...f, family: fam };
-  });
-  const setGovId = (idx, field, val) => setForm(f => {
-    const ids = [...f.govIds];
-    ids[idx] = { ...ids[idx], [field]: val };
-    return { ...f, govIds: ids };
-  });
-  const addGovId = () => setForm(f => ({ ...f, govIds: [...f.govIds, { type: '', number: '' }] }));
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await updateDoc(doc(db, 'members', member.uid), { appForm: form, updatedAt: serverTimestamp() });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } catch (e) { console.warn(e); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <ScrollView
-      contentContainerStyle={[s.pageOuter, { paddingBottom: 80 }]}
-      showsVerticalScrollIndicator={true}
-      nestedScrollEnabled={true}
-      keyboardShouldPersistTaps="handled"
-      style={contentHeight ? { height: contentHeight } : undefined}
-    >
-      <Text style={s.pageTitle}>📋 Application Form</Text>
-      <Text style={s.pageSub}>CESLA Multi-Purpose Cooperative — Official Membership Application</Text>
-
-      {/* Tab selector */}
-      <View style={af.pageTabs}>
-        {['Personal Details', 'Employment Details'].map((tab, i) => (
-          <TouchableOpacity key={tab}
-            style={[af.pageTab, page === i + 1 && af.pageTabActive]}
-            onPress={() => setPage(i + 1)} activeOpacity={0.8}>
-            <Text style={[af.pageTabTxt, page === i + 1 && af.pageTabTxtActive]}>
-              {i + 1}. {tab}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* PAGE 1: PERSONAL DETAILS */}
-      {page === 1 && (
-        <>
-          <GCard>
-            <View style={{ flexDirection: rowDir, gap: 10 }}>
-              <View style={halfStyle}><AF l="APPLICATION DATE" value={form.appDate} onChangeText={v => set('appDate', v)} placeholder="e.g. 01/15/2026" /></View>
-              <View style={halfStyle}><AF l="APPLICATION NO."  value={form.appNo}   onChangeText={v => set('appNo', v)}   placeholder="Auto-assigned"   /></View>
-            </View>
-          </GCard>
-
-          <Text style={af.secHeader}>PERSONAL DETAILS</Text>
-          <GCard>
-            <RadioRow label="Salutation" options={['Mr.', 'Mrs.', 'Ms.']} selected={form.salutation} onSelect={v => set('salutation', v)} />
-            <RadioRow label="Gender" options={['Male', 'Female']} selected={form.gender} onSelect={v => set('gender', v)} />
-            <View style={{ flexDirection: rowDir, gap: 8 }}>
-              <View style={halfStyle}><AF l="LAST NAME"  value={member.lastName || member.name?.split(',')[0] || ''} placeholder="—" editable={false} /></View>
-              <View style={halfStyle}><AF l="FIRST NAME" value={member.firstName || ''} placeholder="—" editable={false} /></View>
-            </View>
-            <View style={{ flexDirection: rowDir, gap: 8 }}>
-              <View style={halfStyle}><AF l="MIDDLE NAME" value={member.middleName || ''} placeholder="—" editable={false} /></View>
-              <View style={halfStyle}><AF l="SUFFIX"      value={form.suffix} onChangeText={v => set('suffix', v)} placeholder="Jr., Sr., II" /></View>
-            </View>
-
-            <DatePicker l="DATE OF BIRTH" value={form.dob} onChange={v => set('dob', v)} />
-            <AF l="PLACE OF BIRTH" value={form.placeOfBirth} onChangeText={v => set('placeOfBirth', v)} placeholder="City / Municipality, Province" />
-
-            <RadioRow label="Nationality" options={['Filipino', 'Others']} selected={form.nationality} onSelect={v => set('nationality', v)} />
-            {form.nationality === 'Others' && (
-              <AF l="SPECIFY NATIONALITY" value={form.nationalityOther} onChangeText={v => set('nationalityOther', v)} placeholder="Enter nationality" />
-            )}
-
-            <DropdownPicker l="RELIGION" options={RELIGIONS} value={form.religion} onSelect={v => set('religion', v)} placeholder="Select religion" />
-            {form.religion === 'Others' && (
-              <AF l="SPECIFY RELIGION" value={form.religionOther} onChangeText={v => set('religionOther', v)} placeholder="Enter religion" />
-            )}
-
-            <DropdownPicker l="NUMBER OF DEPENDENTS" options={['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15+']} value={form.numDependents} onSelect={v => set('numDependents', v)} placeholder="Select number" />
-            <RadioRow label="Civil Status" options={['Single', 'Married', 'Legally Separated', 'Others']} selected={form.civilStatus} onSelect={v => set('civilStatus', v)} />
-
-            <Text style={[af.secHeader, { marginTop: 4 }]}>GOVERNMENT IDs</Text>
-            {/* 2-col on wide, 1-col on mobile */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {form.govIds.map((gid, idx) => (
-                <View key={idx} style={{ flex: 1, flexBasis: isMobile ? '100%' : '48%', minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3, height: 18 }}>
-                    <Text style={[af.fieldLabel, { marginBottom: 0 }]}>ID #{idx + 1}</Text>
-                    <TouchableOpacity
-                      onPress={() => setForm(f => ({ ...f, govIds: f.govIds.filter((_, i) => i !== idx) }))}
-                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      style={{ opacity: idx === 0 ? 0 : 1 }}
-                      disabled={idx === 0}>
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.red }}>✕ Remove</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <GovIdPicker
-                    l=""
-                    idType={gid.type}
-                    idNumber={gid.number}
-                    onTypeChange={v => setGovId(idx, 'type', v)}
-                    onNumberChange={v => setGovId(idx, 'number', v)}
-                    placeholder="Enter ID number"
-                  />
-                </View>
-              ))}
-            </View>
-            <TouchableOpacity onPress={addGovId}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, marginBottom: 4 }}>
-              <Text style={{ fontSize: 15, color: C.blue }}>＋</Text>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.blue }}>Add Another ID</Text>
-            </TouchableOpacity>
-
-            <View style={{ flexDirection: rowDir, gap: 8 }}>
-              <View style={halfStyle}><AF l="RECOMMENDED BY (CEC)" value={form.recommendedBy} onChangeText={v => set('recommendedBy', v)} placeholder="Name of referrer" /></View>
-              <View style={halfStyle}><AF l="CONTACT NO."          value={form.contactNo}     onChangeText={v => set('contactNo', v)}     placeholder="09XXXXXXXXX" keyboardType="phone-pad" /></View>
-            </View>
-          </GCard>
-
-          <Text style={af.secHeader}>FAMILY MEMBERS</Text>
-          <GCard style={{ padding: 0, overflow: 'hidden' }}>
-            <View style={af.tableHeader}>
-              {[{l:'Name',f:2},{l:'Relation',f:1},{l:'Age',f:0.6},{l:'Occupation',f:1.4}].map(h => (
-                <Text key={h.l} style={[af.tableHeaderTxt, { flex: h.f }]}>{h.l}</Text>
-              ))}
-            </View>
-            {form.family.map((row, idx) => (
-              <View key={idx} style={[af.tableRow, idx % 2 === 1 && { backgroundColor: 'rgba(255,255,255,0.35)' }]}>
-                <TextInput style={[af.tableCell, { flex: 2 }]}                                              value={row.name}       onChangeText={v => setFamily(idx, 'name', v)}       placeholder="Name"       placeholderTextColor={C.textMuted} />
-                <TextInput style={[af.tableCell, { flex: 1,   borderLeftWidth: 1, borderColor: C.border }]} value={row.relation}   onChangeText={v => setFamily(idx, 'relation', v)}   placeholder="Relation"   placeholderTextColor={C.textMuted} />
-                <TextInput style={[af.tableCell, { flex: 0.6, borderLeftWidth: 1, borderColor: C.border }]} value={row.age}        onChangeText={v => setFamily(idx, 'age', v)}        placeholder="Age"        placeholderTextColor={C.textMuted} keyboardType="numeric" />
-                <TextInput style={[af.tableCell, { flex: 1.4, borderLeftWidth: 1, borderColor: C.border }]} value={row.occupation} onChangeText={v => setFamily(idx, 'occupation', v)} placeholder="Occupation" placeholderTextColor={C.textMuted} />
-              </View>
-            ))}
-          </GCard>
-
-          <Text style={af.secHeader}>CONTACT DETAILS</Text>
-          <GCard>
-            <AF l="PRESENT ADDRESS" value={form.presentAddress} onChangeText={v => set('presentAddress', v)} placeholder="House No., Street, Barangay, City" />
-            <View style={{ flexDirection: rowDir, gap: 8 }}>
-              <View style={isMobile ? {} : { flex: 1.2 }}>
-                <Text style={af.fieldLabel}>ZIP CODE</Text>
-                <TextInput style={[af.input, { marginBottom: 0 }]} value={form.presentZip} onChangeText={v => set('presentZip', v)} placeholder="e.g. 9000" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
-              </View>
-              <View style={isMobile ? {} : { flex: 1 }}>
-                <Text style={af.fieldLabel}>YEARS OF STAY</Text>
-                <TextInput style={[af.input, { marginBottom: 0 }]} value={form.stayYears} onChangeText={v => set('stayYears', v)} placeholder="e.g. 3" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
-              </View>
-              <View style={isMobile ? {} : { flex: 1 }}>
-                <Text style={af.fieldLabel}>MONTHS OF STAY</Text>
-                <TextInput style={[af.input, { marginBottom: 0 }]} value={form.stayMonths} onChangeText={v => set('stayMonths', v)} placeholder="e.g. 6" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
-              </View>
-            </View>
-            <View style={{ height: 12 }} />
-            <Text style={[af.fieldLabel, { color: C.textSec, fontSize: 9 }]}>PERMANENT ADDRESS</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginBottom: 4, fontStyle: 'italic' }}>Leave blank if same as present address</Text>
-            <TextInput style={af.input} value={form.permanentAddress} onChangeText={v => set('permanentAddress', v)} placeholder="House No., Street, Barangay, City" placeholderTextColor={C.textMuted} autoCorrect={false} />
-            <View style={{ flex: 1, maxWidth: '50%' }}>
-              <Text style={af.fieldLabel}>ZIP CODE (PERMANENT)</Text>
-              <TextInput style={af.input} value={form.permanentZip} onChangeText={v => set('permanentZip', v)} placeholder="e.g. 9000" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
-            </View>
-          </GCard>
-
-          <TouchableOpacity style={af.fullBtn} onPress={() => setPage(2)} activeOpacity={0.85}>
-            <LinearGradient colors={['#1a2d4e', '#243554']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
-              <Text style={af.fullBtnTxt}>Next: Employment Details  →</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </>
-      )}
-
-      {/* PAGE 2: EMPLOYMENT DETAILS */}
-      {page === 2 && (
-        <>
-          <Text style={af.secHeader}>EMPLOYMENT DETAILS</Text>
-          <GCard>
-            <RadioRow label="Employment Status" options={['Employed', 'Self-Employed', 'Unemployed']} selected={form.empType} onSelect={v => set('empType', v)} />
-          </GCard>
-
-          {form.empType === 'Employed' && (
-            <GCard>
-              <Text style={s.secTitle}>Employed</Text>
-              <AF l="EMPLOYER / BUSINESS NAME" value={form.employerName}  onChangeText={v => set('employerName', v)}  placeholder="Name of employer" />
-              <AF l="OFFICE ADDRESS"           value={form.officeAddress} onChangeText={v => set('officeAddress', v)} placeholder="Complete office address" />
-              <AF l="NATURE OF BUSINESS"       value={form.natureOfBiz}   onChangeText={v => set('natureOfBiz', v)}   placeholder="e.g. Government Agency" />
-              <View style={{ flexDirection: rowDir, gap: 8 }}>
-                <View style={halfStyle}><AF l="OFFICE NO." value={form.officeNo} onChangeText={v => set('officeNo', v)} placeholder="(088) XXX-XXXX" keyboardType="phone-pad" /></View>
-                <View style={halfStyle}><AF l="FAX NO."    value={form.faxNo}    onChangeText={v => set('faxNo', v)}    placeholder="(088) XXX-XXXX" keyboardType="phone-pad" /></View>
-              </View>
-              <RadioRow label="Employment Type" options={['Private', 'Government', 'Others']} selected={form.employmentType} onSelect={v => set('employmentType', v)} />
-              {form.employmentType === 'Others' && (
-                <AF l="SPECIFY TYPE" value={form.employmentTypeOther} onChangeText={v => set('employmentTypeOther', v)} placeholder="Specify" />
-              )}
-              <View style={{ flexDirection: rowDir, gap: 8 }}>
-                <View style={halfStyle}><AF l="POSITION / RANK"    value={form.positionRank}  onChangeText={v => set('positionRank', v)}  placeholder="e.g. Teacher I"  /></View>
-                <View style={halfStyle}><AF l="MONTHLY INCOME (₱)" value={form.monthlyIncome} onChangeText={v => set('monthlyIncome', v)} placeholder="e.g. 25000" keyboardType="numeric" /></View>
-              </View>
-              <View style={af.noteBox}>
-                <Text style={af.noteTxt}>* If less than 6 months in current employment, fill in previous employer below.</Text>
-              </View>
-              <AF l="PREVIOUS EMPLOYER" value={form.prevEmployer} onChangeText={v => set('prevEmployer', v)} placeholder="Previous employer name" />
-              <View style={{ flexDirection: rowDir, gap: 8 }}>
-                <View style={halfStyle}><AF l="YRS IN COMPANY"  value={form.yrsInCompany} onChangeText={v => set('yrsInCompany', v)} placeholder="0" keyboardType="numeric" /></View>
-                <View style={halfStyle}><AF l="POSITION / RANK" value={form.prevPosition} onChangeText={v => set('prevPosition', v)} placeholder="Previous position" /></View>
-              </View>
-            </GCard>
-          )}
-
-          {form.empType === 'Self-Employed' && (
-            <GCard>
-              <Text style={s.secTitle}>Self-Employed</Text>
-              <AF l="NAME OF BUSINESS" value={form.bizName}   onChangeText={v => set('bizName', v)}   placeholder="Business name" />
-              <RadioRow label="Type of Business" options={['Sole Prop', 'Partnership', 'Corp']} selected={form.bizType} onSelect={v => set('bizType', v)} />
-              <AF l="NATURE OF BUSINESS" value={form.bizNature} onChangeText={v => set('bizNature', v)} placeholder="e.g. Retail, Trading" />
-              <View style={{ flexDirection: rowDir, gap: 8 }}>
-                <View style={halfStyle}><AF l="ASSET SIZE (₱)"  value={form.assetSize}  onChangeText={v => set('assetSize', v)}  placeholder="e.g. 500000" keyboardType="numeric" /></View>
-                <View style={halfStyle}><AF l="SHARE IN BIZ (%)" value={form.shareInBiz} onChangeText={v => set('shareInBiz', v)} placeholder="e.g. 50"     keyboardType="numeric" /></View>
-              </View>
-              <AF l="MONTHLY INCOME (₱)" value={form.selfMonthlyIncome} onChangeText={v => set('selfMonthlyIncome', v)} placeholder="e.g. 30000" keyboardType="numeric" />
-            </GCard>
-          )}
-
-          {form.empType === 'Unemployed' && (
-            <GCard>
-              <Text style={s.secTitle}>Unemployed</Text>
-              <RadioRow label="Status" options={['Housewife', 'Student', 'Others']} selected={form.unemployedType} onSelect={v => set('unemployedType', v)} />
-              {form.unemployedType === 'Others' && (
-                <AF l="PLEASE SPECIFY" value={form.unemployedOther} onChangeText={v => set('unemployedOther', v)} placeholder="Specify status" />
-              )}
-            </GCard>
-          )}
-
-          <GCard style={{ backgroundColor: 'rgba(15,30,53,0.06)', borderColor: 'rgba(15,30,53,0.18)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, lineHeight: 18, textAlign: 'justify' }}>
-              I/We hereby certify that all the data and statements in this application are correct and are made for obtaining credit, and the signature(s) appearing thereon is(are) genuine. I/We authorize you to obtain such information as you may require connecting the statements made in this application and that the sources which you may apply are authorized to provide any information relative to this application.{" "}
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', color: C.navy }}>I/We agree this will remain your property whether the credit is granted or not.</Text>
-            </Text>
-          </GCard>
-
-          {/* Buttons — stacked, no overlap */}
-          <TouchableOpacity style={[af.fullBtn, { marginBottom: 10 }]} onPress={() => setPage(1)} activeOpacity={0.85}>
-            <LinearGradient colors={['#304674', '#1a2d4e']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
-              <Text style={af.fullBtnTxt}>←  Back to Personal Details</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[af.fullBtn, { marginBottom: 16, opacity: saving ? 0.7 : 1 }]}
-            onPress={save} disabled={saving} activeOpacity={0.85}>
-            <LinearGradient
-              colors={saved ? ['#1a8a4a', '#25a85a'] : ['#c9a84c', '#e8c87a']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
-              {saving
-                ? <ActivityIndicator color={C.navy} />
-                : <Text style={[af.fullBtnTxt, { color: saved ? '#fff' : C.navy }]}>
-                    {saved ? '✓  Application Saved!' : '💾  Save Application Form'}
-                  </Text>}
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Print / Save as PDF */}
-          <TouchableOpacity
-            style={[af.fullBtn, { marginBottom: 24, opacity: printing ? 0.7 : 1 }]}
-            onPress={handlePrint} disabled={printing} activeOpacity={0.85}>
-            <LinearGradient
-              colors={['#1a2d4e', '#243554']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
-              {printing
-                ? <ActivityIndicator color={C.gold} />
-                : <Text style={[af.fullBtnTxt, { color: C.gold }]}>
-                    🖨️  {Platform.OS === 'web' ? 'Print / Save as PDF' : 'Save as PDF'}
-                  </Text>}
-            </LinearGradient>
-          </TouchableOpacity>
-        </>
-      )}
-    </ScrollView>
-  );
-};
-
-// AppForm styles
-const af = StyleSheet.create({
-  fieldLabel:       { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.55)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
-  input:            { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy, backgroundColor: 'rgba(240,246,252,0.92)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)' },
-  radio:            { width: 15, height: 15, borderRadius: 8, borderWidth: 1.5, borderColor: C.navyMid, justifyContent: 'center', alignItems: 'center' },
-  radioActive:      { borderColor: C.gold, backgroundColor: 'rgba(201,168,76,0.15)' },
-  radioDot:         { width: 7, height: 7, borderRadius: 4, backgroundColor: C.gold },
-  radioLabel:       { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy },
-  secHeader:        { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 8, marginTop: 4 },
-  pageTabs:         { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  pageTab:          { flex: 1, paddingVertical: 11, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.60)', alignItems: 'center' },
-  pageTabActive:    { backgroundColor: C.navyMid, borderColor: C.gold },
-  pageTabTxt:       { fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: C.textSec, textAlign: 'center' },
-  pageTabTxtActive: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#fff' },
-  fullBtn:          { borderRadius: 12, overflow: 'hidden', marginTop: 4 },
-  fullBtnGrad:      { paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
-  fullBtnTxt:       { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff', letterSpacing: 0.8 },
-  noteBox:          { backgroundColor: 'rgba(201,168,76,0.12)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(201,168,76,0.35)', padding: 9, marginBottom: 10 },
-  noteTxt:          { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.70)', fontStyle: 'italic' },
-  dropdownList:     { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.90)', marginTop: 4, shadowColor: '#1a2d4e', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, zIndex: 999 },
-  dropdownItem:     { paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.06)' },
-  dropdownItemActive:{ backgroundColor: 'rgba(201,168,76,0.12)' },
-  dropdownTxt:      { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy },
-  tableHeader:      { flexDirection: 'row', backgroundColor: '#1a2d4e', paddingVertical: 9, paddingHorizontal: 6 },
-  tableHeaderTxt:   { flex: 1, fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.gold, textAlign: 'center' },
-  tableRow:         { flexDirection: 'row', borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.10)' },
-  tableCell:        { flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.navy, paddingHorizontal: 7, paddingVertical: 8 },
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const emptyItem = () => ({
+  id: Date.now().toString(), name:'', cat:'Meals',
+  price:'', stock:'', emoji:'🍽️', image:null,
 });
 
-const FinanceView = ({ title, icon, value, label, color, member, contentHeight }) => (
-  <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-    <Text style={s.pageTitle}>{title}</Text>
-    <GCard style={{ alignItems: 'center', padding: 28, borderTopWidth: 4, borderTopColor: color }}>
-      <Text style={{ fontSize: 32, marginBottom: 10 }}>{icon}</Text>
-      <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 32, color, marginBottom: 6 }}>{fmtCur(value)}</Text>
-      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec }}>{label}</Text>
-      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginTop: 4 }}>Last updated: {fmtDate(member.updatedAt)}</Text>
-    </GCard>
-    <Text style={s.sHead}>📋 TRANSACTION HISTORY</Text>
-    <GCard style={{ alignItems: 'center', padding: 32 }}>
-      <Text style={{ fontSize: 32, marginBottom: 10 }}>📄</Text>
-      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>No transactions yet.{'\n'}Contact admin for manual entries.</Text>
-    </GCard>
-  </ScrollView>
-);
-
-const ApplyLoanView = ({ member, contentHeight }) => {
-  const [amount, setAmount] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [term, setTerm] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState('');
-  const submit = async () => {
-    if (!amount || !purpose || !term) { setError('Please fill in all fields.'); return; }
-    const amt = parseFloat(amount.replace(/,/g, ''));
-    if (isNaN(amt) || amt <= 0) { setError('Please enter a valid amount.'); return; }
-    setLoading(true); setError('');
-    try {
-      await addDoc(collection(db, 'loanApplications'), { memberId: member.uid, memberName: member.name, memberUserId: member.userId, amount: amt, purpose, term, status: 'Pending', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      await addDoc(collection(db, 'adminNotifications'), { type: 'loan', icon: '💳', title: 'New Loan Application', message: `${member.name} applied for a loan of ${fmtCur(amt)}.`, memberId: member.uid, memberUserId: member.userId, createdAt: serverTimestamp(), read: false });
-      setDone(true); setAmount(''); setPurpose(''); setTerm('');
-      setTimeout(() => setDone(false), 3000);
-    } catch (e) { setError(e.message || 'Submission failed.'); }
-    finally { setLoading(false); }
-  };
-  return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-      <Text style={s.pageTitle}>📝 Apply for a Loan</Text>
-      <Text style={s.pageSub}>Your application will be reviewed by the admin.</Text>
-      <GCard style={{ backgroundColor: 'rgba(37,99,176,0.10)', borderColor: 'rgba(37,99,176,0.30)' }}>
-        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.blue, marginBottom: 6 }}>📌 Before You Apply</Text>
-        {['Must be active for at least 3 months.', 'Loan is up to 3x your share capital.', `Your share capital: ${fmtCur(member.shares)}`, `Estimated max loan: ${fmtCur((member.shares || 0) * 3)}`].map((t, i) => (
-          <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 19 }}>• {t}</Text>
-        ))}
-      </GCard>
-      <GCard>
-        <Text style={s.secTitle}>Loan Details</Text>
-        <DField label="LOAN AMOUNT (₱)" value={amount}  onChangeText={v => { setAmount(v);  setError(''); }} placeholder="e.g. 10000" keyboardType="numeric" />
-        <DField label="PURPOSE"          value={purpose} onChangeText={v => { setPurpose(v); setError(''); }} placeholder="e.g. Business Capital, Medical" />
-        <DField label="REPAYMENT TERM"   value={term}    onChangeText={v => { setTerm(v);    setError(''); }} placeholder="e.g. 12 months" />
-        {error ? <View style={{ backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(192,57,43,0.28)', padding: 10, marginBottom: 8 }}><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.red }}>{error}</Text></View> : null}
-        <SaveBtn onPress={submit} loading={loading} done={done} label="Submit Application" doneLabel="Application Submitted!" />
-      </GCard>
-    </ScrollView>
-  );
+const autoEmoji = (name) => {
+  const n = name.toLowerCase();
+  if (/rice|kanin|sinangag/.test(n))                return '🍚';
+  if (/soup|sinigang|tinola|nilaga|broth/.test(n))  return '🍲';
+  if (/chicken|manok|inasal/.test(n))               return '🍗';
+  if (/pork|lechon|liempo|adobo|sisig/.test(n))     return '🥩';
+  if (/fish|isda|bangus|tilapia|tuna/.test(n))      return '🐟';
+  if (/egg|itlog/.test(n))                          return '🥚';
+  if (/noodle|mami|pancit|pasta|spaghetti/.test(n)) return '🍜';
+  if (/bread|pan|sandwich|burger/.test(n))          return '🍞';
+  if (/cake|cupcake|pastry|donut/.test(n))          return '🎂';
+  if (/cookie|biscuit|cracker/.test(n))             return '🍪';
+  if (/candy|chocolate|choco|sweet/.test(n))        return '🍫';
+  if (/chips|fries|nacho/.test(n))                  return '🍟';
+  if (/juice|calamansi|lemon/.test(n))              return '🧃';
+  if (/coffee|kape|latte|cappuccino/.test(n))       return '☕';
+  if (/milk|gatas/.test(n))                         return '🥛';
+  if (/tea|tsaa/.test(n))                           return '🍵';
+  if (/water|tubig/.test(n))                        return '💧';
+  if (/soda|softdrink|cola|sprite/.test(n))         return '🥤';
+  if (/salad|vegetables|gulay/.test(n))             return '🥗';
+  if (/fruit|prutas|banana|apple|mango/.test(n))    return '🍎';
+  if (/snack|merienda/.test(n))                     return '🍿';
+  if (/pizza/.test(n))                              return '🍕';
+  if (/hotdog|sausage|longganisa/.test(n))          return '🌭';
+  if (/ice cream|gelato|frozen/.test(n))            return '🍦';
+  return '📦';
 };
 
-const MyLoansView = ({ member, contentHeight }) => {
-  const [apps, setApps] = useState([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    return onSnapshot(query(collection(db, 'loanApplications'), where('memberId', '==', member.uid), orderBy('createdAt', 'desc')), snap => { setApps(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); });
-  }, [member.uid]);
-  const prog = member.loan > 0 ? (member.loan - (member.loanBalance || 0)) / member.loan : 0;
-  return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-      <Text style={s.pageTitle}>💳 My Loans</Text>
-      {member.loan > 0 ? (
-        <GCard style={{ borderTopWidth: 4, borderTopColor: C.orange }}>
-          <Text style={s.secTitle}>Active Loan</Text>
-          {[['Total Loan', fmtCur(member.loan), C.orange], ['Remaining', fmtCur(member.loanBalance), C.red], ['Paid', fmtCur(member.loan - (member.loanBalance || 0)), C.green]].map(([l, v, c]) => (
-            <View key={l} style={s.infoRow}><Text style={s.infoLabel}>{l}</Text><Text style={[s.infoVal, { color: c, fontFamily: 'GoogleSans_700Bold' }]}>{v}</Text></View>
-          ))}
-          <View style={{ marginTop: 12 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec }}>Repayment Progress</Text><Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green }}>{Math.round(prog * 100)}%</Text></View>
-            <View style={{ height: 10, backgroundColor: 'rgba(15,30,53,0.12)', borderRadius: 5, overflow: 'hidden' }}><View style={{ height: 10, backgroundColor: C.green, borderRadius: 5, width: `${Math.round(prog * 100)}%` }} /></View>
-          </View>
-        </GCard>
-      ) : (
-        <GCard style={{ alignItems: 'center', padding: 32 }}><Text style={{ fontSize: 36, marginBottom: 10 }}>📋</Text><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: C.textMuted, textAlign: 'center' }}>No active loan.</Text></GCard>
-      )}
-      {!loading && apps.length > 0 && (
-        <>
-          <Text style={s.sHead}>📄 LOAN APPLICATIONS</Text>
-          {apps.map(app => { const sc = app.status === 'Approved' ? C.green : app.status === 'Rejected' ? C.red : C.orange; return (
-            <GCard key={app.id} style={{ borderLeftWidth: 3, borderLeftColor: sc }}>
-              {[['Amount', fmtCur(app.amount)], ['Purpose', app.purpose], ['Term', app.term], ['Filed', fmtDate(app.createdAt)], ['Status', app.status]].map(([l, v]) => (<View key={l} style={s.infoRow}><Text style={s.infoLabel}>{l}</Text><Text style={[s.infoVal, l === 'Status' && { color: sc, fontFamily: 'GoogleSans_700Bold' }]}>{v}</Text></View>))}
-              {app.adminRemarks ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#9a7230', fontStyle: 'italic', marginTop: 6 }}>Admin: {app.adminRemarks}</Text> : null}
-            </GCard>
-          ); })}
-        </>
-      )}
-      {loading && <Spinner msg="Loading..." />}
-    </ScrollView>
-  );
-};
-
-// ── Per-loan guideline data ───────────────────────────────────────────────
-const LOAN_TYPES = [
-  {
-    key: 'regular',
-    title: 'Regular Loan',
-    icon: '🏦',
-    color: C.blue,
-    effective: 'January 1, 2026',
-    terms: { term: '36 months', amount: '₱300,000.00', interest: '8% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Times 2 of the Share Capital, max ₱300,000.00',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: '6 months',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization'],
-    modeOfPayment: 'Monthly salary deduction every 15th & 30th',
-  },
-  {
-    key: 'salary',
-    title: 'Salary Loan',
-    icon: '💼',
-    color: C.navyMid,
-    effective: 'January 1, 2026',
-    terms: { term: '36 months', amount: '₱200,000.00', interest: '10% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Maximum amount of ₱200,000.00',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '5 working days upon receipt of application form',
-    renewal: '6 months',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'vehicle',
-    title: 'Vehicle Loan',
-    icon: '🚗',
-    color: '#2a6496',
-    effective: 'January 1, 2026',
-    terms: { term: '60 months', amount: 'Max ₱1M (20% of total price)', interest: '8% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Variable',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 to ₱1,000,000.00'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: 'Upon full payment of the loan',
-    documents: ['Brand New: Loan Application Form & Co-Maker Form (with photo)', 'Certificate of Net Take Home Pay', 'Proof of Quotation with photo of the unit', 'Proof of engine and chassis number', '2nd Hand: Accomplished Loan App & Co-Maker Form (with photo)', 'Proof of unit last price with photo (include plate #)', 'Photocopy of latest OR & CR', 'Stencil of engine & chassis number', 'Latest Cedula (seller), TIN ID or 2 gov\'t IDs (seller)', 'Unit must be year 2000 and up', 'TMG/PNP clearance of the unit'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'petty',
-    title: 'Petty Cash Loan',
-    icon: '💵',
-    color: C.orange,
-    effective: 'January 1, 2026',
-    terms: { term: '3 months', amount: '₱5,000.00', interest: '1% per month', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: 'Maximum amount of ₱5,000.00',
-    approvalLimits: ['Manager'],
-    processingTime: 'Within 24 hours from receipt of loan application form',
-    renewal: '50% payment',
-    documents: ['Petty Cash Application Form'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'special',
-    title: 'Special Loan (DTI)',
-    icon: '⭐',
-    color: '#7b3fa0',
-    effective: 'January 1, 2026',
-    terms: { term: '18 months', amount: '₱20,000.00', interest: '12% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Maximum amount of ₱20,000.00',
-    approvalLimits: ['Manager'],
-    processingTime: '5 working days upon receipt of application form',
-    renewal: '6 months or 50% payment',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'appliance',
-    title: 'Appliance Loan',
-    icon: '📺',
-    color: '#16847a',
-    effective: 'January 1, 2026',
-    terms: { term: '12 months', amount: '₱30,000.00', interest: '12% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Maximum amount of ₱30,000.00',
-    approvalLimits: ['Manager'],
-    processingTime: '5 working days upon receipt of application form',
-    renewal: '6 months or 50% payment',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Photo of desired appliance with price quotation from the store', 'After payment, submit photocopy of receipt'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'healthcare',
-    title: 'Healthcare Loan',
-    icon: '🏥',
-    color: C.red,
-    effective: 'January 1, 2026',
-    terms: { term: '12 months', amount: 'Variable', interest: 'N/A', serviceCharge: '2%' },
-    qualification: 'Principal: Regular employee of CLIMBS with at least 6 months of service. Dependents: ages up to 70 y.o. only. Member of Good Standing (no past due amort. in all CEC loans).',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: 'Variable',
-    approvalLimits: ['Manager — ₱50,000.00 and below'],
-    processingTime: 'N/A',
-    renewal: 'Upon full payment, annual',
-    documents: ['Certificate of Net Take Home Pay'],
-    modeOfPayment: 'Monthly Salary Deduction 15th & 30th',
-  },
-  {
-    key: 'emergency',
-    title: 'Emergency Loan',
-    icon: '🚨',
-    color: '#c0392b',
-    effective: 'January 1, 2026',
-    terms: [
-      { term: '6 months', amount: 'Less than ₱10,000.00', interest: 'No interest', serviceCharge: '2%' },
-      { term: '24 months', amount: '₱10,000.01 to ₱25,000.00', interest: '8% per annum', serviceCharge: '2%' },
-      { term: '36 months', amount: '₱25,000.01 to ₱50,000.00', interest: '8% per annum', serviceCharge: '2%' },
-    ],
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: 'Variable',
-    approvalLimits: ['Manager — ₱50,000.00 and below'],
-    processingTime: '1 working day upon receipt of application form',
-    renewal: 'Anytime',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Doctor\'s prescription for medicines', 'Medical Certificate', 'Photocopy of receipts (laboratory & MC)', 'Admission Slip & Billing', 'Reasons for availment: Calamity / Death (immediate family) / Chronic Diseases & Ailments / Fortuitous events'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'educational',
-    title: 'Educational Loan',
-    icon: '🎓',
-    color: '#1a6b3a',
-    effective: 'January 1, 2026',
-    terms: { term: '10 months', amount: '₱50,000.00', interest: '10% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 1 year membership in CEC',
-    security: 'Share Capital at least ₱5,000.00 + Retirement Pay Computation',
-    loanAmount: 'Maximum amount of ₱50,000.00',
-    approvalLimits: ['Manager — ₱50,000.00 and below'],
-    processingTime: '5 working days upon receipt of application form',
-    renewal: 'Semester (college) / Annual (K-12)',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Billing Statement &/or School Assessment duly signed by the School Registrar', 'Official Receipt'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'cashadvance',
-    title: 'Cash Advance Loan',
-    icon: '💸',
-    color: C.gold,
-    effective: 'January 1, 2026',
-    terms: { term: 'Payment upon release', amount: '80% of Actual Amount', interest: '1% per month', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: '80% of Actual Amount',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00'],
-    processingTime: 'Within 24 hours from receipt of loan application form',
-    renewal: 'N/A',
-    documents: ['Loan Application Form', 'Certificate from HR Manager or Comp. Ben Officer'],
-    modeOfPayment: 'Every Incentive/Bonus released. Settlement of payment at the end of the year.',
-  },
-  {
-    key: 'buyout',
-    title: 'Buy Out Loan',
-    icon: '🔄',
-    color: '#c47d0e',
-    effective: 'January 1, 2026',
-    terms: { term: '60 months', amount: '80% Retirement Benefits', interest: '18%, diminishing', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Retirement Pay Computation',
-    loanAmount: 'Retirement Benefit',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: 'Upon full payment of the loan',
-    documents: ['Loan Application Form', 'Co-maker Statement Form', 'Certificate of Net Take Home Pay', 'Outstanding Statement of Account', 'If loan amount equals retirement benefit: collateral required (TCT or OR/CR of vehicle less than 3 years, free of encumbrance)'],
-    modeOfPayment: 'Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'rice',
-    title: 'Rice Loan',
-    icon: '🍚',
-    color: '#8a6a1a',
-    effective: 'January 1, 2026',
-    terms: { term: '1 month', amount: 'Variable', interest: '1% per month', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS & CEC members',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: 'Variable',
-    approvalLimits: ['Manager'],
-    processingTime: '3 working days upon receipt of application form',
-    renewal: 'Upon full payment of the loan',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'grocery',
-    title: 'Grocery Loan',
-    icon: '🛒',
-    color: '#2e7d32',
-    effective: 'January 1, 2026',
-    terms: { term: '1 month', amount: '₱5,000.00', interest: '1% per month', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS & CEC members',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: '₱5,000.00',
-    approvalLimits: ['Manager'],
-    processingTime: 'Within 24 hours from receipt of loan application form',
-    renewal: 'Full payment of previous grocery loan',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'travel',
-    title: 'Travel Loan',
-    icon: '✈️',
-    color: '#1565c0',
-    effective: 'January 1, 2026',
-    terms: { term: '12 months', amount: '₱25,000.00', interest: '12% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: '₱25,000.00',
-    approvalLimits: ['Manager — ₱50,000.00 and below'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: 'Upon full payment of the loan',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'lad',
-    title: 'Loan Against Deposit (LAD)',
-    icon: '🏧',
-    color: C.green,
-    effective: 'January 1, 2026',
-    terms: { term: '12 months', amount: '85% of total deposits', interest: '6% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS, CEC Members, No existing regular loan',
-    security: 'Share Capital at least ₱5,000.00 + Savings',
-    loanAmount: '85% of total deposits',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '5 working days upon receipt of application form',
-    renewal: '6 months or 50% payment',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'housing',
-    title: 'Housing / Home Improvement Loan',
-    icon: '🏠',
-    color: '#5d4037',
-    effective: 'January 1, 2026',
-    terms: { term: '60 months', amount: '80% Retirement Benefits', interest: '8% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Maximum amount of retirement benefits',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: '50% payment',
-    documents: ['Loan Application Form & Co-Maker Form', 'Bill of Materials signed by Carpenter/Contractor (Home Improvement)', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization', 'New/Additional: Contractor\'s Equity Quotation, Vicinity Map/Sketch of property', 'If loan = retirement benefit: collateral required'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'solar',
-    title: 'Solar Solutions Loan',
-    icon: '☀️',
-    color: '#e65100',
-    effective: 'February 1, 2026',
-    terms: { term: '36 months', amount: '80% Retirement Benefits', interest: '8% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Maximum amount of retirement benefits',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: 'Full payment',
-    documents: ['Loan Application Form & Co-Maker Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization', 'If loan = retirement benefit: collateral required'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-    badge: 'NEW',
-  },
-  {
-    key: 'nonlife',
-    title: 'Non-Life Insurance Loan',
-    icon: '🛡️',
-    color: '#37474f',
-    effective: 'February 1, 2026',
-    terms: { term: '12 months', amount: '₱50,000.00', interest: 'N/A', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: '₱50,000.00',
-    approvalLimits: ['Manager — ₱50,000.00 and below'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: 'Full payment',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Photocopy of SOA from NL department', 'Photocopy of Policy from NL department'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-    badge: 'NEW',
-  },
+const TABS = [
+  { key:'cashier',   label:'Cashier',     icon:'point-of-sale'  },
+  { key:'menu',      label:'Manage Menu', icon:'restaurant-menu' },
+  { key:'inventory', label:'Inventory',   icon:'inventory'       },
+  { key:'history',   label:'History',     icon:'history'         },
+  { key:'credits',   label:'Credits',     icon:'account-balance' },
+  { key:'report',    label:'Report',      icon:'bar-chart'       },
 ];
 
-const LoanCard = ({ loan, expanded, onToggle }) => {
-  const anim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+const ORDER_STATUSES = {
+  pending:   { label:'⏳ Pending',         color:'#e67e22', bg:'rgba(230,126,34,0.12)', next:'preparing', nextLabel:'🔥 Start Preparing', nextColor:'#e67e22' },
+  preparing: { label:'🔥 Preparing',        color:'#2980b9', bg:'rgba(41,128,185,0.12)', next:'ready',    nextLabel:'✅ Mark as Ready',    nextColor:'#27ae60' },
+  ready:     { label:'✅ Ready to Pick Up', color:'#27ae60', bg:'rgba(39,174,96,0.12)',  next:'done',     nextLabel:'✓ Mark as Done',      nextColor:'#1a3a6b' },
+  done:      { label:'✓ Done',             color:'rgba(1,31,75,0.35)', bg:'rgba(1,31,75,0.06)', next:null, nextLabel:null, nextColor:null },
+};
+
+// ─── ITEM EDIT MODAL ──────────────────────────────────────────────────────────
+const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
+  const [form, setForm] = useState(item || emptyItem());
   useEffect(() => {
-    Animated.timing(anim, { toValue: expanded ? 1 : 0, duration: 220, useNativeDriver: false }).start();
-  }, [expanded]);
+    if (item) setForm({...item, price:String(item.price), stock:String(item.stock)});
+  }, [item]);
 
-  const isMultiTerm = Array.isArray(loan.terms);
+  const pickImage = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing:true, aspect:[1,1], quality:0.8,
+    });
+    if (!res.canceled) setForm(f=>({...f,image:res.assets[0].uri}));
+  };
 
-  const Row = ({ label, value }) => (
-    <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
-      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, width: 110, flexShrink: 0 }}>{label}</Text>
-      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.text, flex: 1, lineHeight: 18 }}>{value}</Text>
-    </View>
-  );
+  const handleNameChange = (v) => {
+    setForm(f => ({ ...f, name: v, emoji: f.image ? f.emoji : autoEmoji(v) }));
+  };
+
+  const save = () => {
+    if (!form.name.trim()) { Alert.alert('Error','Item name is required.'); return; }
+    if (!form.price)       { Alert.alert('Error','Price is required.'); return; }
+    if (form.stock==='')   { Alert.alert('Error','Stock is required.'); return; }
+    onSave({...form, price:parseFloat(form.price)||0, stock:parseInt(form.stock)||0});
+  };
 
   return (
-    <GCard style={{ padding: 0, overflow: 'hidden', marginBottom: 12, borderTopWidth: 3, borderTopColor: loan.color }}>
-      {/* Header — always visible */}
-      <TouchableOpacity onPress={onToggle} activeOpacity={0.8}
-        style={{ flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }}>
-        <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: loan.color + '22', justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ fontSize: 20 }}>{loan.icon}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: loan.color }}>{loan.title}</Text>
-            {loan.badge && (
-              <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: C.green }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>{loan.badge}</Text>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={ms.overlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} activeOpacity={1}/>
+        <View style={ms.modalWrapper}>
+          <View style={ms.modalCard}>
+            <Text style={ms.modalTitle}>{item?.name ? 'Edit Item' : 'Add New Item'}</Text>
+            <View style={{ flexDirection:'row', gap:12, alignItems:'flex-start' }}>
+              <View style={{ alignItems:'center', gap:4 }}>
+                <TouchableOpacity style={ms.imgPicker} onPress={pickImage}>
+                  {form.image
+                    ? <Image source={{uri:form.image}} style={ms.imgPreview}/>
+                    : <View style={{alignItems:'center',gap:2}}><Text style={{fontSize:32}}>{form.emoji}</Text><Text style={ms.imgHint}>Upload</Text></View>
+                  }
+                  <View style={ms.imgBadge}><MaterialIcons name="photo-camera" size={12} color="#fff"/></View>
+                </TouchableOpacity>
+                {form.image && <TouchableOpacity onPress={()=>setForm(f=>({...f,image:null}))}><Text style={{fontFamily:'GoogleSans_400Regular',fontSize:10,color:'#e74c3c'}}>✕ Remove</Text></TouchableOpacity>}
+                {!form.image && (
+                  <View style={{alignItems:'center',gap:2}}>
+                    <Text style={[ms.fieldLabel,{textAlign:'center'}]}>Emoji</Text>
+                    <TextInput style={[ms.input,{textAlign:'center',fontSize:20,width:56,paddingVertical:6}]} value={form.emoji} onChangeText={v=>setForm(f=>({...f,emoji:v}))} placeholder="📦"/>
+                  </View>
+                )}
               </View>
-            )}
-          </View>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 1 }}>Effective: {loan.effective}</Text>
-          {!expanded && (
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, marginTop: 3 }} numberOfLines={1}>
-              {isMultiTerm ? 'Variable terms' : `${loan.terms.term} · ${loan.terms.amount} · ${loan.terms.interest}`}
-            </Text>
-          )}
-        </View>
-        <Text style={{ fontSize: 18, color: C.textMuted }}>{expanded ? '▲' : '▼'}</Text>
-      </TouchableOpacity>
-
-      {/* Expandable body */}
-      {expanded && (
-        <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
-          {/* Term table */}
-          <View style={{ backgroundColor: loan.color + '15', borderRadius: 10, padding: 10, marginBottom: 12 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: loan.color, letterSpacing: 1.5, marginBottom: 8 }}>TERM OF LOAN & RATES</Text>
-            {isMultiTerm ? (
-              <>
-                <View style={{ flexDirection: 'row', marginBottom: 4 }}>
-                  {['Term', 'Amount', 'Interest', 'Service'].map(h => (
-                    <Text key={h} style={{ flex: 1, fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: loan.color, textAlign: 'center' }}>{h}</Text>
-                  ))}
+              <View style={{flex:1, gap:8}}>
+                <View style={ms.fieldRow}>
+                  <Text style={ms.fieldLabel}>Item Name *</Text>
+                  <TextInput style={ms.input} value={form.name} onChangeText={handleNameChange} placeholder="e.g. Fried Chicken"/>
                 </View>
-                {loan.terms.map((t, i) => (
-                  <View key={i} style={{ flexDirection: 'row', paddingVertical: 4, borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.08)' }}>
-                    {[t.term, t.amount, t.interest, t.serviceCharge].map((v, j) => (
-                      <Text key={j} style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.text, textAlign: 'center', lineHeight: 15 }}>{v}</Text>
-                    ))}
-                  </View>
-                ))}
-              </>
-            ) : (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {[['Max Term', loan.terms.term], ['Max Amount', loan.terms.amount], ['Interest', loan.terms.interest], ['Service Charge', loan.terms.serviceCharge]].map(([l, v]) => (
-                  <View key={l} style={{ minWidth: 120, flex: 1 }}>
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: loan.color }}>{l}</Text>
-                    <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.text, marginTop: 2 }}>{v}</Text>
-                  </View>
-                ))}
+                <View style={ms.fieldRow}>
+                  <Text style={ms.fieldLabel}>Category</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginTop:4}}>
+                    <View style={{flexDirection:'row',gap:5}}>
+                      {categories.filter(c=>c!=='All').map(cat=>(
+                        <TouchableOpacity key={cat} style={[ms.chip,form.cat===cat&&ms.chipActive]} onPress={()=>setForm(f=>({...f,cat}))}>
+                          <Text style={[ms.chipTxt,form.cat===cat&&ms.chipTxtActive]}>{cat}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+                <View style={{flexDirection:'row',gap:8}}>
+                  <View style={[ms.fieldRow,{flex:1}]}><Text style={ms.fieldLabel}>Price (₱) *</Text><TextInput style={ms.input} value={form.price} onChangeText={v=>setForm(f=>({...f,price:v}))} keyboardType="numeric" placeholder="0.00"/></View>
+                  <View style={[ms.fieldRow,{flex:1}]}><Text style={ms.fieldLabel}>Stock *</Text><TextInput style={ms.input} value={form.stock} onChangeText={v=>setForm(f=>({...f,stock:v}))} keyboardType="numeric" placeholder="0"/></View>
+                </View>
               </View>
-            )}
-          </View>
-
-          <Row label="Qualification" value={loan.qualification} />
-          <Row label="Security" value={loan.security} />
-          <Row label="Loan Amount" value={loan.loanAmount} />
-          <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, width: 110, flexShrink: 0 }}>Approval Limits</Text>
-            <View style={{ flex: 1 }}>
-              {loan.approvalLimits.map((a, i) => (
-                <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.text, lineHeight: 20 }}>• {a}</Text>
-              ))}
+            </View>
+            <View style={ms.modalActions}>
+              <TouchableOpacity style={ms.cancelBtn} onPress={onClose}><Text style={ms.cancelTxt}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={{flex:2,borderRadius:10,overflow:'hidden'}} onPress={save}>
+                <LinearGradient colors={['#1a3a6b','#2e5fa3']} start={{x:0,y:0}} end={{x:1,y:0}} style={{paddingVertical:11,alignItems:'center'}}>
+                  <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:13,color:'#fff'}}>Save Item</Text>
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
           </View>
-          <Row label="Processing Time" value={loan.processingTime} />
-          <Row label="Renewal" value={loan.renewal} />
-          <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, width: 110, flexShrink: 0 }}>Documents</Text>
-            <View style={{ flex: 1 }}>
-              {loan.documents.map((d, i) => (
-                <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.text, lineHeight: 20 }}>• {d}</Text>
-              ))}
-            </View>
-          </View>
-          <Row label="Mode of Payment" value={loan.modeOfPayment} />
         </View>
-      )}
-    </GCard>
+      </View>
+    </Modal>
   );
 };
 
-const GuidelinesView = ({ contentHeight }) => {
-  const [expanded, setExpanded] = useState(null);
-  const toggle = key => setExpanded(prev => prev === key ? null : key);
-  return (
-    <ScrollView contentContainerStyle={[s.pageOuter, { paddingBottom: 80 }]} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-      <Text style={s.pageTitle}>📖 Loan Guidelines</Text>
-      <Text style={s.pageSub}>Tap each loan type to view full details. Effective January 1, 2026.</Text>
-      {LOAN_TYPES.map(loan => (
-        <LoanCard key={loan.key} loan={loan} expanded={expanded === loan.key} onToggle={() => toggle(loan.key)} />
-      ))}
-    </ScrollView>
-  );
-};
+// ─── AD EDIT MODAL ────────────────────────────────────────────────────────────
+const AdEditModal = ({ visible, ad, onSave, onClose, onDelete }) => {
+  const [form, setForm] = useState(ad || {});
+  useEffect(() => { if (ad) setForm(ad); }, [ad]);
 
-const EditProfileView = ({ member, contentHeight }) => {
-  const af0 = member.appForm || {};
-
-  // Basic contact fields
-  const [contact, setContact] = useState(member.contact || af0.contactNo || '');
-  const [email,   setEmail]   = useState(member.email   || '');
-  const [address, setAddress] = useState(member.address || af0.presentAddress || '');
-
-  // Photo
-  const [photoUri,   setPhotoUri]   = useState(member.photoURL || null);
-  const [uploading,  setUploading]  = useState(false);
-
-  // App form editable fields
-  const [salutation,  setSalutation]  = useState(af0.salutation  || '');
-  const [suffix,      setSuffix]      = useState(af0.suffix      || '');
-  const [dob,         setDob]         = useState(af0.dob         || '');
-  const [placeOfBirth,setPlaceOfBirth]= useState(af0.placeOfBirth|| '');
-  const [religion,    setReligion]    = useState(af0.religion    || '');
-  const [religionOther,setReligionOther]=useState(af0.religionOther||'');
-  const [civilStatus, setCivilStatus] = useState(af0.civilStatus || '');
-  const [numDependents,setNumDependents]=useState(af0.numDependents||'0');
-  const [presentAddress,setPresentAddress]=useState(af0.presentAddress||'');
-  const [presentZip,  setPresentZip]  = useState(af0.presentZip  || '');
-  const [empType,     setEmpType]     = useState(af0.empType     || '');
-  const [employerName,setEmployerName]= useState(af0.employerName|| '');
-  const [positionRank,setPositionRank]= useState(af0.positionRank|| '');
-  const [monthlyIncome,setMonthlyIncome]=useState(af0.monthlyIncome||'');
-
-  const [saving, setSaving] = useState(false);
-  const [saved,  setSaved]  = useState(false);
-
-  const pickPhoto = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') { alert('Permission needed to access photos.'); return; }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-        base64: true,
-      });
-      if (!result.canceled && result.assets?.[0]) {
-        const asset = result.assets[0];
-        const dataUri = `data:image/jpeg;base64,${asset.base64}`;
-        setPhotoUri(dataUri);
-      }
-    } catch (e) { console.warn('Photo pick error:', e); }
+  const pickImage = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing:true, aspect:[16,5], quality:0.85,
+    });
+    if (!res.canceled) setForm(f=>({...f,image:res.assets[0].uri,imageUrl:''}));
   };
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      const updatedAppForm = {
-        ...af0,
-        salutation, suffix, dob, placeOfBirth,
-        religion, religionOther, civilStatus, numDependents,
-        presentAddress, presentZip,
-        contactNo: contact,
-        empType, employerName, positionRank, monthlyIncome,
-      };
-      await updateDoc(doc(db, 'members', member.uid), {
-        contact, email, address,
-        photoURL: photoUri || member.photoURL || null,
-        appForm: updatedAppForm,
-        updatedAt: serverTimestamp(),
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } catch (e) { console.warn(e); }
-    finally { setSaving(false); }
-  };
-
-  const SectionHead = ({ title }) => (
-    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10, marginTop: 14, paddingBottom: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.10)' }}>{title}</Text>
-  );
-
   return (
-    <ScrollView contentContainerStyle={[s.pageOuter, { paddingBottom: 60 }]}
-      showsVerticalScrollIndicator={true}
-      style={contentHeight ? { height: contentHeight } : undefined}
-      keyboardShouldPersistTaps="handled">
-
-      <Text style={s.pageTitle}>✏️ Edit Profile</Text>
-      <Text style={s.pageSub}>Changes will reflect automatically in My Profile.</Text>
-
-      {/* ── Profile Photo ── */}
-      <GCard style={{ alignItems: 'center', padding: 20 }}>
-        <TouchableOpacity onPress={pickPhoto} activeOpacity={0.85} style={{ alignItems: 'center', gap: 10 }}>
-          {photoUri
-            ? <Image source={{ uri: photoUri }} style={{ width: 90, height: 90, borderRadius: 45, borderWidth: 3, borderColor: C.gold }} />
-            : (
-              <View style={{ width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(201,168,76,0.25)', borderWidth: 3, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }}>
-                <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 30, color: C.gold }}>{mkInit(member.name)}</Text>
-              </View>
-            )
-          }
-          <View style={{ backgroundColor: C.navyMid, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold }}>📷  {photoUri ? 'Change Photo' : 'Upload Photo'}</Text>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={ms.overlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} activeOpacity={1}/>
+        <View style={[ms.modalCard,{maxWidth:420,alignSelf:'center',width:'90%'}]}>
+          <Text style={ms.modalTitle}>{ad?.isNew ? 'Add New Ad' : 'Edit Ad Banner'}</Text>
+          <TouchableOpacity style={[ms.imgPicker,{width:'100%',height:80,borderRadius:12}]} onPress={pickImage}>
+            {form.image
+              ? <Image source={{uri:form.image}} style={{width:'100%',height:80,borderRadius:12}} resizeMode="cover"/>
+              : <View style={{alignItems:'center',gap:3}}><Text style={{fontSize:28}}>{form.emoji||'📢'}</Text><Text style={ms.imgHint}>Tap to upload banner image</Text></View>
+            }
+          </TouchableOpacity>
+          <View style={ms.fieldRow}><Text style={ms.fieldLabel}>Or paste image URL</Text><TextInput style={ms.input} value={form.imageUrl||''} onChangeText={v=>setForm(f=>({...f,imageUrl:v,image:null}))} placeholder="https://..." autoCapitalize="none"/></View>
+          <View style={ms.fieldRow}><Text style={ms.fieldLabel}>Title</Text><TextInput style={ms.input} value={form.title||''} onChangeText={v=>setForm(f=>({...f,title:v}))} placeholder="Ad title"/></View>
+          <View style={ms.fieldRow}><Text style={ms.fieldLabel}>Subtitle</Text><TextInput style={ms.input} value={form.sub||''} onChangeText={v=>setForm(f=>({...f,sub:v}))} placeholder="Ad subtitle"/></View>
+          <View style={ms.modalActions}>
+            <TouchableOpacity style={ms.cancelBtn} onPress={onClose}><Text style={ms.cancelTxt}>Cancel</Text></TouchableOpacity>
+            {!ad?.isNew && onDelete && (
+              <TouchableOpacity style={[ms.cancelBtn,{backgroundColor:'rgba(231,76,60,0.10)',borderWidth:1,borderColor:'rgba(231,76,60,0.25)'}]} onPress={()=>{onClose();onDelete(ad.id);}}>
+                <Text style={[ms.cancelTxt,{color:'#e74c3c'}]}>Delete</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={{flex:2,borderRadius:10,overflow:'hidden'}} onPress={()=>onSave(form)}>
+              <LinearGradient colors={['#1a3a6b','#2e5fa3']} start={{x:0,y:0}} end={{x:1,y:0}} style={{paddingVertical:11,alignItems:'center'}}>
+                <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:13,color:'#fff'}}>Save Ad</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const ms = StyleSheet.create({
+  overlay: { flex:1, backgroundColor:'rgba(1,20,50,0.55)', justifyContent:'center', alignItems:'center', padding:20 },
+  modalWrapper: { width:'100%', maxWidth:540 },
+  modalCard: { backgroundColor:'#f0f5f9', borderRadius:20, padding:18, gap:12, shadowColor:'#000', shadowOpacity:0.25, shadowRadius:20, elevation:12 },
+  modalTitle: { fontFamily:'GoogleSans_700Bold', fontSize:16, color:'#011f4b', textAlign:'center', marginBottom:4 },
+  imgPicker: { alignSelf:'center', width:86, height:86, borderRadius:43, backgroundColor:'rgba(1,31,75,0.07)', borderWidth:2, borderColor:'rgba(1,31,75,0.15)', borderStyle:'dashed', justifyContent:'center', alignItems:'center' },
+  imgPreview: { width:86, height:86, borderRadius:43 },
+  imgHint: { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.40)', textAlign:'center' },
+  imgBadge: { position:'absolute', bottom:2, right:2, backgroundColor:'#1a3a6b', borderRadius:10, padding:4 },
+  fieldRow: { gap:4 },
+  fieldLabel: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.50)', letterSpacing:1, textTransform:'uppercase' },
+  input: { backgroundColor:'rgba(255,255,255,0.88)', borderRadius:8, paddingHorizontal:10, paddingVertical:9, fontFamily:'GoogleSans_400Regular', fontSize:13, color:'#011f4b', borderWidth:1, borderColor:'rgba(1,31,75,0.12)' },
+  chip: { paddingHorizontal:10, paddingVertical:5, borderRadius:12, backgroundColor:'rgba(1,31,75,0.07)' },
+  chipActive: { backgroundColor:'#1a3a6b' },
+  chipTxt: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.60)' },
+  chipTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#fff' },
+  modalActions: { flexDirection:'row', gap:8, marginTop:4, flexWrap:'wrap' },
+  cancelBtn: { flex:1, borderRadius:10, backgroundColor:'rgba(1,31,75,0.07)', paddingVertical:11, alignItems:'center' },
+  cancelTxt: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'rgba(1,31,75,0.50)' },
+});
+
+// ─── CASHIER SCREEN ───────────────────────────────────────────────────────────
+const CashierScreen = ({ items, categories, addOrder, deductStock, isWide: csIsWide }) => {
+  const [activeCat, setActiveCat]  = useState('All');
+  const [search,    setSearch]     = useState('');
+  const [cart,      setCart]       = useState({});
+  const [amountPaid,setAmountPaid] = useState('');
+  const [receiptVisible,setReceiptVisible] = useState(false);
+  const [lastOrder, setLastOrder]  = useState(null);
+  const [cartCollapsed, setCartCollapsed] = useState(true);
+
+  const filtered = items.filter(i => {
+    if (search.trim()) return i.name.toLowerCase().includes(search.toLowerCase());
+    return activeCat==='All' || i.cat===activeCat;
+  });
+
+  const cartItems = Object.values(cart).filter(c=>c.qty>0);
+  const total = cartItems.reduce((s,{item,qty})=>s+item.price*qty, 0);
+  const paid  = parseFloat(amountPaid)||0;
+  const change = paid - total;
+
+  const addToCart    = (item) => setCart(prev=>({...prev,[item.id]:{item,qty:(prev[item.id]?.qty||0)+1}}));
+  const removeFromCart = (item) => setCart(prev=>{
+    const qty=(prev[item.id]?.qty||0)-1;
+    if(qty<=0){const n={...prev};delete n[item.id];return n;}
+    return {...prev,[item.id]:{item,qty}};
+  });
+  const clearCart = () => { setCart({}); setAmountPaid(''); };
+
+  // ── FIX: async — awaits Firestore writes ──────────────────────────────────
+  const handlePlaceOrder = async () => {
+    if(cartItems.length===0) return;
+    if(paid<total){ Alert.alert('Insufficient Amount','Please enter the correct amount paid.'); return; }
+    const orderNo=Math.floor(1000+Math.random()*9000);
+    const now=new Date();
+    const time=now.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})+'  '+now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});
+    const order={id:Date.now().toString(),orderNo,time,items:cartItems,total,amountPaid:paid,change,payment:'cash',status:'pending',source:'cashier'};
+    await addOrder(order);
+    await deductStock(cartItems);
+    setLastOrder(order);
+    clearCart();
+    setTimeout(()=>setReceiptVisible(true),200);
+  };
+
+  const COLS=6;
+
+  return (
+    <View style={{flex:1,flexDirection:'row',minHeight:0,overflow:'hidden'}}>
+      {/* Items side */}
+      <View style={{flex:1,minHeight:0,minWidth:0,flexDirection:'column',overflow:'hidden'}}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{flexGrow:0,marginBottom:6}} contentContainerStyle={{paddingHorizontal:10,gap:5,paddingVertical:4}}>
+          {categories.map(cat=>(
+            <TouchableOpacity key={cat} style={[cs.catTab,activeCat===cat&&cs.catTabActive]} onPress={()=>setActiveCat(cat)}>
+              <Text style={[cs.catTabTxt,activeCat===cat&&cs.catTabTxtActive]}>{cat}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <View style={cs.searchRow}>
+          <Text style={{fontSize:12,marginRight:5}}>🔍</Text>
+          <TextInput style={cs.searchInput} placeholder="Search items..." placeholderTextColor="rgba(1,31,75,0.35)" value={search} onChangeText={setSearch}/>
+          {search.length>0&&<TouchableOpacity onPress={()=>setSearch('')}><Text style={{color:'rgba(1,31,75,0.40)',fontWeight:'700'}}>✕</Text></TouchableOpacity>}
+        </View>
+        <WebScrollView style={{flex:1}} contentContainerStyle={{paddingTop:10,paddingHorizontal:12,paddingBottom:20,gap:8}}>
+          {Array.from({length:Math.ceil(filtered.length/COLS)},(_,rowIdx)=>(
+            <View key={rowIdx} style={{flexDirection:'row',gap:8,alignItems:'stretch'}}>
+              {filtered.slice(rowIdx*COLS,rowIdx*COLS+COLS).map(item=>(
+                <View key={item.id} style={{flex:1,alignSelf:'stretch'}}>
+                <TouchableOpacity style={[cs.itemCard,item.stock===0&&{opacity:0.45},{flex:1}]} onPress={()=>item.stock>0&&addToCart(item)} activeOpacity={item.stock>0?0.75:1}>
+                  <View style={cs.itemImgCircle}>
+                    {item.image?<Image source={{uri:item.image}} style={{width:'100%',height:'100%',borderRadius:99}} resizeMode="cover"/>:<Text style={cs.itemEmoji}>{item.emoji}</Text>}
+                  </View>
+                  <Text style={cs.itemCardName} numberOfLines={2}>{item.name}</Text>
+                  <Text style={cs.itemCardPrice}>₱{item.price}</Text>
+                  <Text style={cs.itemCardStock}>{item.stock===0?'Out of stock':`Stock: ${item.stock}`}</Text>
+                  {cart[item.id]&&<View style={cs.cartBadge}><Text style={cs.cartBadgeTxt}>{cart[item.id].qty}</Text></View>}
+                </TouchableOpacity>
+                </View>
+              ))}
+              {Array.from({length:COLS-filtered.slice(rowIdx*COLS,rowIdx*COLS+COLS).length}).map((_,i)=>(<View key={`e-${i}`} style={{flex:1}}/>))}
+            </View>
+          ))}
+        </WebScrollView>
+      </View>
+
+      {/* Cart side - collapsible on mobile */}
+      <View style={[cs.cartPanel, !csIsWide && { width: '100%', borderLeftWidth: 0, borderTopWidth: 1, flex: 0, maxHeight: cartCollapsed ? 42 : 300 }]}>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 6, borderBottomWidth: cartCollapsed ? 0 : 1, borderColor: 'rgba(1,31,75,0.10)' }}
+          onPress={!csIsWide ? () => setCartCollapsed(v => !v) : undefined}
+          activeOpacity={csIsWide ? 1 : 0.8}
+        >
+          <Text style={cs.cartTitle}>🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ''}</Text>
+          {!csIsWide && <MaterialIcons name={cartCollapsed ? 'expand-more' : 'expand-less'} size={18} color="rgba(1,31,75,0.50)" />}
         </TouchableOpacity>
-        {photoUri && (
-          <TouchableOpacity onPress={() => setPhotoUri(null)} style={{ marginTop: 6 }}>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.red }}>✕ Remove photo</Text>
+        <View style={cs.cartItemsBox}>
+          {cartItems.length===0
+            ? <Text style={cs.cartEmpty}>No items added yet</Text>
+            : <WebScrollView style={{flex:1}}>
+                {cartItems.map(({item,qty})=>(
+                  <View key={item.id} style={cs.cartRow}>
+                    <Text style={cs.cartEmoji}>{item.emoji}</Text>
+                    <View style={{flex:1,minWidth:0}}>
+                      <Text style={cs.cartName} numberOfLines={1}>{item.name}</Text>
+                      <Text style={cs.cartSub}>₱{item.price} × {qty} = ₱{item.price*qty}</Text>
+                    </View>
+                    <View style={cs.qtyRow}>
+                      <TouchableOpacity style={cs.qBtn} onPress={()=>removeFromCart(item)}><Text style={cs.qBtnTxt}>−</Text></TouchableOpacity>
+                      <Text style={cs.qVal}>{qty}</Text>
+                      <TouchableOpacity style={[cs.qBtn,{backgroundColor:'#1a3a6b'}]} onPress={()=>addToCart(item)}><Text style={[cs.qBtnTxt,{color:'#fff'}]}>+</Text></TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </WebScrollView>
+          }
+        </View>
+        <View style={cs.totalRow}><Text style={cs.totalLbl}>TOTAL</Text><Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text></View>
+        <View style={{gap:3}}>
+          <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:9,color:'rgba(1,31,75,0.50)',letterSpacing:1,textTransform:'uppercase'}}>Amount Paid (Cash)</Text>
+          <TextInput style={cs.amtInput} value={amountPaid} onChangeText={setAmountPaid} keyboardType="numeric" placeholder="₱ 0.00" placeholderTextColor="rgba(1,31,75,0.30)"/>
+        </View>
+        {amountPaid!==''&&(
+          <View style={[cs.changeRow,{backgroundColor:change<0?'rgba(231,76,60,0.10)':'rgba(39,174,96,0.10)',borderRadius:8,padding:8}]}>
+            <Text style={cs.changeLbl}>Change</Text>
+            <Text style={[cs.changeVal,{color:change<0?'#e74c3c':'#27ae60'}]}>₱ {change.toFixed(2)}</Text>
+          </View>
+        )}
+        <TouchableOpacity style={[cs.orderBtn,cartItems.length===0&&{opacity:0.45}]} onPress={handlePlaceOrder} activeOpacity={0.80}>
+          <LinearGradient colors={cartItems.length>0?['#27ae60','#2ecc71']:['#aaa','#bbb']} start={{x:0,y:0}} end={{x:1,y:0}} style={cs.orderBtnGrad}>
+            <MaterialIcons name="check-circle" size={16} color="#fff"/>
+            <Text style={cs.orderBtnTxt}>Place Order</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+        <TouchableOpacity style={cs.clearBtn} onPress={clearCart}>
+          <MaterialIcons name="delete-sweep" size={14} color="#e74c3c"/>
+          <Text style={cs.clearBtnTxt}>Clear Cart</Text>
+        </TouchableOpacity>
+        {lastOrder&&(
+          <TouchableOpacity style={cs.receiptBtn} onPress={()=>setReceiptVisible(true)}>
+            <MaterialIcons name="receipt" size={14} color="#1a3a6b"/>
+            <Text style={cs.receiptBtnTxt}>Last Receipt</Text>
           </TouchableOpacity>
         )}
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 6, textAlign: 'center' }}>
-          Square photo recommended · max 1MB
-        </Text>
-      </GCard>
+      </View>
 
-      {/* ── Contact Info ── */}
-      <GCard>
-        <SectionHead title="📞 Contact Information" />
-        <DField label="CONTACT NUMBER" value={contact} onChangeText={setContact} placeholder="e.g. 09171234567" keyboardType="phone-pad" />
-        <DField label="EMAIL ADDRESS"  value={email}   onChangeText={setEmail}   placeholder="e.g. juan@email.com" keyboardType="email-address" />
-        <DField label="HOME ADDRESS"   value={address} onChangeText={setAddress} placeholder="e.g. Cagayan de Oro City" />
-      </GCard>
-
-      {/* ── Personal Details ── */}
-      <GCard>
-        <SectionHead title="👤 Personal Details" />
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.fieldLabel}>SALUTATION</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
-              {['Mr.','Mrs.','Ms.'].map(opt => (
-                <TouchableOpacity key={opt} onPress={() => setSalutation(opt)}
-                  style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: salutation === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: salutation === opt ? 'rgba(201,168,76,0.15)' : C.surface }}>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
-                </TouchableOpacity>
-              ))}
+      {receiptVisible&&lastOrder&&(
+        <Modal transparent visible animationType="fade" onRequestClose={()=>setReceiptVisible(false)}>
+          <View style={{flex:1,backgroundColor:'rgba(1,20,50,0.65)',justifyContent:'center',alignItems:'center',padding:20}}>
+            <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={()=>setReceiptVisible(false)} activeOpacity={1}/>
+            <View style={cs.receipt}>
+              <Text style={cs.receiptTitle}>🧾 RECEIPT</Text>
+              <Text style={cs.receiptSub}>CESLA Canteen</Text>
+              <View style={{height:1,borderStyle:'dashed',borderTopWidth:1,borderColor:'rgba(1,31,75,0.20)',marginVertical:10}}/>
+              <Text style={cs.receiptMeta}>Order #{lastOrder.orderNo}</Text>
+              <Text style={cs.receiptMeta}>{lastOrder.time}</Text>
+              <View style={{height:1,borderStyle:'dashed',borderTopWidth:1,borderColor:'rgba(1,31,75,0.20)',marginVertical:10}}/>
+              <ScrollView style={{maxHeight:160}} showsVerticalScrollIndicator={false}>
+                {(lastOrder.items||[]).map(({item,qty})=>(
+                  <View key={item.id} style={{flexDirection:'row',justifyContent:'space-between',marginBottom:4}}>
+                    <Text style={cs.receiptItem} numberOfLines={1}>{item.emoji} {item.name} ×{qty}</Text>
+                    <Text style={cs.receiptAmt}>₱{(item.price*qty).toFixed(2)}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+              <View style={{height:1,backgroundColor:'rgba(1,31,75,0.15)',marginVertical:8}}/>
+              <View style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={cs.receiptTotalLbl}>TOTAL</Text><Text style={cs.receiptTotalVal}>₱{lastOrder.total.toFixed(2)}</Text></View>
+              <View style={{flexDirection:'row',justifyContent:'space-between',marginTop:3}}><Text style={cs.receiptSubLbl}>Cash</Text><Text style={cs.receiptSubVal}>₱{lastOrder.amountPaid.toFixed(2)}</Text></View>
+              <View style={{flexDirection:'row',justifyContent:'space-between',marginTop:3}}><Text style={cs.receiptSubLbl}>Change</Text><Text style={[cs.receiptSubVal,{color:'#27ae60'}]}>₱{lastOrder.change.toFixed(2)}</Text></View>
+              <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#1a3a6b',textAlign:'center',marginTop:12}}>Thank you! 🙏</Text>
+              <TouchableOpacity onPress={()=>setReceiptVisible(false)} style={{marginTop:12,paddingVertical:10,backgroundColor:'rgba(26,58,107,0.10)',borderRadius:10,alignItems:'center'}}>
+                <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:13,color:'#1a3a6b'}}>Close</Text>
+              </TouchableOpacity>
             </View>
           </View>
-          <DField label="SUFFIX" value={suffix} onChangeText={setSuffix} placeholder="Jr., Sr., II" />
-        </View>
-        <DField label="DATE OF BIRTH (MM/DD/YYYY)" value={dob} onChangeText={setDob} placeholder="e.g. 01/15/1990" />
-        <DField label="PLACE OF BIRTH" value={placeOfBirth} onChangeText={setPlaceOfBirth} placeholder="City / Municipality, Province" />
-        <Text style={s.fieldLabel}>CIVIL STATUS</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
-          {['Single','Married','Legally Separated','Others'].map(opt => (
-            <TouchableOpacity key={opt} onPress={() => setCivilStatus(opt)}
-              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: civilStatus === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: civilStatus === opt ? 'rgba(201,168,76,0.15)' : C.surface }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <DField label="NUMBER OF DEPENDENTS" value={numDependents} onChangeText={setNumDependents} placeholder="0" keyboardType="numeric" />
-        <DField label="RELIGION" value={religion} onChangeText={setReligion} placeholder="e.g. Roman Catholic" />
-        {religion === 'Others' && <DField label="SPECIFY RELIGION" value={religionOther} onChangeText={setReligionOther} placeholder="Enter religion" />}
-      </GCard>
-
-      {/* ── Present Address ── */}
-      <GCard>
-        <SectionHead title="🏠 Present Address" />
-        <DField label="PRESENT ADDRESS" value={presentAddress} onChangeText={setPresentAddress} placeholder="House No., Street, Barangay, City" />
-        <DField label="ZIP CODE" value={presentZip} onChangeText={setPresentZip} placeholder="e.g. 9000" keyboardType="numeric" />
-      </GCard>
-
-      {/* ── Employment ── */}
-      <GCard>
-        <SectionHead title="💼 Employment" />
-        <Text style={s.fieldLabel}>EMPLOYMENT STATUS</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
-          {['Employed','Self-Employed','Unemployed'].map(opt => (
-            <TouchableOpacity key={opt} onPress={() => setEmpType(opt)}
-              style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: empType === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: empType === opt ? 'rgba(201,168,76,0.15)' : C.surface }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {empType === 'Employed' && <>
-          <DField label="EMPLOYER NAME"    value={employerName}   onChangeText={setEmployerName}   placeholder="Name of employer" />
-          <DField label="POSITION / RANK"  value={positionRank}   onChangeText={setPositionRank}   placeholder="e.g. Teacher I" />
-          <DField label="MONTHLY INCOME (₱)" value={monthlyIncome} onChangeText={setMonthlyIncome} placeholder="e.g. 25000" keyboardType="numeric" />
-        </>}
-      </GCard>
-
-      <SaveBtn onPress={save} loading={saving} done={saved} label="Save All Changes" doneLabel="Profile Updated!" />
-    </ScrollView>
-  );
-};
-
-const ChangePasswordView = ({ member, contentHeight }) => {
-  const [oldPw, setOldPw]   = useState('');
-  const [newPw, setNewPw]   = useState('');
-  const [confPw, setConfPw] = useState('');
-  const [showOld, setShowOld] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [error, setError]   = useState('');
-  const [done,  setDone]    = useState(false);
-  const [loading, setLoading] = useState(false);
-  const save = async () => {
-    if (newPw.length < 6) { setError('New password must be at least 6 characters.'); return; }
-    if (newPw !== confPw) { setError('Passwords do not match.'); return; }
-    setLoading(true); setError('');
-    try {
-      const snap = await getDocs(query(collection(db, 'members'), where('userId', '==', member.userId)));
-      if (snap.empty) throw new Error('Member not found.');
-      if (snap.docs[0].data().passwordHash !== hashPw(oldPw)) throw new Error('Current password is incorrect.');
-      await updateDoc(doc(db, 'members', member.uid), { passwordHash: hashPw(newPw), updatedAt: serverTimestamp() });
-      setDone(true); setOldPw(''); setNewPw(''); setConfPw('');
-      setTimeout(() => setDone(false), 3000);
-    } catch (e) { setError(e.message || 'Failed.'); }
-    finally { setLoading(false); }
-  };
-  return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-      <Text style={s.pageTitle}>🔑 Change Password</Text>
-      <GCard>
-        <DField label="CURRENT PASSWORD"     value={oldPw}  onChangeText={v => { setOldPw(v);  setError(''); }} placeholder="Current password"    secureEntry={!showOld} showToggle onToggle={() => setShowOld(p => !p)} />
-        <DField label="NEW PASSWORD"         value={newPw}  onChangeText={v => { setNewPw(v);  setError(''); }} placeholder="Min. 6 characters"    secureEntry={!showNew} showToggle onToggle={() => setShowNew(p => !p)} />
-        <DField label="CONFIRM NEW PASSWORD" value={confPw} onChangeText={v => { setConfPw(v); setError(''); }} placeholder="Re-enter new password" secureEntry={!showNew} />
-        {error ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.red, textAlign: 'center', marginBottom: 8 }}>{error}</Text> : null}
-        {done  ? <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, textAlign: 'center', marginBottom: 8 }}>✓ Password changed!</Text> : null}
-        <SaveBtn onPress={save} loading={loading} done={false} label="Update Password" />
-      </GCard>
-    </ScrollView>
-  );
-};
-
-const NotifsView = ({ member, contentHeight }) => {
-  const [notifs,  setNotifs]  = useState([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    return onSnapshot(query(collection(db, 'members', member.uid, 'notifications'), orderBy('createdAt', 'desc')), snap => { setNotifs(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); }, () => setLoading(false));
-  }, [member.uid]);
-  const markRead = async id => updateDoc(doc(db, 'members', member.uid, 'notifications', id), { read: true });
-  const sysNotifs = member.approvedAt ? [{ id: 'sys', icon: '✅', title: 'Account Approved!', message: `Your membership was approved on ${fmtDate(member.approvedAt)}. You now have full access.`, color: C.green, createdAt: member.approvedAt, read: true }] : [];
-  const all = [...sysNotifs, ...notifs];
-  if (loading) return <Spinner msg="Loading notifications..." />;
-  return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-      <Text style={s.pageTitle}>🔔 Notifications</Text>
-      <Text style={s.pageSub}>{all.filter(n => !n.read).length} unread.</Text>
-      {all.length === 0 && <GCard style={{ alignItems: 'center', padding: 40 }}><Text style={{ fontSize: 36, marginBottom: 10 }}>🔔</Text><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: C.textMuted, textAlign: 'center' }}>No notifications yet.</Text></GCard>}
-      {all.map(n => (
-        <TouchableOpacity key={n.id} style={[s.notifCard, { borderLeftColor: n.color || C.gold, opacity: n.read ? 0.60 : 1 }]} onPress={() => !n.read && n.id !== 'sys' && markRead(n.id)} activeOpacity={0.8}>
-          <View style={[s.notifIcon, { backgroundColor: (n.color || C.gold) + '22' }]}><Text style={{ fontSize: 18 }}>{n.icon || '🔔'}</Text></View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-              <Text style={s.notifTitle}>{n.title}</Text>
-              {!n.read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: n.color || C.gold }} />}
-            </View>
-            <Text style={s.notifMsg}>{n.message}</Text>
-            <Text style={s.notifTime}>{fmtTime(n.createdAt)}</Text>
-          </View>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
-};
-
-// ═════════════════════════════════════════════════════════════════════════════
-// MEMBER DASHBOARD SHELL
-// ═════════════════════════════════════════════════════════════════════════════
-const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
-  const { height, isMobile } = useRwd();
-  const topbarHeight = Platform.OS === 'web' ? 62 : isSmall ? 58 : 62;
-  const contentHeight = height - topbarHeight;
-
-  const [nav,    setNav]    = useState('overview');
-  const [member, setMember] = useState(memberInit);
-  const [drawer, setDrawer] = useState(false);
-  const [unread, setUnread] = useState(0);
-  const fadeAnim  = useRef(new Animated.Value(1)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
-
-  // Real-time member sync
-  useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(doc(db, 'members', memberInit.uid), snap => { if (snap.exists()) setMember({ uid: snap.id, ...snap.data() }); }); }, [memberInit?.uid]);
-  // Unread count
-  useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(query(collection(db, 'members', memberInit.uid, 'notifications'), where('read', '==', false)), snap => setUnread(snap.size)); }, [memberInit?.uid]);
-
-  const switchNav = key => {
-    Animated.parallel([Animated.timing(fadeAnim, { toValue: 0, duration: 130, useNativeDriver: true }), Animated.timing(slideAnim, { toValue: 10, duration: 130, useNativeDriver: true })]).start(() => {
-      setNav(key);
-      Animated.parallel([Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: true }), Animated.timing(slideAnim, { toValue: 0, duration: 220, useNativeDriver: true })]).start();
-    });
-  };
-
-  const renderContent = () => {
-    const h = contentHeight;
-    const m = isMobile;
-    switch (nav) {
-      case 'overview':     return <OverviewView     member={member} onNav={switchNav} contentHeight={h} isMobile={m} />;
-      case 'profile':      return <ProfileView      member={member} contentHeight={h} isMobile={m} />;
-      case 'appform':      return <AppFormView       member={member} contentHeight={h} isMobile={m} />;
-      case 'savings':      return <FinanceView title="Savings"       icon="💰" value={member.savings} label="Total Savings Balance" color={C.green}  member={member} contentHeight={h} isMobile={m} />;
-      case 'sharecap':     return <FinanceView title="Share Capital" icon="📊" value={member.shares}  label="Total Share Capital"   color={C.gold}   member={member} contentHeight={h} isMobile={m} />;
-      case 'timedeposit':  return <FinanceView title="Time Deposit"  icon="🏦" value={0}              label="Time Deposit Balance"  color={C.blueLt} member={member} contentHeight={h} isMobile={m} />;
-      case 'applyloan':    return <ApplyLoanView     member={member} contentHeight={h} isMobile={m} />;
-      case 'myloans':      return <MyLoansView       member={member} contentHeight={h} isMobile={m} />;
-      case 'guidelines':   return <GuidelinesView    contentHeight={h} isMobile={m} />;
-      case 'editprofile':  return <EditProfileView   member={member} contentHeight={h} isMobile={m} />;
-      case 'changepw':     return <ChangePasswordView member={member} contentHeight={h} isMobile={m} />;
-      case 'notifs':       return <NotifsView        member={member} contentHeight={h} isMobile={m} />;
-      default:             return <OverviewView      member={member} onNav={switchNav} contentHeight={h} isMobile={m} />;
-    }
-  };
-
-  return (
-    <View style={{ flex: 1 }}>
-      {/* Top bar */}
-      <View style={[s.dashTopbar, { paddingTop: Platform.OS === 'web' ? 0 : 44 }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-          {!isWide && <TouchableOpacity style={s.menuBtn} onPress={() => setDrawer(v => !v)}><Text style={{ color: '#fff', fontSize: 18 }}>☰</Text></TouchableOpacity>}
-          <View style={s.dashLogo}><Text style={s.dashLogoTxt}>CS</Text></View>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.dashTitle, { fontSize: isSmall ? 12 : 14 }]} numberOfLines={1}>Member Dashboard</Text>
-            {!isSmall && <Text style={s.dashSub}>CESLA MPC · CLIMBS Employee Cooperative</Text>}
-          </View>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TouchableOpacity style={s.bellBtn} onPress={() => switchNav('notifs')}>
-            <Text style={{ fontSize: 16 }}>🔔</Text>
-            {unread > 0 && <View style={s.bellBadge}><Text style={s.bellBadgeTxt}>{unread > 9 ? '9+' : unread}</Text></View>}
-          </TouchableOpacity>
-          <MemberAvatar member={member} size={32} />
-          {isWide && <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)', maxWidth: 120 }} numberOfLines={1}>{member.name}</Text>}
-          <TouchableOpacity style={s.logoutBtn} onPress={onLogout}><Text style={s.logoutTxt}>{isSmall ? '↩' : 'Logout'}</Text></TouchableOpacity>
-        </View>
-      </View>
-      {/* Body */}
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        {isWide && <MemberSidebar active={nav} onNav={switchNav} unread={unread} />}
-        <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-          {renderContent()}
-        </Animated.View>
-      </View>
-      {/* Mobile drawer */}
-      {!isWide && drawer && (
-        <TouchableOpacity style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 20 }} activeOpacity={1} onPress={() => setDrawer(false)}>
-          <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 185, zIndex: 21 }}>
-            <MemberSidebar active={nav} onNav={switchNav} onClose={() => setDrawer(false)} unread={unread} />
-          </View>
-        </TouchableOpacity>
+        </Modal>
       )}
     </View>
   );
 };
 
-// ═════════════════════════════════════════════════════════════════════════════
-// MAIN EXPORT — CoopScreen handles EVERYTHING in one screen
-// Login → Register → (admin approves) → Dashboard — no navigation.navigate()
-// ═════════════════════════════════════════════════════════════════════════════
-export default function CoopScreen({ navigation }) {
-  const { width } = useWindowDimensions();
-  const isWide  = width >= 768;
-  const isSmall = width < 400;
+const cs = StyleSheet.create({
+  catTab: { paddingVertical:6,paddingHorizontal:14,borderRadius:16,backgroundColor:'rgba(255,255,255,0.35)',borderWidth:1,borderColor:'rgba(255,255,255,0.55)' },
+  catTabActive: { backgroundColor:'#304674',borderColor:'#c9a84c' },
+  catTabTxt: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'rgba(1,31,75,0.70)' },
+  catTabTxtActive: { color:'#fff' },
+  searchRow: { flexDirection:'row',alignItems:'center',backgroundColor:'rgba(255,255,255,0.70)',borderRadius:8,paddingHorizontal:10,paddingVertical:7,marginHorizontal:8,marginBottom:4,borderWidth:1,borderColor:'rgba(255,255,255,0.90)' },
+  searchInput: { flex:1,fontFamily:'GoogleSans_400Regular',fontSize:12,color:'#011f4b',paddingVertical:0 },
+  itemCard: { flex:1,alignSelf:'stretch',backgroundColor:'rgba(255,255,255,0.70)',borderRadius:12,padding:8,alignItems:'center',justifyContent:'space-between',gap:2,borderWidth:1,borderColor:'rgba(255,255,255,0.85)',position:'relative',minHeight:130 },
+  itemImgCircle: { width:44,height:44,borderRadius:22,backgroundColor:'rgba(240,246,252,0.90)',justifyContent:'center',alignItems:'center',overflow:'hidden',borderWidth:1,borderColor:'rgba(255,255,255,0.80)',flexShrink:0 },
+  itemEmoji: { fontSize:20 },
+  itemCardName: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#1a2d4e',textAlign:'center',lineHeight:12,minHeight:24,width:'100%' },
+  itemCardPrice: { fontFamily:'NotoSerif_700Bold',fontSize:12,color:'#c9a84c' },
+  itemCardStock: { fontFamily:'GoogleSans_400Regular',fontSize:8,color:'rgba(1,31,75,0.45)' },
+  cartBadge: { position:'absolute',top:4,right:4,backgroundColor:'#e74c3c',borderRadius:8,width:16,height:16,justifyContent:'center',alignItems:'center' },
+  cartBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#fff' },
+  cartPanel: { width:240,flexShrink:0,backgroundColor:'rgba(255,255,255,0.22)',borderLeftWidth:1,borderColor:'rgba(255,255,255,0.40)',padding:10,gap:6,minHeight:0,overflow:'hidden' },
+  cartTitle: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'rgba(1,31,75,0.65)',letterSpacing:2,paddingBottom:6,borderBottomWidth:1,borderColor:'rgba(1,31,75,0.10)' },
+  cartItemsBox: { flex:1,minHeight:50,backgroundColor:'rgba(255,255,255,0.40)',borderRadius:10,padding:8,borderWidth:1,borderColor:'rgba(255,255,255,0.65)',overflow:'hidden' },
+  cartEmpty: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.40)',textAlign:'center',paddingTop:12 },
+  cartRow: { flexDirection:'row',alignItems:'center',gap:5,paddingVertical:5,borderBottomWidth:1,borderColor:'rgba(1,31,75,0.06)' },
+  cartEmoji: { fontSize:15 },
+  cartName: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#011f4b' },
+  cartSub: { fontFamily:'GoogleSans_400Regular',fontSize:9,color:'rgba(1,31,75,0.50)' },
+  qtyRow: { flexDirection:'row',alignItems:'center',gap:3 },
+  qBtn: { width:18,height:18,borderRadius:9,backgroundColor:'rgba(1,31,75,0.10)',justifyContent:'center',alignItems:'center' },
+  qBtnTxt: { fontSize:11,color:'#011f4b',fontWeight:'700',lineHeight:14 },
+  qVal: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#011f4b',minWidth:12,textAlign:'center' },
+  totalRow: { flexDirection:'row',justifyContent:'space-between',alignItems:'center',paddingVertical:3 },
+  totalLbl: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'rgba(1,31,75,0.55)',letterSpacing:1 },
+  totalVal: { fontFamily:'NotoSerif_700Bold',fontSize:13,color:'#c9a84c' },
+  amtInput: { backgroundColor:'rgba(255,255,255,0.70)',borderRadius:8,paddingHorizontal:10,paddingVertical:7,fontFamily:'GoogleSans_400Regular',fontSize:13,color:'#011f4b',borderWidth:1,borderColor:'rgba(255,255,255,0.85)' },
+  changeRow: { flexDirection:'row',justifyContent:'space-between',alignItems:'center' },
+  changeLbl: { fontFamily:'GoogleSans_500Medium',fontSize:10,color:'rgba(1,31,75,0.60)' },
+  changeVal: { fontFamily:'NotoSerif_700Bold',fontSize:13 },
+  orderBtn: { borderRadius:10,overflow:'hidden' },
+  orderBtnGrad: { flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,paddingVertical:10 },
+  orderBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#fff' },
+  clearBtn: { flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4,paddingVertical:7,backgroundColor:'rgba(231,76,60,0.10)',borderRadius:8,borderWidth:1,borderColor:'rgba(231,76,60,0.20)' },
+  clearBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#e74c3c' },
+  receiptBtn: { flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4,paddingVertical:7,backgroundColor:'rgba(26,58,107,0.10)',borderRadius:8,borderWidth:1,borderColor:'rgba(26,58,107,0.20)' },
+  receiptBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#1a3a6b' },
+  receipt: { backgroundColor:'#fffef8',borderRadius:16,padding:20,width:'100%',maxWidth:360,shadowColor:'#000',shadowOpacity:0.25,shadowRadius:20,elevation:14 },
+  receiptTitle: { fontFamily:'NotoSerif_700Bold',fontSize:18,color:'#1a2d4e',textAlign:'center' },
+  receiptSub: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.50)',textAlign:'center',marginTop:2 },
+  receiptMeta: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.55)',textAlign:'center',lineHeight:17 },
+  receiptItem: { fontFamily:'GoogleSans_400Regular',fontSize:12,color:'#1a2d4e',flex:1,marginRight:8 },
+  receiptAmt: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#1a2d4e' },
+  receiptTotalLbl: { fontFamily:'GoogleSans_700Bold',fontSize:14,color:'#1a2d4e' },
+  receiptTotalVal: { fontFamily:'NotoSerif_700Bold',fontSize:16,color:'#c9a84c' },
+  receiptSubLbl: { fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(1,31,75,0.55)' },
+  receiptSubVal: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'rgba(1,31,75,0.70)' },
+});
 
-  const [fontsLoaded] = useFonts({ NotoSerif_700Bold, NotoSerif_700Bold_Italic, GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold });
-
-  // view: 'login' | 'register' | 'success' | 'dashboard'
-  const [view,   setView]   = useState('login');
-  const [member, setMember] = useState(null);
-
-  // Login state
-  const [userId,       setUserId]       = useState('');
-  const [pw,           setPw]           = useState('');
-  const [showPw,       setShowPw]       = useState(false);
-  const [loginErr,     setLoginErr]     = useState('');
-  const [loginLoading, setLoginLoading] = useState(false);
-
-  // Register state
-  const [lastName,    setLastName]    = useState('');
-  const [firstName,   setFirstName]   = useState('');
-  const [middleName,  setMiddleName]  = useState('');
-  const [regPw,       setRegPw]       = useState('');
-  const [regConfirm,  setRegConfirm]  = useState('');
-  const [showRegPw,   setShowRegPw]   = useState(false);
-  const [showRegConf, setShowRegConf] = useState(false);
-  const [genUid,      setGenUid]      = useState('Loading...');
-  const [copied,      setCopied]      = useState(false);
-  const [regErrors,   setRegErrors]   = useState({});
-  const [regLoading,  setRegLoading]  = useState(false);
-  const [regMember,   setRegMember]   = useState(null);
-
-  // Animations
-  const hdrFade  = useRef(new Animated.Value(0)).current;
-  const hdrTrans = useRef(new Animated.Value(-18)).current;
-  const cardFade = useRef(new Animated.Value(0)).current;
-  const cardTrans= useRef(new Animated.Value(32)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(hdrFade,  { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.timing(hdrTrans, { toValue: 0, duration: 600, useNativeDriver: true }),
-      Animated.timing(cardFade, { toValue: 1, duration: 550, delay: 180, useNativeDriver: true }),
-      Animated.timing(cardTrans,{ toValue: 0, duration: 550, delay: 180, useNativeDriver: true }),
-    ]).start();
-  }, []);
-
-  useEffect(() => {
-    if (view === 'register') {
-      setGenUid('Loading...');
-      generateNextUserId().then(setGenUid).catch(() => setGenUid('CESLA-2026-XXXXX'));
-    }
-  }, [view]);
-
-  const switchView = next => {
-    Animated.timing(cardFade, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => {
-      setView(next); setLoginErr(''); setRegErrors({});
-      Animated.timing(cardFade, { toValue: 1, duration: 280, useNativeDriver: true }).start();
-    });
-  };
-
-  const handleLogin = async () => {
-    if (!userId.trim()) { setLoginErr('Please enter your User ID.'); return; }
-    if (!pw.trim())     { setLoginErr('Please enter your password.'); return; }
-    setLoginLoading(true); setLoginErr('');
-    try {
-      const m = await loginByUserIdFS(userId.trim(), pw);
-      setMember(m);
-      setView('dashboard'); // ← stays in same screen, no navigation needed
-    } catch (e) { setLoginErr(e.message || 'Invalid User ID or password.'); }
-    finally { setLoginLoading(false); }
-  };
-
-  const handleRegister = async () => {
-    const e = {};
-    if (!lastName.trim())     e.lastName  = 'Last name is required.';
-    if (!firstName.trim())    e.firstName = 'First name is required.';
-    if (regPw.length < 6)     e.pw        = 'Min. 6 characters.';
-    if (regPw !== regConfirm) e.cpw       = 'Passwords do not match.';
-    if (Object.keys(e).length > 0) { setRegErrors(e); return; }
-    setRegLoading(true);
-    try {
-      const m = await registerMemberFS({ lastName: lastName.trim(), firstName: firstName.trim(), middleName: middleName.trim(), password: regPw });
-      setRegMember(m); switchView('success');
-    } catch (err) { setRegErrors({ general: err.message || 'Registration failed.' }); }
-    finally { setRegLoading(false); }
-  };
-
-  const handleCopy = async uid => { await Clipboard.setStringAsync(uid); setCopied(true); setTimeout(() => setCopied(false), 2500); };
-  const handleLogout = () => { setMember(null); setUserId(''); setPw(''); setView('login'); };
-
-  if (!fontsLoaded) {
-    return <View style={{ flex: 1 }}><AppBg /><View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" color="#c9a84c" /></View></View>;
-  }
-
-  // ── DASHBOARD — full screen, no header ──────────────────────────────────
-  if (view === 'dashboard' && member) {
-    return (
-      <View style={{ flex: 1 }}>
-        <AppBg />
-        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-        <MemberDashboard memberInit={member} onLogout={handleLogout} isWide={isWide} isSmall={isSmall} />
+// ─── MANAGE MENU SCREEN ───────────────────────────────────────────────────────
+const ManageMenuScreen = ({ items, categories, filtered, search, activeCategory, onSearch, onCategoryChange, onAddItem, onEditItem, onDeleteItem }) => {
+  const COLS = 6;
+  return (
+    <View style={{flex:1,minHeight:0,flexDirection:'row',overflow:'hidden'}}>
+      <View style={mm.catPanel}>
+        <Text style={mm.catTitle}>CATEGORIES</Text>
+        <WebScrollView style={{flex:1}} contentContainerStyle={{gap:4}}>
+          {categories.map(cat=>(
+            <TouchableOpacity key={cat} style={[mm.catBtn,activeCategory===cat&&mm.catBtnActive]} onPress={()=>onCategoryChange(cat)}>
+              <Text style={[mm.catBtnTxt,activeCategory===cat&&mm.catBtnTxtActive]}>{cat}</Text>
+            </TouchableOpacity>
+          ))}
+        </WebScrollView>
       </View>
-    );
-  }
+      <View style={{flex:1,minHeight:0,minWidth:0,overflow:'hidden'}}>
+        <View style={mm.headerRow}>
+          <Text style={mm.headerLbl} numberOfLines={1}>
+            {search.trim()?`RESULTS FOR "${search.toUpperCase()}"`:activeCategory==='All'?'ALL ITEMS':activeCategory.toUpperCase()}
+          </Text>
+          <View style={mm.searchBox}>
+            <Text style={{fontSize:11,marginRight:4}}>🔍</Text>
+            <TextInput style={mm.searchInput} placeholder="Search..." placeholderTextColor="rgba(1,31,75,0.35)" value={search} onChangeText={onSearch}/>
+            {search.length>0&&<TouchableOpacity onPress={()=>onSearch('')}><Text style={{color:'rgba(1,31,75,0.45)',fontWeight:'700',fontSize:12}}>✕</Text></TouchableOpacity>}
+          </View>
+          <TouchableOpacity style={mm.addBtn} onPress={onAddItem}>
+            <MaterialIcons name="add" size={15} color="#fff"/>
+            <Text style={mm.addBtnTxt}>Add Item</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{height:1,backgroundColor:'rgba(1,31,75,0.10)',marginBottom:8,marginHorizontal:8}}/>
+        <WebScrollView style={{flex:1}} contentContainerStyle={{paddingTop:10,paddingHorizontal:12,paddingBottom:20,gap:8}}>
+          {filtered.length===0
+            ? <Text style={mm.emptyTxt}>No items found.</Text>
+            : Array.from({length:Math.ceil(filtered.length/COLS)},(_,rowIdx)=>(
+              <View key={rowIdx} style={{flexDirection:'row',gap:8,alignItems:'stretch'}}>
+                {filtered.slice(rowIdx*COLS,rowIdx*COLS+COLS).map(item=>(
+                  <View key={item.id} style={{flex:1,minWidth:0,alignSelf:'stretch'}}>
+                    <View style={mm.foodCard}>
+                      <View style={[mm.foodCardInner,{backgroundColor:'rgba(225,238,248,0.85)'}]}>
+                        <View style={mm.adminBtns}>
+                          <TouchableOpacity style={mm.editBtn} onPress={()=>onEditItem(item)}><MaterialIcons name="edit" size={11} color="#1a3a6b"/></TouchableOpacity>
+                          <TouchableOpacity style={mm.delBtn} onPress={()=>onDeleteItem(item.id)}><MaterialIcons name="delete" size={11} color="#e74c3c"/></TouchableOpacity>
+                        </View>
+                        <View style={mm.emojiCircle}>
+                          {item.image?<Image source={{uri:item.image}} style={{width:'100%',height:'100%',borderRadius:99}} resizeMode="cover"/>:<Text style={mm.emojiTxt}>{item.emoji}</Text>}
+                        </View>
+                        <Text style={mm.itemName} numberOfLines={2}>{item.name}</Text>
+                        <Text style={mm.itemStock}>Stock: {item.stock}</Text>
+                        <Text style={mm.itemPrice}>₱{item.price}.00</Text>
+                        <TouchableOpacity style={mm.editItemBtn} onPress={()=>onEditItem(item)}>
+                          <Text style={mm.editItemBtnTxt}>Edit Item</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+                {Array.from({length:COLS-filtered.slice(rowIdx*COLS,rowIdx*COLS+COLS).length}).map((_,i)=>(<View key={`e-${i}`} style={{flex:1}}/>))}
+              </View>
+            ))
+          }
+        </WebScrollView>
+      </View>
+    </View>
+  );
+};
 
-  // ── AUTH SCREENS ─────────────────────────────────────────────────────────
-  const headerLabel =
-    view === 'register' ? <><Text style={s.headerWhite}>Register as </Text><Text style={s.headerGold}>New Member</Text></> :
-    view === 'success'  ? <><Text style={s.headerWhite}>Registration </Text><Text style={s.headerGold}>Complete!</Text></> :
-                          <><Text style={s.headerWhite}>Member </Text><Text style={s.headerGold}>Login</Text></>;
+const mm = StyleSheet.create({
+  catPanel: { width:130,flexShrink:0,backgroundColor:'rgba(255,255,255,0.20)',borderRightWidth:1,borderColor:'rgba(255,255,255,0.40)',padding:10 },
+  catTitle: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'rgba(1,31,75,0.50)',letterSpacing:2,textTransform:'uppercase',marginBottom:6,paddingBottom:6,borderBottomWidth:1,borderColor:'rgba(1,31,75,0.10)' },
+  catBtn: { paddingVertical:8,paddingHorizontal:10,borderRadius:8,marginBottom:2 },
+  catBtnActive: { backgroundColor:'rgba(26,58,107,0.18)' },
+  catBtnTxt: { fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(1,31,75,0.60)' },
+  catBtnTxtActive: { fontFamily:'GoogleSans_700Bold',color:'#1a3a6b' },
+  headerRow: { flexDirection:'row',alignItems:'center',gap:8,padding:8,paddingBottom:0 },
+  headerLbl: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#011f4b',letterSpacing:2,flexShrink:0 },
+  searchBox: { flex:1,flexDirection:'row',alignItems:'center',backgroundColor:'rgba(255,255,255,0.75)',borderRadius:8,paddingHorizontal:8,paddingVertical:5,borderWidth:1,borderColor:'rgba(255,255,255,0.90)' },
+  searchInput: { flex:1,fontFamily:'GoogleSans_400Regular',fontSize:11,color:'#011f4b',paddingVertical:0 },
+  addBtn: { flexDirection:'row',alignItems:'center',gap:4,backgroundColor:'#1a3a6b',borderRadius:8,paddingVertical:6,paddingHorizontal:10 },
+  addBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#fff' },
+  emptyTxt: { fontFamily:'GoogleSans_400Regular',fontSize:13,color:'rgba(1,31,75,0.40)',textAlign:'center',marginTop:30 },
+  foodCard: { borderRadius:12,overflow:'hidden',flex:1,alignSelf:'stretch' },
+  foodCardInner: { borderRadius:12,padding:9,borderWidth:1.5,borderColor:'rgba(255,255,255,0.75)',alignItems:'center',gap:2,flex:1,justifyContent:'space-between',position:'relative',minHeight:145 },
+  adminBtns: { position:'absolute',top:4,right:4,flexDirection:'row',gap:3,zIndex:10 },
+  editBtn: { backgroundColor:'rgba(26,58,107,0.12)',borderRadius:6,padding:4,borderWidth:1,borderColor:'rgba(26,58,107,0.20)' },
+  delBtn: { backgroundColor:'rgba(231,76,60,0.10)',borderRadius:6,padding:4,borderWidth:1,borderColor:'rgba(231,76,60,0.20)' },
+  emojiCircle: { width:46,height:46,borderRadius:23,backgroundColor:'rgba(240,246,252,0.90)',borderWidth:1.5,borderColor:'rgba(255,255,255,0.85)',justifyContent:'center',alignItems:'center',overflow:'hidden',flexShrink:0 },
+  emojiTxt: { fontSize:22 },
+  itemName: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#1a2d4e',textAlign:'center',lineHeight:12,minHeight:24,alignSelf:'stretch' },
+  itemStock: { fontFamily:'GoogleSans_400Regular',fontSize:8,color:'rgba(1,31,75,0.45)' },
+  itemPrice: { fontFamily:'NotoSerif_700Bold',fontSize:12,color:'#c9a84c' },
+  editItemBtn: { backgroundColor:'#1a3a6b',borderRadius:6,paddingVertical:5,paddingHorizontal:4,alignItems:'center',width:'100%' },
+  editItemBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff' },
+});
+
+// ─── INVENTORY, HISTORY, CREDITS, REPORT — unchanged from original ────────────
+// (These screens have no order-writing logic, only reads — no changes needed)
+
+const InventoryScreen = ({ items, maxQtyMap, onAddItem, onEditItem }) => {
+  const today = new Date();
+  const formatDateLabel = (d) => {
+    const now = new Date();
+    const todayKey = now.toDateString();
+    const yestKey  = new Date(now - 86400000).toDateString();
+    const opts = { month: 'long', day: 'numeric', year: 'numeric' };
+    if (d.toDateString() === todayKey) return "Today's Stocks, " + d.toLocaleDateString('en-PH', opts);
+    if (d.toDateString() === yestKey)  return "Yesterday's Stocks, " + d.toLocaleDateString('en-PH', opts);
+    return "Stocks — " + d.toLocaleDateString('en-PH', opts);
+  };
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [calMonth, setCalMonth] = useState(today.getMonth());
+  const [calYear,  setCalYear]  = useState(today.getFullYear());
+  const calDays = (() => {
+    const first = new Date(calYear, calMonth, 1).getDay();
+    const days  = new Date(calYear, calMonth + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < first; i++) cells.push(null);
+    for (let d = 1; d <= days; d++) cells.push(d);
+    return cells;
+  })();
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const getMax = (id) => (maxQtyMap && maxQtyMap[id] !== undefined) ? maxQtyMap[id] : (items.find(i=>i.id===id)?.maxQty || 50);
+  const overallPrice = items.reduce((s, i) => s + i.price, 0);
+  const overallQty   = items.reduce((s, i) => s + i.stock, 0);
+  const grandTotal   = items.reduce((s, i) => s + i.price * i.stock, 0);
 
   return (
-    <View style={{ flex: 1 }}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <AppBg />
-
-      {/* Header */}
-      <Animated.View style={[s.headerWrap, { paddingTop: Platform.OS === 'web' ? 16 : 50, marginHorizontal: isWide ? 20 : isSmall ? 10 : 16, opacity: hdrFade, transform: [{ translateY: hdrTrans }] }]}>
-        <View style={[s.header, { paddingHorizontal: isWide ? 36 : 14, paddingVertical: isWide ? 16 : 10 }]}>
-          <TouchableOpacity style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => view !== 'login' ? switchView('login') : navigation?.goBack()}>
-            <Text style={s.backIcon}>←</Text>
-          </TouchableOpacity>
-          <View style={s.headerCenter}>
-            <Text style={[s.headerH1, { fontSize: isWide ? 22 : isSmall ? 14 : 17 }]} numberOfLines={1} adjustsFontSizeToFit>{headerLabel}</Text>
-            <Text style={[s.headerSub, { fontSize: isWide ? 10 : 8 }]}>CESLA MULTI-PURPOSE COOPERATIVE</Text>
+    <View style={{ flex:1, minHeight:0, overflow:'hidden', position:'relative' }}>
+      <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginHorizontal:14, marginTop:8, marginBottom:6 }}>
+        <TouchableOpacity style={inv2.titleRow} onPress={() => setShowDatePicker(p => !p)} activeOpacity={0.80}>
+          <Text style={inv2.titleText}>{formatDateLabel(selectedDate)}</Text>
+          <Text style={inv2.titleCaret}>{showDatePicker ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={inv2.addItemBtn} onPress={() => onAddItem && onAddItem()} activeOpacity={0.80}>
+          <Text style={inv2.addItemBtnTxt}>+ Add Item</Text>
+        </TouchableOpacity>
+      </View>
+      {showDatePicker && (
+        <View style={inv2.calCard}>
+          <View style={inv2.calNav}>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={() => { if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1); }}><Text style={inv2.calNavTxt}>‹</Text></TouchableOpacity>
+            <Text style={inv2.calMonthLbl}>{MONTHS[calMonth]} {calYear}</Text>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={() => { if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1); }}><Text style={inv2.calNavTxt}>›</Text></TouchableOpacity>
           </View>
-          <View style={{ width: 40, flexShrink: 0 }} />
+          <View style={inv2.calDaysRow}>{DAYS.map(d=><Text key={d} style={inv2.calDayHdr}>{d}</Text>)}</View>
+          <View style={inv2.calGrid}>
+            {calDays.map((day,idx)=>{
+              if(!day) return <View key={'e'+idx} style={inv2.calCell}/>;
+              const thisDate=new Date(calYear,calMonth,day);
+              const isSelected=thisDate.toDateString()===selectedDate.toDateString();
+              const isToday=thisDate.toDateString()===today.toDateString();
+              return(
+                <TouchableOpacity key={idx} style={[inv2.calCell,isSelected&&inv2.calCellSel,isToday&&!isSelected&&inv2.calCellToday]}
+                  onPress={()=>{setSelectedDate(new Date(calYear,calMonth,day));setShowDatePicker(false);}}>
+                  <Text style={[inv2.calCellTxt,isSelected&&inv2.calCellTxtSel]}>{day}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+      <View style={inv2.tableWrap}>
+        <View style={inv2.thead}>
+          <Text style={[inv2.th,inv2.colName]}>ITEM NAME</Text>
+          <Text style={[inv2.th,inv2.colCat]}>CATEGORY</Text>
+          <Text style={[inv2.th,inv2.colQty]}>QTY</Text>
+          <Text style={[inv2.th,inv2.colMaxQty]}>MAX QTY</Text>
+          <Text style={[inv2.th,inv2.colPrice]}>PRICE</Text>
+          <Text style={[inv2.th,inv2.colValue]}>VALUE</Text>
+          <Text style={[inv2.th,inv2.colRestock]}>RE-STOCK</Text>
+        </View>
+        <WebScrollView style={{flex:1}} contentContainerStyle={{gap:0}}>
+          {items.map((item,idx)=>{
+            const max=getMax(item.id);
+            const restock=Math.max(0,max-item.stock);
+            return(
+              <TouchableOpacity key={item.id} style={[inv2.trow,idx%2===0&&inv2.trowAlt]} onPress={()=>onEditItem&&onEditItem(item)} activeOpacity={0.75}>
+                <View style={[inv2.td,inv2.colName]}><Text style={inv2.tdName} numberOfLines={1}>{item.emoji}  {item.name}</Text></View>
+                <View style={[inv2.td,inv2.colCat]}><Text style={inv2.tdMuted} numberOfLines={1}>{item.cat}</Text></View>
+                <View style={[inv2.td,inv2.colQty]}><Text style={[inv2.tdNum,item.stock===0&&{color:'#e74c3c',fontFamily:'GoogleSans_700Bold'},item.stock<=5&&item.stock>0&&{color:'#b85c00',fontFamily:'GoogleSans_700Bold'}]}>{item.stock}</Text></View>
+                <View style={[inv2.td,inv2.colMaxQty]}><Text style={[inv2.tdNum,{textAlign:'center'}]}>{getMax(item.id)}</Text></View>
+                <View style={[inv2.td,inv2.colPrice]}><Text style={inv2.tdNum}>₱{item.price.toLocaleString()}</Text></View>
+                <View style={[inv2.td,inv2.colValue]}><Text style={[inv2.tdNum,{color:'#1a3a6b',fontFamily:'GoogleSans_700Bold'}]}>₱{(item.price*item.stock).toLocaleString()}</Text></View>
+                <View style={[inv2.td,inv2.colRestock]}>
+                  {restock>0?(<View style={inv2.restockBadge}><Text style={inv2.restockNeed}>Need {restock}</Text><Text style={inv2.restockSub}>({item.stock}/{max})</Text></View>):(<Text style={inv2.restockOk}>✓ OK</Text>)}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </WebScrollView>
+        <View style={inv2.tfooter}>
+          <View style={[inv2.td,inv2.colName]}><Text style={inv2.tfootLbl}>TOTALS</Text></View>
+          <View style={[inv2.td,inv2.colCat]}/>
+          <View style={[inv2.td,inv2.colQty]}><Text style={[inv2.tfootVal,{textAlign:'center'}]}>{overallQty}</Text></View>
+          <View style={[inv2.td,inv2.colMaxQty]}/>
+          <View style={[inv2.td,inv2.colPrice]}><Text style={[inv2.tfootVal,{textAlign:'center'}]}>₱{overallPrice.toLocaleString()}</Text></View>
+          <View style={[inv2.td,inv2.colValue]}><Text style={[inv2.tfootVal,{color:'#8a6500',textAlign:'center'}]}>₱{grandTotal.toLocaleString()}</Text></View>
+          <View style={[inv2.td,inv2.colRestock]}/>
+        </View>
+      </View>
+    </View>
+  );
+};
+
+const inv2 = StyleSheet.create({
+  titleRow: { flexDirection:'row',alignItems:'center',gap:6,paddingVertical:6,paddingHorizontal:12,backgroundColor:'rgba(26,58,107,0.10)',borderRadius:8,borderWidth:1,borderColor:'rgba(26,58,107,0.15)',alignSelf:'flex-start' },
+  titleText: { fontFamily:'NotoSerif_700Bold',fontSize:12,color:'#1a3a6b' },
+  titleCaret: { fontSize:10,color:'rgba(26,58,107,0.50)' },
+  addItemBtn: { backgroundColor:'#1a3a6b',borderRadius:8,paddingVertical:7,paddingHorizontal:14,borderWidth:1,borderColor:'rgba(201,168,76,0.40)' },
+  addItemBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#fff',letterSpacing:0.3 },
+  calCard: { position:'absolute',top:52,left:14,zIndex:999,backgroundColor:'rgba(255,255,255,0.98)',borderRadius:10,borderWidth:1,borderColor:'rgba(26,58,107,0.18)',padding:8,shadowColor:'#000',shadowOpacity:0.18,shadowRadius:12,elevation:20,minWidth:220,maxWidth:260 },
+  calNav: { flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:4 },
+  calNavBtn: { width:22,height:22,borderRadius:11,backgroundColor:'rgba(26,58,107,0.08)',justifyContent:'center',alignItems:'center' },
+  calNavTxt: { fontFamily:'GoogleSans_700Bold',fontSize:13,color:'#1a3a6b' },
+  calMonthLbl: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#1a3a6b' },
+  calDaysRow: { flexDirection:'row',marginBottom:2 },
+  calDayHdr: { flex:1,fontFamily:'GoogleSans_700Bold',fontSize:8,color:'rgba(26,58,107,0.45)',textAlign:'center',letterSpacing:0.3 },
+  calGrid: { flexDirection:'row',flexWrap:'wrap' },
+  calCell: { width:'14.28%',height:24,justifyContent:'center',alignItems:'center',borderRadius:4 },
+  calCellSel: { backgroundColor:'#1a3a6b' },
+  calCellToday: { backgroundColor:'rgba(201,168,76,0.20)',borderWidth:1,borderColor:'#c9a84c' },
+  calCellTxt: { fontFamily:'GoogleSans_400Regular',fontSize:9,color:'#1a3a6b' },
+  calCellTxtSel: { fontFamily:'GoogleSans_700Bold',color:'#fff' },
+  tableWrap: { flex:1,minHeight:0,marginHorizontal:14,marginBottom:10 },
+  thead: { flexDirection:'row',alignItems:'center',backgroundColor:'rgba(26,58,107,0.14)',borderRadius:8,paddingVertical:9,paddingHorizontal:8,marginBottom:2 },
+  th: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'rgba(26,58,107,0.60)',letterSpacing:0.8,textTransform:'uppercase',textAlign:'center',borderRightWidth:1,borderColor:'rgba(26,58,107,0.10)',paddingHorizontal:4 },
+  trow: { flexDirection:'row',alignItems:'center',paddingVertical:8,paddingHorizontal:8,minHeight:42,borderBottomWidth:1,borderColor:'rgba(26,58,107,0.07)' },
+  trowAlt: { backgroundColor:'rgba(255,255,255,0.38)' },
+  td: { justifyContent:'center',alignItems:'center',paddingHorizontal:4,borderRightWidth:1,borderColor:'rgba(26,58,107,0.10)' },
+  colName:    { flex:2.2,minWidth:0,alignItems:'flex-start' },
+  colCat:     { flex:1.1,minWidth:0,alignItems:'center' },
+  colQty:     { flex:0.6,minWidth:0,alignItems:'center' },
+  colMaxQty:  { flex:0.8,minWidth:0,alignItems:'center' },
+  colPrice:   { flex:0.9,minWidth:0,alignItems:'center' },
+  colValue:   { flex:1.0,minWidth:0,alignItems:'center' },
+  colRestock: { flex:1.0,minWidth:0,alignItems:'center' },
+  tdName:  { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#1a2d4e' },
+  tdMuted: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(26,58,107,0.65)',textAlign:'center' },
+  tdNum:   { fontFamily:'GoogleSans_500Medium',fontSize:11,color:'#1a2d4e',textAlign:'center' },
+  restockBadge: { alignItems:'center' },
+  restockNeed: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#b85c00' },
+  restockSub:  { fontFamily:'GoogleSans_400Regular',fontSize:9,color:'rgba(26,58,107,0.45)' },
+  restockOk:   { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#1a7a45' },
+  tfooter: { flexDirection:'row',alignItems:'center',paddingVertical:10,paddingHorizontal:8,backgroundColor:'rgba(26,58,107,0.10)',borderRadius:6,marginTop:4,borderTopWidth:1.5,borderColor:'rgba(26,58,107,0.18)' },
+  tfootLbl: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#1a3a6b',letterSpacing:0.5 },
+  tfootVal: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#1a3a6b',textAlign:'center',letterSpacing:0.2 },
+  maxQtyInput: { width:44,textAlign:'center',fontFamily:'GoogleSans_500Medium',fontSize:11,color:'#1a3a6b',backgroundColor:'rgba(255,255,255,0.80)',borderRadius:6,borderWidth:1,borderColor:'rgba(26,58,107,0.20)',paddingVertical:3,paddingHorizontal:4 },
+  unitChip: { flexDirection:'row',alignItems:'center',gap:2,backgroundColor:'rgba(26,58,107,0.08)',borderRadius:6,paddingHorizontal:7,paddingVertical:4,borderWidth:1,borderColor:'rgba(26,58,107,0.15)' },
+  unitChipTxt: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#1a3a6b' },
+  unitChipArr: { fontSize:8,color:'rgba(26,58,107,0.45)' },
+  unitMenu: { position:'absolute',top:26,left:0,backgroundColor:'#fff',borderRadius:8,borderWidth:1,borderColor:'rgba(26,58,107,0.18)',shadowColor:'#000',shadowOpacity:0.14,shadowRadius:8,elevation:12,minWidth:64,zIndex:999 },
+  unitOpt: { paddingVertical:7,paddingHorizontal:10 },
+  unitOptActive: { backgroundColor:'rgba(26,58,107,0.08)' },
+  unitOptTxt: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'#1a3a6b' },
+  unitOptTxtActive: { fontFamily:'GoogleSans_700Bold',color:'#1a3a6b' },
+});
+
+const OrderHistoryScreen = ({ orders }) => {
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const todayCal = new Date();
+  const [calMonth, setCalMonth] = useState(todayCal.getMonth());
+  const [calYear,  setCalYear]  = useState(todayCal.getFullYear());
+  const HST_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const HST_DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const calDays = (() => {
+    const first=new Date(calYear,calMonth,1).getDay();
+    const dim=new Date(calYear,calMonth+1,0).getDate();
+    const cells=[];
+    for(let i=0;i<first;i++)cells.push(null);
+    for(let d=1;d<=dim;d++)cells.push(d);
+    return cells;
+  })();
+  const parseOrderDate = (timeStr) => {
+    if(!timeStr) return null;
+    try{ const d=new Date(timeStr); if(!isNaN(d.getTime()))return d; const d2=new Date(timeStr.replace(/\s+/g,' ').trim()); return isNaN(d2.getTime())?null:d2; }catch{return null;}
+  };
+  const dateKey=(d)=>{if(!d)return'unknown';return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+  const todayKey=dateKey(new Date());
+  const formatLabel=(key)=>{
+    if(!key||key==='unknown')return'Unknown Date';
+    const[y,m,day]=key.split('-');
+    const d=new Date(Number(y),Number(m)-1,Number(day));
+    if(key===todayKey)return`Today, ${d.toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}`;
+    const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+    if(key===dateKey(yesterday))return`Yesterday, ${d.toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}`;
+    return d.toLocaleDateString('en-PH',{weekday:'short',month:'long',day:'numeric',year:'numeric'});
+  };
+  const grouped=React.useMemo(()=>{
+    const map={};
+    [...orders].forEach(o=>{const d=parseOrderDate(o.time);const k=dateKey(d);if(!map[k])map[k]={key:k,date:d,orders:[]};map[k].orders.push(o);});
+    Object.values(map).forEach(g=>g.orders.sort((a,b)=>(parseOrderDate(b.time)?.getTime()||0)-(parseOrderDate(a.time)?.getTime()||0)));
+    return Object.values(map).sort((a,b)=>(b.date?.getTime()||0)-(a.date?.getTime()||0));
+  },[orders]);
+  React.useEffect(()=>{const tg=grouped.find(g=>g.key===todayKey);setSelectedDate(tg?todayKey:(grouped[0]?.key||null));},[grouped.length]);
+  const selectedGroup=grouped.find(g=>g.key===selectedDate);
+  const displayOrders=selectedGroup?.orders||[];
+  const dayTotal=displayOrders.reduce((s,o)=>s+Number(o.total),0);
+
+  return(
+    <View style={[sub.root,{position:'relative'}]}>
+      <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:6}}>
+        <TouchableOpacity style={hst.calTrigger} onPress={()=>setShowCalendar(p=>!p)} activeOpacity={0.80}>
+          <Text style={hst.calTriggerTxt}>{formatLabel(selectedDate)}</Text>
+          <Text style={hst.calTriggerCaret}>{showCalendar?'▲':'▼'}</Text>
+        </TouchableOpacity>
+        <Text style={hst.txHeaderSub}>{displayOrders.length} order{displayOrders.length!==1?'s':''}{'  ·  '}<Text style={{color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}}>₱{dayTotal.toFixed(2)}</Text></Text>
+      </View>
+      {showCalendar&&(
+        <View style={hst.calCard}>
+          <View style={inv2.calNav}>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={()=>{if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);}}><Text style={inv2.calNavTxt}>{'<'}</Text></TouchableOpacity>
+            <Text style={inv2.calMonthLbl}>{HST_MONTHS[calMonth]} {calYear}</Text>
+            <TouchableOpacity style={inv2.calNavBtn} onPress={()=>{if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);}}><Text style={inv2.calNavTxt}>{'>'}</Text></TouchableOpacity>
+          </View>
+          <View style={inv2.calDaysRow}>{HST_DAYS.map(d=><Text key={d} style={inv2.calDayHdr}>{d}</Text>)}</View>
+          <View style={inv2.calGrid}>
+            {calDays.map((day,idx)=>{
+              if(!day)return<View key={'e'+idx} style={inv2.calCell}/>;
+              const dk=calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+              const isSel=dk===selectedDate,isToday=dk===todayKey,hasOrders=grouped.some(g=>g.key===dk);
+              return(<TouchableOpacity key={idx} style={[inv2.calCell,isSel&&inv2.calCellSel,isToday&&!isSel&&inv2.calCellToday,!hasOrders&&{opacity:0.30}]} onPress={()=>{if(hasOrders){setSelectedDate(dk);setShowCalendar(false);}}} activeOpacity={hasOrders?0.75:1}>
+                <Text style={[inv2.calCellTxt,isSel&&inv2.calCellTxtSel]}>{day}</Text>
+                {hasOrders&&!isSel&&<View style={hst.calDot}/>}
+              </TouchableOpacity>);
+            })}
+          </View>
+        </View>
+      )}
+      <View style={{height:1,backgroundColor:'rgba(1,31,75,0.10)',marginVertical:8}}/>
+      {displayOrders.length===0
+        ?<View style={[sub.emptyBox,{flex:1}]}><MaterialIcons name="receipt-long" size={48} color="rgba(1,31,75,0.15)"/><Text style={sub.emptyTxt}>No transactions for this day.</Text></View>
+        :<WebScrollView contentContainerStyle={{gap:4,paddingBottom:20}}>
+          {displayOrders.map((order,idx)=>{
+            const timeOnly=(()=>{const d=parseOrderDate(order.time);return d?d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}):(order.time||'');})();
+            const itemsSummary=(order.items||[]).map(i=>`${i.item?.name||i.name||'Item'} ×${i.qty}`).join(' · ');
+            const isLatest=idx===0&&selectedDate===todayKey;
+            const st=ORDER_STATUSES[order.status]||ORDER_STATUSES.pending;
+            return(<View key={order.id} style={hst.txRow}>
+              <View style={hst.txTimeCol}><Text style={hst.txTime}>{timeOnly}</Text>{isLatest&&<View style={hst.livePip}/>}</View>
+              <View style={hst.txLine}><View style={[hst.txDot,isLatest&&{backgroundColor:'#e74c3c'}]}/>{idx<displayOrders.length-1&&<View style={hst.txVLine}/>}</View>
+              <View style={hst.txContent}>
+                <View style={{flexDirection:'row',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                  <Text style={hst.txOrderId}>#{order.orderNo||order.id}</Text>
+                  <View style={[hst.txStatusBadge,{backgroundColor:st.bg}]}><Text style={[hst.txStatusTxt,{color:st.color}]}>{st.label}</Text></View>
+                </View>
+                <Text style={hst.txItems} numberOfLines={2}>{itemsSummary}</Text>
+                <View style={{flexDirection:'row',alignItems:'center',gap:10}}>
+                  <Text style={hst.txAmount}>₱{Number(order.total).toFixed(2)}</Text>
+                  <Text style={hst.txPay}>💵 Cash</Text>
+                </View>
+              </View>
+            </View>);
+          })}
+        </WebScrollView>
+      }
+    </View>
+  );
+};
+
+const EmployeeCreditsScreen = () => (
+  <View style={[sub.root,{justifyContent:'center',alignItems:'center',gap:14}]}>
+    <MaterialIcons name="account-balance" size={64} color="rgba(1,31,75,0.15)"/>
+    <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:20,color:'rgba(1,31,75,0.30)'}}>Coming Soon</Text>
+    <Text style={sub.emptyTxt}>Employee credit tracking will be{'\n'}available in a future update.</Text>
+  </View>
+);
+
+const SalesReportScreen = ({ orders, items }) => {
+  const currentYear=new Date().getFullYear();
+  const[year,setYear]=useState(currentYear);
+  const[yearDropdown,setYearDropdown]=useState(false);
+  const[activeMonth,setActiveMonth]=useState(new Date().getMonth());
+  const[expandedTxDate,setExpandedTxDate]=useState(null);
+  const[expandedInvDate,setExpandedInvDate]=useState(null);
+  const[showTx,setShowTx]=useState(true);
+  const[showInv,setShowInv]=useState(true);
+  const[showCredits,setShowCredits]=useState(true);
+  const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const years=Array.from({length:30},(_,i)=>2025+i);
+  const parseDate=(timeStr)=>{if(!timeStr)return null;try{const d=new Date(timeStr);return isNaN(d.getTime())?null:d;}catch{return null;}};
+  const fmtDateKey=(d)=>String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'-'+d.getFullYear();
+  const monthOrders=orders.filter(o=>{const d=parseDate(o.time);return d&&d.getFullYear()===year&&d.getMonth()===activeMonth;});
+  const txByDay=React.useMemo(()=>{const map={};monthOrders.forEach(o=>{const d=parseDate(o.time);if(!d)return;const k=fmtDateKey(d);if(!map[k])map[k]={key:k,orders:[]};map[k].orders.push(o);});return Object.values(map).sort((a,b)=>a.key.localeCompare(b.key));},[monthOrders.length,activeMonth,year]);
+  const invByDay=React.useMemo(()=>txByDay.map(g=>{const totalStock=(items||[]).reduce((s,i)=>s+(i.stock||0),0);const totalValue=(items||[]).reduce((s,i)=>s+(i.price||0)*(i.stock||0),0);return{key:g.key,totalStock,totalValue};}),[txByDay,items]);
+  const printTxDay=(dayGroup)=>{if(typeof window==='undefined')return;const total=dayGroup.orders.reduce((s,o)=>s+Number(o.total),0);const rows=dayGroup.orders.map((o,i)=>{const its=(o.items||[]).map(it=>(it.item?.name||it.name||'Item')+' x'+it.qty).join(', ');return'<tr><td>'+(i+1)+'</td><td>#'+(o.orderNo||o.id)+'</td><td>'+(o.time||'')+'</td><td>'+its+'</td><td>&#8369;'+Number(o.total).toFixed(2)+'</td></tr>';}).join('');const html='<html><head><title>Transaction Report '+dayGroup.key+'</title><style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style></head><body><h2>Transaction History Report</h2><p><b>Date:</b> '+dayGroup.key+' &nbsp;|&nbsp; <b>Total Orders:</b> '+dayGroup.orders.length+' &nbsp;|&nbsp; <b>Total Earnings:</b> &#8369;'+total.toFixed(2)+'</p><table><thead><tr><th>#</th><th>Order No</th><th>Time</th><th>Items</th><th>Amount</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4">TOTAL</td><td>&#8369;'+total.toFixed(2)+'</td></tr></tfoot></table></body></html>';const w=window.open('','_blank');w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);};
+  const printInvDay=(invDay)=>{if(typeof window==='undefined')return;const rows=(items||[]).map(it=>'<tr><td>'+(it.emoji||'')+' '+(it.name||'')+'</td><td>'+(it.cat||'')+'</td><td>'+(it.stock||0)+'</td><td>&#8369;'+(it.price||0).toLocaleString()+'</td><td>&#8369;'+((it.price||0)*(it.stock||0)).toLocaleString()+'</td></tr>').join('');const totalStock=(items||[]).reduce((s,i)=>s+(i.stock||0),0);const totalValue=(items||[]).reduce((s,i)=>s+(i.price||0)*(i.stock||0),0);const html='<html><head><title>Inventory Report '+invDay.key+'</title><style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style></head><body><h2>Inventory Report</h2><p><b>Date:</b> '+invDay.key+' &nbsp;|&nbsp; <b>Total Stock:</b> '+invDay.totalStock+' &nbsp;|&nbsp; <b>Total Value:</b> &#8369;'+invDay.totalValue.toLocaleString()+'</p><table><thead><tr><th>Item</th><th>Category</th><th>Stock</th><th>Price</th><th>Value</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="2">TOTAL</td><td>'+totalStock+'</td><td></td><td>&#8369;'+totalValue.toLocaleString()+'</td></tr></tfoot></table></body></html>';const w=window.open('','_blank');w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);};
+
+  return(
+    <View style={sub.root}>
+      <WebScrollView contentContainerStyle={{gap:0,paddingBottom:20}}>
+        <View style={{alignItems:'center',marginBottom:14,position:'relative',zIndex:100}}>
+          <TouchableOpacity style={rpt.yearBtn} onPress={()=>setYearDropdown(p=>!p)} activeOpacity={0.80}>
+            <Text style={rpt.yearTxt}>YEAR  {year}</Text>
+            <Text style={rpt.yearCaret}>{yearDropdown?'▲':'▼'}</Text>
+          </TouchableOpacity>
+          {yearDropdown&&(<ScrollView style={rpt.yearMenu} showsVerticalScrollIndicator={false}>{years.map(y=>(<TouchableOpacity key={y} style={[rpt.yearOpt,y===year&&rpt.yearOptActive]} onPress={()=>{setYear(y);setYearDropdown(false);}}><Text style={[rpt.yearOptTxt,y===year&&rpt.yearOptTxtActive]}>{y}</Text></TouchableOpacity>))}</ScrollView>)}
+        </View>
+        <View style={{flexDirection:'row',flexWrap:'wrap',justifyContent:'center',gap:6,marginBottom:16}}>
+          {MONTHS.map((m,i)=>(<TouchableOpacity key={m} style={[rpt.monthBtn,activeMonth===i&&rpt.monthBtnActive]} onPress={()=>{setActiveMonth(i);setExpandedTxDate(null);setExpandedInvDate(null);}}><Text style={[rpt.monthTxt,activeMonth===i&&rpt.monthTxtActive]}>{m}</Text></TouchableOpacity>))}
+        </View>
+        <View style={rpt.section}>
+          <TouchableOpacity style={rpt.sectionTitleRow} onPress={()=>setShowTx(p=>!p)} activeOpacity={0.80}><Text style={rpt.sectionTitle}>Transaction History Reports</Text><Text style={rpt.sectionToggle}>{showTx?'▲':'▼'}</Text></TouchableOpacity>
+          {showTx&&<View>
+            <View style={rpt.thead}><Text style={[rpt.th,{flex:1.0,textAlign:'left',paddingLeft:12}]}>DATE</Text><Text style={[rpt.th,{flex:1.1}]}>TOTAL ORDERS</Text><Text style={[rpt.th,{flex:1.3}]}>TOTAL EARNINGS</Text><Text style={[rpt.th,{width:80}]}>PRINT</Text></View>
+            {txByDay.length===0?(<View style={rpt.emptyRow}><Text style={rpt.emptyTxt}>No transactions for {MONTHS[activeMonth]} {year}</Text></View>):txByDay.map((g,idx)=>{const total=g.orders.reduce((s,o)=>s+Number(o.total),0);const isOpen=expandedTxDate===g.key;return(<View key={g.key}><TouchableOpacity style={[rpt.trow,idx%2===0&&rpt.trowAlt]} onPress={()=>setExpandedTxDate(isOpen?null:g.key)} activeOpacity={0.75}><Text style={[rpt.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:12}]}>{g.key}</Text><Text style={[rpt.td,{flex:1.1}]}>{g.orders.length}</Text><Text style={[rpt.td,{flex:1.3,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>{'\u20b1'}{total.toFixed(2)}</Text><View style={{width:80,alignItems:'center',justifyContent:'center',alignSelf:'stretch',borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)'}}><TouchableOpacity style={rpt.printBtn} onPress={()=>printTxDay(g)}><Text style={rpt.printBtnTxt}>Print</Text></TouchableOpacity></View></TouchableOpacity>{isOpen&&(<View style={rpt.expandPanel}><View style={rpt.expandHead}><Text style={[rpt.expandTh,{flex:0.4}]}>#</Text><Text style={[rpt.expandTh,{flex:0.8}]}>ORDER NO</Text><Text style={[rpt.expandTh,{flex:1.8}]}>ITEMS</Text><Text style={[rpt.expandTh,{flex:0.8,textAlign:'right'}]}>AMOUNT</Text></View>{g.orders.map((o,i)=>{const itms=(o.items||[]).map(it=>(it.item?.name||it.name||'Item')+' x'+it.qty).join(', ');return(<View key={o.id} style={[rpt.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}><Text style={[rpt.expandTd,{flex:0.4}]}>{i+1}</Text><Text style={[rpt.expandTd,{flex:0.8,fontFamily:'GoogleSans_700Bold'}]}>#{o.orderNo||o.id}</Text><Text style={[rpt.expandTd,{flex:1.8}]} numberOfLines={2}>{itms}</Text><Text style={[rpt.expandTd,{flex:0.8,textAlign:'right',color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>{'\u20b1'}{Number(o.total).toFixed(2)}</Text></View>);})}</View>)}</View>);})}
+          </View>}
+        </View>
+        <View style={[rpt.section,{marginTop:16}]}>
+          <TouchableOpacity style={rpt.sectionTitleRow} onPress={()=>setShowInv(p=>!p)} activeOpacity={0.80}><Text style={rpt.sectionTitle}>Inventory Reports</Text><Text style={rpt.sectionToggle}>{showInv?'▲':'▼'}</Text></TouchableOpacity>
+          {showInv&&<View>
+            <View style={rpt.thead}><Text style={[rpt.th,{flex:1.0,textAlign:'left',paddingLeft:12}]}>DATE</Text><Text style={[rpt.th,{flex:1.1}]}>TOTAL STOCK</Text><Text style={[rpt.th,{flex:1.3}]}>TOTAL VALUE</Text><Text style={[rpt.th,{width:80}]}>PRINT</Text></View>
+            {invByDay.length===0?(<View style={rpt.emptyRow}><Text style={rpt.emptyTxt}>No inventory data for {MONTHS[activeMonth]} {year}</Text></View>):invByDay.map((g,idx)=>{const isOpen=expandedInvDate===g.key;return(<View key={g.key}><TouchableOpacity style={[rpt.trow,idx%2===0&&rpt.trowAlt]} onPress={()=>setExpandedInvDate(isOpen?null:g.key)} activeOpacity={0.75}><Text style={[rpt.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:12}]}>{g.key}</Text><Text style={[rpt.td,{flex:1.1}]}>{g.totalStock}</Text><Text style={[rpt.td,{flex:1.3,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>{'\u20b1'}{g.totalValue.toLocaleString()}</Text><View style={{width:80,alignItems:'center',justifyContent:'center',alignSelf:'stretch',borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)'}}><TouchableOpacity style={rpt.printBtn} onPress={()=>printInvDay(g)}><Text style={rpt.printBtnTxt}>Print</Text></TouchableOpacity></View></TouchableOpacity>{isOpen&&(<View style={rpt.expandPanel}><View style={rpt.expandHead}><Text style={[rpt.expandTh,{flex:2}]}>ITEM</Text><Text style={[rpt.expandTh,{flex:1}]}>CATEGORY</Text><Text style={[rpt.expandTh,{flex:0.6,textAlign:'center'}]}>STOCK</Text><Text style={[rpt.expandTh,{flex:0.8,textAlign:'right'}]}>VALUE</Text></View>{(items||[]).map((it,i)=>(<View key={it.id} style={[rpt.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}><Text style={[rpt.expandTd,{flex:2,fontFamily:'GoogleSans_700Bold'}]} numberOfLines={1}>{it.emoji} {it.name}</Text><Text style={[rpt.expandTd,{flex:1}]} numberOfLines={1}>{it.cat}</Text><Text style={[rpt.expandTd,{flex:0.6,textAlign:'center'}]}>{it.stock}</Text><Text style={[rpt.expandTd,{flex:0.8,textAlign:'right',color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>{'\u20b1'}{((it.price||0)*(it.stock||0)).toLocaleString()}</Text></View>))}</View>)}</View>);})}
+          </View>}
+        </View>
+        <View style={[rpt.section,{marginTop:16}]}>
+          <TouchableOpacity style={rpt.sectionTitleRow} onPress={()=>setShowCredits(p=>!p)} activeOpacity={0.80}><Text style={rpt.sectionTitle}>Credits Reports</Text><Text style={rpt.sectionToggle}>{showCredits?'▲':'▼'}</Text></TouchableOpacity>
+          {showCredits&&<View style={rpt.comingSoon}><Text style={rpt.comingSoonEmoji}>🚧</Text><Text style={rpt.comingSoonTxt}>Coming Soon</Text><Text style={rpt.comingSoonSub}>Credits reporting will be available in a future update.</Text></View>}
+        </View>
+      </WebScrollView>
+    </View>
+  );
+};
+
+const rpt = StyleSheet.create({
+  yearBtn: { flexDirection:'row',alignItems:'center',gap:10,paddingVertical:10,paddingHorizontal:28,backgroundColor:'rgba(26,58,107,0.12)',borderRadius:12,borderWidth:1.5,borderColor:'rgba(26,58,107,0.20)' },
+  yearTxt:  { fontFamily:'GoogleSans_700Bold',fontSize:20,color:'#1a3a6b',letterSpacing:1 },
+  yearCaret:{ fontSize:12,color:'rgba(26,58,107,0.50)' },
+  yearMenu: { position:'absolute',top:48,zIndex:9999,backgroundColor:'rgba(255,255,255,0.99)',borderRadius:10,borderWidth:1,borderColor:'rgba(26,58,107,0.18)',shadowColor:'#000',shadowOpacity:0.18,shadowRadius:12,elevation:20,minWidth:140,maxHeight:200 },
+  yearOpt: { paddingVertical:10,paddingHorizontal:20,alignItems:'center' },
+  yearOptActive: { backgroundColor:'rgba(26,58,107,0.08)' },
+  yearOptTxt: { fontFamily:'GoogleSans_400Regular',fontSize:14,color:'#1a3a6b' },
+  yearOptTxtActive: { fontFamily:'GoogleSans_700Bold',color:'#1a3a6b' },
+  monthBtn: { paddingHorizontal:14,paddingVertical:7,borderRadius:20,backgroundColor:'#1a3a6b',borderWidth:1,borderColor:'rgba(26,58,107,0.60)' },
+  monthBtnActive: { backgroundColor:'rgba(198,220,240,0.90)',borderColor:'#304674',borderWidth:1.5 },
+  monthTxt: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'rgba(255,255,255,0.90)' },
+  monthTxtActive: { fontFamily:'GoogleSans_700Bold',color:'#1a3a6b' },
+  section: { backgroundColor:'rgba(255,255,255,0.22)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,0.45)',overflow:'hidden' },
+  sectionTitleRow: { flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:10,paddingHorizontal:12 },
+  sectionToggle: { fontSize:13,color:'rgba(26,58,107,0.45)',paddingLeft:8 },
+  sectionTitle: { fontFamily:'GoogleSans_700Bold',fontSize:13,color:'#1a3a6b',letterSpacing:0.5 },
+  thead: { flexDirection:'row',alignItems:'center',paddingVertical:8,paddingHorizontal:0,backgroundColor:'rgba(26,58,107,0.12)' },
+  th: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'rgba(26,58,107,0.60)',letterSpacing:0.8,textTransform:'uppercase',textAlign:'center',paddingVertical:8,paddingHorizontal:6,borderRightWidth:1,borderColor:'rgba(26,58,107,0.10)' },
+  trow: { flexDirection:'row',alignItems:'center',paddingVertical:0,paddingHorizontal:0,borderBottomWidth:1,borderColor:'rgba(26,58,107,0.07)',minHeight:42 },
+  trowAlt: { backgroundColor:'rgba(255,255,255,0.35)' },
+  td: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'#1a2d4e',textAlign:'center',paddingVertical:10,paddingHorizontal:6,borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)',alignSelf:'stretch',justifyContent:'center' },
+  printBtn: { alignItems:'center',backgroundColor:'#1a3a6b',borderRadius:6,paddingVertical:5,paddingHorizontal:10 },
+  printBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#fff',letterSpacing:0.3 },
+  expandPanel: { backgroundColor:'rgba(26,58,107,0.04)',borderBottomWidth:1,borderColor:'rgba(26,58,107,0.10)' },
+  expandHead: { flexDirection:'row',paddingVertical:6,paddingHorizontal:20,backgroundColor:'rgba(26,58,107,0.08)' },
+  expandTh: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'rgba(26,58,107,0.50)',letterSpacing:0.5,textTransform:'uppercase',flex:1 },
+  expandRow: { flexDirection:'row',paddingVertical:7,paddingHorizontal:20,borderBottomWidth:1,borderColor:'rgba(26,58,107,0.04)' },
+  expandTd: { fontFamily:'GoogleSans_400Regular',fontSize:10,color:'#1a2d4e',flex:1 },
+  emptyRow: { paddingVertical:20,alignItems:'center' },
+  emptyTxt: { fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(1,31,75,0.40)' },
+  comingSoon: { alignItems:'center',paddingVertical:32,gap:8 },
+  comingSoonEmoji: { fontSize:32 },
+  comingSoonTxt: { fontFamily:'GoogleSans_700Bold',fontSize:16,color:'rgba(1,31,75,0.40)' },
+  comingSoonSub: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.35)',textAlign:'center',paddingHorizontal:20 },
+});
+
+const sub = StyleSheet.create({
+  root: { flex:1,padding:14,overflow:'hidden',minHeight:0 },
+  emptyBox: { flex:1,alignItems:'center',justifyContent:'center',gap:10,paddingTop:60 },
+  emptyTxt: { fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(1,31,75,0.35)',textAlign:'center',lineHeight:18 },
+});
+
+const hst = StyleSheet.create({
+  calTrigger: { flexDirection:'row',alignItems:'center',gap:6,paddingVertical:6,paddingHorizontal:12,backgroundColor:'rgba(26,58,107,0.10)',borderRadius:8,borderWidth:1,borderColor:'rgba(26,58,107,0.15)',alignSelf:'flex-start' },
+  calTriggerTxt: { fontFamily:'NotoSerif_700Bold',fontSize:12,color:'#1a3a6b' },
+  calTriggerCaret: { fontSize:10,color:'rgba(26,58,107,0.50)' },
+  calCard: { position:'absolute',top:38,left:0,zIndex:999,backgroundColor:'rgba(255,255,255,0.98)',borderRadius:10,borderWidth:1,borderColor:'rgba(26,58,107,0.18)',padding:8,shadowColor:'#000',shadowOpacity:0.18,shadowRadius:12,elevation:20,minWidth:220,maxWidth:260 },
+  calDot: { width:4,height:4,borderRadius:2,backgroundColor:'#1a3a6b',position:'absolute',bottom:2,alignSelf:'center' },
+  txHeaderSub: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.50)',marginTop:2 },
+  txRow: { flexDirection:'row',gap:0,minHeight:56 },
+  txTimeCol: { width:52,flexShrink:0,alignItems:'flex-end',paddingRight:8,paddingTop:3,gap:4 },
+  txTime: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'rgba(1,31,75,0.55)',textAlign:'right' },
+  livePip: { width:6,height:6,borderRadius:3,backgroundColor:'#e74c3c' },
+  txLine: { width:16,flexShrink:0,alignItems:'center' },
+  txDot: { width:10,height:10,borderRadius:5,backgroundColor:'#1a3a6b',marginTop:4,flexShrink:0,zIndex:1 },
+  txVLine: { flex:1,width:2,backgroundColor:'rgba(1,31,75,0.12)',marginTop:2 },
+  txContent: { flex:1,backgroundColor:'rgba(255,255,255,0.65)',borderRadius:10,padding:10,marginLeft:8,marginBottom:4,borderWidth:1,borderColor:'rgba(255,255,255,0.85)',gap:4 },
+  txOrderId: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#1a3a6b' },
+  txStatusBadge: { borderRadius:5,paddingHorizontal:6,paddingVertical:2 },
+  txStatusTxt: { fontFamily:'GoogleSans_700Bold',fontSize:9 },
+  txItems: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.60)',lineHeight:15 },
+  txAmount: { fontFamily:'NotoSerif_700Bold',fontSize:13,color:'#c9a84c' },
+  txPay: { fontFamily:'GoogleSans_400Regular',fontSize:10,color:'rgba(1,31,75,0.45)' },
+});
+
+// ─── ORDER MONITORING PANEL ───────────────────────────────────────────────────
+const STATUS_CFG = {
+  pending:   { label:'PENDING',   color:'#c0392b', btnLabel:'Start Preparing', btnColor:'#e67e22', next:'preparing' },
+  preparing: { label:'PREPARING', color:'#b9660a', btnLabel:'Mark as Ready',   btnColor:'#2980b9', next:'ready'     },
+  ready:     { label:'READY',     color:'#1a6b2a', btnLabel:'Mark as Done',    btnColor:'#27ae60', next:'done'      },
+  done:      { label:'DONE',      color:'#1a3a6b', btnLabel:null,              btnColor:null,      next:null        },
+};
+
+const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [activeFilter, setActiveFilter] = useState('pending');
+
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulseAnim,{toValue:0.2,duration:800,useNativeDriver:true}),
+      Animated.timing(pulseAnim,{toValue:1,  duration:800,useNativeDriver:true}),
+    ]));
+    loop.start();
+    return ()=>loop.stop();
+  }, []);
+
+  const pendingCount   = orders.filter(o=>o.status==='pending').length;
+  const preparingCount = orders.filter(o=>o.status==='preparing').length;
+  const readyCount     = orders.filter(o=>o.status==='ready').length;
+  const doneToday      = orders.filter(o=>{
+    if(o.status!=='done')return false;
+    try{const d=new Date(o.time);const t=new Date();return d.toDateString()===t.toDateString();}catch{return false;}
+  }).length;
+
+  const STAT_CARDS = [
+    { key:'pending',   label:'PENDING',   num:pendingCount,   bg:'#c0392b', activeBg:'#e74c3c' },
+    { key:'preparing', label:'PREPARING', num:preparingCount, bg:'#b9660a', activeBg:'#e67e22' },
+    { key:'ready',     label:'READY',     num:readyCount,     bg:'#1a6b2a', activeBg:'#27ae60' },
+    { key:'done',      label:'DONE',      num:doneToday,      bg:'#1a3a6b', activeBg:'#2e5fa3' },
+  ];
+
+  const filteredOrders = orders.filter(o => {
+    if(activeFilter==='done'){
+      if(o.status!=='done')return false;
+      try{const d=new Date(o.time);const t=new Date();return d.toDateString()===t.toDateString();}catch{return false;}
+    }
+    return o.status===activeFilter;
+  });
+
+  const COLS = 3;
+
+  return (
+    <View style={lp.root}>
+      <View style={lp.titleRow}>
+        <Animated.View style={[lp.liveDot,{opacity:pulseAnim}]}/>
+        <Text style={lp.title}>ORDERING MONITORING</Text>
+      </View>
+      <View style={lp.statCards}>
+        {STAT_CARDS.map(c=>(
+          <TouchableOpacity key={c.key} style={[lp.statCard,{backgroundColor:activeFilter===c.key?c.activeBg:c.bg},activeFilter===c.key&&lp.statCardActive]} onPress={()=>setActiveFilter(c.key)} activeOpacity={0.80}>
+            <Text style={lp.statLabel}>{c.label}</Text>
+            <Text style={lp.statNum}>{String(c.num).padStart(2,'0')}</Text>
+            {activeFilter===c.key&&<View style={lp.statCardIndicator}/>}
+          </TouchableOpacity>
+        ))}
+      </View>
+      <WebScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{gap:6,paddingBottom:12}}>
+        {filteredOrders.length===0
+          ?<View style={lp.emptyBox}>
+            <Text style={lp.emptyIco}>{activeFilter==='pending'?'⏳':activeFilter==='preparing'?'🔥':activeFilter==='ready'?'✅':'✓'}</Text>
+            <Text style={lp.emptyTxt}>No {activeFilter} orders</Text>
+          </View>
+          :(()=>{
+            const rows=[];
+            for(let i=0;i<filteredOrders.length;i+=COLS)rows.push(filteredOrders.slice(i,i+COLS));
+            return rows.map((row,rIdx)=>(
+              <View key={rIdx} style={{flexDirection:'row',gap:6}}>
+                {row.map(order=>{
+                  const cfg=STATUS_CFG[order.status]||STATUS_CFG.pending;
+                  const itemsList=(order.items||[]).map(i=>`${i.item?.name||i.name||'?'} x${i.qty}`).join(', ');
+                  const timeStr=(()=>{try{const d=new Date(order.time);return isNaN(d)?'':d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});}catch{return'';}})();
+                  return(
+                    <View key={order.id} style={[lp.card,{flex:1,borderTopColor:cfg.color}]}>
+                      <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}>
+                        <Text style={lp.cardId}>#{order.orderNo||order.id?.slice(-4)||'--'}</Text>
+                        <Text style={lp.cardTime}>{timeStr}</Text>
+                      </View>
+                      <Text style={lp.cardItems} numberOfLines={3}>{itemsList}</Text>
+                      <Text style={lp.cardTotal}>{'\u20b1'}{Number(order.total).toFixed(0)}</Text>
+                      <Text style={lp.cardPay}>{order.payment==='gcash'?'📱 GCash':'💵 Cash'}</Text>
+                      {cfg.btnLabel&&(
+                        <TouchableOpacity style={[lp.actionBtn,{backgroundColor:cfg.btnColor}]} onPress={()=>onUpdateStatus(order.id,cfg.next)} activeOpacity={0.80}>
+                          <Text style={lp.actionBtnTxt}>{cfg.btnLabel}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })}
+                {Array.from({length:COLS-row.length}).map((_,i)=>(<View key={`e-${i}`} style={{flex:1}}/>))}
+              </View>
+            ));
+          })()
+        }
+      </WebScrollView>
+    </View>
+  );
+};
+
+const lp = StyleSheet.create({
+  root: { flex:1,padding:10,minHeight:0,overflow:'hidden' },
+  titleRow: { flexDirection:'row',alignItems:'center',gap:5,marginBottom:8,justifyContent:'center' },
+  liveDot: { width:8,height:8,borderRadius:4,backgroundColor:'#e74c3c' },
+  title: { fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#1a2d4e',letterSpacing:1.5,textDecorationLine:'underline',textAlign:'center' },
+  statCards: { flexDirection:'row',gap:4,marginBottom:10 },
+  statCard: { flex:1,borderRadius:10,paddingVertical:8,paddingHorizontal:2,alignItems:'center',gap:2,position:'relative',overflow:'hidden' },
+  statCardActive: { shadowColor:'#000',shadowOpacity:0.25,shadowRadius:6,elevation:6,transform:[{scale:1.03}] },
+  statCardIndicator: { position:'absolute',bottom:0,left:0,right:0,height:3,backgroundColor:'rgba(255,255,255,0.60)' },
+  statLabel: { fontFamily:'GoogleSans_700Bold',fontSize:6,color:'#fff',letterSpacing:0.8,textAlign:'center' },
+  statNum: { fontFamily:'GoogleSans_700Bold',fontSize:20,color:'#fff',lineHeight:24 },
+  emptyBox: { padding:20,alignItems:'center',gap:6 },
+  emptyIco: { fontSize:28 },
+  emptyTxt: { fontFamily:'GoogleSans_400Regular',fontSize:11,color:'rgba(1,31,75,0.35)',textAlign:'center' },
+  card: { backgroundColor:'rgba(255,255,255,0.88)',borderRadius:10,padding:8,borderTopWidth:3,borderWidth:1,borderColor:'rgba(255,255,255,0.95)',gap:4,shadowColor:'#000',shadowOpacity:0.07,shadowRadius:4,elevation:2,minHeight:110,justifyContent:'space-between' },
+  cardId: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#0d2540' },
+  cardTime: { fontFamily:'GoogleSans_400Regular',fontSize:9,color:'rgba(1,31,75,0.40)' },
+  cardItems: { fontFamily:'GoogleSans_400Regular',fontSize:9,color:'rgba(1,31,75,0.65)',lineHeight:13,flex:1 },
+  cardTotal: { fontFamily:'GoogleSans_700Bold',fontSize:12,color:'#c9a84c' },
+  cardPay: { fontFamily:'GoogleSans_400Regular',fontSize:8,color:'rgba(1,31,75,0.40)' },
+  actionBtn: { borderRadius:6,paddingVertical:5,paddingHorizontal:4,alignItems:'center',justifyContent:'center',marginTop:2 },
+  actionBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff',textAlign:'center' },
+});
+
+// ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
+export default function ManageCanteenScreen({ navigation }) {
+  const { width } = useWindowDimensions();
+  const isSmall  = width < 400;
+  const isTablet = width >= 600 && width < 900;
+  const isWide   = width >= 900;
+
+  const {
+    items, ads, categories, orders,
+    saveItem, deleteItem, saveAd, addOrder, updateOrderStatus,
+    deductStock, reloadFromStorage, setAds,
+  } = useCanteen();
+
+  const [fontsLoaded] = useFonts({
+    NotoSerif_700Bold, GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold,
+  });
+
+  const [activeTab,      setActiveTab]      = useState('cashier');
+  const [activeCategory, setActiveCategory] = useState('All');
+  const [search,         setSearch]         = useState('');
+  const [editItem,       setEditItem]       = useState(null);
+  const [editItemModal,  setEditItemModal]  = useState(false);
+  const [editAd,         setEditAd]         = useState(null);
+  const [editAdModal,    setEditAdModal]    = useState(false);
+  const [invMaxQty,      setInvMaxQty]      = useState({});
+  const [adCurrent,      setAdCurrent]      = useState(0);
+  const [salesCollapsed, setSalesCollapsed] = useState(true); // collapsed by default on mobile
+
+  const hdrFade    = useRef(new Animated.Value(0)).current;
+  const hdrTrans   = useRef(new Animated.Value(-16)).current;
+  const bodyFade   = useRef(new Animated.Value(0)).current;
+  const adScrollRef = useRef(null);
+
+  // ── FIX: Firestore onSnapshot is always live — no polling needed ──────────
+  useFocusEffect(useCallback(()=>{
+    reloadFromStorage();
+  },[reloadFromStorage]));
+
+  useEffect(()=>{
+    Animated.parallel([
+      Animated.timing(hdrFade,{toValue:1,duration:500,useNativeDriver:true}),
+      Animated.timing(hdrTrans,{toValue:0,duration:500,useNativeDriver:true}),
+    ]).start();
+    Animated.timing(bodyFade,{toValue:1,duration:500,delay:150,useNativeDriver:true}).start();
+  },[]);
+
+  const bannerW = isWide ? Math.min(width * 0.60, 700) : width - 16;
+
+  useEffect(()=>{
+    if(!ads.length)return;
+    const t=setInterval(()=>{
+      setAdCurrent(prev=>{
+        const next=(prev+1)%ads.length;
+        adScrollRef.current?.scrollTo({x:next*bannerW,animated:true});
+        return next;
+      });
+    },5000);
+    return()=>clearInterval(t);
+  },[ads.length,bannerW]);
+
+  const handleSearch=(text)=>{
+    setSearch(text);
+    if(!text.trim())return;
+    const cats=[...new Set(items.filter(i=>i.name.toLowerCase().includes(text.toLowerCase())).map(i=>i.cat))];
+    setActiveCategory(cats.length===1?cats[0]:'All');
+  };
+
+  const filtered=items.filter(i=>{
+    if(search.trim())return i.name.toLowerCase().includes(search.toLowerCase());
+    return activeCategory==='All'||i.cat===activeCategory;
+  });
+
+  const openAddItem  =()=>{setEditItem(emptyItem());setEditItemModal(true);};
+  const openEditItem =(item)=>{setEditItem({...item,price:String(item.price),stock:String(item.stock)});setEditItemModal(true);};
+  const handleSaveItem=(updated)=>{
+    saveItem(updated);
+    if(updated.maxQty!==undefined)setInvMaxQty(p=>({...p,[updated.id]:updated.maxQty}));
+    setEditItemModal(false);
+  };
+  const handleDeleteItem=(id)=>{
+    if(Platform.OS==='web'){if(window.confirm('Delete this item? This cannot be undone.')){deleteItem(id);}}
+    else{Alert.alert('Delete Item','Are you sure?',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>deleteItem(id)}]);}
+  };
+
+  const handleSaveAd=(updated)=>{
+    if(updated.isNew){
+      const newAd={...updated,id:Date.now().toString(),isNew:undefined,bg:['#1a3a6b','#2e5fa3'],emoji:updated.emoji||'📢'};
+      setAds(prev=>[...prev,newAd]);
+    }else{saveAd(updated);}
+    setEditAdModal(false);
+  };
+
+  const handleDeleteAd=(id)=>{setAds(prev=>prev.filter(a=>a.id!==id));};
+
+  const pendingCount=orders.filter(o=>o.status==='pending').length;
+
+  if(!fontsLoaded)return null;
+
+  const renderContent=()=>{
+    if(activeTab==='cashier')   return <CashierScreen items={items} categories={categories} addOrder={addOrder} deductStock={deductStock} isWide={isWide}/>;
+    if(activeTab==='menu')      return <ManageMenuScreen items={items} categories={categories} filtered={filtered} search={search} activeCategory={activeCategory} onSearch={handleSearch} onCategoryChange={setActiveCategory} onAddItem={openAddItem} onEditItem={openEditItem} onDeleteItem={handleDeleteItem}/>;
+    if(activeTab==='inventory') return <InventoryScreen items={items} maxQtyMap={invMaxQty} onAddItem={openAddItem} onEditItem={openEditItem}/>;
+    if(activeTab==='history')   return <OrderHistoryScreen orders={orders}/>;
+    if(activeTab==='credits')   return <EmployeeCreditsScreen/>;
+    if(activeTab==='report')    return <SalesReportScreen orders={orders} items={items}/>;
+    return null;
+  };
+
+  return (
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent"/>
+      <View style={[StyleSheet.absoluteFillObject,{backgroundColor:'#98bad5'}]}/>
+      <LinearGradient colors={['rgba(198,220,235,0.85)','rgba(152,186,213,0.40)','rgba(80,110,150,0.0)']} locations={[0,0.45,1]} start={{x:0.5,y:0.1}} end={{x:0.5,y:1}} style={StyleSheet.absoluteFillObject}/>
+      <LinearGradient colors={['rgba(50,80,120,0.45)','rgba(50,80,120,0.0)','rgba(50,80,120,0.45)']} locations={[0,0.5,1]} start={{x:0,y:0}} end={{x:1,y:1}} style={StyleSheet.absoluteFillObject}/>
+      <LinearGradient colors={['rgba(50,80,120,0.0)','rgba(60,90,130,0.35)']} locations={[0.4,1]} start={{x:0.5,y:0}} end={{x:0.5,y:1}} style={StyleSheet.absoluteFillObject}/>
+
+      <Animated.View style={{opacity:hdrFade,transform:[{translateY:hdrTrans}],marginTop:Platform.OS==='web'?16:36,marginHorizontal:isSmall?8:10,zIndex:30,flexShrink:0}}>
+        <View style={[styles.header,{paddingHorizontal:20,paddingVertical:10}]}>
+          <TouchableOpacity style={styles.backBtn} onPress={()=>navigation&&navigation.goBack()}>
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.headerH1,{fontSize:isSmall?13:18}]} numberOfLines={1} adjustsFontSizeToFit>
+              <Text style={styles.headerGold}>CESLA </Text>Canteen Management
+            </Text>
+            <View style={styles.visitorTag}>
+              <Text style={styles.visitorTagText}>🍽️  ADMIN PANEL</Text>
+            </View>
+          </View>
+          <TouchableOpacity style={[styles.iconBtn,{position:'relative'}]}>
+            <MaterialIcons name="notifications" size={19} color="#fff"/>
+            {pendingCount>0&&<View style={styles.notifBadge}><Text style={styles.notifBadgeTxt}>{pendingCount}</Text></View>}
+          </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* Body */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingHorizontal: isWide ? 60 : 20, paddingVertical: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <Animated.View style={[s.card, { opacity: cardFade, transform: [{ translateY: cardTrans }], width: '100%', maxWidth: isWide ? 420 : 400 }]}>
+      <Animated.View style={[styles.body,{opacity:bodyFade,flex:1,minHeight:0}]}>
+        <View style={{ flex:1, flexDirection: isWide ? 'row' : 'column', minHeight:0, overflow:'hidden' }}>
 
-            {/* ══ LOGIN ══ */}
-            {view === 'login' && (
-              <>
-                <View style={s.avatarWrap}><LinearGradient colors={['rgba(201,168,76,0.30)', 'rgba(201,168,76,0.10)']} style={s.avatarGrad}><MaterialIcons name="person" size={isWide ? 34 : 28} color="#c9a84c" /></LinearGradient></View>
-                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>Welcome Back!</Text>
-                <Text style={s.cardSub}>Login to access your membership account</Text>
-                <View style={s.fbBadge}><View style={s.fbDot} /><Text style={s.fbBadgeTxt}>Connected to Firebase · Real-time sync</Text></View>
-                <View style={s.hintBox}><Text style={s.hintTxt}>{'🔑 Use your '}<Text style={s.hintBold}>User ID</Text>{' (e.g. '}<Text style={[s.hintBold, { color: '#c9a84c' }]}>CESLA-2026-00001</Text>{') and '}<Text style={[s.hintBold, { color: '#c9a84c' }]}>Password</Text>{' to login.'}</Text></View>
-                <Field label="USER ID"  value={userId} onChangeText={v => { setUserId(v); setLoginErr(''); }} placeholder="CESLA-2026-00001" />
-                <Field label="PASSWORD" value={pw}     onChangeText={v => { setPw(v);     setLoginErr(''); }} placeholder="Enter your password" secureEntry={!showPw} showToggle onToggle={() => setShowPw(p => !p)} />
-                {loginErr ? <View style={s.errorBox}><MaterialIcons name="error-outline" size={14} color="#c0392b" style={{ marginTop: 1 }} /><Text style={s.errorTxt}>{loginErr}</Text></View> : null}
-                <TouchableOpacity style={[s.primaryBtn, loginLoading && { opacity: 0.65 }]} onPress={handleLogin} activeOpacity={0.85} disabled={loginLoading}>
-                  <LinearGradient colors={['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.primaryBtnGrad}>
-                    {loginLoading ? <ActivityIndicator color="#0d1b3e" /> : <><Text style={s.primaryBtnArrow}>→</Text><Text style={s.primaryBtnTxt}>LOGIN</Text></>}
-                  </LinearGradient>
-                </TouchableOpacity>
-                <View style={s.switchRow}><Text style={s.switchTxt}>Don't have an account? </Text><TouchableOpacity onPress={() => switchView('register')} activeOpacity={0.75}><Text style={s.switchLink}>Register as New Member</Text></TouchableOpacity></View>
-              </>
+        {/* LEFT PANEL — Order Monitoring */}
+        {isWide ? (
+          <View style={styles.leftPanel}>
+            <OrderingMonitoring orders={orders} onUpdateStatus={updateOrderStatus}/>
+          </View>
+        ) : (
+          /* Mobile/Tablet: collapsible ordering overview */
+          <View style={[
+            styles.leftPanelMobile,
+            salesCollapsed && { height: 36 },
+            isTablet && !salesCollapsed && { height: 170 },
+          ]}>
+            {/* Collapse toggle header */}
+            <TouchableOpacity
+              onPress={() => setSalesCollapsed(v => !v)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                paddingHorizontal: 12, paddingVertical: 6,
+                backgroundColor: 'rgba(26,58,107,0.15)',
+                borderBottomWidth: salesCollapsed ? 0 : 1,
+                borderColor: 'rgba(255,255,255,0.30)',
+              }}
+              activeOpacity={0.80}
+            >
+              <View style={{ flexDirection:'row', alignItems:'center', gap:6 }}>
+                <View style={{ width:6, height:6, borderRadius:3, backgroundColor:'#e74c3c' }} />
+                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#1a2d4e', letterSpacing:1.2 }}>ORDERING MONITORING</Text>
+              </View>
+              <MaterialIcons name={salesCollapsed ? 'expand-more' : 'expand-less'} size={18} color="rgba(26,58,107,0.60)" />
+            </TouchableOpacity>
+            {!salesCollapsed && (
+              <View style={{ flex:1, minHeight:0, overflow:'hidden' }}>
+                <OrderingMonitoring orders={orders} onUpdateStatus={updateOrderStatus}/>
+              </View>
             )}
+          </View>
+        )}
 
-            {/* ══ REGISTER ══ */}
-            {view === 'register' && (
-              <>
-                <View style={s.avatarWrap}><LinearGradient colors={['rgba(201,168,76,0.30)', 'rgba(201,168,76,0.10)']} style={s.avatarGrad}><MaterialIcons name="person-add" size={isWide ? 30 : 24} color="#c9a84c" /></LinearGradient></View>
-                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>Create Your Account</Text>
-                <Text style={s.cardSub}>CESLA Multi-Purpose Cooperative · CLIMBS Employee</Text>
-                <View style={s.stepRow}>
-                  {[{ n: 1, lbl: 'Create\nAccount' }, { n: 2, lbl: 'Admin\nApproval' }, { n: 3, lbl: 'Login &\nAccess' }].map((step, i) => (
-                    <View key={step.n} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                      <View style={s.stepItem}><View style={[s.stepCircle, step.n === 1 && s.stepCircleActive]}><Text style={[s.stepNum, step.n === 1 && s.stepNumActive]}>{step.n}</Text></View><Text style={[s.stepLbl, step.n === 1 && s.stepLblActive]}>{step.lbl}</Text></View>
-                      {i < 2 && <View style={s.stepLine} />}
+        {/* RIGHT PANEL */}
+        <View style={isWide ? styles.rightPanel : styles.rightPanelMobile}>
+          <View style={styles.adWrapper}>
+            <ScrollView ref={adScrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={e=>setAdCurrent(Math.round(e.nativeEvent.contentOffset.x/bannerW))}
+              style={{width:'100%'}} contentContainerStyle={{width:bannerW*(ads.length+1)}}>
+              {ads.map(ad=>{
+                const imgSrc=ad.image?{uri:ad.image}:(ad.imageUrl?{uri:ad.imageUrl}:null);
+                return(
+                  <LinearGradient key={ad.id} colors={ad.bg||['#1a3a6b','#2e5fa3']} start={{x:0,y:0}} end={{x:1,y:1}} style={[styles.adSlide,{width:bannerW}]}>
+                    {imgSrc?<Image source={imgSrc} style={styles.adBgImg} resizeMode="cover"/>:<Text style={styles.adEmoji}>{ad.emoji}</Text>}
+                    <View style={{flex:1,minWidth:0}}>
+                      <Text style={styles.adTitle} numberOfLines={1}>{ad.title}</Text>
+                      <Text style={styles.adSub} numberOfLines={1}>{ad.sub}</Text>
                     </View>
-                  ))}
-                </View>
-                <View style={s.uidBox}>
-                  <View style={{ flex: 1 }}><Text style={s.uidLabel}>🔑 YOUR UNIQUE USER ID (GAMITON SA LOGIN)</Text><Text style={s.uidValue}>{genUid}</Text></View>
-                  <TouchableOpacity style={[s.copyBtn, copied && s.copyBtnDone]} onPress={() => handleCopy(genUid)}><Text style={s.copyBtnTxt}>{copied ? '✓ Copied' : '📋 Copy'}</Text></TouchableOpacity>
-                </View>
-                <View style={s.uidWarning}><Text style={s.uidWarningTxt}>{'⚠️ I-save ang imong User ID! '}<Text style={s.uidWarningBold}>Kini gamiton sa pag-login human ma-approve sa admin.</Text></Text></View>
-                <View style={s.fieldRow2}>
-                  <FieldReg label="LAST NAME"  value={lastName}  onChangeText={v => { setLastName(v);  setRegErrors(e => ({ ...e, lastName: '' })); }}  placeholder="Dela Cruz" error={regErrors.lastName}  autoCapitalize="words" />
-                  <FieldReg label="FIRST NAME" value={firstName} onChangeText={v => { setFirstName(v); setRegErrors(e => ({ ...e, firstName: '' })); }} placeholder="Juan"      error={regErrors.firstName} autoCapitalize="words" />
-                </View>
-                <View style={s.fieldRow2}>
-                  <FieldReg label="MIDDLE NAME" value={middleName} onChangeText={v => setMiddleName(v)} placeholder="Santos (opt.)" autoCapitalize="words" />
-                  <FieldReg label="PASSWORD"    value={regPw}      onChangeText={v => { setRegPw(v);      setRegErrors(e => ({ ...e, pw: '' })); }}  placeholder="Min. 6 chars" secureEntry={!showRegPw} showToggle onToggle={() => setShowRegPw(p => !p)} error={regErrors.pw} />
-                </View>
-                <View style={{ width: '100%' }}>
-                  <FieldReg label="CONFIRM PASSWORD" value={regConfirm} onChangeText={v => { setRegConfirm(v); setRegErrors(e => ({ ...e, cpw: '' })); }} placeholder="Re-enter password" secureEntry={!showRegConf} showToggle onToggle={() => setShowRegConf(p => !p)} error={regErrors.cpw} />
-                </View>
-                {regErrors.general ? <View style={s.errorBox}><MaterialIcons name="error-outline" size={14} color="#c0392b" style={{ marginTop: 1 }} /><Text style={s.errorTxt}>{regErrors.general}</Text></View> : null}
-                <TouchableOpacity style={[s.primaryBtn, regLoading && { opacity: 0.65 }]} onPress={handleRegister} activeOpacity={0.85} disabled={regLoading}>
-                  <LinearGradient colors={['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.primaryBtnGrad}>
-                    {regLoading ? <ActivityIndicator color="#0d1b3e" /> : <Text style={s.primaryBtnTxt}>CREATE ACCOUNT</Text>}
+                    <View style={styles.adBadge}><Text style={styles.adBadgeTxt}>AD</Text></View>
+                    <TouchableOpacity style={styles.adEditBtn} onPress={()=>{setEditAd({...ad});setEditAdModal(true);}}>
+                      <MaterialIcons name="edit" size={12} color="#fff"/>
+                    </TouchableOpacity>
+                    <View style={styles.adDotsInner}>
+                      {ads.map((_,i)=>(<TouchableOpacity key={i} onPress={()=>{adScrollRef.current?.scrollTo({x:i*bannerW,animated:true});setAdCurrent(i);}}><View style={[styles.adDot,adCurrent===i&&styles.adDotActive]}/></TouchableOpacity>))}
+                    </View>
                   </LinearGradient>
-                </TouchableOpacity>
-                <View style={s.switchRow}><Text style={s.switchTxt}>Already have an account? </Text><TouchableOpacity onPress={() => switchView('login')} activeOpacity={0.75}><Text style={s.switchLink}>Login here</Text></TouchableOpacity></View>
-              </>
-            )}
+                );
+              })}
+              <TouchableOpacity style={[styles.adSlide,{width:bannerW,backgroundColor:'rgba(26,58,107,0.18)',justifyContent:'center',alignItems:'center',gap:8,borderWidth:2,borderColor:'rgba(255,255,255,0.40)',borderStyle:'dashed'}]}
+                onPress={()=>{setEditAd({isNew:true,id:Date.now().toString(),title:'',sub:'',image:null,imageUrl:'',emoji:'📢',bg:['#1a3a6b','#2e5fa3']});setEditAdModal(true);}}>
+                <MaterialIcons name="add-circle-outline" size={28} color="rgba(26,58,107,0.55)"/>
+                <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:12,color:'rgba(26,58,107,0.55)'}}>Add New Ad</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
 
-            {/* ══ SUCCESS ══ */}
-            {view === 'success' && regMember && (
-              <>
-                <View style={s.avatarWrap}><LinearGradient colors={['rgba(26,138,74,0.30)', 'rgba(26,138,74,0.10)']} style={s.avatarGrad}><MaterialIcons name="check-circle" size={isWide ? 32 : 28} color="#1a8a4a" /></LinearGradient></View>
-                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>Registration Submitted!</Text>
-                <Text style={s.cardSub}>Your account has been saved to Firebase. Wait for admin approval.</Text>
-                <View style={[s.uidBox, { marginTop: 6 }]}>
-                  <View style={{ flex: 1 }}><Text style={s.uidLabel}>🔑 YOUR USER ID (GAMITON SA LOGIN)</Text><Text style={s.uidValue}>{regMember.userId}</Text></View>
-                  <TouchableOpacity style={[s.copyBtn, copied && s.copyBtnDone]} onPress={() => handleCopy(regMember.userId)}><Text style={s.copyBtnTxt}>{copied ? '✓ Copied' : '📋 Copy'}</Text></TouchableOpacity>
-                </View>
-                <View style={s.flowCard}>
-                  {[{ icon: '✅', label: 'Account created in Firebase', done: true }, { icon: '🔔', label: 'Admin notified automatically', done: true }, { icon: '⏳', label: 'Waiting for admin approval', done: false }, { icon: '🔓', label: 'Login after approval', done: false }].map((step, i) => (
-                    <View key={i} style={s.flowRow}><Text style={{ fontSize: 14 }}>{step.icon}</Text><Text style={[s.flowTxt, step.done && s.flowTxtDone]}>{step.label}</Text></View>
-                  ))}
-                </View>
-                <View style={s.pendingBox}><MaterialIcons name="hourglass-empty" size={18} color="#c9a84c" /><Text style={s.pendingTxt}>Your account is <Text style={s.pendingBold}>Pending Admin Approval.</Text>{'\n'}Login after the admin activates your account.</Text></View>
-                <TouchableOpacity style={s.primaryBtn} onPress={() => { setUserId(regMember.userId); setPw(''); setRegMember(null); switchView('login'); }} activeOpacity={0.85}>
-                  <LinearGradient colors={['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.primaryBtnGrad}>
-                    <Text style={s.primaryBtnArrow}>→</Text><Text style={s.primaryBtnTxt}>GO TO LOGIN</Text>
-                  </LinearGradient>
+          <View style={styles.tabBar}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:2}} style={{flexGrow:0}}>
+              {TABS.map(tab=>(
+                <TouchableOpacity key={tab.key} style={[styles.tabBtn,activeTab===tab.key&&styles.tabBtnActive]} onPress={()=>setActiveTab(tab.key)} activeOpacity={0.80}>
+                  <MaterialIcons name={tab.icon} size={13} color={activeTab===tab.key?'#1a3a6b':'rgba(255,255,255,0.80)'}/>
+                  <Text style={[styles.tabBtnTxt,activeTab===tab.key&&styles.tabBtnTxtActive]}>{tab.label}</Text>
+                  {tab.key==='cashier'&&pendingCount>0&&(<View style={styles.tabBadge}><Text style={styles.tabBadgeTxt}>{pendingCount}</Text></View>)}
                 </TouchableOpacity>
-              </>
-            )}
+              ))}
+            </ScrollView>
+          </View>
 
-          </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <View style={styles.contentArea}>{renderContent()}</View>
+        </View>
+        </View>
+      </Animated.View>
+
+      <ItemEditModal visible={editItemModal} item={editItem} categories={categories} onSave={handleSaveItem} onClose={()=>setEditItemModal(false)}/>
+      <AdEditModal visible={editAdModal} ad={editAd} onSave={handleSaveAd} onClose={()=>setEditAdModal(false)} onDelete={handleDeleteAd}/>
     </View>
   );
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// STYLES
-// ═════════════════════════════════════════════════════════════════════════════
-const s = StyleSheet.create({
-  // Auth header
-  headerWrap:   { zIndex: 100 },
-  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#304674', borderRadius: 14, borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.25)', shadowColor: '#011f4b', shadowOpacity: 0.20, shadowRadius: 20, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
-  backBtn:      { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  backIcon:     { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 10 },
-  headerH1:     { fontFamily: 'NotoSerif_700Bold', fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
-  headerWhite:  { color: '#ffffff' },
-  headerGold:   { fontFamily: 'NotoSerif_700Bold_Italic', color: '#c9a84c', fontStyle: 'italic' },
-  headerSub:    { fontFamily: 'GoogleSans_400Regular', color: 'rgba(232,200,122,0.75)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 2, textAlign: 'center' },
-
-  // Auth card
-  card:         { width: '100%', borderRadius: 18, backgroundColor: 'rgba(178,203,222,0.38)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)', padding: 14, alignItems: 'center', shadowColor: '#011f4b', shadowOpacity: 0.13, shadowRadius: 18, shadowOffset: { width: 0, height: 5 }, elevation: 5, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)' } : {}) },
-  avatarWrap:   { marginBottom: 8 },
-  avatarGrad:   { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.45)' },
-  cardTitle:    { fontFamily: 'NotoSerif_700Bold', fontWeight: '800', color: '#011f4b', textAlign: 'center', marginBottom: 2, letterSpacing: 0.3 },
-  cardSub:      { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.60)', textAlign: 'center', marginBottom: 10, lineHeight: 16 },
-  fbBadge:      { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(26,138,74,0.12)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(26,138,74,0.35)', paddingHorizontal: 10, paddingVertical: 5, marginBottom: 12 },
-  fbDot:        { width: 6, height: 6, borderRadius: 3, backgroundColor: '#1a8a4a' },
-  fbBadgeTxt:   { fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: '#1a8a4a' },
-  hintBox:      { width: '100%', backgroundColor: 'rgba(201,168,76,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(201,168,76,0.38)', padding: 9, marginBottom: 11 },
-  hintTxt:      { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.80)', lineHeight: 17 },
-  hintBold:     { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#011f4b' },
-
-  // Fields
-  fieldGroup:   { width: '100%', marginBottom: 9 },
-  fieldLabel:   { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.55)', letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 4 },
-  fieldRow:     { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(240,246,252,0.92)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)', shadowColor: '#011f4b', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  fieldRowErr:  { borderColor: '#c0392b' },
-  fieldInput:   { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#0d1b3e', letterSpacing: 0.2 },
-  fieldErr:     { fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: '#c0392b', marginTop: 3 },
-  errorBox:     { flexDirection: 'row', alignItems: 'flex-start', gap: 6, width: '100%', backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(192,57,43,0.28)', padding: 9, marginBottom: 5 },
-  errorTxt:     { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: '#c0392b', flex: 1, lineHeight: 17 },
-
-  // Buttons
-  primaryBtn:     { width: '100%', borderRadius: 28, overflow: 'hidden', marginTop: 6, marginBottom: 10, shadowColor: '#c9a84c', shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
-  primaryBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 13, gap: 8 },
-  primaryBtnArrow:{ fontSize: 16, color: '#0d1b3e', fontWeight: '800' },
-  primaryBtnTxt:  { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#0d1b3e', letterSpacing: 2.5 },
-  saveBtn:        { backgroundColor: '#243554', borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 16, shadowColor: '#0f1e35', shadowOpacity: 0.20, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
-  saveBtnTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff', letterSpacing: 1 },
-  switchRow:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', gap: 2 },
-  switchTxt:      { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.55)' },
-  switchLink:     { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#c9a84c', textDecorationLine: 'underline' },
-
-  // Register
-  fieldRow2:      { flexDirection: 'row', width: '100%', gap: 6, marginBottom: 0 },
-  stepRow:        { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', marginBottom: 11, width: '100%' },
-  stepItem:       { alignItems: 'center', width: 68 },
-  stepCircle:     { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.40)', justifyContent: 'center', alignItems: 'center', marginBottom: 3 },
-  stepCircleActive:{ backgroundColor: '#c9a84c', borderColor: '#c9a84c' },
-  stepNum:        { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: 'rgba(1,31,75,0.45)' },
-  stepNumActive:  { color: '#0d1b3e' },
-  stepLbl:        { fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.50)', textAlign: 'center', lineHeight: 12 },
-  stepLblActive:  { color: '#011f4b', fontFamily: 'GoogleSans_700Bold' },
-  stepLine:       { width: 20, height: 1, backgroundColor: 'rgba(255,255,255,0.40)', marginTop: 10 },
-  uidBox:         { flexDirection: 'row', alignItems: 'center', width: '100%', backgroundColor: 'rgba(15,30,53,0.78)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', padding: 11, marginBottom: 8, gap: 10 },
-  uidLabel:       { fontFamily: 'GoogleSans_700Bold', fontSize: 8, color: 'rgba(255,255,255,0.55)', letterSpacing: 1.5, marginBottom: 3 },
-  uidValue:       { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#c9a84c', letterSpacing: 0.5 },
-  copyBtn:        { backgroundColor: 'rgba(201,168,76,0.20)', borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: 'rgba(201,168,76,0.50)' },
-  copyBtnDone:    { backgroundColor: 'rgba(26,138,74,0.28)', borderColor: '#1a8a4a' },
-  copyBtnTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#c9a84c' },
-  uidWarning:     { width: '100%', backgroundColor: 'rgba(201,168,76,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(201,168,76,0.38)', padding: 9, marginBottom: 10 },
-  uidWarningTxt:  { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.80)', lineHeight: 17 },
-  uidWarningBold: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#011f4b' },
-
-  // Success
-  flowCard:      { width: '100%', backgroundColor: 'rgba(255,255,255,0.45)', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.70)', padding: 12, marginBottom: 10, gap: 8 },
-  flowRow:       { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  flowTxt:       { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(1,31,75,0.50)', flex: 1 },
-  flowTxtDone:   { fontFamily: 'GoogleSans_700Bold', color: '#1a8a4a' },
-  pendingBox:    { width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: 'rgba(201,168,76,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(201,168,76,0.38)', padding: 10, marginBottom: 12 },
-  pendingTxt:    { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.80)', lineHeight: 17, flex: 1 },
-  pendingBold:   { fontFamily: 'GoogleSans_700Bold', color: '#011f4b' },
-
-  // Dashboard top bar
-  dashTopbar:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1a2d4e', paddingHorizontal: 14, paddingBottom: 12, borderBottomWidth: 2, borderColor: '#c9a84c', gap: 8 },
-  dashLogo:      { width: 32, height: 32, borderRadius: 8, backgroundColor: '#c9a84c', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  dashLogoTxt:   { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#0f1e35' },
-  dashTitle:     { fontFamily: 'GoogleSans_700Bold', color: '#fff' },
-  dashSub:       { fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#c9a84c' },
-  menuBtn:       { width: 38, height: 38, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', justifyContent: 'center', alignItems: 'center' },
-  bellBtn:       { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', justifyContent: 'center', alignItems: 'center' },
-  bellBadge:     { position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: '#c0392b', justifyContent: 'center', alignItems: 'center' },
-  bellBadgeTxt:  { fontFamily: 'GoogleSans_700Bold', fontSize: 8, color: '#fff' },
-  memAvatar:     { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(201,168,76,0.28)', borderWidth: 1.5, borderColor: '#c9a84c', justifyContent: 'center', alignItems: 'center' },
-  memAvatarTxt:  { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#c9a84c' },
-  logoutBtn:     { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.50)' },
-  logoutTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c9a84c' },
-
-  // Sidebar
-  sidebar:        { width: 175, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)' },
-  sidebarBrand:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, paddingTop: 18 },
-  sidebarLogo:    { width: 30, height: 30, borderRadius: 7, backgroundColor: '#c9a84c', justifyContent: 'center', alignItems: 'center' },
-  sidebarLogoTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35' },
-  sidebarName:    { fontFamily: 'NotoSerif_700Bold', fontSize: 12, color: '#fff' },
-  sidebarRole:    { fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#c9a84c' },
-  sideHead:       { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 10, minHeight: 40 },
-  sideActive:     { backgroundColor: '#c9a84c' },
-  sideIcon:       { fontSize: 13, width: 18, textAlign: 'center', color: 'rgba(255,255,255,0.50)' },
-  sideLabel:      { fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: 'rgba(255,255,255,0.65)', flex: 1 },
-  sideChild:      { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16, marginHorizontal: 4, borderRadius: 8, marginBottom: 1, minHeight: 36 },
-  sideChildActive:{ backgroundColor: 'rgba(201,168,76,0.20)' },
-  sideChildTxt:   { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(210,225,255,0.55)', flex: 1 },
-  sideNotifBadge: { margin: 10, backgroundColor: 'rgba(201,168,76,0.18)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', padding: 10 },
-  sideNotifTxt:   { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#e8c87a', textAlign: 'center' },
-
-  // Dashboard pages
-  pageOuter:     { padding: 16, paddingBottom: 48 },
-  pageTitle:     { fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: '#0f1e35', marginBottom: 4 },
-  pageSub:       { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(15,30,53,0.65)', marginBottom: 16, lineHeight: 20 },
-  sHead:         { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(15,30,53,0.42)', letterSpacing: 2.2, textTransform: 'uppercase', marginBottom: 10, marginTop: 6 },
-  secTitle:      { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.10)' },
-  infoRow:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.06)' },
-  infoLabel:     { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(15,30,53,0.65)', flex: 1 },
-  infoVal:       { fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: '#0f1e35', flex: 2, textAlign: 'right' },
-
-  // Welcome / profile avatars
-  wAvatar:       { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(201,168,76,0.25)', borderWidth: 2, borderColor: '#c9a84c', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  wAvatarTxt:    { fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: '#c9a84c' },
-  profAvatar:    { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(201,168,76,0.28)', borderWidth: 2.5, borderColor: '#c9a84c', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  profAvatarTxt: { fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: '#c9a84c' },
-
-  // Quick actions
-  quickBtn:      { backgroundColor: 'rgba(255,255,255,0.50)', borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.78)', shadowColor: '#1a2d4e', shadowOpacity: 0.07, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
-
-  // Notifications
-  notifCard:     { backgroundColor: 'rgba(255,255,255,0.50)', borderRadius: 14, padding: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.78)', borderLeftWidth: 4, marginBottom: 10, flexDirection: 'row', gap: 12 },
-  notifIcon:     { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  notifTitle:    { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#0f1e35' },
-  notifMsg:      { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(15,30,53,0.65)', lineHeight: 18, marginTop: 2 },
-  notifTime:     { fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(15,30,53,0.42)', marginTop: 3 },
+const styles = StyleSheet.create({
+  root: { flex:1,flexDirection:'column' },
+  header: { flexDirection:'row',alignItems:'center',backgroundColor:'rgba(26,58,107,0.92)',borderRadius:16,borderWidth:1,borderColor:'rgba(255,255,255,0.18)',shadowColor:'#011f4b',shadowOpacity:0.25,shadowRadius:12,elevation:8 },
+  backBtn: { width:36,height:36,borderRadius:18,backgroundColor:'rgba(255,255,255,0.15)',borderWidth:1,borderColor:'rgba(255,255,255,0.30)',justifyContent:'center',alignItems:'center',flexShrink:0 },
+  backIcon: { color:'#fff',fontSize:16,fontWeight:'600',textAlign:'center',lineHeight:20 },
+  headerCenter: { flex:1,alignItems:'center',paddingHorizontal:8,minWidth:0 },
+  headerH1: { fontFamily:'NotoSerif_700Bold',color:'#fff',textAlign:'center' },
+  headerGold: { color:'#c9a84c' },
+  visitorTag: { marginTop:2,paddingHorizontal:8,paddingVertical:2,borderRadius:20,backgroundColor:'rgba(255,255,255,0.18)',borderWidth:1,borderColor:'rgba(255,255,255,0.40)',alignSelf:'center' },
+  visitorTagText: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff',letterSpacing:1.2,textTransform:'uppercase',lineHeight:13 },
+  iconBtn: { width:36,height:36,borderRadius:18,backgroundColor:'rgba(255,255,255,0.15)',borderWidth:1,borderColor:'rgba(255,255,255,0.30)',justifyContent:'center',alignItems:'center',flexShrink:0 },
+  notifBadge: { position:'absolute',top:4,right:4,backgroundColor:'#e74c3c',borderRadius:6,minWidth:14,height:14,alignItems:'center',justifyContent:'center',paddingHorizontal:2 },
+  notifBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff' },
+  body: { flex:1, marginTop:Platform.OS==='web'?10:6, marginBottom:16, minHeight:0, overflow:'hidden' },
+  leftPanelMobile: { height: 220, flexShrink: 0, backgroundColor:'rgba(255,255,255,0.22)', borderRadius:12, marginHorizontal:8, marginTop:4, marginBottom:0, borderWidth:1, borderColor:'rgba(255,255,255,0.40)', overflow:'hidden' },
+  rightPanelMobile: { flex:1, minWidth:0, minHeight:0, marginHorizontal:8, marginTop:6, marginBottom:8, flexDirection:'column', overflow:'hidden' },
+  leftPanel: { flex:1.4,flexShrink:0,backgroundColor:'rgba(255,255,255,0.22)',borderRadius:16,marginLeft:10,marginRight:0,borderWidth:1,borderColor:'rgba(255,255,255,0.40)',overflow:'hidden',minHeight:0 },
+  rightPanel: { flex:3,minWidth:0,minHeight:0,marginHorizontal:10,flexDirection:'column',overflow:'hidden' },
+  adWrapper: { height:100,flexShrink:0,borderRadius:16,overflow:'hidden',backgroundColor:'rgba(26,58,107,0.15)',marginBottom:0 },
+  adSlide: { height:100,flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingBottom:10,gap:12,overflow:'hidden' },
+  adBgImg: { position:'absolute',top:0,left:0,right:0,bottom:0,borderRadius:16 },
+  adEmoji: { fontSize:40,flexShrink:0 },
+  adTitle: { fontFamily:'GoogleSans_700Bold',fontSize:15,color:'#fff' },
+  adSub:   { fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(255,255,255,0.85)' },
+  adBadge: { position:'absolute',top:8,right:38,backgroundColor:'rgba(255,255,255,0.25)',borderRadius:4,paddingHorizontal:6,paddingVertical:2 },
+  adBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:9,color:'#fff',letterSpacing:1 },
+  adEditBtn: { position:'absolute',top:6,right:8,backgroundColor:'rgba(0,0,0,0.35)',borderRadius:7,padding:5 },
+  adDotsInner: { position:'absolute',bottom:5,left:0,right:0,flexDirection:'row',justifyContent:'center',gap:4 },
+  adDot: { width:6,height:6,borderRadius:3,backgroundColor:'rgba(255,255,255,0.40)' },
+  adDotActive: { backgroundColor:'#fff',width:16 },
+  tabBar: { flexShrink:0,backgroundColor:'rgba(26,58,107,0.50)',borderTopLeftRadius:12,borderTopRightRadius:12,paddingTop:5,paddingHorizontal:4,marginTop:8,flexDirection:'row' },
+  tabBtn: { paddingVertical:8,paddingHorizontal:13,borderTopLeftRadius:10,borderTopRightRadius:10,flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'rgba(255,255,255,0.10)',marginHorizontal:2 },
+  tabBtnActive: { backgroundColor:'#eef2f8' },
+  tabBtnTxt: { fontFamily:'GoogleSans_700Bold',fontSize:11,color:'rgba(255,255,255,0.80)' },
+  tabBtnTxtActive: { color:'#1a3a6b' },
+  tabBadge: { backgroundColor:'#e74c3c',borderRadius:7,minWidth:14,height:14,alignItems:'center',justifyContent:'center',paddingHorizontal:2 },
+  tabBadgeTxt: { fontFamily:'GoogleSans_700Bold',fontSize:8,color:'#fff' },
+  contentArea: { flex:1,minHeight:0,backgroundColor:'rgba(255,255,255,0.22)',borderBottomLeftRadius:16,borderBottomRightRadius:16,borderTopRightRadius:16,borderWidth:1,borderColor:'rgba(255,255,255,0.40)',overflow:'hidden' },
 });

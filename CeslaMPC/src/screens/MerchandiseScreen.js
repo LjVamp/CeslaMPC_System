@@ -674,10 +674,28 @@ const adStyles = StyleSheet.create({
 });
 
 
-export default function MerchandiseScreen({ navigation }) {
+export default function MerchandiseScreen({ navigation, route }) {
   const { width, height } = useWindowDimensions();
   const isWide  = width >= 768;
   const isSmall = width < 400;
+
+  // ── Safe back navigation — always go to Home to avoid landing on AdminDashboard ──
+  const handleBack = () => {
+    if (!navigation) return;
+    if (navigation.canGoBack()) {
+      // Check the previous route name; if it's AdminScreen, skip it and go Home
+      const state = navigation.getState();
+      const routes = state?.routes || [];
+      const prevRoute = routes[routes.length - 2];
+      if (prevRoute && prevRoute.name === 'AdminScreen') {
+        navigation.navigate('Home');
+      } else {
+        navigation.goBack();
+      }
+    } else {
+      navigation.navigate('Home');
+    }
+  };
 
   const [fontsLoaded] = useFonts({
     NotoSerif_700Bold, NotoSerif_700Bold_Italic,
@@ -899,7 +917,7 @@ export default function MerchandiseScreen({ navigation }) {
         marginHorizontal: isSmall ? 8 : 10, zIndex:10,
       }}>
         <View style={[styles.header, { paddingHorizontal: isWide ? 40:12, paddingVertical: isWide ? 16:7 }]}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation && navigation.goBack()}>
+          <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
 
@@ -913,8 +931,8 @@ export default function MerchandiseScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Menu icon — same as Web, no cart icon */}
-          <TouchableOpacity style={styles.backBtn}>
+          {/* Menu icon — disabled, no navigation action */}
+          <TouchableOpacity style={styles.backBtn} activeOpacity={1} onPress={() => {}}>
             <Text style={{ color:'#fff', fontSize:18, textAlign:'center', lineHeight:22, includeFontPadding:false }}>≡</Text>
           </TouchableOpacity>
         </View>
