@@ -2,7 +2,7 @@
   "expo": {
     "name": "CeslaMPC",
     "slug": "CeslaMPC",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/CESLA_logo.png",
     "userInterfaceStyle": "light",
@@ -24,6 +24,7 @@
     },
     "android": {
       "package": "com.cesla.mpc",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/CESLA_logo.png",
         "backgroundColor": "#E6F4FE"
