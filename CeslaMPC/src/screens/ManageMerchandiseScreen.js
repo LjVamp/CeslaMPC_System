@@ -1038,6 +1038,16 @@ const cs = StyleSheet.create({
   clearBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#e74c3c' },
   receiptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 7, backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(26,58,107,0.20)' },
   receiptBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#1a3a6b' },
+  // ── Floating cart pill + bottom sheet (same as CanteenVisitor) ──
+  floatCart:    { position: 'absolute', bottom: 24, left: 0, right: 0, alignItems: 'center', zIndex: 50 },
+  floatCartGrad:{ borderRadius: 30, paddingVertical: 11, paddingHorizontal: 32, alignItems: 'center' },
+  floatCartTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#0d1b3e', fontWeight: '700' },
+  sheetOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', zIndex: 100 },
+  sheetBackdrop:{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(1,20,50,0.45)' },
+  sheet:        { backgroundColor: '#f0f5f9', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 34, maxHeight: '92%', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 20, shadowOffset: { width: 0, height: -4 }, elevation: 20 },
+  sheetHandle:  { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(1,31,75,0.20)', alignSelf: 'center', marginTop: 10, marginBottom: 6 },
+  sheetHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.10)' },
+  sheetClose:   { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(1,31,75,0.08)', justifyContent: 'center', alignItems: 'center' },
   receipt: { backgroundColor: '#fffef8', borderRadius: 16, padding: 20, width: '100%', maxWidth: 360, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 20, elevation: 14 },
   receiptTitle: { fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: '#1a2d4e', textAlign: 'center' },
   receiptSub: { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.50)', textAlign: 'center', marginTop: 2 },
@@ -1461,7 +1471,7 @@ const inv2 = StyleSheet.create({
   tfootVal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b', textAlign:'center', letterSpacing:0.2 },
 });
 
-const OrderHistoryScreen = ({ orders }) => {
+const OrderHistoryScreen = ({ orders, onUpdateStatus }) => {
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const todayCal = new Date();
@@ -1617,10 +1627,26 @@ const OrderHistoryScreen = ({ orders }) => {
                       </View>
                     </View>
                     <Text style={hst.txItems} numberOfLines={2}>{itemsSummary}</Text>
-                    <View style={{flexDirection:'row',alignItems:'center',gap:10}}>
+                    <View style={{flexDirection:'row',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                       <Text style={hst.txAmount}>₱{Number(order.total).toFixed(2)}</Text>
-                      <Text style={hst.txPay}>💵 Cash</Text>
+                      <Text style={hst.txPay}>{order.payment==='gcash'?'📱 GCash':order.payment==='credit'?'💳 Credit':'💵 Cash'}</Text>
                     </View>
+                    {/* Status update button — only show if not done */}
+                    {st.next && onUpdateStatus && (
+                      <TouchableOpacity
+                        onPress={() => onUpdateStatus(order.id, st.next)}
+                        style={{
+                          marginTop: 6, paddingVertical: 7, paddingHorizontal: 12,
+                          borderRadius: 8, alignItems: 'center',
+                          backgroundColor: st.nextColor,
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#fff' }}>
+                          {st.nextLabel}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               );
@@ -2321,7 +2347,7 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
     if (activeTab === 'cashier')   return <CashierScreen items={items} categories={categories} addOrder={addOrder} deductStock={deductStock} isWide={isWide} />;
     if (activeTab === 'menu')      return <ManageItemsScreen items={items} categories={categories} filtered={filtered} search={search} activeCategory={activeCategory} onSearch={handleSearch} onCategoryChange={setActiveCategory} onAddItem={openAddItem} onEditItem={openEditItem} onDeleteItem={handleDeleteItem} isWide={isWide} />;
     if (activeTab === 'inventory') return <InventoryScreen items={items} maxQtyMap={invMaxQty} onAddItem={openAddItem} onEditItem={openEditItem}/>;
-    if (activeTab === 'history')   return <OrderHistoryScreen orders={orders} />;
+    if (activeTab === 'history')   return <OrderHistoryScreen orders={orders} onUpdateStatus={updateOrderStatus} />;
     if (activeTab === 'credits')   return <EmployeeCreditsScreen />;
     if (activeTab === 'report')    return <SalesReportScreen orders={orders} items={items}/>;
     return null;
