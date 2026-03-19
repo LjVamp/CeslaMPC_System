@@ -1,12 +1,11 @@
-// src/screens/BillingDashboardScreen.js
+// src/screens/ManageBillingScreen.js
 // CESLA MPC — Billing Monitoring System — Main Dashboard
-// Tabs: Overview | Free Lunch | Rice Allowances | Water Billing | Milk & Beans | Ticket
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  StatusBar, Platform, useWindowDimensions, Animated,
-  ActivityIndicator, Alert,
+  StatusBar, Platform, Animated, ActivityIndicator,
+  Image, Alert, useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts } from 'expo-font';
@@ -15,26 +14,101 @@ import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from 
 import { MaterialIcons } from '@expo/vector-icons';
 import { useBilling, CATEGORIES, MONTHS_SHORT, MONTHS } from '../context/BillingContext';
 
-import FreeLunchScreen     from './billing/FreeLunchScreen';
-import RiceAllowancesScreen from './billing/RiceAllowancesScreen';
-import WaterBillingScreen  from './billing/WaterBillingScreen';
-import MilkBeansScreen     from './billing/MilkBeansScreen';
-import TicketScreen        from './billing/TicketScreen';
+import FreeLunchScreen       from './billing/FreeLunchScreen';
+import RiceAllowancesScreen  from './billing/RiceAllowancesScreen';
+import WaterBillingScreen    from './billing/WaterBillingScreen';
+import MilkBeansScreen       from './billing/MilkBeansScreen';
+import TicketScreen          from './billing/TicketScreen';
 import BillingOverviewScreen from './billing/BillingOverviewScreen';
-import SettingsModal       from '../components/SettingsModal';
+import SettingsModal         from '../components/SettingsModal';
+import PrintReportModal      from '../components/PrintReportModal';
 
+// ── Tab definitions ──────────────────────────────────────────────────────────
 const TABS = [
-  { key: 'overview',       label: 'Overview',        icon: 'dashboard',      color: '#1a3a6b' },
-  { key: 'freelunch',      label: 'Free Lunch',      icon: 'restaurant',     color: '#e67e22' },
-  { key: 'riceallowances', label: 'Rice Allowances', icon: 'grass',          color: '#27ae60' },
-  { key: 'waterbilling',   label: 'Water Billing',   icon: 'water-drop',     color: '#2980b9' },
-  { key: 'milkbeans',      label: 'Milk & Beans',    icon: 'local-cafe',     color: '#8e44ad' },
-  { key: 'ticket',         label: 'Ticket',          icon: 'confirmation-number', color: '#c0392b' },
+  { key: 'overview',       label: 'Overview' },
+  { key: 'freelunch',      label: 'Free Lunch' },
+  { key: 'riceallowances', label: 'Rice Allowances' },
+  { key: 'waterbilling',   label: 'Water Billing' },
+  { key: 'milkbeans',      label: 'Milk & Beans' },
+  { key: 'ticket',         label: 'Ticket' },
 ];
 
+// ── Color palette ────────────────────────────────────────────────────────────
+const C = {
+  navyDark:   '#304674',
+  navyMid:    '#98bad5',
+  navyLight:  '#a8c9de',
+  white:      '#ffffff',
+  grayLight:  '#f4f6fb',
+  grayMid:    '#e2e6f0',
+  textDark:   '#2c5f80',
+  textMid:    '#4a7a9b',
+  grandGreen: '#8eb15c',
+};
+
+// ── Animated Tab Button ───────────────────────────────────────────────────────
+// Each tab has its own scale + underline width animation
+function AnimatedTabBtn({ tab, isActive, onPress }) {
+  const scale      = useRef(new Animated.Value(1)).current;
+  const underline  = useRef(new Animated.Value(isActive ? 1 : 0)).current;
+
+  // Animate underline whenever active state changes
+  React.useEffect(() => {
+    Animated.timing(underline, {
+      toValue: isActive ? 1 : 0,
+      duration: 220,
+      useNativeDriver: false,   // width can't use native driver
+    }).start();
+  }, [isActive]);
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.88,
+      useNativeDriver: true,
+      speed: 30,
+      bounciness: 6,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 10,
+    }).start();
+    onPress();
+  };
+
+  // Interpolate underline width: 0% → 100%
+  const underlineWidth = underline.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
+  return (
+    <TouchableOpacity
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={1}
+      style={s.catTabWrap}
+    >
+      <Animated.View style={[s.catTab, { transform: [{ scale }] }]}>
+        <Text style={[s.catTabTxt, isActive && s.catTabTxtActive]}>
+          {tab.label.toUpperCase()}
+        </Text>
+        {/* Animated underline sliding in from left */}
+        <View style={s.catTabUnderlineBg}>
+          <Animated.View style={[s.catTabUnderline, { width: underlineWidth }]} />
+        </View>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+// ── Main Screen ──────────────────────────────────────────────────────────────
 export default function BillingDashboardScreen({ navigation }) {
   const { width } = useWindowDimensions();
-  const isSmall = width < 400;
 
   const [fontsLoaded] = useFonts({
     NotoSerif_700Bold,
@@ -50,25 +124,36 @@ export default function BillingDashboardScreen({ navigation }) {
   const [activeMonth,  setActiveMonth]  = useState(now.getMonth());
   const [activeYear,   setActiveYear]   = useState(now.getFullYear());
   const [showSettings, setShowSettings] = useState(false);
+  const [showPrint,    setShowPrint]    = useState(false);
 
+  // ── Entrance animations ───────────────────────────────────────────────────
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const bodyFade = useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
     Animated.parallel([
-      Animated.timing(hdrFade,  { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.timing(bodyFade, { toValue: 1, duration: 500, delay: 150, useNativeDriver: true }),
+      Animated.timing(hdrFade,  { toValue: 1, duration: 450, useNativeDriver: true }),
+      Animated.timing(bodyFade, { toValue: 1, duration: 450, delay: 120, useNativeDriver: true }),
     ]).start();
   }, []);
 
-  // Summary totals for current month/year
-  const flTotal  = getCategoryTotal('freelunch',      activeYear, activeMonth);
-  const raTotal  = getCategoryTotal('riceallowances', activeYear, activeMonth);
-  const wbTotal  = getCategoryTotal('waterbilling',   activeYear, activeMonth);
-  const mbTotal  = getCategoryTotal('milkbeans',      activeYear, activeMonth);
-  const tkTotal  = getCategoryTotal('ticket',         activeYear, activeMonth);
+  // ── Summary totals ────────────────────────────────────────────────────────
+  const flTotal    = getCategoryTotal('freelunch',      activeYear, activeMonth);
+  const raTotal    = getCategoryTotal('riceallowances', activeYear, activeMonth);
+  const wbTotal    = getCategoryTotal('waterbilling',   activeYear, activeMonth);
+  const mbTotal    = getCategoryTotal('milkbeans',      activeYear, activeMonth);
+  const tkTotal    = getCategoryTotal('ticket',         activeYear, activeMonth);
   const grandTotal = flTotal + raTotal + wbTotal + mbTotal + tkTotal;
 
+  const SUMMARY_CARDS = [
+    { id: 'fl', label: 'FREE LUNCH',       val: flTotal  },
+    { id: 'ra', label: 'RICE ALLOWANCES',  val: raTotal  },
+    { id: 'wb', label: 'WATER BILLING',    val: wbTotal  },
+    { id: 'mb', label: 'MILK & BEANS',     val: mbTotal  },
+    { id: 'tk', label: 'TICKET',           val: tkTotal  },
+  ];
+
+  // ── Tab content ───────────────────────────────────────────────────────────
   const renderContent = () => {
     const props = { year: activeYear, month: activeMonth };
     switch (activeTab) {
@@ -84,117 +169,122 @@ export default function BillingDashboardScreen({ navigation }) {
 
   if (!fontsLoaded) return null;
 
+  const SB_HEIGHT = Platform.OS === 'ios' ? 44 : Platform.OS === 'android' ? 28 : 0;
+
   return (
     <View style={s.root}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* Background */}
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#98bad5' }]} />
-      <LinearGradient
-        colors={['rgba(198,220,235,0.85)', 'rgba(152,186,213,0.40)', 'rgba(80,110,150,0.0)']}
-        locations={[0, 0.45, 1]} start={{ x: 0.5, y: 0.1 }} end={{ x: 0.5, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <LinearGradient
-        colors={['rgba(50,80,120,0.45)', 'rgba(50,80,120,0.0)', 'rgba(50,80,120,0.45)']}
-        locations={[0, 0.5, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
+      {/* ══════════════ HEADER ══════════════════════════════════════════════ */}
+      <Animated.View style={{ opacity: hdrFade, flexShrink: 0 }}>
+        <LinearGradient
+          colors={[C.navyDark, C.navyMid, C.navyLight]}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          locations={[0, 0.60, 1]}
+          style={[s.header, { paddingTop: SB_HEIGHT + 18 }]}
+        >
+          {/* header-top row */}
+          <View style={s.headerTop}>
+            {navigation && (
+              <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+                <MaterialIcons name="arrow-back" size={20} color={C.white} />
+              </TouchableOpacity>
+            )}
 
-      {/* Header */}
-      <Animated.View style={{
-        opacity: hdrFade,
-        marginTop: Platform.OS === 'web' ? 16 : 36,
-        marginHorizontal: isSmall ? 8 : 10,
-        zIndex: 30, flexShrink: 0,
-      }}>
-        <View style={s.header}>
-          <TouchableOpacity style={s.backBtn} onPress={() => navigation && navigation.goBack()}>
-            <Text style={s.backIcon}>←</Text>
-          </TouchableOpacity>
-          <View style={s.headerCenter}>
-            <Text style={[s.headerH1, { fontSize: isSmall ? 13 : 17 }]} numberOfLines={1} adjustsFontSizeToFit>
-              <Text style={s.headerGold}>CESLA </Text>Billing Monitoring System
-            </Text>
-            <View style={s.headerTag}>
-              <Text style={s.headerTagTxt}>📊  COMPREHENSIVE EXPENSE LEDGER</Text>
+            {/* Logo + title centered */}
+            <View style={s.headerCenter}>
+              <Image
+                source={require('../../assets/CESLA_logo.png')}
+                style={s.headerLogo}
+                resizeMode="cover"
+              />
+              <View style={s.headerTitleBlock}>
+                <Text style={s.headerH1} numberOfLines={1} adjustsFontSizeToFit>
+                  CESLA Billing Monitoring System
+                </Text>
+                <Text style={s.headerSub}>
+                  Comprehensive Expense &amp; Statement Ledger Application
+                </Text>
+              </View>
+            </View>
+
+            {/* Settings + Print buttons */}
+            <View style={s.headerButtons}>
+              <TouchableOpacity style={s.printBtn} onPress={() => setShowSettings(true)} activeOpacity={0.80}>
+                <MaterialIcons name="settings" size={15} color={C.white} />
+                <Text style={s.printBtnTxt}>Settings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.printBtn}
+                onPress={() => setShowPrint(true)}
+                activeOpacity={0.80}
+              >
+                <MaterialIcons name="print" size={15} color={C.white} />
+                <Text style={s.printBtnTxt}>Print Report</Text>
+              </TouchableOpacity>
             </View>
           </View>
-          <TouchableOpacity style={s.iconBtn} onPress={() => setShowSettings(true)}>
-            <MaterialIcons name="settings" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
+
+          {/* Month pill tabs — centered */}
+          <View style={s.monthNavWrap}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.monthNav}>
+              {MONTHS_SHORT.map((m, i) => (
+                <TouchableOpacity
+                  key={m}
+                  style={[s.monthBtn, activeMonth === i && s.monthBtnActive]}
+                  onPress={() => setActiveMonth(i)}
+                  activeOpacity={0.80}
+                >
+                  <Text style={[s.monthBtnTxt, activeMonth === i && s.monthBtnTxtActive]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </LinearGradient>
       </Animated.View>
 
+      {/* ══════════════ BODY ════════════════════════════════════════════════ */}
       <Animated.View style={[s.body, { opacity: bodyFade }]}>
 
-        {/* Month Selector */}
-        <View style={s.monthBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 4, paddingHorizontal: 8, paddingVertical: 4 }}>
-            {MONTHS_SHORT.map((m, i) => (
-              <TouchableOpacity key={m}
-                style={[s.monthBtn, activeMonth === i && s.monthBtnActive]}
-                onPress={() => setActiveMonth(i)}>
-                <Text style={[s.monthBtnTxt, activeMonth === i && s.monthBtnTxtActive]}>{m}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Summary Cards */}
+        {/* Summary cards — equal width, centered content */}
         {loading ? (
-          <View style={{ alignItems: 'center', paddingVertical: 12 }}>
-            <ActivityIndicator color="#1a3a6b" />
+          <View style={s.loadingRow}>
+            <ActivityIndicator color={C.navyDark} />
           </View>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            style={{ flexGrow: 0, marginHorizontal: 8, marginBottom: 8 }}
-            contentContainerStyle={{ gap: 6, paddingHorizontal: 4, paddingVertical: 2 }}>
-            {/* Grand Total */}
-            <View style={[s.summCard, { backgroundColor: '#1a3a6b', minWidth: 130 }]}>
-              <Text style={[s.summLabel, { color: '#c9a84c' }]}>GRAND TOTAL</Text>
-              <Text style={[s.summVal, { color: '#fff', fontSize: 16 }]}>{fmt(grandTotal)}</Text>
-              <Text style={[s.summSub, { color: 'rgba(255,255,255,0.60)' }]}>{MONTHS[activeMonth]} {activeYear}</Text>
+          <View style={s.summaryBar}>
+            <View style={[s.summCard, s.summCardGrand]}>
+              <Text style={[s.summLabel, s.summLabelGrand]}>GRAND TOTAL</Text>
+              <Text style={[s.summAmount, s.summAmountGrand]} numberOfLines={1} adjustsFontSizeToFit>
+                {fmt(grandTotal)}
+              </Text>
             </View>
-            {[
-              { label: 'Free Lunch',      val: flTotal,  color: '#e67e22' },
-              { label: 'Rice Allow.',     val: raTotal,  color: '#27ae60' },
-              { label: 'Water Billing',   val: wbTotal,  color: '#2980b9' },
-              { label: 'Milk & Beans',    val: mbTotal,  color: '#8e44ad' },
-              { label: 'Ticket',          val: tkTotal,  color: '#c0392b' },
-            ].map(c => (
-              <View key={c.label} style={[s.summCard, { borderLeftWidth: 3, borderLeftColor: c.color }]}>
+            {SUMMARY_CARDS.map(c => (
+              <View key={c.id} style={s.summCard}>
                 <Text style={s.summLabel}>{c.label}</Text>
-                <Text style={[s.summVal, { color: c.color }]}>{fmt(c.val)}</Text>
+                <Text style={s.summAmount} numberOfLines={1} adjustsFontSizeToFit>
+                  {fmt(c.val)}
+                </Text>
               </View>
             ))}
-          </ScrollView>
+          </View>
         )}
 
-        {/* Tab Bar */}
-        <View style={s.tabBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 2, paddingHorizontal: 4 }}
-            style={{ flexGrow: 0 }}>
+        {/* ── Category tabs with press + underline animations ───────────── */}
+        <View style={s.catTabsRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.catTabsInner}>
             {TABS.map(tab => (
-              <TouchableOpacity key={tab.key}
-                style={[s.tabBtn, activeTab === tab.key && s.tabBtnActive]}
-                onPress={() => setActiveTab(tab.key)} activeOpacity={0.80}>
-                <MaterialIcons
-                  name={tab.icon}
-                  size={13}
-                  color={activeTab === tab.key ? tab.color : 'rgba(255,255,255,0.80)'}
-                />
-                <Text style={[s.tabBtnTxt, activeTab === tab.key && { color: tab.color }]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
+              <AnimatedTabBtn
+                key={tab.key}
+                tab={tab}
+                isActive={activeTab === tab.key}
+                onPress={() => setActiveTab(tab.key)}
+              />
             ))}
           </ScrollView>
         </View>
 
-        {/* Content Area */}
+        {/* Tab content */}
         <View style={s.contentArea}>
           {renderContent()}
         </View>
@@ -202,108 +292,221 @@ export default function BillingDashboardScreen({ navigation }) {
       </Animated.View>
 
       <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
+      <PrintReportModal visible={showPrint} onClose={() => setShowPrint(false)} />
     </View>
   );
 }
 
+// ─── Styles ──────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root: { flex: 1, flexDirection: 'column' },
+
+  root: { flex: 1, backgroundColor: C.grayLight },
+
+  // ── HEADER ────────────────────────────────────────────────────────────────
   header: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(26,58,107,0.92)',
-    borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
-    shadowColor: '#011f4b', shadowOpacity: 0.25, shadowRadius: 12, elevation: 8,
+    paddingHorizontal: 28,
+    paddingBottom: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 10,
   },
+
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    marginBottom: 16,
+  },
+
   backBtn: {
+    position: 'absolute', left: 0, zIndex: 2,
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  backIcon: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center', lineHeight: 20 },
-  headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
-  headerH1: { fontFamily: 'NotoSerif_700Bold', color: '#fff', textAlign: 'center' },
-  headerGold: { color: '#c9a84c' },
-  headerTag: {
-    marginTop: 2, paddingHorizontal: 8, paddingVertical: 2,
-    borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.40)',
-  },
-  headerTagTxt: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 7, color: '#fff',
-    letterSpacing: 1.2, textTransform: 'uppercase', lineHeight: 13,
-  },
-  iconBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  body: {
-    flex: 1, marginTop: Platform.OS === 'web' ? 10 : 6,
-    marginBottom: 0, minHeight: 0, overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    justifyContent: 'center', alignItems: 'center',
   },
 
-  // Month bar
-  monthBar: {
-    flexShrink: 0, backgroundColor: 'rgba(26,58,107,0.35)',
-    marginHorizontal: 10, borderRadius: 12, marginBottom: 8,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+  headerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    maxWidth: '70%',
   },
+
+  headerLogo: {
+    width: 72, height: 72, borderRadius: 36,
+    borderWidth: 2.5, borderColor: C.navyDark,
+    backgroundColor: C.white, flexShrink: 0,
+  },
+
+  headerTitleBlock: {
+    alignItems: 'center',
+    flexShrink: 1,
+  },
+
+  headerH1: {
+    fontFamily: 'NotoSerif_700Bold',
+    fontSize: Platform.OS === 'web' ? 26 : 17,
+    fontWeight: '800',
+    color: C.white,
+    letterSpacing: 0.4,
+    textAlign: 'center',
+    lineHeight: Platform.OS === 'web' ? 32 : 22,
+  },
+
+  headerSub: {
+    fontFamily: 'GoogleSans_400Regular',
+    fontSize: Platform.OS === 'web' ? 13 : 11,
+    color: 'rgba(255,255,255,0.85)',
+    textAlign: 'center',
+    marginTop: 3,
+  },
+
+  headerButtons: {
+    position: 'absolute', right: 0, zIndex: 2,
+    flexDirection: 'row', gap: 6, alignItems: 'center',
+  },
+
+  printBtn: {
+    backgroundColor: C.navyDark,
+    borderRadius: 7,
+    paddingHorizontal: Platform.OS === 'web' ? 16 : 10,
+    paddingVertical: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0,
+  },
+
+  printBtnTxt: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: Platform.OS === 'web' ? 13 : 11,
+    color: C.white, fontWeight: '800', letterSpacing: 0.4,
+  },
+
+  // ── Month nav ─────────────────────────────────────────────────────────────
+  monthNavWrap: { alignItems: 'center' },
+
+  monthNav: {
+    flexDirection: 'row', gap: 5,
+    paddingHorizontal: 4, paddingTop: 2,
+    justifyContent: 'center',
+  },
+
   monthBtn: {
-    paddingVertical: 6, paddingHorizontal: 14, borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: C.navyDark,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    borderBottomLeftRadius: 0, borderBottomRightRadius: 0,
+    paddingVertical: 7, paddingHorizontal: 14, flexShrink: 0,
   },
-  monthBtnActive: {
-    backgroundColor: '#fff',
-    shadowColor: '#011f4b', shadowOpacity: 0.15, shadowRadius: 4, elevation: 2,
-  },
-  monthBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: 'rgba(255,255,255,0.90)' },
-  monthBtnTxtActive: { color: '#1a3a6b' },
 
-  // Summary cards
+  monthBtnActive: { backgroundColor: C.white },
+
+  monthBtnTxt: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 12, fontWeight: '700', color: C.white, letterSpacing: 0.4,
+  },
+
+  monthBtnTxtActive: { color: C.navyMid },
+
+  // ── BODY ──────────────────────────────────────────────────────────────────
+  body: { flex: 1, minHeight: 0 },
+
+  loadingRow: {
+    alignItems: 'center', paddingVertical: 16,
+    backgroundColor: C.white,
+    borderBottomWidth: 2, borderBottomColor: C.grayMid,
+  },
+
+  // ── Summary bar ───────────────────────────────────────────────────────────
+  summaryBar: {
+    flexDirection: 'row',
+    backgroundColor: C.white,
+    borderBottomWidth: 2, borderBottomColor: C.grayMid,
+    paddingHorizontal: 14, paddingVertical: 12, gap: 10,
+    shadowColor: '#1a2456', shadowOpacity: 0.07,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 3,
+  },
+
   summCard: {
-    backgroundColor: 'rgba(255,255,255,0.55)',
-    borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14,
-    gap: 2, minWidth: 120,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)',
-    shadowColor: '#011f4b', shadowOpacity: 0.10, shadowRadius: 6, elevation: 3,
+    flex: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 12,
+    borderWidth: 2, borderColor: C.grayMid,
+    justifyContent: 'center', alignItems: 'center',
+    minWidth: 0,
   },
+
+  summCardGrand: {
+    backgroundColor: C.navyMid,
+    borderColor: C.navyMid,
+  },
+
   summLabel: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 8,
-    color: 'rgba(1,31,75,0.60)', letterSpacing: 1, textTransform: 'uppercase',
-  },
-  summVal: {
-    fontFamily: 'NotoSerif_700Bold', fontSize: 15, color: '#1a3a6b',
-  },
-  summSub: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.50)',
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 11, fontWeight: '800',
+    letterSpacing: 0.8, textTransform: 'uppercase',
+    color: C.textDark, marginBottom: 6, textAlign: 'center',
   },
 
-  // Tab bar
-  tabBar: {
-    flexShrink: 0, backgroundColor: 'rgba(26,58,107,0.50)',
-    borderTopLeftRadius: 12, borderTopRightRadius: 12,
-    paddingTop: 5, marginHorizontal: 10,
-  },
-  tabBtn: {
-    paddingVertical: 8, paddingHorizontal: 12,
-    borderTopLeftRadius: 10, borderTopRightRadius: 10,
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.10)', marginHorizontal: 2,
-  },
-  tabBtnActive: { backgroundColor: '#eef2f8' },
-  tabBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: 'rgba(255,255,255,0.80)' },
+  summLabelGrand: { color: C.navyDark },
 
-  // Content
+  summAmount: {
+    fontFamily: 'NotoSerif_700Bold',
+    fontSize: 22, fontWeight: '800',
+    color: C.textDark, textAlign: 'center',
+  },
+
+  summAmountGrand: { color: C.navyDark, fontSize: 26 },
+
+  // ── Category tabs with animation ──────────────────────────────────────────
+  catTabsRow: {
+    backgroundColor: C.white,
+    borderBottomWidth: 2.5, borderBottomColor: C.grayMid,
+  },
+
+  catTabsInner: {
+    flexDirection: 'row', paddingHorizontal: 6,
+  },
+
+  // Wrapper keeps the touch area clean
+  catTabWrap: {
+    justifyContent: 'center',
+  },
+
+  // The animated tab itself
+  catTab: {
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+
+  catTabTxt: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 11, fontWeight: '700',
+    letterSpacing: 1, color: C.textMid,
+    marginBottom: 6,
+  },
+
+  catTabTxtActive: { color: C.textDark },
+
+  // Thin gray track underneath
+  catTabUnderlineBg: {
+    width: '100%', height: 3,
+    backgroundColor: 'transparent',
+    borderRadius: 2, overflow: 'hidden',
+  },
+
+  // Animated fill — slides in from 0% to 100% width
+  catTabUnderline: {
+    height: 3,
+    backgroundColor: C.navyMid,   // #98bad5
+    borderRadius: 2,
+  },
+
+  // ── Content area ──────────────────────────────────────────────────────────
   contentArea: {
     flex: 1, minHeight: 0,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
-    borderTopRightRadius: 16, borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.40)',
-    marginHorizontal: 10, marginBottom: 10,
-    overflow: 'hidden',
+    backgroundColor: C.grayLight,
   },
 });
