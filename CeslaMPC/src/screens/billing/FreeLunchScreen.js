@@ -2,10 +2,13 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, FlatList, Alert,
+  ScrollView, Alert, useWindowDimensions, Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
+import { Asset } from 'expo-asset';
 import { useBilling, DEPARTMENTS, MONTHS, fmt, fmtDate } from '../../context/BillingContext';
 import EntryModal from '../../components/EntryModal';
 
@@ -19,6 +22,7 @@ const GREEN     = '#2e9e5b';
 const GRAND_GN  = '#8eb15c';
 
 export default function FreeLunchScreen({ year, month }) {
+  const { height: winHeight, width } = useWindowDimensions();
   const { entries, getUniqueDates, getEntriesByDate, toggleStatus, settings } = useBilling();
 
   const [detailDate,   setDetailDate]   = useState(null);
@@ -60,75 +64,142 @@ export default function FreeLunchScreen({ year, month }) {
     catch (e) { Alert.alert('Error', e.message); }
   };
 
+  // ── BUILD HTML ────────────────────────────────────────────────────────────
+  const buildHtml = async (row) => {
+    const prepBy    = settings?.preparedBy    || '________________________';
+    const prepTitle = settings?.preparedTitle || '';
+    const chkBy     = settings?.checkedBy     || '________________________';
+    const chkTitle  = settings?.checkedTitle  || '';
+
+    let logoHtml = '';
+    try {
+      const asset = await Asset.fromModule(require('../../../assets/CESLA_logo.png')).downloadAsync();
+      const logoUri = asset.localUri || asset.uri || '';
+      if (logoUri) logoHtml = '<img src="' + logoUri + '" style="width:52px;height:52px;border-radius:50%;border:2px solid #1a2a4a;margin-right:14px;" />';
+    } catch (_) {}
+
+    const dObj      = new Date(row.date + 'T00:00:00');
+    const rowYear   = dObj.getFullYear();
+    const rowMonth  = dObj.getMonth();
+    const monthStr  = dObj.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
+    const dayStr    = String(dObj.getDate()).padStart(2, '0');
+    const dateStr   = monthStr + ' ' + dayStr + ', ' + rowYear;
+    const dateShort = dObj.toLocaleDateString('en-US', {month:'2-digit', day:'2-digit', year:'numeric'});
+    const periodLabel = MONTHS[rowMonth] + ' ' + rowYear;
+    const paidClause  = row.status === 'paid' ? ' paid by CEC to wit:' : ':';
+    const s = 'border:1px solid #ccc;padding:7px 10px;color:#222;font-size:10pt;';
+
+    let tRows = '', gt = 0;
+    DEPARTMENTS.forEach(dept => {
+      const ents = getEntriesByDate('freelunch', rowYear, rowMonth, row.date).filter(e => e.dept === dept);
+      ents.forEach(e => {
+        const a = e.amount || 0; gt += a;
+        tRows +=
+          '<tr>' +
+          '<td style="' + s + '">' + dateShort + '</td>' +
+          '<td style="' + s + ';font-weight:bold;text-align:center;">' + dept + '</td>' +
+          '<td style="' + s + ';text-align:center;">' + e.pax + '</td>' +
+          '<td style="' + s + ';text-align:center;">' + Number(e.amtPerPax||0).toLocaleString('en-PH',{minimumFractionDigits:2}) + '</td>' +
+          '<td style="' + s + ';text-align:right;">' + Number(a).toLocaleString('en-PH',{minimumFractionDigits:2}) + '</td>' +
+          '</tr>';
+      });
+    });
+    if (!tRows) tRows = '<tr><td colspan="5" style="text-align:center;color:#999;padding:10px;">No entries</td></tr>';
+    const gtFmt = gt.toLocaleString('en-PH', {minimumFractionDigits:2});
+
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+      '<style>@page{size:210mm 297mm;margin:15mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10pt;color:#222;}</style>' +
+      '</head><body><div style="font-family:Arial,sans-serif;padding:28px 32px;color:#222;font-size:10pt;">' +
+      '<div style="display:flex;align-items:center;border-bottom:2.5px solid #1a2a4a;padding-bottom:10px;margin-bottom:18px;">' +
+      logoHtml + '<div>' +
+      '<div style="font-size:14pt;font-weight:bold;color:#1a2a4a;">CESLA Billing Monitoring System</div>' +
+      '<div style="font-size:8pt;color:#555;margin-top:2px;">Comprehensive Expense &amp; Statement Ledger Application</div>' +
+      '<div style="font-size:8.5pt;font-weight:bold;color:#1a2a4a;margin-top:2px;">Annual Billing Report — ' + rowYear + '</div>' +
+      '</div></div>' +
+      '<div style="text-align:center;margin-bottom:8px;">' +
+      '<div style="font-size:14pt;font-weight:900;color:#1a2a4a;letter-spacing:0.5px;text-transform:uppercase;">STATEMENT OF ACCOUNT</div>' +
+      '<div style="font-size:10pt;color:#333;margin-top:5px;">as of ' + periodLabel.toUpperCase() + '</div>' +
+      '<div style="font-size:10pt;font-weight:700;color:#1a2a4a;margin-top:4px;">BILLING NO.: ' + row.billingNo + '</div>' +
+      '</div>' +
+      '<div style="height:1.5px;background:#1a2a4a;margin:12px 0 16px;"></div>' +
+      '<div style="font-size:11pt;color:#222;line-height:1.8;margin-bottom:18px;">This is to bill CLIMBS LIFE &amp; GENERAL INSURANCE COOPERATIVE for the Friday Free Lunch dated ' + dateStr + paidClause + '</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:10pt;">' +
+      '<thead><tr style="background:#1a2a4a;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;">' +
+      '<th style="padding:8px 10px;text-align:left;border:1px solid #1a2a4a;">DATE</th>' +
+      '<th style="padding:8px 10px;text-align:left;border:1px solid #1a2a4a;">Department</th>' +
+      '<th style="padding:8px 10px;text-align:center;border:1px solid #1a2a4a;">NO. OF Pax</th>' +
+      '<th style="padding:8px 10px;text-align:center;border:1px solid #1a2a4a;">/Pax</th>' +
+      '<th style="padding:8px 10px;text-align:right;border:1px solid #1a2a4a;">AMOUNT</th>' +
+      '</tr></thead><tbody>' + tRows + '</tbody>' +
+      '<tfoot><tr>' +
+      '<td colspan="4" style="border:1px solid #ccc;padding:7px 10px;text-align:right;font-weight:bold;color:#222;">GRAND TOTAL:</td>' +
+      '<td style="border:1px solid #ccc;padding:7px 10px;font-weight:bold;text-align:right;color:#222;">' + gtFmt + '</td>' +
+      '</tr></tfoot></table>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:48px;font-size:9pt;">' +
+      '<div style="width:44%;"><p style="font-size:8pt;color:#555;margin:0 0 60px 0;">Prepared By:</p>' +
+      '<div style="font-weight:bold;color:#222;font-size:10pt;">' + prepBy + '</div>' +
+      '<div style="color:#555;font-size:8.5pt;">' + prepTitle + '</div></div>' +
+      '<div style="width:44%;"><p style="font-size:8pt;color:#555;margin:0 0 60px 0;">Checked By:</p>' +
+      '<div style="font-weight:bold;color:#222;font-size:10pt;">' + chkBy + '</div>' +
+      '<div style="color:#555;font-size:8.5pt;">' + chkTitle + '</div></div>' +
+      '</div></div></body></html>';
+  };
+
+  // ── PRINT ─────────────────────────────────────────────────────────────────
   const handlePrint = async (row) => {
     setPrinting(row.billingNo);
     try {
-      const prepBy    = settings?.preparedBy    || '________________________';
-      const prepTitle = settings?.preparedTitle || '';
-      const chkBy     = settings?.checkedBy     || '________________________';
-      const chkTitle  = settings?.checkedTitle  || '';
-      const mn        = MONTHS[month];
-      let tRows = '';
-      DEPARTMENTS.forEach(dept => {
-        const ents = getEntriesByDate('freelunch', year, month, row.date).filter(e => e.dept === dept);
-        const pax  = ents.reduce((s,e)=>s+(parseFloat(e.pax)||0),0);
-        const amt  = ents.reduce((s,e)=>s+(e.amount||0),0);
-        const aPax = ents[0]?.amtPerPax || 0;
-        tRows += `<tr><td>${mn} ${year}</td><td style="text-align:center;font-weight:bold">${dept}</td>
-          <td style="text-align:center">${pax}</td>
-          <td style="text-align:right">${Number(aPax).toLocaleString('en-PH',{minimumFractionDigits:2})}</td>
-          <td style="text-align:right">${Number(amt).toLocaleString('en-PH',{minimumFractionDigits:2})}</td></tr>`;
-      });
-      await Print.printAsync({ html: `<!DOCTYPE html><html><head><meta charset="UTF-8">
-        <style>@page{size:210mm 297mm;margin:15mm}*{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:Arial,sans-serif;font-size:10pt;color:#111}
-        table{width:100%;border-collapse:collapse;font-size:9pt}
-        th{background:#dce3f0;border:1px solid #666;padding:6px 9px;text-align:left;font-weight:bold;color:#1a2a4a}
-        td{border:1px solid #888;padding:6px 9px}
-        tr.sub td{background:#dce3f0;font-weight:bold;border-top:2px solid #1a2a4a;color:#1a2a4a}
-        </style></head><body>
-        <h3>BILLING NO.: ${row.billingNo}</h3>
-        <table><thead><tr><th>Months</th><th>Department</th><th>NO. OF Pax</th><th>/Pax</th><th>AMOUNT</th></tr></thead>
-        <tbody>${tRows}</tbody>
-        <tfoot><tr class="sub"><td colspan="3" style="border:none;background:none"></td>
-        <td style="text-align:right">GRAND TOTAL:</td>
-        <td style="text-align:right">${Number(row.totalAmt).toLocaleString('en-PH',{minimumFractionDigits:2})}</td>
-        </tr></tfoot></table>
-        <div style="display:flex;justify-content:space-between;margin-top:60px">
-        <div><p>Prepared By:</p><div style="border-top:1px solid #000;margin-top:30px;padding-top:4px">${prepBy}<br><small>${prepTitle}</small></div></div>
-        <div><p>Checked By:</p><div style="border-top:1px solid #000;margin-top:30px;padding-top:4px">${chkBy}<br><small>${chkTitle}</small></div></div>
-        </div></body></html>` });
+      const html = await buildHtml(row);
+      if (Platform.OS === 'web') {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        iframe.contentDocument.write(html);
+        iframe.contentDocument.close();
+        setTimeout(() => {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(() => document.body.removeChild(iframe), 1000);
+        }, 250);
+      } else {
+        const { uri } = await Print.printToFileAsync({ html, base64: false });
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Print PDF' });
+      }
     } catch (e) { Alert.alert('Print Error', e.message); }
     finally { setPrinting(null); }
   };
 
-  // ── ROW RENDERER ─────────────────────────────────────────────────────────────
-  const renderRow = (d) => (
-    <TouchableOpacity key={d.date} style={s.row} onPress={() => setDetailDate(d.date)} activeOpacity={0.75}>
-      <Text style={[s.td, { flex:1.4, textAlign:'left', fontWeight:'700', color:TEXT_DARK }]}>{fmtDate(d.date)}</Text>
-      <Text style={[s.td, { flex:1.6, fontWeight:'700', color:TEXT_DARK }]}>{d.billingNo}</Text>
-      <Text style={[s.td, { flex:1 }]}>{d.totalPax}</Text>
-      <Text style={[s.td, { flex:1.2 }]}>{fmt(d.amtPerPax)}</Text>
-      <Text style={[s.td, { flex:1.3, textAlign:'right', fontWeight:'700', color:TEXT_DARK }]}>{fmt(d.totalAmt)}</Text>
-      <View style={{ flex:1.1, alignItems:'center' }}>
-        <TouchableOpacity
-          style={[s.statusBtn, d.status==='paid' ? s.statusPaid : s.statusPending]}
-          onPress={() => handleToggle({ id:d.id, status:d.status })}
-        >
-          <MaterialIcons name={d.status==='paid' ? 'check-circle' : 'hourglass-empty'} size={11} color={d.status==='paid' ? '#1a6e2e' : '#b36200'} />
-          <Text style={[s.statusTxt, { color:d.status==='paid' ? '#1a6e2e' : '#b36200' }]}>
-            {d.status==='paid' ? 'PAID' : 'PENDING'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      <View style={{ flex:0.9, alignItems:'center' }}>
-        <TouchableOpacity style={s.printBtn} onPress={() => handlePrint(d)} disabled={printing===d.billingNo}>
-          <MaterialIcons name="print" size={11} color="#b07d00" />
-          <Text style={s.printBtnTxt}>{printing===d.billingNo ? '...' : 'PRINT'}</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
+  // ── DOWNLOAD ──────────────────────────────────────────────────────────────
+  const handleDownload = async (row) => {
+    setPrinting(row.billingNo);
+    try {
+      const html = await buildHtml(row);
+      const filename = row.billingNo.replace(/\s/g, '_') + '.pdf';
+
+      if (Platform.OS === 'web') {
+        // Web: open print dialog with download option (same as print but user can save as PDF)
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        iframe.contentDocument.write(html);
+        iframe.contentDocument.close();
+        setTimeout(() => {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(() => document.body.removeChild(iframe), 1000);
+        }, 250);
+      } else {
+        // Mobile: save PDF to device storage
+        const { uri } = await Print.printToFileAsync({ html, base64: false });
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Save PDF to Storage',
+          UTI: 'com.adobe.pdf',
+        });
+      }
+    } catch (e) { Alert.alert('Download Error', e.message); }
+    finally { setPrinting(null); }
+  };
 
   // ── DETAIL VIEW ──────────────────────────────────────────────────────────────
   if (detailDate) {
@@ -139,43 +210,49 @@ export default function FreeLunchScreen({ year, month }) {
             <MaterialIcons name="arrow-back" size={16} color={NAVY} />
             <Text style={s.backBtnTxt}>Back</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={s.addBtn} onPress={() => openAdd()}>
+            <MaterialIcons name="add" size={14} color={WHITE} />
+            <Text style={s.addBtnTxt}>Add Entry</Text>
+          </TouchableOpacity>
           <Text style={s.detailTitle} numberOfLines={1}>
             {fmtDate(detailDate)} — {MONTHS[month]} {year}
           </Text>
-          <TouchableOpacity style={s.addBtn} onPress={() => openAdd()}>
-            <MaterialIcons name="add" size={14} color={WHITE} />
-            <Text style={s.addBtnTxt}>Add</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* Detail table */}
-        <View style={s.card}>
-          <View style={s.thead}>
-            <Text style={[s.th, { flex:2, textAlign:'left' }]}>DEPARTMENT</Text>
-            <Text style={[s.th, { flex:1 }]}>PAX</Text>
-            <Text style={[s.th, { flex:1.4 }]}>AMT/PAX</Text>
-            <Text style={[s.th, { flex:1.4, textAlign:'right' }]}>AMOUNT</Text>
-            <Text style={[s.th, { width:44 }]}></Text>
+        <View style={[s.deptSection, { maxHeight: winHeight * 0.55 }]}>
+          {/* Fixed navy header */}
+          <View style={s.detailThead}>
+            <Text style={[s.th, { flex:1.2, textAlign:'left' }]}>DATE</Text>
+            <Text style={[s.th, { flex:1.2, textAlign:'center' }]}>DEPARTMENT</Text>
+            <Text style={[s.th, { flex:1.3, textAlign:'center' }]}>NO. OF PAX</Text>
+            <Text style={[s.th, { flex:1.3, textAlign:'center' }]}>AMOUNT/PAX</Text>
+            <Text style={[s.th, { flex:1.3, textAlign:'center' }]}>AMOUNT</Text>
+            <Text style={[s.th, { flex:1, textAlign:'center' }]}></Text>
           </View>
-          <ScrollView style={{ flex:1 }}>
+
+          <ScrollView style={{ flex:1 }} showsVerticalScrollIndicator={false} nestedScrollEnabled={true}>
             {detailEntries.length === 0
               ? <Text style={s.emptyTxt}>No entries yet.</Text>
               : detailEntries.map((item) => (
-                <View key={item.id} style={s.row}>
-                  <Text style={[s.td, { flex:2, textAlign:'left', fontWeight:'700', color:TEXT_DARK }]}>{item.dept}</Text>
-                  <Text style={[s.td, { flex:1 }]}>{item.pax}</Text>
-                  <Text style={[s.td, { flex:1.4 }]}>{fmt(item.amtPerPax)}</Text>
-                  <Text style={[s.td, { flex:1.4, textAlign:'right', fontWeight:'700', color:TEXT_DARK }]}>{fmt(item.amount)}</Text>
-                  <View style={{ width:44, alignItems:'center' }}>
+                <View key={item.id} style={s.detailRow}>
+                  <Text style={[s.td, { flex:1.2, textAlign:'left', color:TEXT_DARK }]}>{fmtDate(item.date)}</Text>
+                  <Text style={[s.td, { flex:1.2, textAlign:'center', fontWeight:'700', color:TEXT_DARK }]}>{item.dept}</Text>
+                  <Text style={[s.td, { flex:1.3, textAlign:'center' }]}>{item.pax}</Text>
+                  <Text style={[s.td, { flex:1.3, textAlign:'center' }]}>{fmt(item.amtPerPax)}</Text>
+                  <Text style={[s.td, { flex:1.3, textAlign:'center', fontWeight:'700', color:TEXT_DARK }]}>{fmt(item.amount)}</Text>
+                  <View style={{ flex:1, alignItems:'center' }}>
                     <TouchableOpacity style={s.editBtn} onPress={() => openEdit(item)}>
-                      <MaterialIcons name="edit" size={14} color={NAVY} />
+                      <MaterialIcons name="edit" size={13} color={NAVY} />
+                      <Text style={s.editBtnTxt}>Edit</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               ))
             }
           </ScrollView>
-          <View style={s.grandBarWrap}>
+
+          {/* Grand Total — same as main table */}
+          <View style={s.grandTotalBar}>
             <Text style={s.grandLbl}>GRAND TOTAL</Text>
             <Text style={s.grandVal}>{fmt(detailTotal)}</Text>
           </View>
@@ -191,9 +268,9 @@ export default function FreeLunchScreen({ year, month }) {
 
   // ── MAIN VIEW ────────────────────────────────────────────────────────────────
   return (
-    <View style={{ flex:1, backgroundColor:PAGE_BG }}>
+    <View style={{ flex:1, flexDirection:'column', backgroundColor:PAGE_BG }}>
 
-      {/* Add Entry button */}
+      {/* Toolbar */}
       <View style={s.toolbar}>
         <TouchableOpacity style={s.addBtnMain} onPress={() => openAdd()}>
           <MaterialIcons name="add" size={16} color={WHITE} />
@@ -201,33 +278,69 @@ export default function FreeLunchScreen({ year, month }) {
         </TouchableOpacity>
       </View>
 
-      {/* Table container */}
-      <View style={s.tableContainer}>
+      {/* White card — maxHeight so Grand Total always visible at bottom */}
+      <View style={[s.deptSection, { maxHeight: winHeight * 0.55 }]}>
 
-        {/* Navy header — never moves */}
-        <View style={s.theadWrap}>
-          <Text style={[s.th, { flex:1.4, textAlign:'left' }]}>DATE</Text>
-          <Text style={[s.th, { flex:1.6 }]}>BILLING NO.</Text>
-          <Text style={[s.th, { flex:1 }]}>TOTAL NO. OF PAX</Text>
-          <Text style={[s.th, { flex:1.2 }]}>TOTAL AMOUNT/PAX</Text>
-          <Text style={[s.th, { flex:1.3, textAlign:'right' }]}>AMOUNT</Text>
-          <Text style={[s.th, { flex:1.1 }]}>STATUS</Text>
-          <Text style={[s.th, { flex:0.9 }]}>PRINT</Text>
+        {/* Fixed navy column headers */}
+        <View style={s.thead}>
+          <Text style={[s.th, { flex:1, textAlign:'left' }]}>DATE</Text>
+          <Text style={[s.th, { flex:1, textAlign:'center' }]}>BILLING NO.</Text>
+          <Text style={[s.th, { flex:1, textAlign:'center' }]}>TOTAL NO. OF PAX</Text>
+          <Text style={[s.th, { flex:1, textAlign:'center' }]}>TOTAL AMOUNT/PAX</Text>
+          <Text style={[s.th, { flex:1, textAlign:'center' }]}>AMOUNT</Text>
+          <Text style={[s.th, { flex:1, textAlign:'center' }]}>STATUS</Text>
+          <Text style={[s.th, { flex:1.4, textAlign:'center' }]}></Text>
         </View>
 
-        {/* Rows — flex:1 makes it fill space and scroll */}
-        <FlatList
-          data={rows}
-          keyExtractor={item => item.date}
-          style={{ flex:1 }}
-          nestedScrollEnabled
+        {/* Scrollable rows */}
+        <ScrollView
+          style={[s.tableScroll, { flex: 1 }]}
           showsVerticalScrollIndicator={false}
-          ListEmptyComponent={<Text style={s.emptyTxt}>No entries yet for {MONTHS[month]} {year}.</Text>}
-          renderItem={({ item: d }) => renderRow(d)}
-        />
+          nestedScrollEnabled={true}
+        >
+          {rows.length === 0
+            ? <Text style={s.emptyTxt}>No entries yet for {MONTHS[month]} {year}.</Text>
+            : rows.map(d => (
+              <View key={d.date} style={s.row}>
+                <TouchableOpacity
+                  style={{ flex:5, flexDirection:'row', alignItems:'center' }}
+                  onPress={() => setDetailDate(d.date)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[s.td, { flex:1, textAlign:'left', fontWeight:'700', color:TEXT_DARK }]}>{fmtDate(d.date)}</Text>
+                  <Text style={[s.td, { flex:1, textAlign:'center', fontWeight:'700', color:TEXT_DARK }]}>{d.billingNo}</Text>
+                  <Text style={[s.td, { flex:1, textAlign:'center' }]}>{d.totalPax}</Text>
+                  <Text style={[s.td, { flex:1, textAlign:'center' }]}>{fmt(d.amtPerPax)}</Text>
+                  <Text style={[s.td, { flex:1, textAlign:'center', fontWeight:'700', color:TEXT_DARK }]}>{fmt(d.totalAmt)}</Text>
+                </TouchableOpacity>
+                <View style={{ flex:1, alignItems:'center' }}>
+                  <TouchableOpacity
+                    style={[s.statusBtn, d.status==='paid' ? s.statusPaid : s.statusPending]}
+                    onPress={() => handleToggle({ id:d.id, status:d.status })}
+                  >
+                    <MaterialIcons name={d.status==='paid' ? 'check-circle' : 'hourglass-empty'} size={11} color={d.status==='paid' ? '#1a6e2e' : '#b36200'} />
+                    <Text style={[s.statusTxt, { color:d.status==='paid' ? '#1a6e2e' : '#b36200' }]}>
+                      {d.status==='paid' ? 'PAID' : 'PENDING'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={{ flex:1.4, flexDirection:'row', alignItems:'center', justifyContent:'center', gap:10 }}>
+                  <TouchableOpacity style={s.printBtn} onPress={() => handlePrint(d)} disabled={printing===d.billingNo}>
+                    <MaterialIcons name="print" size={11} color="#b07d00" />
+                    <Text style={s.printBtnTxt}>{printing===d.billingNo ? '...' : 'PRINT'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.downloadBtn} onPress={() => handleDownload(d)} disabled={printing===d.billingNo}>
+                    <MaterialIcons name="download" size={11} color="#1a6e2e" />
+                    <Text style={s.downloadBtnTxt}>DOWNLOAD</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          }
+        </ScrollView>
 
-        {/* Grand total — always at bottom, never moves */}
-        <View style={s.grandBarWrap}>
+        {/* Grand Total — pinned at bottom, never scrolls */}
+        <View style={s.grandTotalBar}>
           <Text style={s.grandLbl}>GRAND TOTAL</Text>
           <Text style={s.grandVal}>{fmt(grandTotal)}</Text>
         </View>
@@ -255,67 +368,85 @@ const s = StyleSheet.create({
   },
   addBtnMainTxt: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:WHITE },
 
-  card: {},
-  cardTop: {},
-  cardBottom: {},
-  flatList: {},
-  flatContent: {},
-  thead: {},
-
-  // One container: flex:1, margin sides — holds header+rows+footer
-  tableContainer: {
+  // White card — maxHeight caps the card, overflow:hidden clips corners
+  // flex:1 + flexDirection:column so header/scroll/grandtotal stack vertically
+  deptSection: {
     flex: 1,
-    marginHorizontal: 15,
-    marginBottom: 15,
-    borderRadius: 14,
-    overflow: 'hidden',
+    flexDirection: 'column',
     backgroundColor: WHITE,
+    borderRadius: 14,
+    marginHorizontal: 48,
+    marginBottom: 10,
     shadowColor: '#1a2456',
     shadowOpacity: 0.13,
     shadowRadius: 10,
     shadowOffset: { width:0, height:4 },
     elevation: 5,
+    overflow: 'hidden',
   },
 
-  // Navy header inside container
-  theadWrap: {
+  // tableScroll — flex:1 fills space between thead and grandTotalBar
+  tableScroll: {},
+
+  // Column header row — rounded top corners to match card
+  // Detail view — separate padding matching HTML detail-table-wrap
+  detailThead: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: NAVY,
-    paddingVertical: 11,
-    paddingHorizontal: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
   },
-  th: {
-    fontFamily:'GoogleSans_700Bold', fontSize:11, fontWeight:'800',
-    color:WHITE, letterSpacing:0.5, textTransform:'uppercase', textAlign:'center',
+  detailRow: {
+    flexDirection:'row', alignItems:'center',
+    backgroundColor:TD_BG,
+    paddingVertical:9, paddingHorizontal:12,
+    borderBottomWidth:1, borderBottomColor:ROW_BDR,
   },
 
-  // Row
+  thead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: NAVY,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+  },
+  th: {
+    fontFamily:'GoogleSans_700Bold', fontSize:13, fontWeight:'800',
+    color:WHITE, letterSpacing:0.6, textTransform:'uppercase', textAlign:'center',
+  },
+
+  // Data row
   row: {
     flexDirection:'row', alignItems:'center',
     backgroundColor:TD_BG,
-    paddingVertical:12, paddingHorizontal:8,
+    paddingVertical:8, paddingHorizontal:8,
     borderBottomWidth:1, borderBottomColor:ROW_BDR,
   },
   td: {
-    fontFamily:'GoogleSans_400Regular', fontSize:13,
+    fontFamily:'GoogleSans_400Regular', fontSize:15,
     color:TEXT_DARK, textAlign:'center',
   },
 
-  // Grand total bar — at bottom of card
-  grandBar: {},
-  grandBarWrap: {
+  // Grand Total bar — pinned at bottom of card, never scrolls
+  grandTotalBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: GRAND_GN,
     paddingVertical: 14,
     paddingHorizontal: 24,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
   },
   grandLbl: { fontFamily:'GoogleSans_700Bold', fontSize:13, fontWeight:'800', color:WHITE, letterSpacing:0.5 },
   grandVal: { fontFamily:'NotoSerif_700Bold', fontSize:16, fontWeight:'800', color:WHITE },
 
-  // Status
+  // Status badge
   statusBtn: {
     flexDirection:'row', alignItems:'center', gap:3,
     borderRadius:20, paddingHorizontal:8, paddingVertical:4,
@@ -323,16 +454,25 @@ const s = StyleSheet.create({
   },
   statusPaid:    { backgroundColor:'#d4f5e2', borderWidth:1.5, borderColor:'#1a6e2e' },
   statusPending: { backgroundColor:'#fff4e0', borderWidth:1.5, borderColor:'#e0a800' },
-  statusTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:0.3 },
+  statusTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, letterSpacing:0.5, textTransform:'uppercase' },
 
   // Print button
   printBtn: {
     flexDirection:'row', alignItems:'center', gap:3,
     backgroundColor:'#fff8e1', borderWidth:1.5, borderColor:'#e0a800',
     borderRadius:20, paddingHorizontal:8, paddingVertical:4,
-    minWidth:55, justifyContent:'center',
+    minWidth:70, justifyContent:'center',
   },
-  printBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'#b07d00', letterSpacing:0.3 },
+  printBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#b07d00', letterSpacing:0.5, textTransform:'uppercase' },
+
+  // Download button
+  downloadBtn: {
+    flexDirection:'row', alignItems:'center', gap:3,
+    backgroundColor:'#e8f7ef', borderWidth:1.5, borderColor:'#2e9e5b',
+    borderRadius:20, paddingHorizontal:8, paddingVertical:4,
+    minWidth:70, justifyContent:'center',
+  },
+  downloadBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a6e2e', letterSpacing:0.5, textTransform:'uppercase' },
 
   // Detail view
   backBtn: {
@@ -350,11 +490,12 @@ const s = StyleSheet.create({
   addBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:WHITE },
   detailTitle: { flex:1, fontFamily:'GoogleSans_700Bold', fontSize:13, color:NAVY },
   editBtn: {
-    width:30, height:30, borderRadius:15,
-    backgroundColor:'rgba(48,70,116,0.08)',
-    justifyContent:'center', alignItems:'center',
-    borderWidth:1, borderColor:'rgba(48,70,116,0.18)',
+    flexDirection:'row', alignItems:'center', gap:4,
+    backgroundColor:'#e8f0ff',
+    borderRadius:5, paddingVertical:5, paddingHorizontal:12,
+    borderWidth:1.5, borderColor:'#304674',
   },
+  editBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:NAVY, letterSpacing:0.5 },
 
   emptyTxt: {
     fontFamily:'GoogleSans_400Regular', fontSize:13,

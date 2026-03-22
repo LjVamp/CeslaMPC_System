@@ -370,14 +370,32 @@ export default function EntryModal({ visible, category, editEntry, presetDept, p
   };
 
   const handleDelete = () => {
-    if (!editEntry) return;
-    Alert.alert('Delete Entry', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try { await deleteEntry(editEntry.id); onClose(); }
-        catch (e) { Alert.alert('Error', e.message); }
-      }},
-    ]);
+    if (!editEntry?.id) {
+      Alert.alert('Error', 'No entry selected for deletion.');
+      return;
+    }
+    Alert.alert(
+      'Delete Entry',
+      'Are you sure you want to delete this entry? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            setSaving(true);
+            try {
+              await deleteEntry(editEntry.id);
+              onClose();
+            } catch (e) {
+              const msg = e?.message || e?.code || JSON.stringify(e) || 'Unknown error occurred.';
+              Alert.alert('Delete Failed', msg);
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const isEdit = !!editEntry;
@@ -472,9 +490,9 @@ export default function EntryModal({ visible, category, editEntry, presetDept, p
           {/* Actions */}
           <View style={s.actions}>
             {isEdit && (
-              <TouchableOpacity style={s.deleteBtn} onPress={handleDelete}>
+              <TouchableOpacity style={s.deleteBtn} onPress={handleDelete} disabled={saving}>
                 <MaterialIcons name="delete-outline" size={16} color="#e74c3c" />
-                <Text style={s.deleteTxt}>Delete</Text>
+                <Text style={s.deleteTxt}>{saving ? 'Deleting...' : 'Delete'}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={s.cancelBtn} onPress={onClose}>

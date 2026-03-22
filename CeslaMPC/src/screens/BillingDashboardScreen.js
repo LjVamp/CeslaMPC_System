@@ -1,7 +1,4 @@
 // src/screens/BillingDashboardScreen.js
-// CESLA MPC — Billing Monitoring System — Main Dashboard
-// Tabs: Overview | Free Lunch | Rice Allowances | Water Billing | Milk & Beans | Ticket
-
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
@@ -15,21 +12,21 @@ import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from 
 import { MaterialIcons } from '@expo/vector-icons';
 import { useBilling, CATEGORIES, MONTHS_SHORT, MONTHS } from '../context/BillingContext';
 
-import FreeLunchScreen     from './billing/FreeLunchScreen';
+import FreeLunchScreen      from './billing/FreeLunchScreen';
 import RiceAllowancesScreen from './billing/RiceAllowancesScreen';
-import WaterBillingScreen  from './billing/WaterBillingScreen';
-import MilkBeansScreen     from './billing/MilkBeansScreen';
-import TicketScreen        from './billing/TicketScreen';
+import WaterBillingScreen   from './billing/WaterBillingScreen';
+import MilkBeansScreen      from './billing/MilkBeansScreen';
+import TicketScreen         from './billing/TicketScreen';
 import BillingOverviewScreen from './billing/BillingOverviewScreen';
-import SettingsModal       from '../components/SettingsModal';
+import SettingsModal        from '../components/SettingsModal';
 
 const TABS = [
-  { key: 'overview',       label: 'Overview',        icon: 'dashboard',      color: '#1a3a6b' },
-  { key: 'freelunch',      label: 'Free Lunch',      icon: 'restaurant',     color: '#e67e22' },
-  { key: 'riceallowances', label: 'Rice Allowances', icon: 'grass',          color: '#27ae60' },
-  { key: 'waterbilling',   label: 'Water Billing',   icon: 'water-drop',     color: '#2980b9' },
-  { key: 'milkbeans',      label: 'Milk & Beans',    icon: 'local-cafe',     color: '#8e44ad' },
-  { key: 'ticket',         label: 'Ticket',          icon: 'confirmation-number', color: '#c0392b' },
+  { key: 'overview',       label: 'Overview',        icon: 'dashboard',           color: '#1a3a6b' },
+  { key: 'freelunch',      label: 'Free Lunch',       icon: 'restaurant',          color: '#e67e22' },
+  { key: 'riceallowances', label: 'Rice Allowances',  icon: 'grass',               color: '#27ae60' },
+  { key: 'waterbilling',   label: 'Water Billing',    icon: 'water-drop',          color: '#2980b9' },
+  { key: 'milkbeans',      label: 'Milk & Beans',     icon: 'local-cafe',          color: '#8e44ad' },
+  { key: 'ticket',         label: 'Ticket',           icon: 'confirmation-number', color: '#c0392b' },
 ];
 
 export default function BillingDashboardScreen({ navigation }) {
@@ -61,12 +58,11 @@ export default function BillingDashboardScreen({ navigation }) {
     ]).start();
   }, []);
 
-  // Summary totals for current month/year
-  const flTotal  = getCategoryTotal('freelunch',      activeYear, activeMonth);
-  const raTotal  = getCategoryTotal('riceallowances', activeYear, activeMonth);
-  const wbTotal  = getCategoryTotal('waterbilling',   activeYear, activeMonth);
-  const mbTotal  = getCategoryTotal('milkbeans',      activeYear, activeMonth);
-  const tkTotal  = getCategoryTotal('ticket',         activeYear, activeMonth);
+  const flTotal    = getCategoryTotal('freelunch',      activeYear, activeMonth);
+  const raTotal    = getCategoryTotal('riceallowances', activeYear, activeMonth);
+  const wbTotal    = getCategoryTotal('waterbilling',   activeYear, activeMonth);
+  const mbTotal    = getCategoryTotal('milkbeans',      activeYear, activeMonth);
+  const tkTotal    = getCategoryTotal('ticket',         activeYear, activeMonth);
   const grandTotal = flTotal + raTotal + wbTotal + mbTotal + tkTotal;
 
   const renderContent = () => {
@@ -106,7 +102,8 @@ export default function BillingDashboardScreen({ navigation }) {
         opacity: hdrFade,
         marginTop: Platform.OS === 'web' ? 16 : 36,
         marginHorizontal: isSmall ? 8 : 10,
-        zIndex: 30, flexShrink: 0,
+        zIndex: 30,
+        flexShrink: 0,
       }}>
         <View style={s.header}>
           <TouchableOpacity style={s.backBtn} onPress={() => navigation && navigation.goBack()}>
@@ -126,80 +123,86 @@ export default function BillingDashboardScreen({ navigation }) {
         </View>
       </Animated.View>
 
-      <Animated.View style={[s.body, { opacity: bodyFade }]}>
+      {/*
+        KEY FIX: body is a plain View (not Animated.View) so flex:1 propagates
+        correctly to contentArea and then to FreeLunchScreen's FlatList.
+        The fade animation only needs opacity — applied via Animated.View wrapper
+        that does NOT affect layout (pointerEvents + no flex constraints).
+      */}
+      <View style={s.body}>
+        <Animated.View style={{ flex: 1, opacity: bodyFade }}>
 
-        {/* Month Selector */}
-        <View style={s.monthBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 4, paddingHorizontal: 8, paddingVertical: 4 }}>
-            {MONTHS_SHORT.map((m, i) => (
-              <TouchableOpacity key={m}
-                style={[s.monthBtn, activeMonth === i && s.monthBtnActive]}
-                onPress={() => setActiveMonth(i)}>
-                <Text style={[s.monthBtnTxt, activeMonth === i && s.monthBtnTxtActive]}>{m}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Summary Cards */}
-        {loading ? (
-          <View style={{ alignItems: 'center', paddingVertical: 12 }}>
-            <ActivityIndicator color="#1a3a6b" />
+          {/* Month Selector */}
+          <View style={s.monthBar}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 4, paddingHorizontal: 8, paddingVertical: 4 }}>
+              {MONTHS_SHORT.map((m, i) => (
+                <TouchableOpacity key={m}
+                  style={[s.monthBtn, activeMonth === i && s.monthBtnActive]}
+                  onPress={() => setActiveMonth(i)}>
+                  <Text style={[s.monthBtnTxt, activeMonth === i && s.monthBtnTxtActive]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            style={{ flexGrow: 0, marginHorizontal: 8, marginBottom: 8 }}
-            contentContainerStyle={{ gap: 6, paddingHorizontal: 4, paddingVertical: 2 }}>
-            {/* Grand Total */}
-            <View style={[s.summCard, { backgroundColor: '#1a3a6b', minWidth: 130 }]}>
-              <Text style={[s.summLabel, { color: '#c9a84c' }]}>GRAND TOTAL</Text>
-              <Text style={[s.summVal, { color: '#fff', fontSize: 16 }]}>{fmt(grandTotal)}</Text>
-              <Text style={[s.summSub, { color: 'rgba(255,255,255,0.60)' }]}>{MONTHS[activeMonth]} {activeYear}</Text>
+
+          {/* Summary Cards */}
+          {loading ? (
+            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+              <ActivityIndicator color="#1a3a6b" />
             </View>
-            {[
-              { label: 'Free Lunch',      val: flTotal,  color: '#e67e22' },
-              { label: 'Rice Allow.',     val: raTotal,  color: '#27ae60' },
-              { label: 'Water Billing',   val: wbTotal,  color: '#2980b9' },
-              { label: 'Milk & Beans',    val: mbTotal,  color: '#8e44ad' },
-              { label: 'Ticket',          val: tkTotal,  color: '#c0392b' },
-            ].map(c => (
-              <View key={c.label} style={[s.summCard, { borderLeftWidth: 3, borderLeftColor: c.color }]}>
-                <Text style={s.summLabel}>{c.label}</Text>
-                <Text style={[s.summVal, { color: c.color }]}>{fmt(c.val)}</Text>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              style={{ flexGrow: 0, marginHorizontal: 8, marginBottom: 8, flexShrink: 0 }}
+              contentContainerStyle={{ gap: 6, paddingHorizontal: 4, paddingVertical: 2 }}>
+              <View style={[s.summCard, { backgroundColor: '#1a3a6b', minWidth: 130 }]}>
+                <Text style={[s.summLabel, { color: '#c9a84c' }]}>GRAND TOTAL</Text>
+                <Text style={[s.summVal, { color: '#fff', fontSize: 16 }]}>{fmt(grandTotal)}</Text>
+                <Text style={[s.summSub, { color: 'rgba(255,255,255,0.60)' }]}>{MONTHS[activeMonth]} {activeYear}</Text>
               </View>
-            ))}
-          </ScrollView>
-        )}
+              {[
+                { label: 'Free Lunch',    val: flTotal, color: '#e67e22' },
+                { label: 'Rice Allow.',   val: raTotal, color: '#27ae60' },
+                { label: 'Water Billing', val: wbTotal, color: '#2980b9' },
+                { label: 'Milk & Beans',  val: mbTotal, color: '#8e44ad' },
+                { label: 'Ticket',        val: tkTotal, color: '#c0392b' },
+              ].map(c => (
+                <View key={c.label} style={[s.summCard, { borderLeftWidth: 3, borderLeftColor: c.color }]}>
+                  <Text style={s.summLabel}>{c.label}</Text>
+                  <Text style={[s.summVal, { color: c.color }]}>{fmt(c.val)}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          )}
 
-        {/* Tab Bar */}
-        <View style={s.tabBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 2, paddingHorizontal: 4 }}
-            style={{ flexGrow: 0 }}>
-            {TABS.map(tab => (
-              <TouchableOpacity key={tab.key}
-                style={[s.tabBtn, activeTab === tab.key && s.tabBtnActive]}
-                onPress={() => setActiveTab(tab.key)} activeOpacity={0.80}>
-                <MaterialIcons
-                  name={tab.icon}
-                  size={13}
-                  color={activeTab === tab.key ? tab.color : 'rgba(255,255,255,0.80)'}
-                />
-                <Text style={[s.tabBtnTxt, activeTab === tab.key && { color: tab.color }]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+          {/* Tab Bar */}
+          <View style={s.tabBar}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 2, paddingHorizontal: 4 }}
+              style={{ flexGrow: 0 }}>
+              {TABS.map(tab => (
+                <TouchableOpacity key={tab.key}
+                  style={[s.tabBtn, activeTab === tab.key && s.tabBtnActive]}
+                  onPress={() => setActiveTab(tab.key)} activeOpacity={0.80}>
+                  <MaterialIcons
+                    name={tab.icon} size={13}
+                    color={activeTab === tab.key ? tab.color : 'rgba(255,255,255,0.80)'}
+                  />
+                  <Text style={[s.tabBtnTxt, activeTab === tab.key && { color: tab.color }]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
 
-        {/* Content Area */}
-        <View style={s.contentArea}>
-          {renderContent()}
-        </View>
+          {/* Content Area — flex:1 + minHeight:0, NO overflow:hidden */}
+          <View style={s.contentArea}>
+            {renderContent()}
+          </View>
 
-      </Animated.View>
+        </Animated.View>
+      </View>
 
       <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
     </View>
@@ -208,6 +211,7 @@ export default function BillingDashboardScreen({ navigation }) {
 
 const s = StyleSheet.create({
   root: { flex: 1, flexDirection: 'column' },
+
   header: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(26,58,107,0.92)',
@@ -240,12 +244,14 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
+
+  // Plain View so flex:1 propagates properly down to FlatList
   body: {
-    flex: 1, marginTop: Platform.OS === 'web' ? 10 : 6,
-    marginBottom: 0, minHeight: 0, overflow: 'hidden',
+    flex: 1,
+    marginTop: Platform.OS === 'web' ? 10 : 6,
+    marginBottom: 0,
   },
 
-  // Month bar
   monthBar: {
     flexShrink: 0, backgroundColor: 'rgba(26,58,107,0.35)',
     marginHorizontal: 10, borderRadius: 12, marginBottom: 8,
@@ -259,10 +265,9 @@ const s = StyleSheet.create({
     backgroundColor: '#fff',
     shadowColor: '#011f4b', shadowOpacity: 0.15, shadowRadius: 4, elevation: 2,
   },
-  monthBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: 'rgba(255,255,255,0.90)' },
+  monthBtnTxt:       { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: 'rgba(255,255,255,0.90)' },
   monthBtnTxtActive: { color: '#1a3a6b' },
 
-  // Summary cards
   summCard: {
     backgroundColor: 'rgba(255,255,255,0.55)',
     borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14,
@@ -274,14 +279,9 @@ const s = StyleSheet.create({
     fontFamily: 'GoogleSans_700Bold', fontSize: 8,
     color: 'rgba(1,31,75,0.60)', letterSpacing: 1, textTransform: 'uppercase',
   },
-  summVal: {
-    fontFamily: 'NotoSerif_700Bold', fontSize: 15, color: '#1a3a6b',
-  },
-  summSub: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.50)',
-  },
+  summVal: { fontFamily: 'NotoSerif_700Bold', fontSize: 15, color: '#1a3a6b' },
+  summSub: { fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.50)' },
 
-  // Tab bar
   tabBar: {
     flexShrink: 0, backgroundColor: 'rgba(26,58,107,0.50)',
     borderTopLeftRadius: 12, borderTopRightRadius: 12,
@@ -296,14 +296,14 @@ const s = StyleSheet.create({
   tabBtnActive: { backgroundColor: '#eef2f8' },
   tabBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: 'rgba(255,255,255,0.80)' },
 
-  // Content
+  // NO overflow:hidden — this was blocking all scroll in child screens
   contentArea: {
-    flex: 1, minHeight: 0,
+    flex: 1,
+    minHeight: 0,
     backgroundColor: 'rgba(255,255,255,0.22)',
     borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
     borderTopRightRadius: 16, borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.40)',
     marginHorizontal: 10, marginBottom: 10,
-    overflow: 'hidden',
   },
 });

@@ -1,135 +1,160 @@
 // src/screens/billing/WaterBillingScreen.js
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList } from 'react-native';
+import {
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, Alert, useWindowDimensions,
+} from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useBilling, DEPARTMENTS, MONTHS, fmt, fmtDate } from '../../context/BillingContext';
+import { useBilling, MONTHS, fmt, fmtDate } from '../../context/BillingContext';
 import EntryModal from '../../components/EntryModal';
 
+const NAVY     = '#304674';
+const WHITE    = '#ffffff';
+const PAGE_BG  = '#f4f6fb';
+const TD_BG    = '#d8e1e8';
+const ROW_BDR  = '#c8d4dc';
+const TEXT_DARK= '#1a2a4a';
+const GREEN    = '#2e9e5b';
+const GRAND_GN = '#8eb15c';
+
 export default function WaterBillingScreen({ year, month }) {
+  const { height: wh } = useWindowDimensions();
   const { entries, getUniqueDates, getEntriesByDate, toggleStatus } = useBilling();
-  const [detailDate, setDetailDate] = useState(null);
+
+  const [detailDate,   setDetailDate]   = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [editEntry, setEditEntry] = useState(null);
+  const [editEntry,    setEditEntry]    = useState(null);
 
   const dates = useMemo(() => getUniqueDates('waterbilling', year, month), [entries, year, month]);
 
-  const dateSummaries = useMemo(() => dates.map((date, idx) => {
+  const rows = useMemo(() => dates.map((date, idx) => {
     const dayEntries   = getEntriesByDate('waterbilling', year, month, date);
     const totalGallons = dayEntries.reduce((s, e) => s + (parseFloat(e.gallons) || 0), 0);
     const totalAmt     = dayEntries.reduce((s, e) => s + (e.amount || 0), 0);
-    const priceGallon  = dayEntries.length > 0 ? (dayEntries[0].priceGallon || 0) : 0;
-    const status       = dayEntries.length > 0 ? (dayEntries[0].status || 'pending') : 'pending';
+    const priceGallon  = dayEntries[0]?.priceGallon || 0;
+    const status       = dayEntries[0]?.status || 'pending';
     const mm           = String(month + 1).padStart(2, '0');
     const billingNo    = `WB ${year}-${mm}-${String(idx + 1).padStart(2, '0')}`;
     return { date, totalGallons, totalAmt, priceGallon, status, billingNo, id: dayEntries[0]?.id };
   }), [dates, entries]);
 
-  const grandTotal    = dateSummaries.reduce((s, d) => s + d.totalAmt, 0);
+  const grandTotal    = rows.reduce((s, r) => s + r.totalAmt, 0);
   const detailEntries = useMemo(() =>
     detailDate ? getEntriesByDate('waterbilling', year, month, detailDate) : [],
-    [detailDate, entries, year, month]
+    [detailDate, entries]
   );
   const detailTotal = detailEntries.reduce((s, e) => s + (e.amount || 0), 0);
 
-  // ── DETAIL VIEW ────────────────────────────────────────────────────────────
-  if (detailDate) return (
-    <View style={{ flex: 1 }}>
-      <View style={ws.detailHeader}>
-        <TouchableOpacity style={ws.backBtn} onPress={() => setDetailDate(null)}>
-          <MaterialIcons name="arrow-back" size={16} color="#1a3a6b" />
-          <Text style={ws.backBtnTxt}>Back</Text>
-        </TouchableOpacity>
-        <Text style={ws.detailTitle} numberOfLines={1}>
-          {fmtDate(detailDate)} — {MONTHS[month]} {year}
-        </Text>
-        <TouchableOpacity style={ws.addBtnSm}
-          onPress={() => { setEditEntry(null); setModalVisible(true); }}>
-          <MaterialIcons name="add" size={14} color="#fff" />
-        </TouchableOpacity>
-      </View>
-      <FlatList
-        data={detailEntries}
-        keyExtractor={item => item.id}
-        contentContainerStyle={{ padding: 10, gap: 6, paddingBottom: 20 }}
-        ListEmptyComponent={<Text style={ws.emptyTxt}>No entries yet.</Text>}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={ws.detailCard}
-            onPress={() => { setEditEntry(item); setModalVisible(true); }}>
-            <View style={{ flex: 1 }}>
-              <Text style={ws.detailDept}>{item.dept}</Text>
-              <Text style={ws.detailSub}>{item.gallons} gal × {fmt(item.priceGallon)}</Text>
-            </View>
-            <Text style={ws.detailAmt}>{fmt(item.amount)}</Text>
+  const openAdd  = () => { setEditEntry(null); setModalVisible(true); };
+  const openEdit = (e) => { setEditEntry(e); setModalVisible(true); };
+  const handleToggle = async (entry) => {
+    try { await toggleStatus(entry.id, entry.status); }
+    catch (e) { Alert.alert('Error', e.message); }
+  };
+
+  // ── DETAIL VIEW ─────────────────────────────────────────────────────────────
+  if (detailDate) {
+    return (
+      <View style={{ flex:1, backgroundColor:PAGE_BG }}>
+        <View style={s.toolbar}>
+          <TouchableOpacity style={s.backBtn} onPress={() => setDetailDate(null)}>
+            <MaterialIcons name="arrow-back" size={16} color={NAVY} />
+            <Text style={s.backBtnTxt}>Back</Text>
           </TouchableOpacity>
-        )}
-        ListFooterComponent={
-          <View style={ws.totalBar}>
-            <Text style={ws.totalLbl}>GRAND TOTAL</Text>
-            <Text style={ws.totalVal}>{fmt(detailTotal)}</Text>
+          <TouchableOpacity style={s.addBtn} onPress={openAdd}>
+            <MaterialIcons name="add" size={14} color={WHITE} />
+            <Text style={s.addBtnTxt}>Add Entry</Text>
+          </TouchableOpacity>
+          <Text style={s.detailTitle} numberOfLines={1}>
+            {fmtDate(detailDate)} — {MONTHS[month]} {year}
+          </Text>
+        </View>
+        <View style={[s.deptSection, { maxHeight: wh * 0.55 }]}>
+          <View style={s.thead}>
+            <Text style={[s.th, { flex:2, textAlign:'left' }]}>DEPARTMENT</Text>
+            <Text style={[s.th, { flex:1 }]}>GALLONS</Text>
+            <Text style={[s.th, { flex:1.4 }]}>PRICE/GAL</Text>
+            <Text style={[s.th, { flex:1.4, textAlign:'right' }]}>AMOUNT</Text>
+            <Text style={[s.th, { width:80 }]}></Text>
           </View>
-        }
-      />
-      <EntryModal visible={modalVisible} category="waterbilling"
-        editEntry={editEntry} presetDate={detailDate}
-        year={year} month={month} onClose={() => setModalVisible(false)} />
-    </View>
-  );
+          <ScrollView style={{ flex:1 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+            {detailEntries.length === 0
+              ? <Text style={s.emptyTxt}>No entries yet.</Text>
+              : detailEntries.map(item => (
+                <View key={item.id} style={s.row}>
+                  <Text style={[s.td, { flex:2, textAlign:'left', fontWeight:'700', color:TEXT_DARK }]}>{item.dept}</Text>
+                  <Text style={[s.td, { flex:1, textAlign:'center' }]}>{item.gallons}</Text>
+                  <Text style={[s.td, { flex:1.4, textAlign:'center' }]}>{fmt(item.priceGallon)}</Text>
+                  <Text style={[s.td, { flex:1.4, textAlign:'right', fontWeight:'700', color:TEXT_DARK }]}>{fmt(item.amount)}</Text>
+                  <View style={{ width:80, alignItems:'center' }}>
+                    <TouchableOpacity style={s.editBtn} onPress={() => openEdit(item)}>
+                      <MaterialIcons name="edit" size={13} color={NAVY} />
+                      <Text style={s.editBtnTxt}>Edit</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            }
+          </ScrollView>
+          <View style={s.grandTotalBar}>
+            <Text style={s.grandLbl}>GRAND TOTAL</Text>
+            <Text style={s.grandVal}>{fmt(detailTotal)}</Text>
+          </View>
+        </View>
+        <EntryModal visible={modalVisible} category="waterbilling"
+          editEntry={editEntry} presetDate={detailDate} year={year} month={month}
+          onClose={() => setModalVisible(false)} />
+      </View>
+    );
+  }
 
-  // ── MAIN VIEW ──────────────────────────────────────────────────────────────
+  // ── MAIN VIEW ────────────────────────────────────────────────────────────────
   return (
-    <View style={{ flex: 1 }}>
-      <View style={ws.toolbar}>
-        <TouchableOpacity style={ws.addBtn}
-          onPress={() => { setEditEntry(null); setModalVisible(true); }}>
-          <MaterialIcons name="add" size={15} color="#fff" />
-          <Text style={ws.addBtnTxt}>Add Entry</Text>
+    <View style={{ flex:1, backgroundColor:PAGE_BG }}>
+      <View style={s.toolbar}>
+        <TouchableOpacity style={s.addBtnMain} onPress={openAdd}>
+          <MaterialIcons name="add" size={16} color={WHITE} />
+          <Text style={s.addBtnMainTxt}>Add Entry</Text>
         </TouchableOpacity>
       </View>
-
-      <View style={ws.thead}>
-        <Text style={[ws.th, { flex: 1.2 }]}>DATE</Text>
-        <Text style={[ws.th, { flex: 1.5 }]}>BILLING NO.</Text>
-        <Text style={[ws.th, { flex: 0.9, textAlign: 'center' }]}>GALLONS</Text>
-        <Text style={[ws.th, { flex: 1, textAlign: 'center' }]}>PRICE/GAL</Text>
-        <Text style={[ws.th, { flex: 1, textAlign: 'right' }]}>AMOUNT</Text>
-        <Text style={[ws.th, { flex: 0.9, textAlign: 'center' }]}>STATUS</Text>
-      </View>
-
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }}>
-        {dateSummaries.length === 0
-          ? <Text style={ws.emptyTxt}>No entries yet for {MONTHS[month]} {year}.</Text>
-          : dateSummaries.map((d, i) => (
-            <TouchableOpacity key={d.date}
-              style={[ws.trow, i % 2 === 0 && ws.trowAlt]}
-              onPress={() => setDetailDate(d.date)}
-              activeOpacity={0.75}>
-              <Text style={[ws.td, { flex: 1.2 }]}>{fmtDate(d.date)}</Text>
-              <Text style={[ws.td, { flex: 1.5, fontFamily: 'GoogleSans_700Bold', color: '#1a3a6b', fontSize: 10 }]}>
-                {d.billingNo}
-              </Text>
-              <Text style={[ws.td, { flex: 0.9, textAlign: 'center' }]}>{d.totalGallons}</Text>
-              <Text style={[ws.td, { flex: 1, textAlign: 'center' }]}>{fmt(d.priceGallon)}</Text>
-              <Text style={[ws.td, { flex: 1, textAlign: 'right', fontFamily: 'GoogleSans_700Bold', color: '#1a3a6b' }]}>
-                {fmt(d.totalAmt)}
-              </Text>
-              <View style={{ flex: 0.9, alignItems: 'center' }}>
-                <TouchableOpacity
-                  style={[ws.statusBadge, d.status === 'paid' ? ws.statusPaid : ws.statusPending]}
-                  onPress={() => toggleStatus(d.id, d.status)}>
-                  <Text style={[ws.statusTxt, { color: d.status === 'paid' ? '#1a6e2e' : '#b36200' }]}>
-                    {d.status === 'paid' ? '✔ Paid' : '⏳ Pend'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          ))
-        }
-        <View style={ws.totalBar}>
-          <Text style={ws.totalLbl}>GRAND TOTAL</Text>
-          <Text style={ws.totalVal}>{fmt(grandTotal)}</Text>
+      <View style={[s.deptSection, { maxHeight: wh * 0.55 }]}>
+        <View style={s.thead}>
+          <Text style={[s.th, { flex:1.4, textAlign:'left' }]}>DATE</Text>
+          <Text style={[s.th, { flex:1.6, textAlign:'center' }]}>BILLING NO.</Text>
+          <Text style={[s.th, { flex:1, textAlign:'center' }]}>TOTAL GALLONS</Text>
+          <Text style={[s.th, { flex:1.2, textAlign:'center' }]}>PRICE/GAL</Text>
+          <Text style={[s.th, { flex:1.3, textAlign:'right' }]}>AMOUNT</Text>
+          <Text style={[s.th, { flex:1.1, textAlign:'center' }]}>STATUS</Text>
         </View>
-      </ScrollView>
-
+        <ScrollView style={{ flex:1 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+          {rows.length === 0
+            ? <Text style={s.emptyTxt}>No entries yet for {MONTHS[month]} {year}.</Text>
+            : rows.map(d => (
+              <TouchableOpacity key={d.date} style={s.row} onPress={() => setDetailDate(d.date)} activeOpacity={0.75}>
+                <Text style={[s.td, { flex:1.4, textAlign:'left', fontWeight:'700', color:TEXT_DARK }]}>{fmtDate(d.date)}</Text>
+                <Text style={[s.td, { flex:1.6, textAlign:'center', fontWeight:'700', color:TEXT_DARK }]}>{d.billingNo}</Text>
+                <Text style={[s.td, { flex:1, textAlign:'center' }]}>{d.totalGallons}</Text>
+                <Text style={[s.td, { flex:1.2, textAlign:'center' }]}>{fmt(d.priceGallon)}</Text>
+                <Text style={[s.td, { flex:1.3, textAlign:'right', fontWeight:'700', color:TEXT_DARK }]}>{fmt(d.totalAmt)}</Text>
+                <View style={{ flex:1.1, alignItems:'center' }}>
+                  <TouchableOpacity
+                    style={[s.statusBtn, d.status==='paid' ? s.statusPaid : s.statusPending]}
+                    onPress={() => handleToggle({ id:d.id, status:d.status })}>
+                    <MaterialIcons name={d.status==='paid' ? 'check-circle' : 'hourglass-empty'} size={11} color={d.status==='paid' ? '#1a6e2e' : '#b36200'} />
+                    <Text style={[s.statusTxt, { color:d.status==='paid' ? '#1a6e2e' : '#b36200' }]}>
+                      {d.status==='paid' ? 'PAID' : 'PENDING'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            ))
+          }
+        </ScrollView>
+        <View style={s.grandTotalBar}>
+          <Text style={s.grandLbl}>GRAND TOTAL</Text>
+          <Text style={s.grandVal}>{fmt(grandTotal)}</Text>
+        </View>
+      </View>
       <EntryModal visible={modalVisible} category="waterbilling"
         editEntry={editEntry} year={year} month={month}
         onClose={() => setModalVisible(false)} />
@@ -137,30 +162,28 @@ export default function WaterBillingScreen({ year, month }) {
   );
 }
 
-const ws = StyleSheet.create({
-  toolbar: { flexDirection: 'row', padding: 10, paddingBottom: 6, borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.10)' },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#2980b9', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 14 },
-  addBtnSm: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#1a3a6b', justifyContent: 'center', alignItems: 'center' },
-  addBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#fff' },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: 'rgba(26,58,107,0.20)' },
-  backBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#1a3a6b' },
-  detailHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.10)' },
-  detailTitle: { flex: 1, fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#1a3a6b' },
-  thead: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(26,58,107,0.14)', paddingVertical: 8, paddingHorizontal: 10 },
-  th: { fontFamily: 'GoogleSans_700Bold', fontSize: 8, color: 'rgba(26,58,107,0.60)', letterSpacing: 0.8, textTransform: 'uppercase' },
-  trow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 1, borderColor: 'rgba(26,58,107,0.07)' },
-  trowAlt: { backgroundColor: 'rgba(255,255,255,0.35)' },
-  td: { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: '#1a2d4e' },
-  statusBadge: { borderRadius: 10, paddingHorizontal: 6, paddingVertical: 3, alignItems: 'center', minWidth: 55 },
-  statusPaid: { backgroundColor: '#d4f5e2', borderWidth: 1.5, borderColor: '#1a6e2e' },
-  statusPending: { backgroundColor: '#fff4e0', borderWidth: 1.5, borderColor: '#e0a800' },
-  statusTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 8, letterSpacing: 0.3 },
-  detailCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.90)', gap: 8 },
-  detailDept: { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#1a3a6b' },
-  detailSub: { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.55)', marginTop: 2 },
-  detailAmt: { fontFamily: 'NotoSerif_700Bold', fontSize: 14, color: '#c9a84c' },
-  totalBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1a6e2e', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, margin: 10 },
-  totalLbl: { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff', letterSpacing: 0.5 },
-  totalVal: { fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#fff' },
-  emptyTxt: { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(1,31,75,0.40)', textAlign: 'center', padding: 20 },
+const s = StyleSheet.create({
+  toolbar: { flexDirection:'row', alignItems:'center', paddingHorizontal:15, paddingVertical:10, gap:10 },
+  addBtnMain: { flexDirection:'row', alignItems:'center', gap:6, backgroundColor:GREEN, borderRadius:8, paddingVertical:8, paddingHorizontal:16 },
+  addBtnMainTxt: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:WHITE },
+  deptSection: { flex:1, flexDirection:'column', backgroundColor:WHITE, borderRadius:14, marginHorizontal:48, marginBottom:10, shadowColor:'#1a2456', shadowOpacity:0.13, shadowRadius:10, shadowOffset:{width:0,height:4}, elevation:5, overflow:'hidden' },
+  thead: { flexDirection:'row', alignItems:'center', backgroundColor:NAVY, paddingVertical:11, paddingHorizontal:8, borderTopLeftRadius:14, borderTopRightRadius:14 },
+  th: { fontFamily:'GoogleSans_700Bold', fontSize:11, fontWeight:'800', color:WHITE, letterSpacing:0.5, textTransform:'uppercase', textAlign:'center' },
+  row: { flexDirection:'row', alignItems:'center', backgroundColor:TD_BG, paddingVertical:12, paddingHorizontal:8, borderBottomWidth:1, borderBottomColor:ROW_BDR },
+  td: { fontFamily:'GoogleSans_400Regular', fontSize:13, color:TEXT_DARK, textAlign:'center' },
+  grandTotalBar: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', backgroundColor:GRAND_GN, paddingVertical:14, paddingHorizontal:24, borderBottomLeftRadius:14, borderBottomRightRadius:14 },
+  grandLbl: { fontFamily:'GoogleSans_700Bold', fontSize:13, fontWeight:'800', color:WHITE, letterSpacing:0.5 },
+  grandVal: { fontFamily:'NotoSerif_700Bold', fontSize:16, fontWeight:'800', color:WHITE },
+  statusBtn: { flexDirection:'row', alignItems:'center', gap:3, borderRadius:20, paddingHorizontal:8, paddingVertical:4, minWidth:72, justifyContent:'center' },
+  statusPaid:    { backgroundColor:'#d4f5e2', borderWidth:1.5, borderColor:'#1a6e2e' },
+  statusPending: { backgroundColor:'#fff4e0', borderWidth:1.5, borderColor:'#e0a800' },
+  statusTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:0.3 },
+  backBtn: { flexDirection:'row', alignItems:'center', gap:6, backgroundColor:'rgba(48,70,116,0.10)', borderRadius:8, paddingVertical:7, paddingHorizontal:12, borderWidth:1, borderColor:'rgba(48,70,116,0.20)' },
+  backBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:NAVY },
+  addBtn: { flexDirection:'row', alignItems:'center', gap:5, backgroundColor:NAVY, borderRadius:8, paddingVertical:7, paddingHorizontal:12 },
+  addBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:WHITE },
+  detailTitle: { flex:1, fontFamily:'GoogleSans_700Bold', fontSize:13, color:NAVY },
+  editBtn: { flexDirection:'row', alignItems:'center', gap:4, backgroundColor:'rgba(48,70,116,0.08)', borderRadius:8, paddingVertical:5, paddingHorizontal:8, borderWidth:1, borderColor:'rgba(48,70,116,0.18)' },
+  editBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:NAVY },
+  emptyTxt: { fontFamily:'GoogleSans_400Regular', fontSize:13, color:'rgba(1,31,75,0.40)', textAlign:'center', padding:24 },
 });
