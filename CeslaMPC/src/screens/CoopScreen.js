@@ -20,11 +20,12 @@ import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import ChatSystem from '../components/ChatSystem';
 
 // ─── Firebase ────────────────────────────────────────────────────────────────
 import {
   collection, query, where, getDocs, addDoc, doc,
-  updateDoc, serverTimestamp, orderBy, limit, onSnapshot,
+  updateDoc, serverTimestamp, orderBy, limit, onSnapshot, setDoc,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -215,6 +216,10 @@ const NAV = [
     { key: 'changepw',   label: 'Change Password',  icon: '🔑' },
     { key: 'notifs',     label: 'Notifications',    icon: '🔔' },
   ]},
+  { key: 'help_grp',     label: 'Help & Support',   icon: '💬', children: [
+    { key: 'chat_admin', label: 'Chat with Admin',  icon: '🛡️' },
+    { key: 'chat_members', label: 'Co-member Chat', icon: '👥' },
+  ]},
 ];
 
 const SidebarGroup = ({ group, active, onNav, onClose }) => {
@@ -246,7 +251,7 @@ const SidebarGroup = ({ group, active, onNav, onClose }) => {
 };
 
 const MemberSidebar = ({ active, onNav, onClose, unread, onLogout, onBack, canGoBack }) => (
-  <View style={[s.sidebar, { flexDirection: 'column' }]}>
+  <View style={s.sidebar}>
     <View style={s.sidebarBrand}>
       <View style={s.sidebarLogo}><Text style={s.sidebarLogoTxt}>CS</Text></View>
       <View style={{ flex: 1 }}>
@@ -375,17 +380,6 @@ const OverviewView = ({ member, onNav, contentHeight, isMobile }) => {
           </GCard>
         </>
       )}
-
-      {/* Quick actions — 2x2 on mobile */}
-      <Text style={s.sHead}>⚡ QUICK ACTIONS</Text>
-      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {[{ label: 'Apply Loan', icon: '📝', key: 'applyloan', c: C.blue }, { label: 'My Profile', icon: '👤', key: 'profile', c: C.navyMid }, { label: 'App Form', icon: '📋', key: 'appform', c: C.orange }, { label: 'Notifs', icon: '🔔', key: 'notifs', c: C.gold }].map(q => (
-          <TouchableOpacity key={q.key} style={[s.quickBtn, { flexBasis: isMobile ? '47%' : '22%', flex: 1, borderTopWidth: 3, borderTopColor: q.c }]} onPress={() => onNav(q.key)} activeOpacity={0.8}>
-            <Text style={{ fontSize: isMobile ? 20 : 22, marginBottom: 5 }}>{q.icon}</Text>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.navy, textAlign: 'center' }}>{q.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
 
       {/* Tips */}
       <Text style={s.sHead}>💡 TIPS & REMINDERS</Text>
@@ -1997,9 +1991,224 @@ const NotifsView = ({ member, contentHeight }) => {
   );
 };
 
-// ═════════════════════════════════════════════════════════════════════════════
-// MEMBER DASHBOARD SHELL
-// ═════════════════════════════════════════════════════════════════════════════
+// ─── CHAT DIRECT VIEW (full page, sidebar-triggered) ─────────────────────────
+const ChatDirectView = ({ member, chatType, contentHeight }) => {
+  const [roomId, setRoomId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [search, setSearch] = useState('');
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [screen, setScreen] = useState(chatType === 'admin' ? 'room' : 'list');
+  const scrollRef = useRef(null);
+
+  // Setup room
+  useEffect(() => {
+    if (chatType === 'admin') {
+      const rId = `admin_${member.uid}`;
+      setDoc(doc(db, 'chatRooms', rId), {
+        type: 'admin', memberId: member.uid, memberName: member.name,
+        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
+      }, { merge: true }).then(() => setRoomId(rId));
+    } else if (chatType === 'members') {
+      setDoc(doc(db, 'chatRooms', 'group_members'), {
+        type: 'group', name: 'Members Group Chat',
+        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
+      }, { merge: true }).then(() => setRoomId('group_members'));
+    }
+  }, [chatType, member.uid]);
+
+  // Load active members for DM list
+  useEffect(() => {
+    if (chatType !== 'members') return;
+    const q = query(collection(db, 'members'), where('status', '==', 'Active'), orderBy('name', 'asc'));
+    const unsub = onSnapshot(q, snap => {
+      setMembers(snap.docs.map(d => ({ id: d.id, uid: d.id, ...d.data() })).filter(m => m.id !== member.uid));
+    });
+    return unsub;
+  }, [chatType]);
+
+  // Load messages for active room
+  useEffect(() => {
+    if (!roomId) return;
+    const q = query(collection(db, 'chatRooms', roomId, 'messages'), orderBy('createdAt', 'asc'), limit(100));
+    const unsub = onSnapshot(q, snap => {
+      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    });
+    return unsub;
+  }, [roomId]);
+
+  const send = async () => {
+    if (!text.trim() || sending || !roomId) return;
+    setSending(true);
+    try {
+      await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
+        senderId: member.uid, senderName: member.name,
+        text: text.trim(), createdAt: serverTimestamp(), readBy: [member.uid],
+      });
+      await updateDoc(doc(db, 'chatRooms', roomId), {
+        lastMessage: text.trim(), lastAt: serverTimestamp(), lastSender: member.name,
+      });
+      setText('');
+    } catch (e) { console.warn(e); }
+    finally { setSending(false); }
+  };
+
+  const selectDM = async (target) => {
+    const dmId = [member.uid, target.uid].sort().join('_');
+    await setDoc(doc(db, 'chatRooms', dmId), {
+      type: 'dm', members: [member.uid, target.uid],
+      memberNames: { [member.uid]: member.name, [target.uid]: target.name },
+      createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
+    }, { merge: true });
+    setRoomId(dmId);
+    setSelectedMember(target);
+    setScreen('dm');
+  };
+
+  const fmtT = ts => { if (!ts) return ''; const d = ts?.toDate?.() || new Date(ts); return d.toLocaleString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true }); };
+  const mkI = name => (name || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+  const RoomMessages = ({ title, subtitle }) => (
+    <View style={{ flex: 1, flexDirection: 'column' }}>
+      {/* Header */}
+      <LinearGradient colors={['#1a2d4e', '#243554']} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }}>
+        {chatType === 'members' && (
+          <TouchableOpacity onPress={() => { setScreen('list'); setSelectedMember(null); }}
+            style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ color: C.gold, fontSize: 16 }}>←</Text>
+          </TouchableOpacity>
+        )}
+        <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(201,168,76,0.25)', justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 18 }}>{chatType === 'admin' ? '🛡️' : screen === 'dm' ? '💬' : '👥'}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff' }}>{title}</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.55)' }}>{subtitle}</Text>
+        </View>
+        {chatType === 'admin' && (
+          <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: 'rgba(26,138,74,0.30)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#4cde8a' }}>● Live</Text>
+          </View>
+        )}
+      </LinearGradient>
+
+      {/* Messages */}
+      <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: 'rgba(152,186,213,0.12)' }}
+        contentContainerStyle={{ padding: 14, paddingBottom: 10 }}
+        showsVerticalScrollIndicator={true}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+        {messages.length === 0 && (
+          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>{chatType === 'admin' ? '🛡️' : screen === 'dm' ? '💬' : '👥'}</Text>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>
+              {chatType === 'admin' ? 'Send a message to Admin.\nWe\'ll get back to you shortly.' :
+               screen === 'dm' ? `Start chatting with ${selectedMember?.name}.` :
+               'Welcome to the Group Chat!\nSay hello to your co-members.'}
+            </Text>
+          </View>
+        )}
+        {messages.map((msg, i) => {
+          const isMine = msg.senderId === member.uid;
+          const prev = messages[i - 1];
+          const showName = !isMine && msg.senderId !== prev?.senderId && chatType !== 'admin' && screen !== 'dm';
+          return (
+            <View key={msg.id} style={[{ marginBottom: 8, maxWidth: '78%' }, isMine ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }]}>
+              {showName && <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, marginBottom: 3, paddingLeft: 2 }}>{msg.senderName}</Text>}
+              <View style={[{ borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9 },
+                isMine ? { backgroundColor: '#1a2d4e', borderBottomRightRadius: 4 } : { backgroundColor: '#fff', borderBottomLeftRadius: 4, shadowColor: '#0f1e35', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } }]}>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: isMine ? '#fff' : C.navy, lineHeight: 19 }}>{msg.text}</Text>
+              </View>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: C.textMuted, marginTop: 3, paddingHorizontal: 2, textAlign: isMine ? 'right' : 'left' }}>{fmtT(msg.createdAt)}</Text>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* Input */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12, backgroundColor: 'rgba(255,255,255,0.80)', borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.10)' }}>
+        <TextInput
+          style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy, backgroundColor: 'rgba(240,246,252,0.90)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)', maxHeight: 90 }}
+          value={text} onChangeText={setText}
+          placeholder="Type a message..." placeholderTextColor={C.textMuted}
+          multiline maxLength={500}
+        />
+        <TouchableOpacity onPress={send} disabled={!text.trim() || sending}
+          style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: text.trim() ? '#1a2d4e' : 'rgba(15,30,53,0.20)', justifyContent: 'center', alignItems: 'center' }}>
+          {sending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ fontSize: 18 }}>➤</Text>}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // Member List (for co-member chat)
+  if (chatType === 'members' && screen === 'list') {
+    const filtered = members.filter(m => (m.name || '').toLowerCase().includes(search.toLowerCase()) || (m.userId || '').includes(search));
+    return (
+      <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+        <Text style={s.pageTitle}>👥 Co-member Chat</Text>
+        <Text style={s.pageSub}>Chat with approved members. Choose a conversation below.</Text>
+        {/* Group Chat */}
+        <TouchableOpacity onPress={() => { setRoomId('group_members'); setScreen('group'); }}
+          style={{ borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
+          <LinearGradient colors={['#1a2d4e', '#243554']} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 }}>
+            <View style={{ width: 46, height: 46, borderRadius: 12, backgroundColor: 'rgba(201,168,76,0.25)', justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ fontSize: 22 }}>👥</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 15, color: '#fff' }}>Members Group Chat</Text>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>Chat with all approved members</Text>
+            </View>
+            <Text style={{ color: C.gold, fontSize: 20 }}>›</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+        {/* DM Search */}
+        <Text style={s.sHead}>💬 DIRECT MESSAGES</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.65)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.90)', marginBottom: 12 }}>
+          <Text style={{ color: C.textMuted, fontSize: 14, marginRight: 6 }}>🔍</Text>
+          <TextInput style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy }} value={search} onChangeText={setSearch} placeholder="Search member..." placeholderTextColor={C.textMuted} autoCapitalize="none" />
+        </View>
+        {filtered.map(m => (
+          <TouchableOpacity key={m.id} onPress={() => selectDM(m)} activeOpacity={0.8}>
+            <GCard style={{ padding: 12, marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(201,168,76,0.22)', borderWidth: 1.5, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.gold }}>{mkI(m.name)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>{m.name}</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>{m.userId}</Text>
+                </View>
+                <Text style={{ color: C.textMuted, fontSize: 18 }}>›</Text>
+              </View>
+            </GCard>
+          </TouchableOpacity>
+        ))}
+        {filtered.length === 0 && <GCard style={{ alignItems: 'center', padding: 32 }}><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted }}>No members found.</Text></GCard>}
+      </ScrollView>
+    );
+  }
+
+  // Room view (admin / group / DM)
+  const roomTitle =
+    chatType === 'admin' ? 'Admin / Support' :
+    screen === 'dm' ? (selectedMember?.name || 'Direct Message') :
+    'Members Group Chat';
+  const roomSub =
+    chatType === 'admin' ? 'Live support · CESLA MPC Admin' :
+    screen === 'dm' ? 'Direct Message' :
+    'Group · All Approved Members';
+
+  return (
+    <View style={[{ flex: 1 }, contentHeight ? { height: contentHeight } : undefined]}>
+      <RoomMessages title={roomTitle} subtitle={roomSub} />
+    </View>
+  );
+};
+
+// ─── MEMBER DASHBOARD ─────────────────────────────────────────────────────────
 const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   const { height, isMobile } = useRwd();
   const topbarHeight = Platform.OS === 'web' ? 62 : isSmall ? 58 : 62;
@@ -2054,6 +2263,8 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       case 'editprofile':  return <EditProfileView   member={member} contentHeight={h} isMobile={m} />;
       case 'changepw':     return <ChangePasswordView member={member} contentHeight={h} isMobile={m} />;
       case 'notifs':       return <NotifsView        member={member} contentHeight={h} isMobile={m} />;
+      case 'chat_admin':   return <ChatDirectView    member={member} chatType="admin"   contentHeight={h} />;
+      case 'chat_members': return <ChatDirectView    member={member} chatType="members" contentHeight={h} />;
       default:             return <OverviewView      member={member} onNav={switchNav} contentHeight={h} isMobile={m} />;
     }
   };
@@ -2080,12 +2291,6 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
             <MemberAvatar member={member} size={32} />
           </TouchableOpacity>
           {isWide && <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)', maxWidth: 120 }} numberOfLines={1}>{member.name}</Text>}
-          {/* Logout — wide screen only; mobile uses sidebar */}
-          {isWide && (
-            <TouchableOpacity style={s.logoutBtn} onPress={onLogout}>
-              <Text style={s.logoutTxt}>↩ Logout</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </View>
       {/* Body */}
@@ -2111,6 +2316,8 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
           </View>
         </View>
       )}
+      {/* Floating Chat System */}
+      <ChatSystem currentMember={member} />
     </View>
   );
 };
@@ -2471,19 +2678,19 @@ const s = StyleSheet.create({
   logoutTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c9a84c' },
 
   // Sidebar
-  sidebar:        { width: 175, flexShrink: 0, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)', flexDirection: 'column', flex: 1 },
-  sidebarBrand:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, paddingTop: 18 },
-  sidebarLogo:    { width: 30, height: 30, borderRadius: 7, backgroundColor: '#c9a84c', justifyContent: 'center', alignItems: 'center' },
-  sidebarLogoTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35' },
-  sidebarName:    { fontFamily: 'NotoSerif_700Bold', fontSize: 12, color: '#fff' },
-  sidebarRole:    { fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#c9a84c' },
-  sideHead:       { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 10, minHeight: 40 },
+  sidebar:        { width: 160, maxWidth: 160, flexShrink: 0, flexGrow: 0, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)', flexDirection: 'column' },
+  sidebarBrand:   { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 10, paddingTop: 14 },
+  sidebarLogo:    { width: 26, height: 26, borderRadius: 6, backgroundColor: '#c9a84c', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  sidebarLogoTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#0f1e35' },
+  sidebarName:    { fontFamily: 'NotoSerif_700Bold', fontSize: 11, color: '#fff' },
+  sidebarRole:    { fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: '#c9a84c' },
+  sideHead:       { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 8, borderRadius: 8, minHeight: 36 },
   sideActive:     { backgroundColor: '#c9a84c' },
-  sideIcon:       { fontSize: 13, width: 18, textAlign: 'center', color: 'rgba(255,255,255,0.50)' },
-  sideLabel:      { fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: 'rgba(255,255,255,0.65)', flex: 1 },
-  sideChild:      { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16, marginHorizontal: 4, borderRadius: 8, marginBottom: 1, minHeight: 36 },
+  sideIcon:       { fontSize: 12, width: 16, textAlign: 'center', color: 'rgba(255,255,255,0.50)' },
+  sideLabel:      { fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: 'rgba(255,255,255,0.65)', flex: 1 },
+  sideChild:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, marginHorizontal: 3, borderRadius: 7, marginBottom: 1, minHeight: 32 },
   sideChildActive:{ backgroundColor: 'rgba(201,168,76,0.20)' },
-  sideChildTxt:   { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(210,225,255,0.55)', flex: 1 },
+  sideChildTxt:   { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(210,225,255,0.55)', flex: 1 },
   sideNotifBadge: { margin: 10, backgroundColor: 'rgba(201,168,76,0.18)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', padding: 10 },
   sideNotifTxt:   { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#e8c87a', textAlign: 'center' },
 

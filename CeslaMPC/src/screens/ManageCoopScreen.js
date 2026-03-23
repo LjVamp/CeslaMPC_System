@@ -8,7 +8,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Animated, StatusBar, useWindowDimensions, Platform,
-  TextInput, ActivityIndicator, Modal,
+  TextInput, ActivityIndicator, Modal, KeyboardAvoidingView,
+  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts } from 'expo-font';
@@ -19,7 +20,7 @@ import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from 
 import {
   collection, query, orderBy, onSnapshot,
   doc, updateDoc, addDoc, serverTimestamp,
-  where, getDocs,
+  where, getDocs, setDoc, getDoc, limit,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -264,6 +265,10 @@ const NAV = [
     { key: 'settings',    label: 'System Settings',   icon: '⚙️' },
     { key: 'notifications', label: 'Notifications',   icon: '🔔' },
   ]},
+  { key: 'chat_grp',      label: 'Member Chat',       icon: '💬', children: [
+    { key: 'chat_inbox',  label: 'Chat Inbox',        icon: '📥' },
+    { key: 'chat_group',  label: 'Group Chat',        icon: '👥' },
+  ]},
 ];
 
 const SidebarItem = ({ group, active, onNav, onClose, badge }) => {
@@ -312,7 +317,7 @@ const SidebarItem = ({ group, active, onNav, onClose, badge }) => {
 };
 
 const Sidebar = ({ active, onNav, onClose, pendingCount, notifsCount, onLogout, onBack, canGoBack }) => (
-  <View style={[a.sidebar, { flex: 1 }]}>
+  <View style={a.sidebar}>
     <View style={a.sidebarBrand}>
       <View style={a.sidebarLogo}><Text style={a.sidebarLogoTxt}>CS</Text></View>
       <View style={{ flex: 1 }}>
@@ -330,7 +335,7 @@ const Sidebar = ({ active, onNav, onClose, pendingCount, notifsCount, onLogout, 
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }} style={{ flex: 1 }}>
       {NAV.map(g => (
         <SidebarItem key={g.key} group={g} active={active} onNav={onNav} onClose={onClose}
-          badge={g.key === 'members_grp' ? pendingCount : g.key === 'system_grp' ? notifsCount : 0}
+          badge={g.key === 'members_grp' ? pendingCount : g.key === 'system_grp' ? notifsCount : g.key === 'chat_grp' ? chatUnread : 0}
         />
       ))}
     </ScrollView>
@@ -384,7 +389,7 @@ const OverviewView = ({ members, claims, loans }) => {
   const maxCount = Math.max(...months.map(m => m.count), 1);
 
   return (
-    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       {/* Date */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <View>
@@ -486,7 +491,7 @@ const PendingView = ({ members }) => {
   };
 
   return (
-    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>⏳ Pending Approval</Text>
       <Text style={a.pageSub}>
         {pending.length > 0
@@ -966,7 +971,7 @@ const DelinquencyView = ({ members }) => {
   const activeLoans = members.filter(m => m.loanBalance > 0 && !m.overdue && m.status === 'Active');
 
   return (
-    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>⚠️ Delinquency Tracker</Text>
       <Text style={a.pageSub}>Members with overdue or outstanding loan balances.</Text>
 
@@ -1056,7 +1061,7 @@ const CollectionsView = ({ members }) => {
   const active = members.filter(m => m.status === 'Active');
 
   return (
-    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>💵 Collection Monitoring</Text>
       <Text style={a.pageSub}>Financial overview across all active members.</Text>
 
@@ -1123,7 +1128,7 @@ const LoansView = ({ loans }) => {
   if (loading) return <Spinner msg="Loading loan applications..." />;
 
   return (
-    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>💳 Loan Applications</Text>
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         {[['Pending', C.orange], ['Approved', C.green], ['Rejected', C.red]].map(([st, c]) => (
@@ -1221,7 +1226,7 @@ const ClaimsView = () => {
   if (loading) return <Spinner msg="Loading claims..." />;
 
   return (
-    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>🧾 Claims Management</Text>
       <View style={a.tileGrid}>
         {[['Pending', C.orange, '⏳'], ['Under Review', C.blue, '🔍'], ['Approved', C.green, '✅'], ['Rejected', C.red, '❌']].map(([st, c, ic]) => (
@@ -1289,7 +1294,7 @@ const NotifsView = ({ members }) => {
   const unread = notifs.filter(n => !n.read).length;
 
   return (
-    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>🔔 Notifications</Text>
       <Text style={a.pageSub}>{unread} unread notification{unread !== 1 ? 's' : ''}.</Text>
 
@@ -1345,7 +1350,7 @@ const AuditView = () => {
   };
   if (loading) return <Spinner msg="Loading audit log..." />;
   return (
-    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>📜 Audit Log</Text>
       <Text style={a.pageSub}>System activity trail for accountability.</Text>
       <GCard style={{ padding: 0, overflow: 'hidden' }}>
@@ -1443,7 +1448,7 @@ const ReportsView = ({ members, claims, loans }) => {
   );
 
   return (
-    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>📊 Reports & Analytics</Text>
 
       {/* Smart Insights */}
@@ -1602,7 +1607,7 @@ const DocumentsView = ({ members }) => {
     : incomplete;
 
   return (
-    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>📁 Document Monitoring</Text>
       <Text style={a.pageSub}>Track document completeness for all active members.</Text>
 
@@ -1704,7 +1709,7 @@ const AuditTrailView = () => {
   if (loading) return <Spinner msg="Loading audit trail..." />;
 
   return (
-    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>🧾 Audit Trail</Text>
       <Text style={a.pageSub}>Complete system activity log for full accountability.</Text>
 
@@ -1788,7 +1793,7 @@ const PerformanceView = ({ members, loans, claims }) => {
   };
 
   return (
-    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>🏢 Agent Performance</Text>
       <Text style={a.pageSub}>Rankings based on members referred and collections.</Text>
 
@@ -1884,7 +1889,7 @@ const SettingsView = () => {
   );
 
   return (
-    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 60 }]} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>⚙️ System Settings</Text>
       <Text style={a.pageSub}>Manage cooperative-wide configurations.</Text>
 
@@ -1942,6 +1947,436 @@ const SettingsView = () => {
 // ─── ADMIN DASHBOARD SHELL ────────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════
 
+// ─── ADMIN CHAT VIEWS ─────────────────────────────────────────────────────────
+
+const fmtChatTime = ts => {
+  if (!ts) return '';
+  const d = ts?.toDate?.() || new Date(ts);
+  return d.toLocaleString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true });
+};
+const mkChatInit = name =>
+  (name || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+// ── Single chat room (admin ↔ member) ────────────────────────────────────────
+const AdminChatRoom = ({ roomId, memberName, onBack }) => {
+  const [messages, setMessages] = useState([]);
+  const [text, setText]         = useState('');
+  const [sending, setSending]   = useState(false);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (!roomId) return;
+    const q = query(
+      collection(db, 'chatRooms', roomId, 'messages'),
+      orderBy('createdAt', 'asc'),
+      limit(100)
+    );
+    const unsub = onSnapshot(q, snap => {
+      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+    });
+    return unsub;
+  }, [roomId]);
+
+  const send = async () => {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    try {
+      await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
+        senderId: 'admin',
+        senderName: 'Admin',
+        text: text.trim(),
+        createdAt: serverTimestamp(),
+        readBy: ['admin'],
+      });
+      await updateDoc(doc(db, 'chatRooms', roomId), {
+        lastMessage: text.trim(),
+        lastAt: serverTimestamp(),
+        lastSender: 'Admin',
+      });
+      setText('');
+    } catch (e) { console.warn(e); }
+    finally { setSending(false); }
+  };
+
+  return (
+    <View style={{ flex: 1, flexDirection: 'column' }}>
+      {/* Header */}
+      <LinearGradient colors={['#1a2d4e', '#243554']}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }}>
+        <TouchableOpacity onPress={onBack}
+          style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: C.gold, fontSize: 16 }}>←</Text>
+        </TouchableOpacity>
+        <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(201,168,76,0.25)', justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.gold }}>{mkChatInit(memberName)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff' }}>{memberName}</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.55)' }}>Support Chat · Admin View</Text>
+        </View>
+        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: 'rgba(26,138,74,0.30)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#4cde8a' }}>● Live</Text>
+        </View>
+      </LinearGradient>
+
+      {/* Messages */}
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1, backgroundColor: 'rgba(152,186,213,0.12)' }}
+        contentContainerStyle={{ padding: 14, paddingBottom: 10 }}
+        showsVerticalScrollIndicator={true}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {messages.length === 0 && (
+          <View style={{ alignItems: 'center', paddingVertical: 48 }}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>🛡️</Text>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>
+              No messages yet.{'\n'}The member will see your reply instantly.
+            </Text>
+          </View>
+        )}
+        {messages.map((msg, i) => {
+          const isAdmin = msg.senderId === 'admin';
+          const prev = messages[i - 1];
+          const showName = !isAdmin && msg.senderId !== prev?.senderId;
+          return (
+            <View key={msg.id} style={[{ marginBottom: 8, maxWidth: '78%' },
+              isAdmin ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }]}>
+              {showName && (
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, marginBottom: 3, paddingLeft: 2 }}>
+                  {msg.senderName}
+                </Text>
+              )}
+              <View style={[{ borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9 },
+                isAdmin
+                  ? { backgroundColor: '#1a2d4e', borderBottomRightRadius: 4 }
+                  : { backgroundColor: '#fff', borderBottomLeftRadius: 4, shadowColor: '#0f1e35', shadowOpacity: 0.07, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } }
+              ]}>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: isAdmin ? '#fff' : C.navy, lineHeight: 19 }}>
+                  {msg.text}
+                </Text>
+              </View>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: C.textMuted, marginTop: 3, paddingHorizontal: 2, textAlign: isAdmin ? 'right' : 'left' }}>
+                {fmtChatTime(msg.createdAt)}
+              </Text>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* Input */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12, backgroundColor: 'rgba(255,255,255,0.85)', borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.10)' }}>
+          <TextInput
+            style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy, backgroundColor: 'rgba(240,246,252,0.90)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)', maxHeight: 90 }}
+            value={text} onChangeText={setText}
+            placeholder={`Reply to ${memberName}...`}
+            placeholderTextColor={C.textMuted}
+            multiline maxLength={500}
+          />
+          <TouchableOpacity onPress={send} disabled={!text.trim() || sending}
+            style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: text.trim() ? '#1a2d4e' : 'rgba(15,30,53,0.20)', justifyContent: 'center', alignItems: 'center' }}>
+            {sending
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={{ fontSize: 18 }}>➤</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
+  );
+};
+
+// ── Chat Inbox — list of all member support rooms ────────────────────────────
+const AdminChatInbox = ({ onSelectRoom }) => {
+  const [rooms, setRooms]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch]   = useState('');
+
+  useEffect(() => {
+    // Listen to all admin-type chat rooms
+    const q = query(
+      collection(db, 'chatRooms'),
+      where('type', '==', 'admin'),
+      orderBy('lastAt', 'desc')
+    );
+    const unsub = onSnapshot(q, snap => {
+      setRooms(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    }, () => setLoading(false));
+    return unsub;
+  }, []);
+
+  const filtered = rooms.filter(r =>
+    (r.memberName || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  // Unread count for a room (messages not readBy 'admin')
+  const [unreadMap, setUnreadMap] = useState({});
+  useEffect(() => {
+    const unsubs = rooms.map(room => {
+      const q = query(
+        collection(db, 'chatRooms', room.id, 'messages'),
+        orderBy('createdAt', 'desc'),
+        limit(20)
+      );
+      return onSnapshot(q, snap => {
+        const unread = snap.docs.filter(d => {
+          const rb = d.data().readBy || [];
+          return !rb.includes('admin') && d.data().senderId !== 'admin';
+        }).length;
+        setUnreadMap(prev => ({ ...prev, [room.id]: unread }));
+      }, () => {});
+    });
+    return () => unsubs.forEach(u => u());
+  }, [rooms]);
+
+  if (loading) return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator size="large" color={C.gold} />
+      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec, marginTop: 10 }}>Loading chats...</Text>
+    </View>
+  );
+
+  return (
+    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 48 }]} showsVerticalScrollIndicator={true}>
+      <Text style={a.pageTitle}>📥 Chat Inbox</Text>
+      <Text style={a.pageSub}>Real-time support messages from members. Tap to reply.</Text>
+
+      {/* Search */}
+      <View style={a.searchWrap}>
+        <Text style={{ color: C.textMuted, fontSize: 14, marginRight: 6 }}>🔍</Text>
+        <TextInput
+          style={a.searchInput}
+          value={search} onChangeText={setSearch}
+          placeholder="Search member name..."
+          placeholderTextColor={C.textMuted}
+          autoCapitalize="none"
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+            <Text style={{ color: C.textMuted, fontSize: 14 }}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Summary badges */}
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+        {[
+          { l: 'Total Chats',  v: rooms.length,                                              c: C.blue   },
+          { l: 'Unread',       v: Object.values(unreadMap).reduce((s, n) => s + n, 0),       c: C.red    },
+          { l: 'Active Today', v: rooms.filter(r => { const d = r.lastAt?.toDate?.() || new Date(r.lastAt || 0); return d.toDateString() === new Date().toDateString(); }).length, c: C.green },
+        ].map(s => (
+          <GCard key={s.l} style={{ flex: 1, alignItems: 'center', padding: 12, marginBottom: 0 }}>
+            <Text style={[a.tileVal, { color: s.c, fontSize: 20 }]}>{s.v}</Text>
+            <Text style={[a.tileLbl, { textAlign: 'center' }]}>{s.l}</Text>
+          </GCard>
+        ))}
+      </View>
+
+      {filtered.length === 0 && (
+        <GCard style={{ alignItems: 'center', padding: 40 }}>
+          <Text style={{ fontSize: 40, marginBottom: 12 }}>💬</Text>
+          <Text style={a.emptyTxt}>{search ? 'No chats match your search.' : 'No member chats yet.\nMembers can message you from the Member Portal.'}</Text>
+        </GCard>
+      )}
+
+      {filtered.map(room => {
+        const unread = unreadMap[room.id] || 0;
+        const hasUnread = unread > 0;
+        return (
+          <TouchableOpacity key={room.id} onPress={() => onSelectRoom(room)} activeOpacity={0.80}>
+            <GCard style={[{ padding: 14, marginBottom: 8 }, hasUnread && { borderLeftWidth: 3, borderLeftColor: C.gold, backgroundColor: 'rgba(201,168,76,0.08)' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                {/* Avatar */}
+                <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: hasUnread ? 'rgba(201,168,76,0.28)' : 'rgba(15,30,53,0.10)', borderWidth: 2, borderColor: hasUnread ? C.gold : 'rgba(15,30,53,0.15)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 16, color: hasUnread ? C.gold : C.textMuted }}>{mkChatInit(room.memberName)}</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy }} numberOfLines={1}>{room.memberName || 'Member'}</Text>
+                    {hasUnread && (
+                      <View style={{ backgroundColor: C.red, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#fff' }}>{unread} new</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: hasUnread ? C.navy : C.textSec, marginTop: 2 }} numberOfLines={1}>
+                    {room.lastMessage
+                      ? `${room.lastSender === 'Admin' ? 'You' : room.lastSender || 'Member'}: ${room.lastMessage}`
+                      : 'No messages yet'}
+                  </Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+                    {fmtTime(room.lastAt)}
+                  </Text>
+                </View>
+                <Text style={{ color: C.textMuted, fontSize: 18 }}>›</Text>
+              </View>
+            </GCard>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+};
+
+// ── Admin Chat Inbox Shell (inbox → room) ────────────────────────────────────
+const AdminChatInboxView = () => {
+  const [activeRoom, setActiveRoom] = useState(null);
+  return (
+    <View style={{ flex: 1 }}>
+      {activeRoom
+        ? <AdminChatRoom
+            roomId={activeRoom.id}
+            memberName={activeRoom.memberName}
+            onBack={() => setActiveRoom(null)}
+          />
+        : <AdminChatInbox onSelectRoom={setActiveRoom} />
+      }
+    </View>
+  );
+};
+
+// ── Admin Group Chat View ─────────────────────────────────────────────────────
+const AdminGroupChatView = () => {
+  const [messages, setMessages] = useState([]);
+  const [text, setText]         = useState('');
+  const [sending, setSending]   = useState(false);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    // Ensure group room exists
+    setDoc(doc(db, 'chatRooms', 'group_members'), {
+      type: 'group', name: 'Members Group Chat',
+      createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
+    }, { merge: true });
+
+    const q = query(
+      collection(db, 'chatRooms', 'group_members', 'messages'),
+      orderBy('createdAt', 'asc'),
+      limit(100)
+    );
+    const unsub = onSnapshot(q, snap => {
+      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+    });
+    return unsub;
+  }, []);
+
+  const send = async () => {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    try {
+      await addDoc(collection(db, 'chatRooms', 'group_members', 'messages'), {
+        senderId: 'admin',
+        senderName: 'Admin 🛡️',
+        text: text.trim(),
+        createdAt: serverTimestamp(),
+        readBy: ['admin'],
+      });
+      await updateDoc(doc(db, 'chatRooms', 'group_members'), {
+        lastMessage: text.trim(),
+        lastAt: serverTimestamp(),
+        lastSender: 'Admin',
+      });
+      setText('');
+    } catch (e) { console.warn(e); }
+    finally { setSending(false); }
+  };
+
+  return (
+    <View style={{ flex: 1, flexDirection: 'column' }}>
+      {/* Header */}
+      <LinearGradient colors={['#1a2d4e', '#243554']}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }}>
+        <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(201,168,76,0.25)', justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 22 }}>👥</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 15, color: '#fff' }}>Members Group Chat</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.55)' }}>Broadcast to all members · Admin view</Text>
+        </View>
+        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: 'rgba(26,138,74,0.30)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#4cde8a' }}>● Live</Text>
+        </View>
+      </LinearGradient>
+
+      {/* Info banner */}
+      <View style={{ backgroundColor: 'rgba(201,168,76,0.12)', borderLeftWidth: 3, borderLeftColor: C.gold, paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.08)' }}>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec }}>
+          💡 Messages you send here are visible to <Text style={{ fontFamily: 'GoogleSans_700Bold', color: C.navy }}>all approved members</Text> in their group chat.
+        </Text>
+      </View>
+
+      {/* Messages */}
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1, backgroundColor: 'rgba(152,186,213,0.12)' }}
+        contentContainerStyle={{ padding: 14, paddingBottom: 10 }}
+        showsVerticalScrollIndicator={true}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {messages.length === 0 && (
+          <View style={{ alignItems: 'center', paddingVertical: 48 }}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>👥</Text>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>
+              Group chat is empty.{'\n'}Send an announcement or greeting!
+            </Text>
+          </View>
+        )}
+        {messages.map((msg, i) => {
+          const isAdmin = msg.senderId === 'admin';
+          const prev = messages[i - 1];
+          const showName = msg.senderId !== prev?.senderId;
+          return (
+            <View key={msg.id} style={[{ marginBottom: 8, maxWidth: '78%' },
+              isAdmin ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }]}>
+              {showName && (
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: isAdmin ? C.gold : C.textMuted, marginBottom: 3, paddingHorizontal: 2, textAlign: isAdmin ? 'right' : 'left' }}>
+                  {isAdmin ? 'You (Admin)' : msg.senderName}
+                </Text>
+              )}
+              <View style={[{ borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9 },
+                isAdmin
+                  ? { backgroundColor: '#1a2d4e', borderBottomRightRadius: 4 }
+                  : { backgroundColor: '#fff', borderBottomLeftRadius: 4, shadowColor: '#0f1e35', shadowOpacity: 0.07, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } }
+              ]}>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: isAdmin ? '#fff' : C.navy, lineHeight: 19 }}>
+                  {msg.text}
+                </Text>
+              </View>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: C.textMuted, marginTop: 3, paddingHorizontal: 2, textAlign: isAdmin ? 'right' : 'left' }}>
+                {fmtChatTime(msg.createdAt)}
+              </Text>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* Input */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12, backgroundColor: 'rgba(255,255,255,0.85)', borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.10)' }}>
+          <TextInput
+            style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy, backgroundColor: 'rgba(240,246,252,0.90)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)', maxHeight: 90 }}
+            value={text} onChangeText={setText}
+            placeholder="Send a message to all members..."
+            placeholderTextColor={C.textMuted}
+            multiline maxLength={500}
+          />
+          <TouchableOpacity onPress={send} disabled={!text.trim() || sending}
+            style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: text.trim() ? '#1a2d4e' : 'rgba(15,30,53,0.20)', justifyContent: 'center', alignItems: 'center' }}>
+            {sending
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={{ fontSize: 18 }}>➤</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
+  );
+};
+
 const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
   const { height } = useWindowDimensions();
   const [activeNav, setActiveNav] = useState('overview');
@@ -1958,6 +2393,25 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
 
   const pendingCount = members.filter(m => m.status === 'Pending').length;
   const unreadNotifs = notifs.filter(n => !n.read).length + pendingCount;
+
+  // Real-time unread chat count across all admin chat rooms
+  const [chatUnread, setChatUnread] = useState(0);
+  useEffect(() => {
+    const q = query(collection(db, 'chatRooms'), where('type', '==', 'admin'));
+    const unsub = onSnapshot(q, async snap => {
+      let total = 0;
+      snap.docs.forEach(roomDoc => {
+        // We'll count via sub-collection via a separate listener set
+      });
+      // Simpler: track via lastSender not being admin
+      const unreadRooms = snap.docs.filter(d => {
+        const data = d.data();
+        return data.lastMessage && data.lastSender && data.lastSender !== 'Admin';
+      }).length;
+      setChatUnread(unreadRooms);
+    }, () => {});
+    return unsub;
+  }, []);
 
   const switchNav = key => {
     Animated.parallel([
@@ -2006,6 +2460,8 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
       case 'performance':   return <PerformanceView  members={members} loans={loans} claims={claims} />;
       case 'settings':      return <SettingsView />;
       case 'notifications': return <NotifsView       members={members} />;
+      case 'chat_inbox':    return <AdminChatInboxView />;
+      case 'chat_group':    return <AdminGroupChatView />;
       default:              return <OverviewView     members={members} claims={claims} loans={loans} />;
     }
   };
@@ -2034,6 +2490,13 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
               <View style={a.bellBadge}><Text style={a.bellBadgeTxt}>{unreadNotifs > 9 ? '9+' : unreadNotifs}</Text></View>
             )}
           </TouchableOpacity>
+          {/* Chat quick-access */}
+          <TouchableOpacity style={a.bellBtn} onPress={() => switchNav('chat_inbox')}>
+            <Text style={{ fontSize: 17 }}>💬</Text>
+            {chatUnread > 0 && (
+              <View style={a.bellBadge}><Text style={a.bellBadgeTxt}>{chatUnread > 9 ? '9+' : chatUnread}</Text></View>
+            )}
+          </TouchableOpacity>
           {/* Pending members quick badge */}
           {pendingCount > 0 && (
             <TouchableOpacity style={a.pendingBadge} onPress={() => switchNav('pending')}>
@@ -2044,11 +2507,6 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
             <View style={a.adminAvatar}><Text style={a.adminAvatarTxt}>A</Text></View>
             {isWide && <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)' }} numberOfLines={1}>{admin?.name || 'Admin'}</Text>}
           </View>
-          {isWide && (
-            <TouchableOpacity style={a.logoutBtn} onPress={onLogout}>
-              <Text style={a.logoutTxt}>Logout</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </View>
 
@@ -2142,21 +2600,21 @@ const a = StyleSheet.create({
   logoutTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold },
 
   // ── Sidebar ──
-  sidebar:       { width: 178, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)', flexDirection: 'column' },
-  sidebarBrand:  { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, paddingTop: 18 },
-  sidebarLogo:   { width: 30, height: 30, borderRadius: 7, backgroundColor: C.gold, justifyContent: 'center', alignItems: 'center' },
-  sidebarLogoTxt:{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35' },
-  sidebarName:   { fontFamily: 'NotoSerif_700Bold', fontSize: 12, color: '#fff' },
-  sidebarRole:   { fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: C.gold },
-  sideHead:      { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 10, minHeight: 40 },
+  sidebar:       { width: 160, maxWidth: 160, flexShrink: 0, flexGrow: 0, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)', flexDirection: 'column' },
+  sidebarBrand:  { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 10, paddingTop: 14 },
+  sidebarLogo:   { width: 26, height: 26, borderRadius: 6, backgroundColor: C.gold, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  sidebarLogoTxt:{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#0f1e35' },
+  sidebarName:   { fontFamily: 'NotoSerif_700Bold', fontSize: 11, color: '#fff' },
+  sidebarRole:   { fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: C.gold },
+  sideHead:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 8, borderRadius: 8, minHeight: 36 },
   sideActive:    { backgroundColor: C.gold },
-  sideIcon:      { fontSize: 13, width: 18, textAlign: 'center', color: 'rgba(255,255,255,0.50)' },
-  sideLabel:     { fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: 'rgba(255,255,255,0.65)', flex: 1 },
-  sideBadge:     { backgroundColor: C.red, borderRadius: 9, minWidth: 17, height: 17, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 },
+  sideIcon:      { fontSize: 12, width: 16, textAlign: 'center', color: 'rgba(255,255,255,0.50)' },
+  sideLabel:     { fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: 'rgba(255,255,255,0.65)', flex: 1 },
+  sideBadge:     { backgroundColor: C.red, borderRadius: 9, minWidth: 16, height: 16, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 },
   sideBadgeTxt:  { fontFamily: 'GoogleSans_700Bold', fontSize: 8, color: '#fff' },
-  sideChild:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16, marginHorizontal: 4, borderRadius: 8, marginBottom: 1, minHeight: 36 },
+  sideChild:     { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, marginHorizontal: 3, borderRadius: 7, marginBottom: 1, minHeight: 32 },
   sideChildActive:{ backgroundColor: 'rgba(201,168,76,0.20)' },
-  sideChildTxt:  { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(210,225,255,0.55)', flex: 1 },
+  sideChildTxt:  { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(210,225,255,0.55)', flex: 1 },
 
   // ── Page ──
   pageOuter:  { padding: 16, paddingBottom: 48 },
