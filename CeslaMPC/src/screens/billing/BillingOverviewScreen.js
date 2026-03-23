@@ -1,10 +1,10 @@
 // src/screens/billing/BillingOverviewScreen.js
 // CESLA MPC — Billing Overview — matches HTML .overview-table / .ov-grand
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Modal, FlatList, Platform,
+  Modal, Platform, ScrollView as YearScrollView,
 } from 'react-native';
 import { useBilling, CATEGORIES } from '../../context/BillingContext';
 
@@ -17,11 +17,17 @@ const C = {
   grandGreen: '#8eb15c',
 };
 
-const YEARS = Array.from({ length: 30 }, (_, i) => 2025 + i);
+const CUR_YEAR = new Date().getFullYear();
 
 export default function BillingOverviewScreen({ year, onYearChange }) {
   const { getYearTotal, fmt } = useBilling();
   const [showYearPicker, setShowYearPicker] = useState(false);
+  const scrollRef = useRef(null);
+  const ITEM_H = 48;
+  // years from CUR+50 down to CUR-50 — descending so newest at top
+  const YEAR_FROM = 2000;
+  const YEAR_TO   = 5000;
+  const yearList  = Array.from({ length: YEAR_TO - YEAR_FROM + 1 }, (_, i) => YEAR_FROM + i);
 
   const totals = {};
   CATEGORIES.forEach(c => { totals[c.key] = getYearTotal(c.key, year); });
@@ -74,12 +80,20 @@ export default function BillingOverviewScreen({ year, onYearChange }) {
         >
           <TouchableOpacity activeOpacity={1} style={ov.pickerCard}>
             <Text style={ov.pickerTitle}>Select Year</Text>
-            <FlatList
-              data={YEARS}
-              keyExtractor={y => String(y)}
-              style={{ maxHeight: 300 }}
-              renderItem={({ item: y }) => (
+            <YearScrollView
+              ref={scrollRef}
+              style={{ maxHeight: 320 }}
+              showsVerticalScrollIndicator={true}
+              onLayout={() => {
+                const idx = yearList.indexOf(year);
+                if (idx >= 0 && scrollRef.current) {
+                  scrollRef.current.scrollTo({ y: Math.max(0, (idx - 2) * ITEM_H), animated: false });
+                }
+              }}
+            >
+              {yearList.map(y => (
                 <TouchableOpacity
+                  key={y}
                   style={[ov.pickerOpt, y === year && ov.pickerOptActive]}
                   onPress={() => { onYearChange(y); setShowYearPicker(false); }}
                 >
@@ -87,8 +101,8 @@ export default function BillingOverviewScreen({ year, onYearChange }) {
                     {y}
                   </Text>
                 </TouchableOpacity>
-              )}
-            />
+              ))}
+            </YearScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>

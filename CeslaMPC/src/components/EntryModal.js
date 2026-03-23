@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useBilling, DEPARTMENTS, todayVal, fmt } from '../context/BillingContext';
+import { useBilling, DEPARTMENTS, DEPARTMENTS_EXTENDED, todayVal, fmt } from '../context/BillingContext';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const NAVY    = '#304674';
@@ -23,7 +23,7 @@ const MONTHS_FULL  = ['January','February','March','April','May','June',
                       'July','August','September','October','November','December'];
 const DAY_LABELS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 const CUR_YEAR     = new Date().getFullYear();
-const YEAR_LIST    = Array.from({ length: CUR_YEAR - 2000 + 51 }, (_, i) => 2000 + i);
+// YEAR_LIST now dynamic — see useYearList hook inside component
 
 const CATEGORY_LABELS = {
   freelunch: 'Free Lunch', riceallowances: 'Rice Allowances',
@@ -88,13 +88,17 @@ function DropdownField({ value, onChange, options }) {
             style={{ maxHeight: 260 }}
             showsVerticalScrollIndicator
             renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[s.dropItem, item === value && s.dropItemActive]}
-                onPress={() => { onChange(item); setOpen(false); }}
-              >
-                <Text style={[s.dropItemTxt, item === value && s.dropItemTxtActive]}>{item}</Text>
-                {item === value && <MaterialIcons name="check" size={14} color={NAVY} />}
-              </TouchableOpacity>
+              item === 'Others'
+                ? <View style={s.dropSectionLabel}>
+                    <Text style={s.dropSectionLabelTxt}>Others</Text>
+                  </View>
+                : <TouchableOpacity
+                    style={[s.dropItem, item === value && s.dropItemActive]}
+                    onPress={() => { onChange(item); setOpen(false); }}
+                  >
+                    <Text style={[s.dropItemTxt, item === value && s.dropItemTxtActive]}>{item}</Text>
+                    {item === value && <MaterialIcons name="check" size={14} color={NAVY} />}
+                  </TouchableOpacity>
             )}
           />
         </View>
@@ -122,6 +126,17 @@ function DateField({ value, onChange }) {
   const [vy,    setVy]    = useState(sel.y);   // view year
   const [vm,    setVm]    = useState(sel.m);   // view month (0-based)
   const [mode,  setMode]  = useState('day');   // 'day' | 'month' | 'year'
+
+  // Windowed year list — show 40 years around vy, load more on scroll
+  const [yearCenter, setYearCenter] = React.useState(sel.y);
+  const YEAR_WIN = 40;
+  const yearList = React.useMemo(() => {
+    const from = Math.max(2000, yearCenter - YEAR_WIN);
+    const to   = Math.min(5000, yearCenter + YEAR_WIN);
+    const arr = [];
+    for (let y = from; y <= to; y++) arr.push(y);
+    return arr;
+  }, [yearCenter]);
 
   const openPicker = () => {
     const p = parse(value);
@@ -207,19 +222,26 @@ function DateField({ value, onChange }) {
                   {/* Year list on left — scrollable */}
                   <ScrollView
                     style={cal.yearCol}
-                    showsVerticalScrollIndicator={false}
+                    showsVerticalScrollIndicator={true}
                     ref={r => {
                       if (r) {
-                        const idx = YEAR_LIST.indexOf(vy);
-                        if (idx > 1) setTimeout(() => r.scrollTo({ y: (idx - 1) * 44, animated: false }), 0);
+                        const idx = yearList.indexOf(vy);
+                        if (idx >= 0) setTimeout(() => r.scrollTo({ y: Math.max(0, (idx - 2) * 44), animated: false }), 50);
                       }
                     }}
+                    onScroll={({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
+                      if (contentOffset.y < 60 && yearList[0] > 2000)
+                        setYearCenter(c => Math.max(2000 + YEAR_WIN, c - 20));
+                      if (contentOffset.y + layoutMeasurement.height > contentSize.height - 60 && yearList[yearList.length-1] < 5000)
+                        setYearCenter(c => Math.min(5000 - YEAR_WIN, c + 20));
+                    }}
+                    scrollEventThrottle={150}
                   >
-                    {YEAR_LIST.map(yr => (
+                    {yearList.map(yr => (
                       <TouchableOpacity
                         key={yr}
                         style={[cal.yearItem, yr === vy && cal.yearItemActive]}
-                        onPress={() => setVy(yr)}
+                        onPress={() => { setVy(yr); setYearCenter(yr); }}
                       >
                         <Text style={[cal.yearItemTxt, yr === vy && cal.yearItemTxtActive]}>{yr}</Text>
                       </TouchableOpacity>
@@ -371,7 +393,7 @@ export default function EntryModal({ visible, category, editEntry, presetDept, p
 
   const handleDelete = () => {
     if (!editEntry?.id) {
-      Alert.alert('Error', 'No entry selected for deletion.');
+      Alert.alert('Error', 'Entry ID not found. Please close and reopen the entry.');
       return;
     }
     Alert.alert(
@@ -388,10 +410,7 @@ export default function EntryModal({ visible, category, editEntry, presetDept, p
               await deleteEntry(editEntry.id);
               onClose();
             } catch (e) {
-              const msg = e?.code === 'permission-denied'
-                ? 'Permission denied. Please check Firestore Security Rules — allow delete on billingEntries collection.'
-                : (e?.message || 'Delete failed. Please try again.');
-              Alert.alert('Delete Failed', msg);
+              Alert.alert('Delete Failed', e.message || 'Could not delete. Check Firestore Security Rules.');
             } finally {
               setSaving(false);
             }
@@ -419,7 +438,15 @@ export default function EntryModal({ visible, category, editEntry, presetDept, p
 
             {/* Department dropdown */}
             <FieldRow label="AREA / DEPARTMENT">
-              <DropdownField value={form.dept} onChange={v => update('dept', v)} options={DEPARTMENTS} />
+              <DropdownField
+                value={form.dept}
+                onChange={v => update('dept', v)}
+                options={
+                  category === 'freelunch' || category === 'riceallowances' || category === 'ticket'
+                    ? DEPARTMENTS_EXTENDED
+                    : DEPARTMENTS
+                }
+              />
             </FieldRow>
 
             {/* Date calendar picker */}
@@ -532,6 +559,8 @@ const s = StyleSheet.create({
   dropItemActive:   { backgroundColor:'rgba(48,70,116,0.07)' },
   dropItemTxt:      { fontFamily:'GoogleSans_400Regular', fontSize:14, color:'#011f4b' },
   dropItemTxtActive:{ fontFamily:'GoogleSans_700Bold', color:NAVY },
+  dropSectionLabel: { paddingHorizontal:16, paddingVertical:7, backgroundColor:'#f0f2f8', borderBottomWidth:1, borderBottomColor:'#e2e6f0' },
+  dropSectionLabelTxt: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#8a9bbf', letterSpacing:1, textTransform:'uppercase' },
   // Date button
   dateBtn:    { flexDirection:'row', alignItems:'center', gap:8, backgroundColor:GRAY_BG, borderRadius:8, paddingHorizontal:12, paddingVertical:11, borderWidth:1.5, borderColor:GRAY_MD },
   dateBtnTxt: { fontFamily:'GoogleSans_400Regular', fontSize:14, color:'#011f4b', flex:1 },

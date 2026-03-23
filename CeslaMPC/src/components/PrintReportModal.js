@@ -1,7 +1,7 @@
 // src/components/PrintReportModal.js
 // CESLA MPC — Print Annual Report Modal
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Alert, ActivityIndicator, FlatList, Platform,
@@ -31,8 +31,6 @@ const MONTH_OPTIONS = [
 ];
 
 const CURRENT_YEAR = new Date().getFullYear();
-const YEARS = Array.from({ length: 20 }, (_, i) => CURRENT_YEAR - 5 + i);
-const YEAR_OPTIONS = YEARS.map(y => ({ label: String(y), value: String(y) }));
 
 const CAT_DEFS = [
   { key: 'freelunch',      label: 'FREE LUNCH'      },
@@ -184,6 +182,7 @@ export default function PrintReportModal({ visible, onClose }) {
   const { settings, entries } = useBilling();
 
   const [printYear, setPrintYear] = useState(String(CURRENT_YEAR));
+  const [showYearList, setShowYearList] = useState(false);
   const [printing,  setPrinting]  = useState(false);
   const [catMonths, setCatMonths] = useState({
     freelunch: 'skip', riceallowances: 'skip',
@@ -193,6 +192,7 @@ export default function PrintReportModal({ visible, onClose }) {
   useEffect(() => {
     if (visible) {
       setPrintYear(String(CURRENT_YEAR));
+      setShowYearList(false);
       setCatMonths({
         freelunch: 'skip', riceallowances: 'skip',
         waterbilling: 'skip', milkbeans: 'skip', ticket: 'skip',
@@ -308,7 +308,7 @@ export default function PrintReportModal({ visible, onClose }) {
       + 'table{width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:8px}'
       + 'th{background:#dce3f0;-webkit-print-color-adjust:exact;print-color-adjust:exact;border:1px solid #666;padding:6px 9px;text-align:left;font-weight:bold;color:#1a2a4a}'
       + 'td{border:1px solid #888;padding:6px 9px}'
-      + 'tr.sub td{background:#dce3f0;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-weight:bold;border-top:2px solid #1a2a4a;color:#1a2a4a}'
+      + 'tr.sub td{background:#dce3f0;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-weight:bold;border:1px solid #aab4c8;border-top:2px solid #1a2a4a;color:#1a2a4a}'
       + '.cat-total{text-align:right;font-weight:bold;font-size:11pt;padding:6px 0;color:#1a2a4a;border-top:2px solid #1a2a4a;margin-top:4px}'
       + '.sum-tbl th{background:#dce3f0;-webkit-print-color-adjust:exact;print-color-adjust:exact;color:#1a2a4a;padding:9px 14px;font-size:11pt;font-weight:bold;border:1px solid #666}'
       + '.sum-tbl td{border:1px solid #888;padding:8px 14px;font-size:11pt}'
@@ -622,11 +622,38 @@ export default function PrintReportModal({ visible, onClose }) {
           >
             {/* Year */}
             <Text style={s.label}>SELECT YEAR TO PRINT</Text>
-            <DropdownField
-              value={printYear}
-              onChange={setPrintYear}
-              options={YEAR_OPTIONS}
-            />
+            <TouchableOpacity
+              style={s.yearDropBtn}
+              onPress={() => setShowYearList(v => !v)}
+              activeOpacity={0.8}
+            >
+              <Text style={s.yearDropVal}>{printYear}</Text>
+              <MaterialIcons name={showYearList ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={C.textMid} />
+            </TouchableOpacity>
+            {showYearList && (
+              <View style={s.yearPickerWrap}>
+                <ScrollView
+                  style={s.yearScroll}
+                  showsVerticalScrollIndicator={true}
+                  ref={r => {
+                    if (r) {
+                      const idx = parseInt(printYear) - 2000;
+                      if (idx >= 0) setTimeout(() => r.scrollTo({ y: Math.max(0, (idx - 2) * 44), animated: false }), 0);
+                    }
+                  }}
+                >
+                  {Array.from({ length: 3001 }, (_, i) => 2000 + i).map(y => (
+                    <TouchableOpacity
+                      key={y}
+                      style={[s.yearOpt, parseInt(printYear) === y && s.yearOptActive]}
+                      onPress={() => { setPrintYear(String(y)); setShowYearList(false); }}
+                    >
+                      <Text style={[s.yearOptTxt, parseInt(printYear) === y && s.yearOptTxtActive]}>{y}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
             {/* Per-category months */}
             <View style={s.sectionHead}>
@@ -747,6 +774,24 @@ const s = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 20,
   },
+  yearDropBtn: {
+    flexDirection:'row', alignItems:'center', justifyContent:'space-between',
+    borderWidth:1.5, borderColor:C.grayMid, borderRadius:10,
+    paddingVertical:11, paddingHorizontal:14, backgroundColor:C.white,
+  },
+  yearDropVal: { fontFamily:'GoogleSans_700Bold', fontSize:15, color:C.navyDark },
+  yearPickerWrap: {
+    borderWidth:1.5, borderColor:C.grayMid, borderRadius:10,
+    overflow:'hidden', backgroundColor:C.white,
+  },
+  yearScroll: { maxHeight: 180 },
+  yearOpt: {
+    paddingVertical:10, paddingHorizontal:16,
+    borderBottomWidth:1, borderBottomColor:'#f0f2f8',
+  },
+  yearOptActive: { backgroundColor:'rgba(48,70,116,0.08)' },
+  yearOptTxt: { fontFamily:'GoogleSans_400Regular', fontSize:14, color:C.textDark },
+  yearOptTxtActive: { fontFamily:'GoogleSans_700Bold', color:C.navyDark },
   label: {
     fontFamily: 'GoogleSans_700Bold',
     fontSize: 10,
