@@ -91,7 +91,7 @@ const RoleCard = ({ role, onPress, delay, cardWidth, isWide }) => {
     setArrowPressed(false);
   };
 
-  const ICON_SIZE = isWide ? 90 : 80;
+  const ICON_SIZE = isWide ? 90 : 60;
   const RING_SIZE = ICON_SIZE + 12;
 
   const inner = (
@@ -116,7 +116,7 @@ const RoleCard = ({ role, onPress, delay, cardWidth, isWide }) => {
         width: ICON_SIZE, height: ICON_SIZE, borderRadius: ICON_SIZE / 2,
       }]}>
         <Animated.Text style={{
-          fontSize: isWide ? 38 : 32,
+          fontSize: isWide ? 38 : 26,
           transform: [{ scale: iconScale }],
         }}>
           {role.icon}
@@ -217,12 +217,12 @@ export default function CanteenScreen({ navigation }) {
   });
 
   // CSS: max-width 860px, gap 24px, padding 40px
-  const PAD = isWide ? 40 : isSmall ? 16 : 20;
-  const GAP = isWide ? 24 : 16;
+  const PAD = isWide ? 40 : isSmall ? 12 : 16;
+  const GAP = isWide ? 24 : 12;
   const MAX_GRID = 860;
   const cardWidth = isWide
     ? (Math.min(width, MAX_GRID + PAD * 2) - PAD * 2 - GAP) / 2
-    : Math.min(width - PAD * 2, 300); // mobile: max-width 300px per CSS
+    : (width - PAD * 2 - GAP) / 2;
 
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
@@ -335,8 +335,8 @@ export default function CanteenScreen({ navigation }) {
 
           {/* cards-grid */}
           <View style={[styles.grid, {
-            flexDirection: isWide ? 'row' : 'column',
-            alignItems: isWide ? 'stretch' : 'center',
+            flexDirection: 'row',
+            alignItems: 'stretch',
             gap: GAP,
           }]}>
             {ROLES.map((role, i) => (
@@ -439,9 +439,9 @@ const styles = StyleSheet.create({
   main: {
     flex: 1,
     alignItems: 'center',
-    paddingTop: 48,
-    paddingBottom: 36,
-    gap: 44,
+    paddingTop: 32,
+    paddingBottom: 24,
+    gap: 28,
   },
 
   // ── SECTION LABEL
@@ -477,10 +477,10 @@ const styles = StyleSheet.create({
   // ── CARD: rgba(178,203,222,0.45), border 1.5px rgba(255,255,255,0.55)
   card: {
     borderRadius: 22,
-    paddingTop: 44,
-    paddingBottom: 36,
+    paddingTop: 28,
+    paddingBottom: 22,
     alignItems: 'center',
-    gap: 18,
+    gap: 10,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.55)',
     overflow: 'hidden',

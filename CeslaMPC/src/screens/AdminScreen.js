@@ -350,13 +350,13 @@ const SystemCard = ({ sys, onPress, delay, cardWidth, isWide }) => {
     setArrowPressed(false);
   };
 
-  const ICON_SIZE = isWide ? 72 : 78;
-  const RING_SIZE = ICON_SIZE + 14;
+  const ICON_SIZE = isWide ? 72 : 48;
+  const RING_SIZE = ICON_SIZE + 12;
 
   const inner = (
     <>
       <View style={[styles.iconCircle, { width: ICON_SIZE, height: ICON_SIZE, borderRadius: ICON_SIZE / 2 }]}>
-        <Animated.Text style={{ fontSize: 30, transform: [{ scale: iconScale }] }}>
+        <Animated.Text style={{ fontSize: isWide ? 30 : 20, transform: [{ scale: iconScale }] }}>
           {sys.icon}
         </Animated.Text>
         <Animated.View style={{
@@ -374,8 +374,8 @@ const SystemCard = ({ sys, onPress, delay, cardWidth, isWide }) => {
       </View>
 
       <View style={styles.textBlock}>
-        <Text style={[styles.cardTitle, { fontSize: isWide ? 13 : 14 }]}>{sys.title}</Text>
-        <Text style={[styles.cardDesc, { fontSize: isWide ? 11 : 12 }]}>{sys.description}</Text>
+        <Text style={[styles.cardTitle, { fontSize: isWide ? 13 : 11, lineHeight: isWide ? 20 : 16 }]}>{sys.title}</Text>
+        {isWide && <Text style={[styles.cardDesc, { fontSize: 11 }]}>{sys.description}</Text>}
       </View>
 
       <Animated.View style={[
@@ -394,24 +394,24 @@ const SystemCard = ({ sys, onPress, delay, cardWidth, isWide }) => {
   );
 
   return (
-    <Animated.View style={{ width: cardWidth, opacity: fadeY, transform: [{ translateY: transY }, { scale: cardScale }] }}>
+    <Animated.View style={{ width: cardWidth, alignSelf: 'stretch', opacity: fadeY, transform: [{ translateY: transY }, { scale: cardScale }] }}>
       <TouchableOpacity
         activeOpacity={0.88}
         onPress={() => onPress(sys)}
         onPressIn={pressIn}
         onPressOut={pressOut}
-        style={{ borderRadius: 20 }}
+        style={{ borderRadius: 16, flex: 1 }}
       >
         {Platform.OS === 'web' ? (
           <LinearGradient
             colors={['rgba(255,255,255,0.20)', 'rgba(255,255,255,0.08)']}
             start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
-            style={[styles.card, { paddingHorizontal: isWide ? 14 : 20 }]}
+            style={[styles.card, { paddingHorizontal: isWide ? 14 : 14, flex: 1 }]}
           >
             {inner}
           </LinearGradient>
         ) : (
-          <View style={[styles.card, styles.cardMobile, { paddingHorizontal: 20 }]}>
+          <View style={[styles.card, styles.cardMobile, { paddingHorizontal: 14, flex: 1 }]}>
             {inner}
           </View>
         )}
@@ -440,11 +440,11 @@ export default function AdminScreen({ navigation, route }) {
   const [selectedSystem, setSelectedSystem] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const PAD = isWide ? 32 : 20;
-  const GAP = 16;
+  const PAD = isWide ? 32 : 14;
+  const GAP = isWide ? 16 : 8;
   const cardWidth = isWide
     ? (Math.min(width, 1280) - PAD * 2 - GAP * 3) / 4
-    : Math.min(width - PAD * 2, 440);
+    : (width - PAD * 2 - GAP) / 2;
 
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
@@ -587,10 +587,11 @@ export default function AdminScreen({ navigation, route }) {
         {/* 4 cards — one row on web */}
         <View style={[styles.grid, {
           paddingHorizontal: PAD,
-          flexDirection: isWide ? 'row' : 'column',
-          alignItems: isWide ? 'stretch' : 'center',
+          flexDirection: 'row',
+          flexWrap: isWide ? 'nowrap' : 'wrap',
+          alignItems: 'stretch',
+          justifyContent: 'center',
           gap: GAP,
-          flexWrap: 'nowrap',
         }]}>
           {SYSTEMS.map((sys, i) => (
             <SystemCard
@@ -649,15 +650,15 @@ const styles = StyleSheet.create({
   adminChipAvatarTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#0d1b3e' },
   adminChipName: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, maxWidth: 70 },
 
-  sectionLabel: { alignItems: 'center', marginTop: 32, marginBottom: 22, paddingHorizontal: 20 },
+  sectionLabel: { alignItems: 'center', marginTop: 14, marginBottom: 10, paddingHorizontal: 20 },
   sectionTitle: { fontFamily: 'GoogleSans_700Bold', letterSpacing: 5, textTransform: 'uppercase', color: '#011f4b', marginBottom: 8 },
   sectionSub: { fontFamily: 'GoogleSans_400Regular', color: 'rgba(255,255,255,0.88)', letterSpacing: 0.5, textAlign: 'center' },
 
   grid: { alignSelf: 'center', width: '100%', maxWidth: 1280 },
 
   card: {
-    borderRadius: 20, paddingTop: 36, paddingBottom: 28,
-    alignItems: 'center', gap: 14,
+    borderRadius: 16, paddingTop: 18, paddingBottom: 14,
+    alignItems: 'center', gap: 6,
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)',
     overflow: 'hidden',
     shadowColor: '#001f4b', shadowOpacity: 0.12, shadowRadius: 20,
@@ -673,11 +674,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.60)',
     justifyContent: 'center', alignItems: 'center', position: 'relative',
   },
-  textBlock: { alignItems: 'center', gap: 6, paddingHorizontal: 6 },
+  textBlock: { alignItems: 'center', gap: 4, paddingHorizontal: 4, flex: 1, justifyContent: 'flex-start' },
   cardTitle: { fontFamily: 'GoogleSans_700Bold', color: '#011f4b', letterSpacing: 0.4, lineHeight: 20, textAlign: 'center' },
   cardDesc: { fontFamily: 'GoogleSans_400Regular', color: 'rgba(3,57,108,0.70)', lineHeight: 16, textAlign: 'center' },
-  arrowBtn: { marginTop: 4, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(1,31,75,0.20)', justifyContent: 'center', alignItems: 'center' },
-  arrowText: { color: 'rgba(1,31,75,0.6)', fontSize: 15, fontWeight: '600' },
+  arrowBtn: { marginTop: 2, width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(1,31,75,0.20)', justifyContent: 'center', alignItems: 'center' },
+  arrowText: { color: 'rgba(1,31,75,0.6)', fontSize: 13, fontWeight: '600' },
   accentLine: { position: 'absolute', bottom: 0, width: '60%', height: 2, borderRadius: 2 },
 
   footer: { alignItems: 'center', marginTop: 36, paddingHorizontal: 20, paddingBottom: 20, gap: 6 },

@@ -336,14 +336,6 @@ const Sidebar = ({ active, onNav, onClose, pendingCount, notifsCount, onLogout, 
     </ScrollView>
     {/* Bottom actions: Back + Logout */}
     <View style={{ borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 10, gap: 6 }}>
-      {canGoBack && (
-        <TouchableOpacity onPress={onBack}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.10)' }}
-          activeOpacity={0.8}>
-          <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.70)' }}>←</Text>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: 'rgba(255,255,255,0.70)' }}>Back</Text>
-        </TouchableOpacity>
-      )}
       {onLogout && (
         <TouchableOpacity onPress={onLogout}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)' }}
@@ -2052,9 +2044,11 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
             <View style={a.adminAvatar}><Text style={a.adminAvatarTxt}>A</Text></View>
             {isWide && <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)' }} numberOfLines={1}>{admin?.name || 'Admin'}</Text>}
           </View>
-          <TouchableOpacity style={a.logoutBtn} onPress={onLogout}>
-            <Text style={a.logoutTxt}>{isSmall ? '↩' : 'Logout'}</Text>
-          </TouchableOpacity>
+          {isWide && (
+            <TouchableOpacity style={a.logoutBtn} onPress={onLogout}>
+              <Text style={a.logoutTxt}>Logout</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 

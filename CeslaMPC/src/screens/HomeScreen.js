@@ -171,7 +171,7 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
     setArrowPressed(false);
   };
 
-  const ICON_SIZE = isWide ? 88 : 78;
+  const ICON_SIZE = isWide ? 88 : 56;
   const RING_SIZE = ICON_SIZE + 14;
 
   // Shared inner content for both platforms
@@ -188,7 +188,7 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
         height: ICON_SIZE,
         borderRadius: ICON_SIZE / 2,
       }]}>
-        <Animated.Text style={{ fontSize: isWide ? 36 : 30, transform: [{ scale: iconScale }] }}>
+        <Animated.Text style={{ fontSize: isWide ? 36 : 24, transform: [{ scale: iconScale }] }}>
           {mod.icon}
         </Animated.Text>
         <Animated.View style={{
@@ -207,8 +207,8 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
       </View>
 
       <View style={styles.textBlock}>
-        <Text style={[styles.cardTitle, { fontSize: isWide ? 15 : 14 }]}>{mod.title}</Text>
-        <Text style={[styles.cardDesc, { fontSize: 12 }]}>{mod.description}</Text>
+        <Text style={[styles.cardTitle, { fontSize: isWide ? 15 : 13 }]}>{mod.title}</Text>
+        <Text style={[styles.cardDesc, { fontSize: isWide ? 12 : 11 }]}>{mod.description}</Text>
       </View>
 
       <Animated.View style={[
@@ -229,6 +229,7 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
   return (
     <Animated.View style={{
       width: cardWidth,
+      alignSelf: 'stretch',
       opacity: fadeY,
       transform: [{ translateY: transY }, { scale: cardScale }],
     }}>
@@ -237,7 +238,7 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
         onPress={() => onPress(mod.screen)}
         onPressIn={pressIn}
         onPressOut={pressOut}
-        style={{ borderRadius: 20 }}
+        style={{ borderRadius: 20, flex: 1 }}
       >
         {/* 
           Web   → LinearGradient (glass effect)
@@ -248,12 +249,12 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
             colors={['rgba(255,255,255,0.20)', 'rgba(255,255,255,0.08)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
-            style={[styles.card, { paddingHorizontal: isWide ? 22 : 20 }]}
+            style={[styles.card, { paddingHorizontal: isWide ? 22 : 20, flex: 1 }]}
           >
             {inner}
           </LinearGradient>
         ) : (
-          <View style={[styles.card, styles.cardMobile, { paddingHorizontal: 20 }]}>
+          <View style={[styles.card, styles.cardMobile, { paddingHorizontal: 20, flex: 1 }]}>
             {inner}
           </View>
         )}
@@ -276,11 +277,11 @@ export default function HomeScreen({ navigation }) {
   const isWide  = width >= 768;
   const isSmall = width < 400;
 
-  const PAD = isWide ? 40 : 20;
-  const GAP = 20;
+  const PAD = isWide ? 40 : 12;
+  const GAP = isWide ? 20 : 10;
   const cardWidth = isWide
     ? (Math.min(width, 1020) - PAD * 2 - GAP * 2) / 3
-    : Math.min(width - PAD * 2, 440);
+    : (width - PAD * 2 - GAP * 2) / 3;
 
   const logoSize  = isSmall ? 48 : isWide ? 86 : 64;
   const titleSize = isSmall ? 13 : isWide ? 26 : 18;
@@ -424,8 +425,10 @@ export default function HomeScreen({ navigation }) {
         {/* ── CARDS ── */}
         <View style={[styles.grid, {
           paddingHorizontal: PAD,
-          flexDirection: isWide ? 'row' : 'column',
-          alignItems: isWide ? 'stretch' : 'center',
+          flexDirection: isWide ? 'row' : 'row',
+          flexWrap: isWide ? 'nowrap' : 'wrap',
+          alignItems: 'stretch',
+          justifyContent: isWide ? 'center' : 'center',
           gap: GAP,
         }]}>
           {MODULES.map((mod, i) => (
@@ -1191,7 +1194,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  sectionLabel: { alignItems: 'center', marginTop: 36, marginBottom: 24, paddingHorizontal: 20 },
+  sectionLabel: { alignItems: 'center', marginTop: 24, marginBottom: 16, paddingHorizontal: 20 },
   sectionTitle: { fontFamily: 'GoogleSans_700Bold', fontWeight: '700', letterSpacing: 6, textTransform: 'uppercase', color: '#011f4b', marginBottom: 8 },
   sectionSub: { fontFamily: 'GoogleSans_400Regular', color: 'rgba(255,255,255,0.88)', letterSpacing: 0.5, textAlign: 'center' },
 
@@ -1200,10 +1203,10 @@ const styles = StyleSheet.create({
   // Base card style (shared)
   card: {
     borderRadius: 20,
-    paddingTop: 40,
-    paddingBottom: 30,
+    paddingTop: 28,
+    paddingBottom: 22,
     alignItems: 'center',
-    gap: 16,
+    gap: 10,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.55)',
     overflow: 'hidden',
@@ -1233,7 +1236,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
-  textBlock: { alignItems: 'center', gap: 6 },
+  textBlock: { alignItems: 'center', gap: 6, flex: 1, justifyContent: 'flex-start' },
   cardTitle: { fontFamily: 'GoogleSans_700Bold', fontWeight: '700', color: '#011f4b', letterSpacing: 0.4, lineHeight: 22, textAlign: 'center' },
   cardDesc:  { fontFamily: 'GoogleSans_400Regular', color: 'rgba(3,57,108,0.70)', lineHeight: 17, textAlign: 'center' },
 
