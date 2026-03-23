@@ -380,14 +380,17 @@ export default function EntryModal({ visible, category, editEntry, presetDept, p
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete', style: 'destructive',
+          text: 'Delete',
+          style: 'destructive',
           onPress: async () => {
             setSaving(true);
             try {
               await deleteEntry(editEntry.id);
               onClose();
             } catch (e) {
-              const msg = e?.message || e?.code || JSON.stringify(e) || 'Unknown error occurred.';
+              const msg = e?.code === 'permission-denied'
+                ? 'Permission denied. Please check Firestore Security Rules — allow delete on billingEntries collection.'
+                : (e?.message || 'Delete failed. Please try again.');
               Alert.alert('Delete Failed', msg);
             } finally {
               setSaving(false);
@@ -490,7 +493,7 @@ export default function EntryModal({ visible, category, editEntry, presetDept, p
           {/* Actions */}
           <View style={s.actions}>
             {isEdit && (
-              <TouchableOpacity style={s.deleteBtn} onPress={handleDelete} disabled={saving}>
+              <TouchableOpacity style={[s.deleteBtn, saving && { opacity: 0.5 }]} onPress={handleDelete} disabled={saving}>
                 <MaterialIcons name="delete-outline" size={16} color="#e74c3c" />
                 <Text style={s.deleteTxt}>{saving ? 'Deleting...' : 'Delete'}</Text>
               </TouchableOpacity>

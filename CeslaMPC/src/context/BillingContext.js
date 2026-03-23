@@ -124,12 +124,8 @@ export function BillingProvider({ children }) {
   }, []);
 
   const deleteEntry = useCallback(async (id) => {
-    try {
-      await deleteDoc(doc(db, 'billingEntries', id));
-    } catch (e) {
-      console.error('deleteEntry error:', e);
-      throw e;
-    }
+    if (!id) throw new Error('No entry ID provided.');
+    await deleteDoc(doc(db, 'billingEntries', id));
   }, []);
 
   const toggleStatus = useCallback(async (id, currentStatus) => {

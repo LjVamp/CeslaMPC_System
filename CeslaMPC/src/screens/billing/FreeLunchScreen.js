@@ -1,8 +1,9 @@
 // src/screens/billing/FreeLunchScreen.js
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Alert, useWindowDimensions, Platform,
+  TextInput, Modal,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
@@ -30,6 +31,13 @@ export default function FreeLunchScreen({ year, month }) {
   const [editEntry,    setEditEntry]    = useState(null);
   const [presetDept,   setPresetDept]   = useState(null);
   const [printing,     setPrinting]     = useState(null);
+  const [searchQuery,  setSearchQuery]  = useState('');
+  const [payDropdown,  setPayDropdown]  = useState(false);
+  const [payFrom,      setPayFrom]      = useState('');
+  const [payTo,        setPayTo]        = useState('');
+  const [selectedDates, setSelectedDates] = useState([]);
+  const payBtnRef = useRef(null);
+  const [payBtnPos, setPayBtnPos] = useState({ top:0, right:16, width:280 });
 
   const dates = useMemo(
     () => getUniqueDates('freelunch', year, month),
@@ -48,6 +56,44 @@ export default function FreeLunchScreen({ year, month }) {
   }), [dates, entries]);
 
   const grandTotal = rows.reduce((s, r) => s + r.totalAmt, 0);
+
+  // Search filter — match date or billing number
+  const filteredRows = useMemo(() => {
+    if (!searchQuery.trim()) return rows;
+    const q = searchQuery.trim().toLowerCase();
+    return rows.filter(r =>
+      fmtDate(r.date).toLowerCase().includes(q) ||
+      r.billingNo.toLowerCase().includes(q)
+    );
+  }, [rows, searchQuery]);
+
+  const openPayDropdown = () => {
+    payBtnRef.current?.measureInWindow((x, y, w, h) => {
+      setPayBtnPos({ top: y + h + 4, right: window?.innerWidth ? window.innerWidth - x - w : 16, width: 280 });
+      setPayDropdown(true);
+    });
+  };
+
+  const handlePayAll = async () => {
+    const pending = rows.filter(r => r.status !== 'paid');
+    if (!pending.length) { Alert.alert('Info', 'All entries are already paid.'); return; }
+    try {
+      for (const r of pending) await toggleStatus(r.id, 'pending');
+      setPayDropdown(false);
+    } catch (e) { Alert.alert('Error', e.message); }
+  };
+
+  const handlePayRange = async () => {
+    if (!payFrom) { Alert.alert('Input Required', 'Please enter a From date (YYYY-MM-DD).'); return; }
+    const to = payTo || payFrom;
+    const inRange = rows.filter(r => r.date >= payFrom && r.date <= to && r.status !== 'paid');
+    if (!inRange.length) { Alert.alert('Info', 'No pending entries found in that date range.'); return; }
+    try {
+      for (const r of inRange) await toggleStatus(r.id, 'pending');
+      setPayDropdown(false);
+      setPayFrom(''); setPayTo('');
+    } catch (e) { Alert.alert('Error', e.message); }
+  };
 
   const detailEntries = useMemo(() => {
     if (!detailDate) return [];
@@ -123,17 +169,17 @@ export default function FreeLunchScreen({ year, month }) {
       '</div>' +
       '<div style="height:1.5px;background:#1a2a4a;margin:12px 0 16px;"></div>' +
       '<div style="font-size:11pt;color:#222;line-height:1.8;margin-bottom:18px;">This is to bill CLIMBS LIFE &amp; GENERAL INSURANCE COOPERATIVE for the Friday Free Lunch dated ' + dateStr + paidClause + '</div>' +
-      '<table style="width:100%;border-collapse:collapse;font-size:10pt;">' +
-      '<thead><tr style="background:#1a2a4a;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;">' +
-      '<th style="padding:8px 10px;text-align:left;border:1px solid #1a2a4a;">DATE</th>' +
-      '<th style="padding:8px 10px;text-align:left;border:1px solid #1a2a4a;">Department</th>' +
-      '<th style="padding:8px 10px;text-align:center;border:1px solid #1a2a4a;">NO. OF Pax</th>' +
-      '<th style="padding:8px 10px;text-align:center;border:1px solid #1a2a4a;">/Pax</th>' +
-      '<th style="padding:8px 10px;text-align:right;border:1px solid #1a2a4a;">AMOUNT</th>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:10pt;border:1px solid #aab4c8;">' +
+      '<thead><tr style="background:#dce3f0;-webkit-print-color-adjust:exact;print-color-adjust:exact;">' +
+      '<th style="padding:8px 10px;text-align:left;border:1px solid #aab4c8;color:#1a2a4a;font-weight:bold;">DATE</th>' +
+      '<th style="padding:8px 10px;text-align:left;border:1px solid #aab4c8;color:#1a2a4a;font-weight:bold;">Department</th>' +
+      '<th style="padding:8px 10px;text-align:center;border:1px solid #aab4c8;color:#1a2a4a;font-weight:bold;">NO. OF Pax</th>' +
+      '<th style="padding:8px 10px;text-align:center;border:1px solid #aab4c8;color:#1a2a4a;font-weight:bold;">/Pax</th>' +
+      '<th style="padding:8px 10px;text-align:right;border:1px solid #aab4c8;color:#1a2a4a;font-weight:bold;">AMOUNT</th>' +
       '</tr></thead><tbody>' + tRows + '</tbody>' +
       '<tfoot><tr>' +
-      '<td colspan="4" style="border:1px solid #ccc;padding:7px 10px;text-align:right;font-weight:bold;color:#222;">GRAND TOTAL:</td>' +
-      '<td style="border:1px solid #ccc;padding:7px 10px;font-weight:bold;text-align:right;color:#222;">' + gtFmt + '</td>' +
+      '<td colspan="4" style="border:1px solid #aab4c8;border-top:2px solid #1a2a4a;padding:7px 10px;text-align:right;font-weight:bold;color:#1a2a4a;background:#dce3f0;-webkit-print-color-adjust:exact;print-color-adjust:exact">GRAND TOTAL:</td>' +
+      '<td style="border:1px solid #aab4c8;border-top:2px solid #1a2a4a;padding:7px 10px;font-weight:bold;text-align:right;color:#1a2a4a;background:#dce3f0;-webkit-print-color-adjust:exact;print-color-adjust:exact">' + gtFmt + '</td>' +
       '</tr></tfoot></table>' +
       '<div style="display:flex;justify-content:space-between;margin-top:48px;font-size:9pt;">' +
       '<div style="width:44%;"><p style="font-size:8pt;color:#555;margin:0 0 60px 0;">Prepared By:</p>' +
@@ -276,7 +322,119 @@ export default function FreeLunchScreen({ year, month }) {
           <MaterialIcons name="add" size={16} color={WHITE} />
           <Text style={s.addBtnMainTxt}>Add Entry</Text>
         </TouchableOpacity>
+
+        {/* Search box */}
+        <View style={s.searchBox}>
+          <MaterialIcons name="search" size={16} color="#8a9bbf" />
+          <TextInput
+            style={s.searchInput}
+            placeholder="Search date or billing no..."
+            placeholderTextColor="#8a9bbf"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <MaterialIcons name="close" size={15} color="#8a9bbf" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Pay button */}
+        <TouchableOpacity
+          ref={payBtnRef}
+          style={s.payBtn}
+          onPress={openPayDropdown}
+        >
+          <MaterialIcons name="payments" size={15} color={WHITE} />
+          <Text style={s.payBtnTxt}>Pay</Text>
+          <MaterialIcons name="keyboard-arrow-down" size={15} color={WHITE} />
+        </TouchableOpacity>
       </View>
+
+      {/* Pay dropdown modal */}
+      <Modal visible={payDropdown} transparent animationType="none" statusBarTranslucent onRequestClose={() => { setPayDropdown(false); setSelectedDates([]); }}> 
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => { setPayDropdown(false); setSelectedDates([]); }} />
+        <View style={[s.payDrop, { position:'absolute', top: payBtnPos.top, right: payBtnPos.right, width: 280 }]}>
+
+          {/* Select All */}
+          <TouchableOpacity style={s.payDropItem} onPress={handlePayAll}>
+            <MaterialIcons name="select-all" size={15} color={NAVY} />
+            <Text style={s.payDropTxt}>Pay All Pending</Text>
+          </TouchableOpacity>
+
+          <View style={s.payDropDivider} />
+
+          {/* Date range */}
+          <View style={s.payDropSection}>
+            <Text style={s.payDropLabel}>PAY BY DATE RANGE</Text>
+            <TextInput
+              style={s.payDateInput}
+              placeholder="From (YYYY-MM-DD)"
+              placeholderTextColor="#8a9bbf"
+              value={payFrom}
+              onChangeText={setPayFrom}
+            />
+            <TextInput
+              style={s.payDateInput}
+              placeholder="To (YYYY-MM-DD) optional"
+              placeholderTextColor="#8a9bbf"
+              value={payTo}
+              onChangeText={setPayTo}
+            />
+            <TouchableOpacity style={s.payConfirmBtn} onPress={handlePayRange}>
+              <Text style={s.payConfirmTxt}>Apply</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Pay specific date */}
+          <View style={s.payDropDivider} />
+          <Text style={[s.payDropLabel, { paddingHorizontal:14, paddingTop:8 }]}>PAY SPECIFIC DATE</Text>
+          <ScrollView style={{ maxHeight: 120 }} showsVerticalScrollIndicator={true}>
+            {rows.filter(r => r.status !== 'paid').length === 0 ? (
+              <Text style={s.payDropEmpty}>All entries are already paid</Text>
+            ) : (
+              rows.filter(r => r.status !== 'paid').map(r => {
+                const checked = selectedDates.includes(r.date);
+                return (
+                  <TouchableOpacity
+                    key={r.date}
+                    style={s.payDropItem}
+                    onPress={() => setSelectedDates(prev =>
+                      prev.includes(r.date) ? prev.filter(d => d !== r.date) : [...prev, r.date]
+                    )}
+                  >
+                    <View style={[s.checkbox, checked && s.checkboxChecked]}>
+                      {checked && <MaterialIcons name="check" size={12} color={WHITE} />}
+                    </View>
+                    <Text style={s.payDropTxt}>{fmtDate(r.date)} — {r.billingNo}</Text>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </ScrollView>
+          {selectedDates.length > 0 && (
+            <View style={{ padding:10 }}>
+              <TouchableOpacity
+                style={s.payConfirmBtn}
+                onPress={async () => {
+                  try {
+                    for (const date of selectedDates) {
+                      const r = rows.find(x => x.date === date);
+                      if (r) await toggleStatus(r.id, 'pending');
+                    }
+                    setSelectedDates([]);
+                    setPayDropdown(false);
+                  } catch (e) { Alert.alert('Error', e.message); }
+                }}
+              >
+                <Text style={s.payConfirmTxt}>Pay Selected ({selectedDates.length})</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
 
       {/* White card — maxHeight so Grand Total always visible at bottom */}
       <View style={[s.deptSection, { maxHeight: winHeight * 0.55 }]}>
@@ -289,7 +447,7 @@ export default function FreeLunchScreen({ year, month }) {
           <Text style={[s.th, { flex:1, textAlign:'center' }]}>TOTAL AMOUNT/PAX</Text>
           <Text style={[s.th, { flex:1, textAlign:'center' }]}>AMOUNT</Text>
           <Text style={[s.th, { flex:1, textAlign:'center' }]}>STATUS</Text>
-          <Text style={[s.th, { flex:1.4, textAlign:'center' }]}></Text>
+          <Text style={[s.th, { flex:1.4, textAlign:'center' }]}>{''}</Text>
         </View>
 
         {/* Scrollable rows */}
@@ -298,10 +456,10 @@ export default function FreeLunchScreen({ year, month }) {
           showsVerticalScrollIndicator={false}
           nestedScrollEnabled={true}
         >
-          {rows.length === 0
-            ? <Text style={s.emptyTxt}>No entries yet for {MONTHS[month]} {year}.</Text>
-            : rows.map(d => (
-              <View key={d.date} style={s.row}>
+          {filteredRows.length === 0
+            ? <Text style={s.emptyTxt}>{searchQuery ? 'No results found.' : `No entries yet for ${MONTHS[month]} ${year}.`}</Text>
+            : filteredRows.map(d => (
+              <View key={d.date} style={[s.row, searchQuery && (fmtDate(d.date).toLowerCase().includes(searchQuery.toLowerCase()) || d.billingNo.toLowerCase().includes(searchQuery.toLowerCase())) && s.rowHighlight]}>
                 <TouchableOpacity
                   style={{ flex:5, flexDirection:'row', alignItems:'center' }}
                   onPress={() => setDetailDate(d.date)}
@@ -367,6 +525,66 @@ const s = StyleSheet.create({
     paddingVertical:8, paddingHorizontal:16,
   },
   addBtnMainTxt: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:WHITE },
+
+  searchBox: {
+    width: 220, flexDirection:'row', alignItems:'center', gap:8,
+    backgroundColor:WHITE, borderRadius:8, borderWidth:1.5,
+    borderColor:'#d0d9ec', paddingHorizontal:10, paddingVertical:6,
+  },
+  searchInput: {
+    flex:1, fontFamily:'GoogleSans_400Regular', fontSize:13,
+    color:TEXT_DARK, outlineStyle:'none',
+  },
+
+  payBtn: {
+    flexDirection:'row', alignItems:'center', gap:5,
+    backgroundColor:NAVY, borderRadius:8,
+    paddingVertical:8, paddingHorizontal:14,
+  },
+  payBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:WHITE },
+
+  payDrop: {
+    backgroundColor:WHITE, borderRadius:12,
+    borderWidth:1, borderColor:'#d0d9ec',
+    shadowColor:'#000', shadowOpacity:0.18, shadowRadius:14,
+    shadowOffset:{ width:0, height:4 }, elevation:16,
+    overflow:'hidden', minWidth:260, maxHeight:460,
+  },
+  payDropItem: {
+    flexDirection:'row', alignItems:'center', gap:10,
+    paddingHorizontal:14, paddingVertical:12,
+    borderBottomWidth:1, borderBottomColor:'#f0f2f8',
+  },
+  payDropTxt: { fontFamily:'GoogleSans_400Regular', fontSize:13, color:TEXT_DARK, flex:1 },
+  payDropDivider: { height:1, backgroundColor:'#e8ecf5' },
+  payDropSection: { padding:12, gap:8 },
+  payDropLabel: {
+    fontFamily:'GoogleSans_700Bold', fontSize:10,
+    color:'#8a9bbf', letterSpacing:0.8, textTransform:'uppercase',
+    paddingHorizontal:14, paddingBottom:4,
+  },
+  payDateInput: {
+    borderWidth:1.5, borderColor:'#d0d9ec', borderRadius:8,
+    paddingHorizontal:10, paddingVertical:7,
+    fontFamily:'GoogleSans_400Regular', fontSize:13, color:TEXT_DARK,
+    outlineStyle:'none',
+  },
+  payConfirmBtn: {
+    backgroundColor:NAVY, borderRadius:8,
+    paddingVertical:8, alignItems:'center',
+  },
+  payConfirmTxt: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:WHITE },
+  payDropEmpty: {
+    fontFamily:'GoogleSans_400Regular', fontSize:12,
+    color:'#8a9bbf', textAlign:'center', padding:12,
+  },
+  checkbox: {
+    width:18, height:18, borderRadius:4, borderWidth:2,
+    borderColor:NAVY, alignItems:'center', justifyContent:'center',
+    marginRight:4,
+  },
+  checkboxChecked: { backgroundColor:NAVY, borderColor:NAVY },
+  rowHighlight: { backgroundColor:'#e8f0ff' },
 
   // White card — maxHeight caps the card, overflow:hidden clips corners
   // flex:1 + flexDirection:column so header/scroll/grandtotal stack vertically

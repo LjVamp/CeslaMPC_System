@@ -4,10 +4,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, Alert, ActivityIndicator, FlatList,
+  ScrollView, Alert, ActivityIndicator, FlatList, Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import { Asset } from 'expo-asset';
 import { useBilling, MONTHS, DEPARTMENTS, fmtDate } from '../context/BillingContext';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -220,153 +222,224 @@ export default function PrintReportModal({ visible, onClose }) {
     });
 
   // ── Build HTML ────────────────────────────────────────────────────────────
-  const buildHTML = () => {
+  // ── Build HTML ────────────────────────────────────────────────────────────
+  const buildHTML = async () => {
     const yr        = parseInt(printYear);
     const prepBy    = settings?.preparedBy    || '________________________';
     const prepTitle = settings?.preparedTitle || '';
     const chkBy     = settings?.checkedBy     || '________________________';
     const chkTitle  = settings?.checkedTitle  || '';
 
-    const runHdr = `<div class="run-hdr"><div>
-      <div class="run-title">CESLA Billing Monitoring System</div>
-      <div class="run-sub">Comprehensive Expense &amp; Statement Ledger Application</div>
-      <div class="run-yr">Annual Billing Report &mdash; ${yr}</div>
-    </div></div>`;
+    // Load logo as base64
+    let logoImg = '';
+    try {
+      const asset = await Asset.fromModule(require('../../assets/CESLA_logo.png')).downloadAsync();
+      const lu = asset.localUri || asset.uri || '';
+      if (lu) {
+        const resp = await fetch(lu);
+        const blob = await resp.blob();
+        const b64  = await new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result); r.readAsDataURL(blob); });
+        logoImg = '<img src="' + b64 + '" class="run-logo" alt="logo" />';
+      }
+    } catch (_) {}
 
-    const sigBlock = `<div class="sigs">
-      <div class="sig-col"><p class="sig-lbl">Prepared By:</p>
-        <div class="sig-line"></div>
-        <div class="sig-name">${prepBy}</div>
-        <div class="sig-role">${prepTitle}</div>
-      </div>
-      <div class="sig-col"><p class="sig-lbl">Checked By:</p>
-        <div class="sig-line"></div>
-        <div class="sig-name">${chkBy}</div>
-        <div class="sig-role">${chkTitle}</div>
-      </div>
-    </div>`;
+    const runHdr = '<div class="run-hdr">' + logoImg + '<div>'
+      + '<div class="run-title">CESLA Billing Monitoring System</div>'
+      + '<div class="run-sub">Comprehensive Expense &amp; Statement Ledger Application</div>'
+      + '<div class="run-yr">Annual Billing Report \u2014 ' + yr + '</div>'
+      + '</div></div>';
 
-    const soaHead = (mn, billingNo, desc) => `
-      <div class="soa-center">
-        <div class="soa-main">STATEMENT OF ACCOUNT</div>
-        <div class="soa-period">as of ${mn.toUpperCase()} ${yr}</div>
-        <div class="soa-billing">BILLING NO.: ${billingNo}</div>
-      </div>
-      <div class="divider"></div>
-      <p class="soa-body">${desc}</p>`;
+    const sigBlock = '<div class="sigs">'
+      + '<div class="sig-col"><p class="sig-lbl">Prepared By:</p>'
+      + '<div class="sig-space"></div>'
+      + '<div class="sig-name">' + prepBy + '</div>'
+      + '<div class="sig-role">' + prepTitle + '</div></div>'
+      + '<div class="sig-col"><p class="sig-lbl">Checked By:</p>'
+      + '<div class="sig-space"></div>'
+      + '<div class="sig-name">' + chkBy + '</div>'
+      + '<div class="sig-role">' + chkTitle + '</div></div>'
+      + '</div>';
 
-    const css = `
-      @page{size:210mm 297mm;margin:15mm}
-      *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:Arial,sans-serif;font-size:10pt;color:#111;background:#fff}
-      .page{page-break-after:always;padding-bottom:24px}
-      .page:last-child{page-break-after:avoid}
-      .run-hdr{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1a2a4a;padding-bottom:10px;margin-bottom:20px}
-      .run-title{font-size:15pt;font-weight:900;color:#1a2a4a}
-      .run-sub{font-size:9pt;color:#444;margin-top:2px}
-      .run-yr{font-size:10pt;font-weight:bold;color:#1a2a4a;margin-top:3px}
-      .soa-center{text-align:center;margin-bottom:10px}
-      .soa-main{font-size:14pt;font-weight:900;color:#1a2a4a;text-transform:uppercase;letter-spacing:.5px}
-      .soa-period{font-size:10pt;color:#333;margin-top:5px}
-      .soa-billing{font-size:10pt;font-weight:700;color:#1a2a4a;margin-top:4px}
-      .divider{height:1.5px;background:#1a2a4a;margin:12px 0 14px}
-      .soa-body{font-size:11pt;color:#222;line-height:1.8;margin-bottom:16px}
-      .cat-title{font-size:14pt;font-weight:900;color:#1a2a4a;border-bottom:3px solid #1a2a4a;padding-bottom:5px;margin:14px 0 10px;text-transform:uppercase;letter-spacing:.5px}
-      .dept-title{font-size:10pt;font-weight:bold;background:#1a2a4a;color:#fff;padding:6px 10px;margin-top:10px}
-      table{width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:8px}
-      th{background:#dce3f0;border:1px solid #666;padding:6px 9px;text-align:left;font-weight:bold;color:#1a2a4a}
-      td{border:1px solid #888;padding:6px 9px}
-      tr.sub td{background:#dce3f0;font-weight:bold;border-top:2px solid #1a2a4a;color:#1a2a4a}
-      .cat-total{text-align:right;font-weight:bold;font-size:11pt;padding:6px 0;color:#1a2a4a;border-top:2px solid #1a2a4a;margin-top:4px}
-      .sum-tbl th{background:#1a2a4a;color:#fff;padding:9px 14px;font-size:11pt}
-      .sum-tbl td{padding:8px 14px;font-size:11pt}
-      .sum-tbl tr:nth-child(even) td{background:#eef1f8}
-      .grand-bar{background:#1a6e2e;color:#fff;display:flex;justify-content:space-between;padding:12px 16px;font-weight:bold;font-size:12pt;margin-top:20px}
-      .sigs{display:flex;justify-content:space-between;margin-top:60px;font-size:10pt}
-      .sig-col{width:45%}
-      .sig-lbl{font-size:9pt;color:#444;margin-bottom:6px}
-      .sig-line{border-top:1.5px solid #1a2a4a;margin:28px 0 5px}
-      .sig-name{font-weight:bold;font-size:10pt;color:#1a2a4a}
-      .sig-role{color:#444;font-size:9pt;margin-top:2px}`;
+    const soaHead = (period, billingNo, desc) =>
+      '<div class="soa-center">'
+      + '<div class="soa-main">STATEMENT OF ACCOUNT</div>'
+      + '<div class="soa-period">as of ' + period.toUpperCase() + '</div>'
+      + '<div class="soa-billing">BILLING NO.: ' + billingNo + '</div>'
+      + '</div>'
+      + '<div class="divider"></div>'
+      + '<p class="soa-body">' + desc + '</p>';
+
+    const dateRange = (allDates, yr) => {
+      if (!allDates.length) return '';
+      const f = new Date(allDates[0] + 'T00:00:00');
+      const l = new Date(allDates[allDates.length - 1] + 'T00:00:00');
+      const mStr = f.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
+      const fd = String(f.getDate()).padStart(2, '0');
+      const ld = String(l.getDate()).padStart(2, '0');
+      return fd === ld ? mStr + ' ' + fd + ', ' + yr : mStr + ' ' + fd + '-' + ld + ', ' + yr;
+    };
+
+    const getUniqDates = (cat, yr, mIdx) => {
+      const set = new Set();
+      DEPARTMENTS.forEach(dept => {
+        getEnt(cat, yr, mIdx, dept).forEach(e => { if (e.date) set.add(e.date); });
+      });
+      return [...set].sort();
+    };
+
+    const css = '@page{size:210mm 297mm;margin:15mm}'
+      + '*{margin:0;padding:0;box-sizing:border-box}'
+      + 'body{font-family:Arial,sans-serif;font-size:10pt;color:#111;background:#fff}'
+      + '.page{page-break-after:always;padding-bottom:24px}'
+      + '.page:last-child{page-break-after:avoid}'
+      + '.run-hdr{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1a2a4a;padding-bottom:10px;margin-bottom:20px}'
+      + '.run-logo{width:55px;height:55px;border-radius:50%;border:2px solid #1a2a4a}'
+      + '.run-title{font-size:15pt;font-weight:900;color:#1a2a4a}'
+      + '.run-sub{font-size:9pt;color:#444;margin-top:2px}'
+      + '.run-yr{font-size:10pt;font-weight:bold;color:#1a2a4a;margin-top:3px}'
+      + '.soa-center{text-align:center;margin-bottom:10px}'
+      + '.soa-main{font-size:14pt;font-weight:900;color:#1a2a4a;text-transform:uppercase;letter-spacing:.5px}'
+      + '.soa-period{font-size:10pt;color:#333;margin-top:5px}'
+      + '.soa-billing{font-size:10pt;font-weight:700;color:#1a2a4a;margin-top:4px}'
+      + '.divider{height:1.5px;background:#1a2a4a;margin:12px 0 14px}'
+      + '.soa-body{font-size:11pt;color:#222;line-height:1.8;margin-bottom:16px}'
+      + '.cat-title{font-size:14pt;font-weight:900;color:#1a2a4a;border-bottom:3px solid #1a2a4a;padding-bottom:5px;margin:14px 0 10px;text-transform:uppercase;letter-spacing:.5px}'
+      + '.dept-title{font-size:10pt;font-weight:bold;background:#1a2a4a;color:#fff;padding:6px 10px;margin-top:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+      + 'table{width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:8px}'
+      + 'th{background:#dce3f0;-webkit-print-color-adjust:exact;print-color-adjust:exact;border:1px solid #666;padding:6px 9px;text-align:left;font-weight:bold;color:#1a2a4a}'
+      + 'td{border:1px solid #888;padding:6px 9px}'
+      + 'tr.sub td{background:#dce3f0;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-weight:bold;border-top:2px solid #1a2a4a;color:#1a2a4a}'
+      + '.cat-total{text-align:right;font-weight:bold;font-size:11pt;padding:6px 0;color:#1a2a4a;border-top:2px solid #1a2a4a;margin-top:4px}'
+      + '.sum-tbl th{background:#dce3f0;-webkit-print-color-adjust:exact;print-color-adjust:exact;color:#1a2a4a;padding:9px 14px;font-size:11pt;font-weight:bold;border:1px solid #666}'
+      + '.sum-tbl td{border:1px solid #888;padding:8px 14px;font-size:11pt}'
+            + '.grand-bar{background:#1a6e2e;-webkit-print-color-adjust:exact;print-color-adjust:exact;color:#fff;display:flex;justify-content:space-between;padding:12px 16px;font-weight:bold;font-size:12pt;margin-top:20px}'
+      + '.sigs{display:flex;justify-content:space-between;margin-top:60px;font-size:10pt}'
+      + '.sig-col{width:45%}'
+      + '.sig-lbl{font-size:9pt;color:#444;margin-bottom:0}'
+      + '.sig-space{height:55px}'
+      
+      + '.sig-name{font-weight:bold;font-size:10pt;color:#1a2a4a}'
+      + '.sig-role{color:#444;font-size:9pt;margin-top:2px}';
 
     let pages = '';
-    const totals = { freelunch:0, riceallowances:0, waterbilling:0, milkbeans:0, ticket:0 };
+    const totals = { freelunch: 0, riceallowances: 0, waterbilling: 0, milkbeans: 0, ticket: 0 };
 
     // FREE LUNCH
     const flIdx = monthIndices(catMonths.freelunch);
     if (flIdx) {
       flIdx.forEach(mIdx => {
-        const mn = MONTHS[mIdx], mm = String(mIdx+1).padStart(2,'0');
+        const mn = MONTHS[mIdx], mm = String(mIdx + 1).padStart(2, '0');
+        const period = mn + ' ' + yr;
+        const allDates = getUniqDates('freelunch', yr, mIdx);
+        if (!allDates.length) return;
+        const dRange = dateRange(allDates, yr) || period.toUpperCase();
+        const allPaid = allDates.every(d =>
+          entries.filter(e => e.category === 'freelunch' && e.year === yr && e.month === mIdx && e.date === d)
+            .every(e => e.status === 'paid')
+        );
+        const paidClause = allPaid ? ' paid by CEC to wit:' : ':';
         let rows = '', mTotal = 0;
         DEPARTMENTS.forEach(dept => {
           const ents = getEnt('freelunch', yr, mIdx, dept);
-          const pax = ents.reduce((s,e)=>s+(parseFloat(e.pax)||0),0);
-          const amt = ents.reduce((s,e)=>s+(e.amount||0),0);
-          const aPax = ents.length ? (ents[0].amtPerPax||0) : 0;
+          const pax  = ents.reduce((s, e) => s + (parseFloat(e.pax) || 0), 0);
+          const amt  = ents.reduce((s, e) => s + (e.amount || 0), 0);
+          const aPax = ents.length ? (ents[0].amtPerPax || 0) : 0;
           mTotal += amt;
-          rows += `<tr><td>${mn} ${yr}</td><td style="text-align:center;font-weight:bold">${dept}</td>
-            <td style="text-align:center">${pax}</td><td style="text-align:right">${peso(aPax)}</td>
-            <td style="text-align:right">${peso(amt)}</td></tr>`;
+          rows += '<tr><td>' + period + '</td><td style="text-align:center;font-weight:bold">' + dept + '</td>'
+            + '<td style="text-align:center">' + pax + '</td>'
+            + '<td style="text-align:right">' + peso(aPax) + '</td>'
+            + '<td style="text-align:right">' + peso(amt) + '</td></tr>';
         });
         totals.freelunch += mTotal;
-        pages += `<div class="page">${runHdr}
-          ${soaHead(mn,`FL ${yr}-${mm}`,`This is to bill CLIMBS LIFE &amp; GENERAL INSURANCE COOPERATIVE for the Friday Free Lunch dated ${mn.toUpperCase()} ${yr}:`)}
-          <table><thead><tr><th>Months</th><th>Department</th><th>NO. OF Pax</th><th>/Pax</th><th>AMOUNT</th></tr></thead>
-          <tbody>${rows}</tbody>
-          <tfoot><tr class="sub"><td colspan="3" style="border:none;background:none"></td>
-            <td style="text-align:right">GRAND TOTAL:</td><td style="text-align:right">${peso(mTotal)}</td>
-          </tr></tfoot></table>${sigBlock}</div>`;
+        pages += '<div class="page">' + runHdr
+          + soaHead(period, 'FL ' + yr + '-' + mm,
+              'This is to bill CLIMBS LIFE &amp; GENERAL INSURANCE COOPERATIVE for the Friday Free Lunch dated ' + dRange + paidClause)
+          + '<table><thead><tr><th>Months</th><th>Department</th><th>NO. OF Pax</th><th>/Pax</th><th>AMOUNT</th></tr></thead>'
+          + '<tbody>' + rows + '</tbody>'
+          + '<tfoot><tr class="sub"><td colspan="3" style="border:none;background:none"></td>'
+          + '<td style="text-align:right">GRAND TOTAL:</td><td style="text-align:right">' + peso(mTotal) + '</td></tr></tfoot></table>'
+          + sigBlock + '</div>';
       });
     }
 
     // RICE ALLOWANCES
     const raIdx = monthIndices(catMonths.riceallowances);
     if (raIdx) {
-      let body = '<div class="cat-title">Rice Allowances</div>';
       raIdx.forEach(mIdx => {
-        DEPARTMENTS.forEach(dept => {
-          const ents = getEnt('riceallowances', yr, mIdx, dept);
-          if (!ents.length) return;
-          const dt = ents.reduce((s,e)=>s+(e.amount||0),0);
-          totals.riceallowances += dt;
-          body += `<div class="dept-title">${dept} &mdash; ${MONTHS[mIdx]} ${yr}</div>
-            <table><thead><tr><th>Name</th><th>Date</th><th>No. of Sac</th><th>Price/Sac</th><th>Amount</th></tr></thead>
-            <tbody>${ents.map(e=>`<tr><td>${e.name||''}</td><td>${fmtDate(e.date)}</td>
-              <td style="text-align:center">${e.sacks||''}</td><td style="text-align:right">${peso(e.priceSac)}</td>
-              <td style="text-align:right">${peso(e.amount)}</td></tr>`).join('')}
-              <tr class="sub"><td colspan="4" style="text-align:right">Subtotal</td>
-                <td style="text-align:right">${peso(dt)}</td></tr>
-            </tbody></table>`;
+        const mn = MONTHS[mIdx], mm = String(mIdx + 1).padStart(2, '0');
+        const period = mn + ' ' + yr;
+        // Get ALL entries for this category/month regardless of dept
+        const allEnts = entries.filter(e =>
+          e.category === 'riceallowances' && e.year === yr && e.month === mIdx
+        );
+        if (!allEnts.length) return;
+        // Get unique dates
+        const allDates = [...new Set(allEnts.map(e => e.date).filter(Boolean))].sort();
+        const dRange = dateRange(allDates, yr) || period.toUpperCase();
+        // Paid only if ALL entries are paid
+        const allPaid = allEnts.length > 0 && allEnts.every(e => e.status === 'paid');
+        const paidClause = allPaid ? ' paid by CEC to wit:' : ':';
+        let rows = '', mTotal = 0;
+        allEnts.forEach(e => {
+          const amt = e.amount || 0;
+          mTotal += amt;
+          rows += '<tr>'
+            + '<td>' + period + '</td>'
+            + '<td>' + (e.name || '') + '</td>'
+            + '<td style="text-align:center;font-weight:bold">' + (e.dept || '') + '</td>'
+            + '<td style="text-align:center">' + (e.sacks || 0) + '</td>'
+            + '<td style="text-align:right">' + peso(e.priceSac) + '</td>'
+            + '<td style="text-align:right">' + peso(amt) + '</td>'
+            + '</tr>';
         });
+        totals.riceallowances += mTotal;
+        pages += '<div class="page">' + runHdr
+          + soaHead(period, 'RA ' + yr + '-' + mm,
+              'This is to bill CLIMBS LIFE &amp; GENERAL INSURANCE COOPERATIVE for the Rice Allowance dated ' + dRange + paidClause)
+          + '<table><thead><tr><th>Months</th><th>Name</th><th>Department</th><th>No. of Sac</th><th>Price/Sac</th><th>AMOUNT</th></tr></thead>'
+          + '<tbody>' + rows + '</tbody>'
+          + '<tfoot><tr class="sub"><td colspan="4" style="border:none;background:none"></td>'
+          + '<td style="text-align:right">GRAND TOTAL:</td>'
+          + '<td style="text-align:right">' + peso(mTotal) + '</td></tr></tfoot></table>'
+          + sigBlock + '</div>';
       });
-      body += `<div class="cat-total">Total Rice Allowances: ${peso(totals.riceallowances)}</div>`;
-      pages += `<div class="page">${runHdr}${body}${sigBlock}</div>`;
     }
 
     // WATER BILLING
     const wbIdx = monthIndices(catMonths.waterbilling);
     if (wbIdx) {
       wbIdx.forEach(mIdx => {
-        const mn = MONTHS[mIdx], mm = String(mIdx+1).padStart(2,'0');
+        const mn = MONTHS[mIdx], mm = String(mIdx + 1).padStart(2, '0');
+        const period = mn + ' ' + yr;
+        const allDates = getUniqDates('waterbilling', yr, mIdx);
+        if (!allDates.length) return;
+        const dRange = dateRange(allDates, yr) || period.toUpperCase();
+        const allPaid = allDates.every(d =>
+          DEPARTMENTS.flatMap(dept => getEnt('waterbilling', yr, mIdx, dept))
+            .filter(e => e.date === d).every(e => e.status === 'paid')
+        );
+        const paidClause = allPaid ? ' paid by CEC to wit:' : ':';
         let rows = '', mTotal = 0;
         DEPARTMENTS.forEach(dept => {
           const ents = getEnt('waterbilling', yr, mIdx, dept);
-          const gal = ents.reduce((s,e)=>s+(parseFloat(e.gallons)||0),0);
-          const amt = ents.reduce((s,e)=>s+(e.amount||0),0);
-          const cpg = ents.length ? (ents[0].costPerGallon||0) : 0;
+          const gal  = ents.reduce((s, e) => s + (parseFloat(e.gallons) || 0), 0);
+          const amt  = ents.reduce((s, e) => s + (e.amount || 0), 0);
+          const cpg  = ents.length ? (ents[0].priceGallon || 0) : 0;
           mTotal += amt;
-          rows += `<tr><td>${mn} ${yr}</td><td style="text-align:center;font-weight:bold">${dept}</td>
-            <td style="text-align:center">${gal}</td><td style="text-align:right">${peso(cpg)}</td>
-            <td style="text-align:right">${peso(amt)}</td></tr>`;
+          rows += '<tr><td>' + period + '</td><td style="text-align:center;font-weight:bold">' + dept + '</td>'
+            + '<td style="text-align:center">' + gal + '</td>'
+            + '<td style="text-align:right">' + peso(cpg) + '</td>'
+            + '<td style="text-align:right">' + peso(amt) + '</td></tr>';
         });
         totals.waterbilling += mTotal;
-        pages += `<div class="page">${runHdr}
-          ${soaHead(mn,`WB ${yr}-${mm}`,`This is to bill CLIMBS LIFE &amp; GENERAL INSURANCE COOPERATIVE for the Water Supply dated ${mn.toUpperCase()} ${yr}:`)}
-          <table><thead><tr><th>Months</th><th>Department</th><th>NO. OF Gallon</th><th>COST per Gallon</th><th>AMOUNT</th></tr></thead>
-          <tbody>${rows}</tbody>
-          <tfoot><tr class="sub"><td colspan="3" style="border:none;background:none"></td>
-            <td style="text-align:right">GRAND TOTAL:</td><td style="text-align:right">${peso(mTotal)}</td>
-          </tr></tfoot></table>${sigBlock}</div>`;
+        pages += '<div class="page">' + runHdr
+          + soaHead(period, 'PD ' + yr + '-' + mm,
+              'This is to bill CLIMBS LIFE &amp; GENERAL INSURANCE COOPERATIVE for the Mineral Water Supply dated ' + dRange + paidClause)
+          + '<table><thead><tr><th>Months</th><th>Department</th><th>NO. OF Gallon</th><th>Price/Gallon</th><th>AMOUNT</th></tr></thead>'
+          + '<tbody>' + rows + '</tbody>'
+          + '<tfoot><tr class="sub"><td colspan="3" style="border:none;background:none"></td>'
+          + '<td style="text-align:right">GRAND TOTAL:</td><td style="text-align:right">' + peso(mTotal) + '</td></tr></tfoot></table>'
+          + sigBlock + '</div>';
       });
     }
 
@@ -374,76 +447,103 @@ export default function PrintReportModal({ visible, onClose }) {
     const mbIdx = monthIndices(catMonths.milkbeans);
     if (mbIdx) {
       mbIdx.forEach(mIdx => {
-        const mn = MONTHS[mIdx], mm = String(mIdx+1).padStart(2,'0');
+        const mn = MONTHS[mIdx], mm = String(mIdx + 1).padStart(2, '0');
+        const period = mn + ' ' + yr;
+        const allDates = getUniqDates('milkbeans', yr, mIdx);
+        if (!allDates.length) return;
+        const dRange = dateRange(allDates, yr) || period.toUpperCase();
+        const allPaid = allDates.every(d =>
+          DEPARTMENTS.flatMap(dept => getEnt('milkbeans', yr, mIdx, dept))
+            .filter(e => e.date === d).every(e => e.status === 'paid')
+        );
+        const paidClause = allPaid ? ' paid by CEC to wit:' : ':';
         let rows = '', mTotal = 0;
         DEPARTMENTS.forEach(dept => {
           getEnt('milkbeans', yr, mIdx, dept).forEach(e => {
-            mTotal += e.amount||0;
-            rows += `<tr><td>${mn} ${yr}</td><td style="text-align:center;font-weight:bold">${dept}</td>
-              <td style="text-align:center">${e.milkQty||''}</td><td style="text-align:right">${peso(e.milkPrice)}</td>
-              <td style="text-align:center">${e.beansQty||''}</td><td style="text-align:right">${peso(e.beansPrice)}</td>
-              <td style="text-align:right">${peso(e.amount)}</td></tr>`;
+            mTotal += e.amount || 0;
+            const mQ = e.milkType  !== 'None' ? e.milkQty  : '\u2014';
+            const mP = e.milkType  !== 'None' ? peso(e.milkPrice)  : '\u2014';
+            const bQ = e.beansType !== 'None' ? e.beansQty : '\u2014';
+            const bP = e.beansType !== 'None' ? peso(e.beansPrice) : '\u2014';
+            rows += '<tr><td>' + period + '</td><td style="text-align:center;font-weight:bold">' + dept + '</td>'
+              + '<td style="text-align:center">' + mQ + '</td><td style="text-align:right">' + mP + '</td>'
+              + '<td style="text-align:center">' + bQ + '</td><td style="text-align:right">' + bP + '</td>'
+              + '<td style="text-align:right">' + peso(e.amount) + '</td></tr>';
           });
         });
         totals.milkbeans += mTotal;
-        pages += `<div class="page">${runHdr}
-          ${soaHead(mn,`MB ${yr}-${mm}`,`This is to bill CLIMBS LIFE &amp; GENERAL INSURANCE COOPERATIVE for the Milk &amp; Beans Supply dated ${mn.toUpperCase()} ${yr}:`)}
-          <table><thead><tr><th>Months</th><th>Department</th><th>Milk QTY</th><th>Milk Price</th><th>Beans QTY</th><th>Beans Price</th><th>AMOUNT</th></tr></thead>
-          <tbody>${rows||'<tr><td colspan="7" style="text-align:center;font-style:italic;color:#888">No entries.</td></tr>'}</tbody>
-          <tfoot><tr class="sub"><td colspan="5" style="border:none;background:none"></td>
-            <td style="text-align:right">GRAND TOTAL:</td><td style="text-align:right">${peso(mTotal)}</td>
-          </tr></tfoot></table>${sigBlock}</div>`;
+        pages += '<div class="page">' + runHdr
+          + soaHead(period, 'MB ' + yr + '-' + mm,
+              'This is to bill CLIMBS LIFE &amp; GENERAL INSURANCE COOPERATIVE for the Milk &amp; Beans Supply dated ' + dRange + paidClause)
+          + '<table><thead><tr><th>Months</th><th>Department</th><th>Milk QTY</th><th>Milk Price</th><th>Beans QTY</th><th>Beans Price</th><th>AMOUNT</th></tr></thead>'
+          + '<tbody>' + (rows || '<tr><td colspan="7" style="text-align:center;font-style:italic;color:#888">No entries.</td></tr>') + '</tbody>'
+          + '<tfoot><tr class="sub"><td colspan="5" style="border:none;background:none"></td>'
+          + '<td style="text-align:right">GRAND TOTAL:</td><td style="text-align:right">' + peso(mTotal) + '</td></tr></tfoot></table>'
+          + sigBlock + '</div>';
       });
     }
 
     // TICKET
     const tkIdx = monthIndices(catMonths.ticket);
     if (tkIdx) {
-      let body = '<div class="cat-title">Ticket</div>';
       tkIdx.forEach(mIdx => {
-        DEPARTMENTS.forEach(dept => {
-          const ents = getEnt('ticket', yr, mIdx, dept);
-          if (!ents.length) return;
-          const dt = ents.reduce((s,e)=>s+(e.amount||0),0);
-          totals.ticket += dt;
-          body += `<div class="dept-title">${dept} &mdash; ${MONTHS[mIdx]} ${yr}</div>
-            <table><thead><tr><th>Name</th><th>Date</th><th>No. of Ticket</th><th>Amt/Ticket</th><th>Amount</th></tr></thead>
-            <tbody>${ents.map(e=>`<tr><td>${e.name||''}</td><td>${fmtDate(e.date)}</td>
-              <td style="text-align:center">${e.tickets||''}</td><td style="text-align:right">${peso(e.amtTicket)}</td>
-              <td style="text-align:right">${peso(e.amount)}</td></tr>`).join('')}
-              <tr class="sub"><td colspan="4" style="text-align:right">Subtotal</td>
-                <td style="text-align:right">${peso(dt)}</td></tr>
-            </tbody></table>`;
+        const mn = MONTHS[mIdx], mm = String(mIdx + 1).padStart(2, '0');
+        const period = mn + ' ' + yr;
+        // Get ALL entries for this category/month regardless of dept
+        const allEnts = entries.filter(e =>
+          e.category === 'ticket' && e.year === yr && e.month === mIdx
+        );
+        if (!allEnts.length) return;
+        const allDates = [...new Set(allEnts.map(e => e.date).filter(Boolean))].sort();
+        const dRange = dateRange(allDates, yr) || period.toUpperCase();
+        // Paid only if ALL entries are paid
+        const allPaid = allEnts.length > 0 && allEnts.every(e => e.status === 'paid');
+        const paidClause = allPaid ? ' paid by CEC to wit:' : ':';
+        let rows = '', mTotal = 0;
+        allEnts.forEach(e => {
+          const amt = e.amount || 0;
+          mTotal += amt;
+          rows += '<tr>'
+            + '<td>' + period + '</td>'
+            + '<td>' + (e.name || '') + '</td>'
+            + '<td style="text-align:center;font-weight:bold">' + (e.dept || '') + '</td>'
+            + '<td style="text-align:center">' + (e.tickets || 0) + '</td>'
+            + '<td style="text-align:right">' + peso(e.amtTicket) + '</td>'
+            + '<td style="text-align:right">' + peso(amt) + '</td>'
+            + '</tr>';
         });
+        totals.ticket += mTotal;
+        pages += '<div class="page">' + runHdr
+          + soaHead(period, 'TK ' + yr + '-' + mm,
+              'This is to bill CLIMBS LIFE &amp; GENERAL INSURANCE COOPERATIVE for the Ticket dated ' + dRange + paidClause)
+          + '<table><thead><tr><th>Months</th><th>Name</th><th>Department</th><th>No. of Ticket</th><th>Price/Ticket</th><th>AMOUNT</th></tr></thead>'
+          + '<tbody>' + rows + '</tbody>'
+          + '<tfoot><tr class="sub"><td colspan="4" style="border:none;background:none"></td>'
+          + '<td style="text-align:right">GRAND TOTAL:</td>'
+          + '<td style="text-align:right">' + peso(mTotal) + '</td></tr></tfoot></table>'
+          + sigBlock + '</div>';
       });
-      body += `<div class="cat-total">Total Ticket: ${peso(totals.ticket)}</div>`;
-      pages += `<div class="page">${runHdr}${body}${sigBlock}</div>`;
     }
 
     // GRAND TOTAL SUMMARY
-    const grand = Object.values(totals).reduce((a,b)=>a+b,0);
-    pages += `<div class="page">${runHdr}
-      <div class="cat-title">Grand Total Billings &mdash; ${yr}</div>
-      <table class="sum-tbl">
-        <thead><tr><th>Category</th><th style="text-align:right">Total Amount</th></tr></thead>
-        <tbody>
-          <tr><td>Free Lunch</td><td style="text-align:right">${peso(totals.freelunch)}</td></tr>
-          <tr><td>Rice Allowances</td><td style="text-align:right">${peso(totals.riceallowances)}</td></tr>
-          <tr><td>Water Billing</td><td style="text-align:right">${peso(totals.waterbilling)}</td></tr>
-          <tr><td>Milk &amp; Beans</td><td style="text-align:right">${peso(totals.milkbeans)}</td></tr>
-          <tr><td>Ticket</td><td style="text-align:right">${peso(totals.ticket)}</td></tr>
-        </tbody>
-      </table>
-      <div class="grand-bar">
-        <span>GRAND TOTAL &mdash; ALL BILLINGS (${yr})</span>
-        <span>${peso(grand)}</span>
-      </div>
-      ${sigBlock}
-    </div>`;
+    const grand = Object.values(totals).reduce((a, b) => a + b, 0);
+    pages += '<div class="page">' + runHdr
+      + '<div class="cat-title">Grand Total Billings \u2014 ' + yr + '</div>'
+      + '<table class="sum-tbl"><thead><tr><th>Category</th><th style="text-align:right">Total Amount</th></tr></thead><tbody>'
+      + '<tr><td>Free Lunch</td><td style="text-align:right">' + peso(totals.freelunch) + '</td></tr>'
+      + '<tr><td>Rice Allowances</td><td style="text-align:right">' + peso(totals.riceallowances) + '</td></tr>'
+      + '<tr><td>Water Billing</td><td style="text-align:right">' + peso(totals.waterbilling) + '</td></tr>'
+      + '<tr><td>Milk &amp; Beans</td><td style="text-align:right">' + peso(totals.milkbeans) + '</td></tr>'
+      + '<tr><td>Ticket</td><td style="text-align:right">' + peso(totals.ticket) + '</td></tr>'
+      + '</tbody></table>'
+      + '<div class="grand-bar"><span>GRAND TOTAL \u2014 ALL BILLINGS (' + yr + ')</span><span>' + peso(grand) + '</span></div>'
+      + sigBlock + '</div>';
 
-    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-      <style>${css}</style></head><body>${pages}</body></html>`;
+    return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+      + '<style>' + css + '</style></head><body>' + pages + '</body></html>';
   };
+
+
 
   // ── Print ─────────────────────────────────────────────────────────────────
   const handlePrint = async () => {
@@ -453,7 +553,25 @@ export default function PrintReportModal({ visible, onClose }) {
     }
     setPrinting(true);
     try {
-      await Print.printAsync({ html: buildHTML() });
+      const html = await buildHTML();
+      if (Platform.OS === 'web') {
+        const blob    = new Blob([html], { type: 'text/html' });
+        const blobUrl = URL.createObjectURL(blob);
+        const iframe  = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;border:none;opacity:0;';
+        document.body.appendChild(iframe);
+        iframe.onload = () => {
+          setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(blobUrl); }, 2000);
+          }, 200);
+        };
+        iframe.src = blobUrl;
+      } else {
+        const { uri } = await Print.printToFileAsync({ html, base64: false });
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Print Annual Report', UTI: 'com.adobe.pdf' });
+      }
     } catch (e) {
       Alert.alert('Print Error', e.message || 'Could not open print dialog.');
     } finally {
