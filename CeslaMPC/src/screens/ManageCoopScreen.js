@@ -316,7 +316,7 @@ const SidebarItem = ({ group, active, onNav, onClose, badge }) => {
   );
 };
 
-const Sidebar = ({ active, onNav, onClose, pendingCount, notifsCount, onLogout, onBack, canGoBack }) => (
+const Sidebar = ({ active, onNav, onClose, pendingCount, notifsCount, chatUnread = 0, onLogout, onBack, canGoBack }) => (
   <View style={a.sidebar}>
     <View style={a.sidebarBrand}>
       <View style={a.sidebarLogo}><Text style={a.sidebarLogoTxt}>CS</Text></View>
@@ -869,12 +869,22 @@ const AllMembersView = ({ members, contentHeight }) => {
   const [selMember, setSelMember] = useState(null);
   const { height } = useWindowDimensions();
 
-  // Only show Active members in the list
+  // Helper — true if member has submitted their application form
+  const hasAppForm = m => {
+    const af = m.appForm || {};
+    return !!(af.dob || af.civilStatus || af.empType || af.placeOfBirth || af.contactNo);
+  };
+
+  // Only show Active members WHO have submitted their application form
   const filtered = members.filter(m => {
     if (m.status !== 'Active') return false;
+    if (!hasAppForm(m)) return false;
     const q = search.toLowerCase();
     return (m.name || '').toLowerCase().includes(q) || (m.userId || '').includes(q);
   });
+
+  // Count active members without app form (for the reminder banner)
+  const pendingAppForm = members.filter(m => m.status === 'Active' && !hasAppForm(m)).length;
 
   return (
     <>
@@ -883,7 +893,19 @@ const AllMembersView = ({ members, contentHeight }) => {
         style={contentHeight ? { height: contentHeight } : undefined}>
 
         <Text style={a.pageTitle}>👥 All Members</Text>
-        <Text style={a.pageSub}>Showing Active members only. Tap a name to view full details.</Text>
+        <Text style={a.pageSub}>Showing Active members with submitted Application Form only.</Text>
+
+        {/* Banner: active members who haven't submitted app form yet */}
+        {pendingAppForm > 0 && (
+          <View style={{ backgroundColor: 'rgba(196,125,14,0.12)', borderRadius: 12, borderLeftWidth: 4, borderLeftColor: '#c47d0e', borderWidth: 1, borderColor: 'rgba(196,125,14,0.30)', padding: 12, marginBottom: 14 }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c47d0e', marginBottom: 2 }}>
+              ⚠️ {pendingAppForm} Active Member{pendingAppForm !== 1 ? 's' : ''} Without Application Form
+            </Text>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
+              These members are approved but have not yet submitted their Application Form. They will appear here once submitted.
+            </Text>
+          </View>
+        )}
 
         {/* Search */}
         <View style={a.searchWrap}>
@@ -903,7 +925,7 @@ const AllMembersView = ({ members, contentHeight }) => {
         </View>
 
         <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginBottom: 12 }}>
-          {filtered.length} active member{filtered.length !== 1 ? 's' : ''} found
+          {filtered.length} member{filtered.length !== 1 ? 's' : ''} with complete application form found
         </Text>
 
         {/* Member rows — compact, click to open modal */}
@@ -947,7 +969,7 @@ const AllMembersView = ({ members, contentHeight }) => {
         {filtered.length === 0 && (
           <GCard style={{ alignItems: 'center', padding: 40 }}>
             <Text style={{ fontSize: 32, marginBottom: 10 }}>👥</Text>
-            <Text style={a.emptyTxt}>{search ? 'No members match your search.' : 'No active members yet.'}</Text>
+            <Text style={a.emptyTxt}>{search ? 'No members match your search.' : 'No members with a submitted Application Form yet.'}</Text>
           </GCard>
         )}
 
@@ -2514,7 +2536,7 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
       <View style={{ flex: 1, flexDirection: 'row' }}>
         {isWide && (
           <Sidebar active={activeNav} onNav={switchNav}
-            pendingCount={pendingCount} notifsCount={unreadNotifs}
+            pendingCount={pendingCount} notifsCount={unreadNotifs} chatUnread={chatUnread}
             onLogout={onLogout} onBack={goBack} canGoBack={navHistory.length > 1} />
         )}
         <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
@@ -2530,7 +2552,7 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
             activeOpacity={1} onPress={() => setDrawer(false)} />
           <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 220, zIndex: 21, flexDirection: 'column' }}>
             <Sidebar active={activeNav} onNav={switchNav} onClose={() => setDrawer(false)}
-              pendingCount={pendingCount} notifsCount={unreadNotifs}
+              pendingCount={pendingCount} notifsCount={unreadNotifs} chatUnread={chatUnread}
               onLogout={() => { setDrawer(false); onLogout(); }}
               onBack={() => { goBack(); setDrawer(false); }}
               canGoBack={navHistory.length > 1} />
