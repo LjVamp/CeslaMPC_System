@@ -397,41 +397,6 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
           <Text style={styles.printBtnText}>Download Receipt</Text>
         </TouchableOpacity>
 
-        {/* ── Order History ── */}
-        {orderHistory && orderHistory.length > 0 && (
-          <View style={{ marginTop: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 6 }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: 'rgba(1,31,75,0.70)', letterSpacing: 1.5, textTransform: 'uppercase' }}>📋 Order History</Text>
-            </View>
-            <ScrollView style={{ maxHeight: 180 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
-              {orderHistory.map((order, idx) => {
-                const statusColor = order.status === 'done' ? '#27ae60' : order.status === 'ready' ? '#2980b9' : order.status === 'preparing' ? '#e67e22' : '#7f8c8d';
-                const statusLabel = order.status === 'done' ? '✅ Done' : order.status === 'ready' ? '📦 Ready' : order.status === 'preparing' ? '🔥 Preparing' : '🕐 Pending';
-                const payIcon = order.payment === 'gcash' ? '📱' : order.payment === 'credit' ? '🪙' : '💵';
-                return (
-                  <View key={order.docId || idx} style={{ backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: 10, padding: 8, marginBottom: 6, borderWidth: 1, borderColor: 'rgba(1,31,75,0.10)' }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35' }}>Order #{order.orderNo}</Text>
-                      <View style={{ backgroundColor: statusColor + '22', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: statusColor + '55' }}>
-                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: statusColor }}>{statusLabel}</Text>
-                      </View>
-                    </View>
-                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(1,31,75,0.55)', marginBottom: 3 }}>{order.time}</Text>
-                    {order.items && order.items.map(({ item, qty }, i) => (
-                      <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.75)', lineHeight: 15 }}>
-                        {item?.emoji || '🍽️'} {item?.name} × {qty}
-                      </Text>
-                    ))}
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 4, borderTopWidth: 1, borderColor: 'rgba(1,31,75,0.08)' }}>
-                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.55)' }}>{payIcon} {order.payment === 'gcash' ? 'GCash' : order.payment === 'credit' ? 'Credit' : 'Cash'}</Text>
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#c9a84c' }}>₱ {parseFloat(order.total || 0).toFixed(2)}</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
       </View>
   );
 };
@@ -834,6 +799,7 @@ export default function CanteenMemberScreen({ navigation }) {
   const [loginError,   setLoginError]   = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [orderHistory, setOrderHistory] = useState([]);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const handleLogin = async () => {
     if (!loginUserId.trim()) { setLoginError('Please enter your User ID.'); return; }
@@ -1076,7 +1042,7 @@ export default function CanteenMemberScreen({ navigation }) {
       }}>
         <View style={[styles.header, { paddingHorizontal: isWide ? 40:12, paddingVertical: isWide ? 16:7 }]}>
           <TouchableOpacity style={styles.backBtn} onPress={() => {
-            if (!loginView && member) { handleLogout(); }
+            if (!loginView && member) { setMenuOpen(false); handleLogout(); }
             else { navigation && navigation.goBack(); }
           }}>
             <Text style={styles.backIcon}>←</Text>
@@ -1094,13 +1060,101 @@ export default function CanteenMemberScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Right side: logout button if logged in, else spacer */}
+          {/* Right side: menu icon if logged in, else spacer */}
           {member && !loginView ? (
-            <TouchableOpacity style={[styles.backBtn, { backgroundColor: 'rgba(201,168,76,0.25)', borderColor: 'rgba(201,168,76,0.50)' }]} onPress={handleLogout}>
-              <Text style={{ color:'#c9a84c', fontSize:13, fontWeight:'700' }}>↩</Text>
-            </TouchableOpacity>
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity
+                style={[styles.backBtn, { backgroundColor: 'rgba(201,168,76,0.25)', borderColor: 'rgba(201,168,76,0.50)' }]}
+                onPress={() => setMenuOpen(o => !o)}
+                activeOpacity={0.80}
+              >
+                <Text style={{ color: '#c9a84c', fontSize: 16, fontWeight: '700', lineHeight: 18 }}>☰</Text>
+              </TouchableOpacity>
+
+              {/* Dropdown menu */}
+              {menuOpen && (
+                <>
+                  {/* Backdrop to close on outside tap */}
+                  <TouchableOpacity
+                    style={Platform.OS === 'web'
+                      ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 98 }
+                      : { position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 98 }
+                    }
+                    activeOpacity={1}
+                    onPress={() => setMenuOpen(false)}
+                  />
+                  <View style={{
+                    position: 'absolute', top: 46, right: 0, zIndex: 99,
+                    backgroundColor: '#1a2d4e',
+                    borderRadius: 14,
+                    borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.40)',
+                    shadowColor: '#000', shadowOpacity: 0.30, shadowRadius: 16,
+                    shadowOffset: { width: 0, height: 6 }, elevation: 16,
+                    minWidth: 180, overflow: 'hidden',
+                  }}>
+                    {/* Member info header */}
+                    <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.20)' }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c9a84c' }} numberOfLines={1}>
+                        {member.name || 'Member'}
+                      </Text>
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>
+                        {member.userId || ''}
+                      </Text>
+                    </View>
+
+                    {/* Menu options */}
+                    {[
+                      { icon: '📋', label: 'My Order History', tab: 'history' },
+                      { icon: '🪙', label: 'My Credit',        tab: 'credit'  },
+                    ].map(opt => (
+                      <TouchableOpacity
+                        key={opt.tab}
+                        onPress={() => { setMainTab(opt.tab); setMenuOpen(false); if (loginView) return; }}
+                        activeOpacity={0.75}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 10,
+                          paddingHorizontal: 16, paddingVertical: 13,
+                          borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+                          backgroundColor: mainTab === opt.tab ? 'rgba(201,168,76,0.15)' : 'transparent',
+                        }}
+                      >
+                        <Text style={{ fontSize: 15 }}>{opt.icon}</Text>
+                        <Text style={{
+                          fontFamily: mainTab === opt.tab ? 'GoogleSans_700Bold' : 'GoogleSans_500Medium',
+                          fontSize: 13,
+                          color: mainTab === opt.tab ? '#c9a84c' : 'rgba(255,255,255,0.85)',
+                        }}>
+                          {opt.label}
+                        </Text>
+                        {mainTab === opt.tab && (
+                          <View style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: 3, backgroundColor: '#c9a84c' }} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+
+                    {/* Divider */}
+                    <View style={{ height: 1, backgroundColor: 'rgba(201,168,76,0.20)', marginVertical: 2 }} />
+
+                    {/* Logout */}
+                    <TouchableOpacity
+                      onPress={() => { setMenuOpen(false); handleLogout(); }}
+                      activeOpacity={0.75}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 10,
+                        paddingHorizontal: 16, paddingVertical: 13,
+                      }}
+                    >
+                      <Text style={{ fontSize: 15 }}>↩</Text>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e74c3c' }}>
+                        Logout
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
           ) : (
-            <View style={{ width:40 }} />
+            <View style={{ width: 40 }} />
           )}
         </View>
       </Animated.View>
@@ -1181,59 +1235,19 @@ export default function CanteenMemberScreen({ navigation }) {
         {isWide && (
           <View style={[styles.catPanel, { justifyContent:'flex-start' }]}>
 
-            {/* 3 Nav Cards */}
-            {[
-              { key:'order',   icon:'🛒', label:'Order Now',     sub:'Browse menu'    },
-              { key:'history', icon:'📋', label:'Order History', sub:'Past orders'    },
-              { key:'credit',  icon:'🪙', label:'My Credit',     sub:'Utang list'     },
-            ].map(tab => {
-              const isActive = mainTab === tab.key;
-              return (
-                <TouchableOpacity
-                  key={tab.key}
-                  onPress={() => setMainTab(tab.key)}
-                  activeOpacity={0.80}
-                  style={{
-                    borderRadius:12,
-                    backgroundColor: isActive ? '#1a2d4e' : 'rgba(255,255,255,0.45)',
-                    borderWidth:1.5,
-                    borderColor: isActive ? '#c9a84c' : 'rgba(255,255,255,0.60)',
-                    paddingVertical:10, paddingHorizontal:12,
-                    flexDirection:'row', alignItems:'center', gap:10,
-                    shadowColor:'#011f4b', shadowOpacity: isActive ? 0.20 : 0.05,
-                    shadowRadius:6, shadowOffset:{width:0,height:2}, elevation: isActive ? 5 : 1,
-                  }}
-                >
-                  <Text style={{ fontSize:20 }}>{tab.icon}</Text>
-                  <View style={{ flex:1 }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color: isActive ? '#c9a84c' : '#0f1e35', lineHeight:16 }}>{tab.label}</Text>
-                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, color: isActive ? 'rgba(255,255,255,0.55)' : 'rgba(1,31,75,0.45)', marginTop:1 }}>{tab.sub}</Text>
-                  </View>
-                  {isActive && <View style={{ width:3, height:24, borderRadius:2, backgroundColor:'#c9a84c' }} />}
-                </TouchableOpacity>
-              );
-            })}
-
-            {/* Divider — only show when Order Now tab */}
-            {mainTab === 'order' && (
-              <View style={{ height:1, backgroundColor:'rgba(1,31,75,0.12)', marginVertical:6 }} />
-            )}
-
-            {/* Categories — only visible on Order Now tab */}
-            {mainTab === 'order' && (<>
-              <Text style={styles.catPanelTitle}>CATEGORIES</Text>
-              {CATEGORIES.map(cat => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[styles.catBtn, activeCategory === cat && styles.catBtnActive]}
-                  onPress={() => setActiveCategory(cat)}
-                >
-                  <Text style={[styles.catBtnText, activeCategory === cat && styles.catBtnTextActive]}>
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </>)}
+            {/* Categories */}
+            <Text style={styles.catPanelTitle}>CATEGORIES</Text>
+            {CATEGORIES.map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.catBtn, activeCategory === cat && styles.catBtnActive]}
+                onPress={() => setActiveCategory(cat)}
+              >
+                <Text style={[styles.catBtnText, activeCategory === cat && styles.catBtnTextActive]}>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         )}
 

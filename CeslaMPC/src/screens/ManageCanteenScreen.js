@@ -16,6 +16,11 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useCanteen } from '../context/CanteenContext';
 import { useFocusEffect } from '@react-navigation/native';
+import {
+  collection, query, where, onSnapshot, orderBy,
+  updateDoc, doc, serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 // ─── WEB SCROLL VIEW ──────────────────────────────────────────────────────────
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -974,13 +979,358 @@ const OrderHistoryScreen = ({ orders }) => {
   );
 };
 
-const EmployeeCreditsScreen = () => (
-  <View style={[sub.root,{justifyContent:'center',alignItems:'center',gap:14}]}>
-    <MaterialIcons name="account-balance" size={64} color="rgba(1,31,75,0.15)"/>
-    <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:20,color:'rgba(1,31,75,0.30)'}}>Coming Soon</Text>
-    <Text style={sub.emptyTxt}>Employee credit tracking will be{'\n'}available in a future update.</Text>
-  </View>
-);
+const EmployeeCreditsScreen = () => {
+  const [creditOrders, setCreditOrders] = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [search, setSearch]             = useState('');
+  const [selectedMember, setSelectedMember] = useState(null); // opens modal
+  const [activeModalTab, setActiveModalTab] = useState('unpaid');
+  const [settlingId, setSettlingId]     = useState(null);
+
+  // ── Live feed from Firestore ─────────────────────────────────────────────
+  useEffect(() => {
+    const q = query(
+      collection(db, 'canteen_orders'),
+      where('payment', '==', 'credit'),
+      orderBy('createdAt', 'desc')
+    );
+    const unsub = onSnapshot(q, snap => {
+      setCreditOrders(snap.docs.map(d => ({ docId: d.id, ...d.data() })));
+      setLoading(false);
+    }, () => setLoading(false));
+    return unsub;
+  }, []);
+
+  // ── Group by member ───────────────────────────────────────────────────────
+  const grouped = React.useMemo(() => {
+    const map = {};
+    creditOrders.forEach(o => {
+      const key = o.memberId || o.memberUserId || o.memberName || 'Unknown';
+      if (!map[key]) map[key] = {
+        memberId:     o.memberId     || '',
+        memberUserId: o.memberUserId || '',
+        memberName:   o.memberName   || 'Unknown Member',
+        orders: [],
+      };
+      map[key].orders.push(o);
+    });
+    return Object.values(map).sort((a, b) => a.memberName.localeCompare(b.memberName));
+  }, [creditOrders]);
+
+  const filtered = grouped.filter(g =>
+    g.memberName.toLowerCase().includes(search.toLowerCase()) ||
+    g.memberUserId.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const fmtDateTime = (ts) => {
+    try {
+      if (!ts) return '—';
+      const d = ts?.toDate?.() || new Date(typeof ts === 'number' ? ts : ts);
+      if (isNaN(d.getTime())) return '—';
+      return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+        + '\n' + d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch { return '—'; }
+  };
+
+  const markSettled = async (docId) => {
+    setSettlingId(docId);
+    try {
+      await updateDoc(doc(db, 'canteen_orders', docId), {
+        settled: true, settledAt: serverTimestamp(),
+      });
+    } catch (e) {}
+    setSettlingId(null);
+  };
+
+  // Get live data for selected member from grouped
+  const modalGroup = selectedMember
+    ? grouped.find(g => (g.memberId || g.memberName) === selectedMember)
+    : null;
+  const unpaidOrders = modalGroup ? modalGroup.orders.filter(o => o.settled !== true) : [];
+  const paidOrders   = modalGroup ? modalGroup.orders.filter(o => o.settled === true)  : [];
+  const totalUnpaid  = unpaidOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+  const totalPaid    = paidOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+
+  if (loading) return (
+    <View style={[sub.root, { justifyContent: 'center', alignItems: 'center', gap: 12 }]}>
+      <Text style={{ fontSize: 32 }}>🪙</Text>
+      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(1,31,75,0.50)' }}>Loading credit orders...</Text>
+    </View>
+  );
+
+  return (
+    <View style={sub.root}>
+      {/* Search */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.65)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, margin: 16, marginBottom: 10, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.90)', gap: 8 }}>
+        <Text style={{ fontSize: 14, color: 'rgba(1,31,75,0.45)' }}>🔍</Text>
+        <TextInput
+          style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: '#0f1e35' }}
+          value={search} onChangeText={setSearch}
+          placeholder="Search member name or ID..."
+          placeholderTextColor="rgba(1,31,75,0.35)"
+          autoCorrect={false}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')}>
+            <Text style={{ color: 'rgba(1,31,75,0.45)', fontSize: 14 }}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Member list */}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+        {filtered.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 60 }}>
+            <Text style={{ fontSize: 48, marginBottom: 12 }}>🪙</Text>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 15, color: 'rgba(1,31,75,0.45)', textAlign: 'center' }}>
+              {search ? 'No members match your search.' : 'No credit orders yet.'}
+            </Text>
+          </View>
+        ) : filtered.map(group => {
+          const unpaid     = group.orders.filter(o => o.settled !== true);
+          const paid       = group.orders.filter(o => o.settled === true);
+          const totalOwed  = unpaid.reduce((s, o) => s + Number(o.total || 0), 0);
+          const isSettled  = totalOwed === 0;
+
+          return (
+            <TouchableOpacity
+              key={group.memberId || group.memberName}
+              onPress={() => { setSelectedMember(group.memberId || group.memberName); setActiveModalTab('unpaid'); }}
+              activeOpacity={0.80}
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.55)',
+                borderRadius: 14, marginBottom: 8,
+                borderWidth: 1.5,
+                borderColor: isSettled ? 'rgba(39,174,96,0.35)' : 'rgba(201,168,76,0.40)',
+                shadowColor: '#011f4b', shadowOpacity: 0.06, shadowRadius: 5, elevation: 2,
+                overflow: 'hidden',
+                flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, paddingLeft: 18,
+              }}
+            >
+              {/* Left accent */}
+              <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: isSettled ? '#27ae60' : '#c9a84c' }} />
+
+              {/* Avatar */}
+              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: isSettled ? 'rgba(39,174,96,0.15)' : 'rgba(201,168,76,0.20)', borderWidth: 2, borderColor: isSettled ? '#27ae60' : '#c9a84c', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 15, color: isSettled ? '#27ae60' : '#c9a84c' }}>
+                  {(group.memberName || '?').split(' ').map(w => w[0]).slice(0, 2).join('')}
+                </Text>
+              </View>
+
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#0f1e35' }} numberOfLines={1}>{group.memberName}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.50)', marginTop: 2 }}>{group.memberUserId || '—'}</Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: '#e67e22' }}>⏳ {unpaid.length} unpaid</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: '#27ae60' }}>✅ {paid.length} paid</Text>
+                </View>
+              </View>
+
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: isSettled ? '#27ae60' : '#c9a84c' }}>
+                  ₱ {totalOwed.toFixed(2)}
+                </Text>
+                {isSettled && (
+                  <View style={{ backgroundColor: 'rgba(39,174,96,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: 'rgba(39,174,96,0.40)' }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#27ae60' }}>✓ SETTLED</Text>
+                  </View>
+                )}
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.35)' }}>›</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* ── Floating Modal ─────────────────────────────────────────────────── */}
+      <Modal transparent visible={!!selectedMember} animationType="fade" onRequestClose={() => setSelectedMember(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(1,15,40,0.55)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+          <TouchableOpacity style={{ ...StyleSheet.absoluteFillObject }} activeOpacity={1} onPress={() => setSelectedMember(null)} />
+
+          <View style={{
+            width: '100%', maxWidth: 700, maxHeight: '88%',
+            backgroundColor: '#f0f5f9',
+            borderRadius: 20,
+            shadowColor: '#000', shadowOpacity: 0.30, shadowRadius: 24, elevation: 20,
+            overflow: 'hidden',
+          }}>
+            {/* Modal header */}
+            <LinearGradient colors={['#1a2d4e', '#243554']} style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(201,168,76,0.25)', borderWidth: 2, borderColor: '#c9a84c', justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 15, color: '#c9a84c' }}>
+                  {(modalGroup?.memberName || '?').split(' ').map(w => w[0]).slice(0, 2).join('')}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 15, color: '#fff' }}>{modalGroup?.memberName || '—'}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.50)', marginTop: 2 }}>{modalGroup?.memberUserId || '—'}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedMember(null)}
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ color: '#fff', fontSize: 14 }}>✕</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+
+            {/* Summary cards row */}
+            <View style={{ flexDirection: 'row', gap: 10, padding: 14, paddingBottom: 0 }}>
+              {/* Unpaid card */}
+              <TouchableOpacity
+                onPress={() => setActiveModalTab('unpaid')}
+                activeOpacity={0.85}
+                style={{
+                  flex: 1, borderRadius: 12, padding: 12,
+                  backgroundColor: activeModalTab === 'unpaid' ? '#1a2d4e' : 'rgba(255,255,255,0.55)',
+                  borderWidth: 1.5, borderColor: activeModalTab === 'unpaid' ? '#c9a84c' : 'rgba(255,255,255,0.70)',
+                }}
+              >
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: activeModalTab === 'unpaid' ? 'rgba(255,255,255,0.55)' : 'rgba(1,31,75,0.45)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>⏳ Unpaid</Text>
+                <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 22, color: activeModalTab === 'unpaid' ? '#c9a84c' : '#e67e22' }}>₱ {totalUnpaid.toFixed(2)}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: activeModalTab === 'unpaid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.45)', marginTop: 3 }}>{unpaidOrders.length} order{unpaidOrders.length !== 1 ? 's' : ''}</Text>
+              </TouchableOpacity>
+
+              {/* Paid card */}
+              <TouchableOpacity
+                onPress={() => setActiveModalTab('paid')}
+                activeOpacity={0.85}
+                style={{
+                  flex: 1, borderRadius: 12, padding: 12,
+                  backgroundColor: activeModalTab === 'paid' ? '#1a4a2e' : 'rgba(255,255,255,0.55)',
+                  borderWidth: 1.5, borderColor: activeModalTab === 'paid' ? '#27ae60' : 'rgba(255,255,255,0.70)',
+                }}
+              >
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: activeModalTab === 'paid' ? 'rgba(255,255,255,0.55)' : 'rgba(1,31,75,0.45)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>✅ Paid</Text>
+                <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 22, color: activeModalTab === 'paid' ? '#4cde8a' : '#27ae60' }}>₱ {totalPaid.toFixed(2)}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: activeModalTab === 'paid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.45)', marginTop: 3 }}>{paidOrders.length} order{paidOrders.length !== 1 ? 's' : ''}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Table */}
+            <ScrollView style={{ flex: 1, margin: 14, marginTop: 12 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+              {/* Table header */}
+              <View style={{ flexDirection: 'row', backgroundColor: '#1a2d4e', borderRadius: 8, paddingVertical: 9, paddingHorizontal: 8, marginBottom: 4 }}>
+                {[
+                  { l: 'ORDER NO.',  f: 0.8 },
+                  { l: 'DATE / TIME', f: 1.3 },
+                  { l: 'ITEMS',      f: 2.0 },
+                  { l: 'QTY',        f: 0.5 },
+                  { l: 'PRICE',      f: 0.7 },
+                  { l: 'AMOUNT',     f: 0.8 },
+                  { l: '',           f: 0.8 },
+                ].map(col => (
+                  <Text key={col.l} style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#c9a84c', letterSpacing: 1.2, textTransform: 'uppercase', flex: col.f, textAlign: col.l === 'AMOUNT' || col.l === 'QTY' || col.l === 'PRICE' ? 'right' : 'left' }}>
+                    {col.l}
+                  </Text>
+                ))}
+              </View>
+
+              {/* Rows */}
+              {(activeModalTab === 'unpaid' ? unpaidOrders : paidOrders).length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 32, marginBottom: 8 }}>{activeModalTab === 'unpaid' ? '🎉' : '📋'}</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: 'rgba(1,31,75,0.45)', textAlign: 'center' }}>
+                    {activeModalTab === 'unpaid' ? 'No unpaid orders!' : 'No paid orders yet.'}
+                  </Text>
+                </View>
+              ) : (activeModalTab === 'unpaid' ? unpaidOrders : paidOrders).map((order, idx) => {
+                const orderItems = order.items || [];
+                // One row per item; first row shows order info, rest merges
+                const isPaid = activeModalTab === 'paid';
+                return orderItems.length === 0 ? (
+                  <View key={order.docId} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8, backgroundColor: idx % 2 === 0 ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.30)', borderRadius: 8, marginBottom: 3 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#0f1e35', flex: 0.8 }}>#{order.orderNo || '—'}</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.55)', flex: 1.3 }}>{fmtDateTime(order.createdAt)}</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.45)', flex: 2.0 }}>—</Text>
+                    <Text style={{ flex: 0.5 }} />
+                    <Text style={{ flex: 0.7 }} />
+                    <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 13, color: isPaid ? '#27ae60' : '#c9a84c', flex: 0.8, textAlign: 'right' }}>₱{Number(order.total || 0).toFixed(2)}</Text>
+                    <View style={{ flex: 0.8, alignItems: 'flex-end' }}>
+                      {!isPaid && (
+                        <TouchableOpacity
+                          onPress={() => markSettled(order.docId)}
+                          disabled={settlingId === order.docId}
+                          activeOpacity={0.80}
+                          style={{ backgroundColor: '#27ae60', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, opacity: settlingId === order.docId ? 0.6 : 1 }}
+                        >
+                          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#fff' }}>
+                            {settlingId === order.docId ? '...' : 'Paid'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                ) : orderItems.map((it, j) => {
+                  const item = it.item || it;
+                  const qty  = it.qty || it.quantity || 1;
+                  const isFirst = j === 0;
+                  const isLast  = j === orderItems.length - 1;
+                  return (
+                    <View key={`${order.docId}-${j}`} style={{
+                      flexDirection: 'row', alignItems: 'center',
+                      paddingVertical: 8, paddingHorizontal: 8,
+                      backgroundColor: idx % 2 === 0 ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.30)',
+                      borderTopLeftRadius: isFirst ? 8 : 0,
+                      borderTopRightRadius: isFirst ? 8 : 0,
+                      borderBottomLeftRadius: isLast ? 8 : 0,
+                      borderBottomRightRadius: isLast ? 8 : 0,
+                      borderBottomWidth: isLast ? 0 : 1,
+                      borderColor: 'rgba(1,31,75,0.06)',
+                      marginBottom: isLast ? 3 : 0,
+                    }}>
+                      {/* Order No — only on first row */}
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: isFirst ? '#0f1e35' : 'transparent', flex: 0.8 }}>
+                        {isFirst ? `#${order.orderNo || '—'}` : ''}
+                      </Text>
+                      {/* Date — only on first row */}
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9.5, color: isFirst ? 'rgba(1,31,75,0.55)' : 'transparent', flex: 1.3, lineHeight: 14 }}>
+                        {isFirst ? fmtDateTime(order.createdAt) : ''}
+                      </Text>
+                      {/* Item name */}
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: '#0f1e35', flex: 2.0 }} numberOfLines={1}>
+                        {item.emoji || '🍽️'} {item.name || '—'}
+                      </Text>
+                      {/* Qty */}
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35', flex: 0.5, textAlign: 'right' }}>
+                        {qty}
+                      </Text>
+                      {/* Unit price */}
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.55)', flex: 0.7, textAlign: 'right' }}>
+                        ₱{Number(item.price || 0).toFixed(2)}
+                      </Text>
+                      {/* Amount */}
+                      <Text style={{ fontFamily: isLast ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize: isLast ? 13 : 11, color: isLast ? (isPaid ? '#27ae60' : '#c9a84c') : 'rgba(1,31,75,0.65)', flex: 0.8, textAlign: 'right' }}>
+                        {isLast ? `₱${Number(order.total || 0).toFixed(2)}` : `₱${(Number(item.price || 0) * qty).toFixed(2)}`}
+                      </Text>
+                      {/* Paid button — only on last row, only for unpaid tab */}
+                      <View style={{ flex: 0.8, alignItems: 'flex-end' }}>
+                        {isLast && !isPaid && (
+                          <TouchableOpacity
+                            onPress={() => markSettled(order.docId)}
+                            disabled={settlingId === order.docId}
+                            activeOpacity={0.80}
+                            style={{ backgroundColor: '#27ae60', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, opacity: settlingId === order.docId ? 0.6 : 1 }}
+                          >
+                            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#fff' }}>
+                              {settlingId === order.docId ? '...' : 'Paid'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                        {isLast && isPaid && order.settledAt && (
+                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#27ae60', textAlign: 'right' }}>
+                            ✓ {fmtDateTime(order.settledAt)}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  );
+                });
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
 
 const SalesReportScreen = ({ orders, items }) => {
   const currentYear=new Date().getFullYear();
@@ -1042,7 +1392,47 @@ const SalesReportScreen = ({ orders, items }) => {
         </View>
         <View style={[rpt.section,{marginTop:16}]}>
           <TouchableOpacity style={rpt.sectionTitleRow} onPress={()=>setShowCredits(p=>!p)} activeOpacity={0.80}><Text style={rpt.sectionTitle}>Credits Reports</Text><Text style={rpt.sectionToggle}>{showCredits?'▲':'▼'}</Text></TouchableOpacity>
-          {showCredits&&<View style={rpt.comingSoon}><Text style={rpt.comingSoonEmoji}>🚧</Text><Text style={rpt.comingSoonTxt}>Coming Soon</Text><Text style={rpt.comingSoonSub}>Credits reporting will be available in a future update.</Text></View>}
+          {showCredits&&(()=>{
+            const creditOrders=orders.filter(o=>(o.payment||'').toLowerCase()==='credit');
+            const unsettled=creditOrders.filter(o=>o.settled!==true);
+            const settled=creditOrders.filter(o=>o.settled===true);
+            const totalUnsettled=unsettled.reduce((s,o)=>s+Number(o.total||0),0);
+            const totalSettled=settled.reduce((s,o)=>s+Number(o.total||0),0);
+            if(creditOrders.length===0)return(<View style={rpt.emptyRow}><Text style={rpt.emptyTxt}>No credit orders for {MONTHS[activeMonth]} {year}</Text></View>);
+            const monthCredit=creditOrders.filter(o=>{const d=getDate(o);return d&&d.getFullYear()===year&&d.getMonth()===activeMonth;});
+            return(
+              <View>
+                <View style={{flexDirection:'row',gap:10,marginBottom:10,flexWrap:'wrap'}}>
+                  {[
+                    {l:'Total Credit Orders',v:monthCredit.length,c:'#1a3a6b'},
+                    {l:'Unsettled',v:'₱'+unsettled.reduce((s,o)=>s+Number(o.total||0),0).toFixed(2),c:'#c9a84c'},
+                    {l:'Settled',v:'₱'+settled.reduce((s,o)=>s+Number(o.total||0),0).toFixed(2),c:'#27ae60'},
+                  ].map(stat=>(
+                    <View key={stat.l} style={{flex:1,minWidth:100,backgroundColor:'rgba(255,255,255,0.55)',borderRadius:10,padding:10,borderWidth:1,borderColor:'rgba(255,255,255,0.70)'}}>
+                      <Text style={{fontFamily:'GoogleSans_400Regular',fontSize:9,color:'rgba(1,31,75,0.50)',letterSpacing:1,textTransform:'uppercase',marginBottom:4}}>{stat.l}</Text>
+                      <Text style={{fontFamily:'NotoSerif_700Bold',fontSize:16,color:stat.c}}>{stat.v}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={rpt.table}>
+                  <View style={rpt.thead}><Text style={[rpt.th,{flex:0.8}]}>ORDER #</Text><Text style={[rpt.th,{flex:1.5}]}>MEMBER</Text><Text style={[rpt.th,{flex:1.2}]}>DATE</Text><Text style={[rpt.th,{flex:0.9,textAlign:'right'}]}>AMOUNT</Text><Text style={[rpt.th,{flex:0.8,textAlign:'center'}]}>STATUS</Text></View>
+                  {monthCredit.length===0?(<View style={rpt.emptyRow}><Text style={rpt.emptyTxt}>No credit orders this month</Text></View>):monthCredit.map((o,i)=>(
+                    <View key={o.id||o.docId||i} style={[rpt.trow,i%2===0&&rpt.trowAlt]}>
+                      <Text style={[rpt.td,{flex:0.8,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b'}]}>#{o.orderNo||'—'}</Text>
+                      <Text style={[rpt.td,{flex:1.5}]} numberOfLines={1}>{o.memberName||'—'}</Text>
+                      <Text style={[rpt.td,{flex:1.2,fontSize:9}]}>{o.time||'—'}</Text>
+                      <Text style={[rpt.td,{flex:0.9,textAlign:'right',fontFamily:'GoogleSans_700Bold',color:'#c9a84c'}]}>₱{Number(o.total||0).toFixed(2)}</Text>
+                      <View style={{flex:0.8,alignItems:'center',justifyContent:'center'}}>
+                        <View style={{backgroundColor:o.settled?'rgba(39,174,96,0.15)':'rgba(201,168,76,0.15)',borderRadius:6,paddingHorizontal:6,paddingVertical:2,borderWidth:1,borderColor:o.settled?'rgba(39,174,96,0.40)':'rgba(201,168,76,0.40)'}}>
+                          <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:8,color:o.settled?'#27ae60':'#c9a84c'}}>{o.settled?'SETTLED':'UNPAID'}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            );
+          })()}
         </View>
       </WebScrollView>
     </View>
