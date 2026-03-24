@@ -603,7 +603,7 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
   const DAY_HDR = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
   return (
-    <View style={[{ marginBottom: 12 }, half && { flex: 1 }]}>
+    <View style={[{ marginBottom: 12, position:'relative', zIndex: open ? 100 : 1 }, half && { flex: 1 }]}>
       <Text style={af.fieldLabel}>{l}</Text>
       <TouchableOpacity
         style={[af.input, { flexDirection:'row', justifyContent:'space-between', alignItems:'center' }]}
@@ -615,48 +615,49 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
       </TouchableOpacity>
 
       {open && (
-        <View style={{ borderRadius:12, borderWidth:1.5, borderColor:'rgba(200,218,235,0.90)', backgroundColor:'#fff', marginTop:3, marginBottom:4, overflow:'hidden', shadowColor:'#1a2d4e', shadowOpacity:0.13, shadowRadius:12, shadowOffset:{width:0,height:4}, elevation:6 }}>
+        <View style={{ position:'absolute', top:62, left:0, zIndex:999, width:230 }}>
+        <View style={{ borderRadius:10, borderWidth:1.5, borderColor:'rgba(200,218,235,0.90)', backgroundColor:'#fff', overflow:'hidden', shadowColor:'#1a2d4e', shadowOpacity:0.18, shadowRadius:8, shadowOffset:{width:0,height:4}, elevation:10 }}>
 
           {/* ── Header bar: ‹ Month Year › */}
-          <View style={{ flexDirection:'row', alignItems:'center', backgroundColor:'#1a2d4e', paddingHorizontal:10, paddingVertical:8 }}>
-            <TouchableOpacity onPress={() => navMonth(-1)} style={{ padding:4, marginRight:4 }}>
-              <Text style={{ fontSize:18, color:'rgba(255,255,255,0.70)', lineHeight:20 }}>‹</Text>
+          <View style={{ flexDirection:'row', alignItems:'center', backgroundColor:'#1a2d4e', paddingHorizontal:8, paddingVertical:5 }}>
+            <TouchableOpacity onPress={() => navMonth(-1)} style={{ padding:3, marginRight:2 }}>
+              <Text style={{ fontSize:15, color:'rgba(255,255,255,0.70)', lineHeight:17 }}>‹</Text>
             </TouchableOpacity>
 
             {/* Month tap → show month grid */}
-            <TouchableOpacity onPress={() => setPicking(p => p === 'month' ? 'day' : 'month')} style={{ flexDirection:'row', alignItems:'center', gap:3 }}>
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff' }}>{curM}</Text>
-              <Text style={{ fontSize:9, color:'rgba(255,255,255,0.55)' }}>▾</Text>
+            <TouchableOpacity onPress={() => setPicking(p => p === 'month' ? 'day' : 'month')} style={{ flexDirection:'row', alignItems:'center', gap:2 }}>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#fff' }}>{curM}</Text>
+              <Text style={{ fontSize:8, color:'rgba(255,255,255,0.55)' }}>▾</Text>
             </TouchableOpacity>
 
-            <Text style={{ color:'rgba(255,255,255,0.40)', marginHorizontal:4 }}> </Text>
+            <Text style={{ color:'rgba(255,255,255,0.40)', marginHorizontal:3 }}> </Text>
 
             {/* Year tap → show year grid */}
-            <TouchableOpacity onPress={() => setPicking(p => p === 'year' ? 'day' : 'year')} style={{ flexDirection:'row', alignItems:'center', gap:3 }}>
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff' }}>{curY}</Text>
-              <Text style={{ fontSize:9, color:'rgba(255,255,255,0.55)' }}>▾</Text>
+            <TouchableOpacity onPress={() => setPicking(p => p === 'year' ? 'day' : 'year')} style={{ flexDirection:'row', alignItems:'center', gap:2 }}>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#fff' }}>{curY}</Text>
+              <Text style={{ fontSize:8, color:'rgba(255,255,255,0.55)' }}>▾</Text>
             </TouchableOpacity>
 
             <View style={{ flex:1 }} />
-            <TouchableOpacity onPress={() => navMonth(1)} style={{ padding:4 }}>
-              <Text style={{ fontSize:18, color:'rgba(255,255,255,0.70)', lineHeight:20 }}>›</Text>
+            <TouchableOpacity onPress={() => navMonth(1)} style={{ padding:3 }}>
+              <Text style={{ fontSize:15, color:'rgba(255,255,255,0.70)', lineHeight:17 }}>›</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setOpen(false)} style={{ padding:4, marginLeft:6 }}>
-              <Text style={{ fontSize:13, color:'rgba(255,255,255,0.50)' }}>✕</Text>
+            <TouchableOpacity onPress={() => setOpen(false)} style={{ padding:3, marginLeft:4 }}>
+              <Text style={{ fontSize:11, color:'rgba(255,255,255,0.50)' }}>✕</Text>
             </TouchableOpacity>
           </View>
 
           {/* ── MONTH picker overlay */}
           {picking === 'month' && (
-            <View style={{ padding:8 }}>
-              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:4 }}>
+            <View style={{ padding:6 }}>
+              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:3 }}>
                 {MS.map((m, i) => (
                   <TouchableOpacity key={m}
                     onPress={() => { setCurM(MF[i]); setPicking('day'); }}
-                    style={{ width:'22%', paddingVertical:8, borderRadius:8, alignItems:'center',
+                    style={{ width:'22%', paddingVertical:5, borderRadius:6, alignItems:'center',
                       backgroundColor: curM === MF[i] ? C.gold : 'rgba(15,30,53,0.06)',
                       borderWidth:1, borderColor: curM === MF[i] ? C.gold : 'transparent' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color: curM === MF[i] ? '#fff' : C.navy }}>{m}</Text>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color: curM === MF[i] ? '#fff' : C.navy }}>{m}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -665,15 +666,15 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
 
           {/* ── YEAR picker overlay */}
           {picking === 'year' && (
-            <ScrollView style={{ maxHeight:180, padding:8 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:4 }}>
+            <ScrollView style={{ maxHeight:130, padding:6 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:3 }}>
                 {years.map(y => (
                   <TouchableOpacity key={y}
                     onPress={() => { setCurY(y); setPicking('day'); }}
-                    style={{ width:'22%', paddingVertical:8, borderRadius:8, alignItems:'center',
+                    style={{ width:'22%', paddingVertical:5, borderRadius:6, alignItems:'center',
                       backgroundColor: curY === y ? C.navyMid : 'rgba(15,30,53,0.06)',
                       borderWidth:1, borderColor: curY === y ? C.navyMid : 'transparent' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color: curY === y ? '#fff' : C.navy }}>{y}</Text>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color: curY === y ? '#fff' : C.navy }}>{y}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -682,12 +683,12 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
 
           {/* ── DAY grid */}
           {picking === 'day' && (
-            <View style={{ padding:8 }}>
+            <View style={{ padding:6 }}>
               {/* Day-of-week headers */}
-              <View style={{ flexDirection:'row', marginBottom:2 }}>
+              <View style={{ flexDirection:'row', marginBottom:1 }}>
                 {DAY_HDR.map((d,i) => (
-                  <View key={d} style={{ flex:1, alignItems:'center', paddingVertical:4 }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, color:(i===0||i===6)?'rgba(192,57,43,0.70)':C.textMuted }}>{d}</Text>
+                  <View key={d} style={{ flex:1, alignItems:'center', paddingVertical:3 }}>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color:(i===0||i===6)?'rgba(192,57,43,0.70)':C.textMuted }}>{d}</Text>
                   </View>
                 ))}
               </View>
@@ -695,7 +696,7 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
               {/* Calendar squares */}
               <View style={{ flexDirection:'row', flexWrap:'wrap' }}>
                 {calCells.map((day, idx) => (
-                  <View key={idx} style={{ width:'14.28%', aspectRatio:1, padding:1.5 }}>
+                  <View key={idx} style={{ width:'14.28%', aspectRatio:1.1, padding:1 }}>
                     {day ? (
                       <TouchableOpacity
                         onPress={() => pickDay(day)}
@@ -704,7 +705,7 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
                           borderWidth: isToday(day) && !isSelected(day) ? 1 : 0,
                           borderColor: C.gold }}>
                         <Text style={{ fontFamily: isSelected(day) ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular',
-                          fontSize:12, color: isSelected(day) ? '#fff' : (idx%7===0||idx%7===6) ? 'rgba(192,57,43,0.75)' : C.navy }}>
+                          fontSize:10, color: isSelected(day) ? '#fff' : (idx%7===0||idx%7===6) ? 'rgba(192,57,43,0.75)' : C.navy }}>
                           {day}
                         </Text>
                       </TouchableOpacity>
@@ -715,6 +716,8 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
             </View>
           )}
         </View>
+        </View>
+        /* end dropdown wrapper */
       )}
     </View>
   );
@@ -1568,29 +1571,29 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
             </View>
 
             <DatePicker l="DATE OF BIRTH" value={form.dob} onChange={v => set('dob', v)} />
-            {/* Place of Birth — separate Municipality + Province */}
+            {/* Place of Birth — Province first, then Municipality */}
             <Text style={af.fieldLabel}>PLACE OF BIRTH</Text>
             <View style={{ flexDirection: rowDir, gap: 8, marginBottom: 12 }}>
-              <View style={halfStyle}>
-                <Text style={[af.fieldLabel, { marginBottom: 4, fontSize: 8 }]}>CITY / MUNICIPALITY</Text>
-                <DropdownPicker
-                  l=""
-                  options={form.pobProvince && MUNICIPALITIES_BY_PROVINCE[form.pobProvince]
-                    ? MUNICIPALITIES_BY_PROVINCE[form.pobProvince]
-                    : PROVINCES_PH.flatMap(p => MUNICIPALITIES_BY_PROVINCE[p] || []).filter((v,i,a) => a.indexOf(v)===i).sort()}
-                  value={form.pobMunicipality}
-                  onSelect={v => { set('pobMunicipality', v); set('placeOfBirth', `${v}, ${form.pobProvince || ''}`); }}
-                  placeholder="Select city / municipality"
-                />
-              </View>
               <View style={halfStyle}>
                 <Text style={[af.fieldLabel, { marginBottom: 4, fontSize: 8 }]}>PROVINCE</Text>
                 <DropdownPicker
                   l=""
                   options={PROVINCES_PH}
                   value={form.pobProvince}
-                  onSelect={v => { set('pobProvince', v); set('placeOfBirth', `${form.pobMunicipality || ''}, ${v}`); }}
+                  onSelect={v => { set('pobProvince', v); set('pobMunicipality', ''); set('placeOfBirth', `${form.pobMunicipality || ''}, ${v}`); }}
                   placeholder="Select province"
+                />
+              </View>
+              <View style={halfStyle}>
+                <Text style={[af.fieldLabel, { marginBottom: 4, fontSize: 8 }]}>CITY / MUNICIPALITY</Text>
+                <DropdownPicker
+                  l=""
+                  options={form.pobProvince && MUNICIPALITIES_BY_PROVINCE[form.pobProvince]
+                    ? MUNICIPALITIES_BY_PROVINCE[form.pobProvince]
+                    : []}
+                  value={form.pobMunicipality}
+                  onSelect={v => { set('pobMunicipality', v); set('placeOfBirth', `${v}, ${form.pobProvince || ''}`); }}
+                  placeholder={form.pobProvince ? 'Select city / municipality' : 'Select province first'}
                 />
               </View>
             </View>
@@ -2500,12 +2503,12 @@ const EditProfileView = ({ member, contentHeight }) => {
         <Text style={s.fieldLabel}>PLACE OF BIRTH</Text>
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 11 }}>
           <View style={{ flex: 1 }}>
-            <Text style={[s.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>CITY / MUNICIPALITY</Text>
-            <DropdownPicker l="" options={PROVINCES_PH.flatMap(p => MUNICIPALITIES_BY_PROVINCE[p] || []).filter((v,i,a)=>a.indexOf(v)===i).sort()} value={placeOfBirth.split(', ')[0] || ''} onSelect={v => setPlaceOfBirth(`${v}, ${placeOfBirth.split(', ')[1] || ''}`)} placeholder="Select city" />
-          </View>
-          <View style={{ flex: 1 }}>
             <Text style={[s.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>PROVINCE</Text>
             <DropdownPicker l="" options={PROVINCES_PH} value={placeOfBirth.split(', ')[1] || ''} onSelect={v => setPlaceOfBirth(`${placeOfBirth.split(', ')[0] || ''}, ${v}`)} placeholder="Select province" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>CITY / MUNICIPALITY</Text>
+            <DropdownPicker l="" options={placeOfBirth.split(', ')[1] ? (MUNICIPALITIES_BY_PROVINCE[placeOfBirth.split(', ')[1]] || []) : []} value={placeOfBirth.split(', ')[0] || ''} onSelect={v => setPlaceOfBirth(`${v}, ${placeOfBirth.split(', ')[1] || ''}`)} placeholder={placeOfBirth.split(', ')[1] ? 'Select city' : 'Select province first'} />
           </View>
         </View>
         <Text style={s.fieldLabel}>CIVIL STATUS</Text>
