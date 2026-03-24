@@ -4,7 +4,7 @@
 // Admin sees them instantly here → Approve / Reject → member can now login
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Animated, StatusBar, useWindowDimensions, Platform,
@@ -21,6 +21,7 @@ import {
   collection, query, orderBy, onSnapshot,
   doc, updateDoc, addDoc, serverTimestamp,
   where, getDocs, setDoc, getDoc, limit,
+  writeBatch, deleteDoc,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -410,40 +411,6 @@ const OverviewView = ({ members, claims, loans }) => {
         <MetricTile label="Total Shares"      value={fmtCur(totalShares)} icon="📊" color={C.gold}     sub="Share capital" />
         <MetricTile label="Loans Outstanding" value={fmtCur(totalLoans)}  icon="💳" color={C.orangeLt} sub={`${pendLoans} pending apps`} />
         <MetricTile label="Pending Claims"    value={fmtNum(pendClaims)}  icon="🧾" color={C.purple}   sub={`${apprClaims} approved`} />
-      </View>
-
-      {/* New registrations bar chart */}
-      <Text style={a.sHead}>📈 NEW REGISTRATIONS (LAST 6 MONTHS)</Text>
-      <GCard>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 80, gap: 8 }}>
-          {months.map((m, i) => (
-            <View key={i} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.blue }}>
-                {m.count > 0 ? m.count : ''}
-              </Text>
-              <View style={{ width: '100%', backgroundColor: 'rgba(15,30,53,0.10)', borderRadius: 4, height: 60, justifyContent: 'flex-end', overflow: 'hidden' }}>
-                <View style={{ width: '100%', backgroundColor: C.blue, borderRadius: 4, height: `${Math.round((m.count / maxCount) * 100)}%`, minHeight: m.count > 0 ? 4 : 0 }} />
-              </View>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: C.textMuted }}>{m.label}</Text>
-            </View>
-          ))}
-        </View>
-      </GCard>
-
-      {/* Quick stats */}
-      <Text style={a.sHead}>⚡ QUICK STATS</Text>
-      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-        {[
-          { label: 'New Today',        value: newToday, color: C.cyan },
-          { label: 'New This Week',    value: newWeek,  color: C.blue },
-          { label: 'Inactive Members', value: members.filter(m => m.status === 'Inactive').length, color: C.textMuted },
-          { label: 'Rejected',         value: members.filter(m => m.status === 'Rejected').length, color: C.red },
-        ].map(s => (
-          <GCard key={s.label} style={{ flex: 1, minWidth: 120, alignItems: 'center', padding: 12, marginBottom: 0 }}>
-            <Text style={[a.tileVal, { color: s.color, fontSize: 24 }]}>{s.value}</Text>
-            <Text style={[a.tileLbl, { textAlign: 'center' }]}>{s.label}</Text>
-          </GCard>
-        ))}
       </View>
 
       {/* Recent registrations */}
@@ -1994,8 +1961,20 @@ const AdminChatRoom = ({ roomId, memberName, onBack }) => {
       limit(100)
     );
     const unsub = onSnapshot(q, snap => {
-      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setMessages(msgs);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+      // Auto mark unread messages as read
+      const batch = writeBatch(db);
+      let hasUnread = false;
+      snap.docs.forEach(d => {
+        const rb = d.data().readBy || [];
+        if (!rb.includes('admin') && d.data().senderId !== 'admin') {
+          batch.update(d.ref, { readBy: [...rb, 'admin'] });
+          hasUnread = true;
+        }
+      });
+      if (hasUnread) batch.commit().catch(() => {});
     });
     return unsub;
   }, [roomId]);
@@ -2112,12 +2091,14 @@ const AdminChatRoom = ({ roomId, memberName, onBack }) => {
 
 // ── Chat Inbox — list of all member support rooms ────────────────────────────
 const AdminChatInbox = ({ onSelectRoom }) => {
-  const [rooms, setRooms]     = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch]   = useState('');
+  const [rooms, setRooms]         = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [search, setSearch]       = useState('');
+  const [menuRoom, setMenuRoom]   = useState(null); // { room, x, y } for dropdown
+  const [longPressId, setLongPressId] = useState(null);
+  const menuRef = useRef(null);
 
   useEffect(() => {
-    // Listen to all admin-type chat rooms
     const q = query(
       collection(db, 'chatRooms'),
       where('type', '==', 'admin'),
@@ -2134,7 +2115,7 @@ const AdminChatInbox = ({ onSelectRoom }) => {
     (r.memberName || '').toLowerCase().includes(search.toLowerCase())
   );
 
-  // Unread count for a room (messages not readBy 'admin')
+  // Unread count per room
   const [unreadMap, setUnreadMap] = useState({});
   useEffect(() => {
     const unsubs = rooms.map(room => {
@@ -2154,6 +2135,98 @@ const AdminChatInbox = ({ onSelectRoom }) => {
     return () => unsubs.forEach(u => u());
   }, [rooms]);
 
+  // Mark all messages in a room as read by admin
+  const markAsRead = useCallback(async (roomId) => {
+    try {
+      const q = query(
+        collection(db, 'chatRooms', roomId, 'messages'),
+        where('senderId', '!=', 'admin')
+      );
+      const snap = await getDocs(q);
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => {
+        const rb = d.data().readBy || [];
+        if (!rb.includes('admin')) {
+          batch.update(d.ref, { readBy: [...rb, 'admin'] });
+        }
+      });
+      await batch.commit();
+    } catch (e) {}
+  }, []);
+
+  // Mark as unread — remove 'admin' from readBy on latest message
+  const markAsUnread = useCallback(async (roomId) => {
+    try {
+      const q = query(
+        collection(db, 'chatRooms', roomId, 'messages'),
+        orderBy('createdAt', 'desc'),
+        limit(5)
+      );
+      const snap = await getDocs(q);
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => {
+        const rb = (d.data().readBy || []).filter(id => id !== 'admin');
+        batch.update(d.ref, { readBy: rb });
+      });
+      await batch.commit();
+    } catch (e) {}
+  }, []);
+
+  // Archive — set archived flag on room
+  const archiveRoom = useCallback(async (roomId) => {
+    try {
+      await updateDoc(doc(db, 'chatRooms', roomId), { archived: true });
+    } catch (e) {}
+  }, []);
+
+  // Delete — remove all messages then the room doc
+  const deleteRoom = useCallback(async (roomId) => {
+    try {
+      const msgSnap = await getDocs(collection(db, 'chatRooms', roomId, 'messages'));
+      const batch = writeBatch(db);
+      msgSnap.docs.forEach(d => batch.delete(d.ref));
+      batch.delete(doc(db, 'chatRooms', roomId));
+      await batch.commit();
+    } catch (e) {}
+  }, []);
+
+  // Handle room press — open + mark as read
+  const handleOpen = useCallback((room) => {
+    markAsRead(room.id);
+    onSelectRoom(room);
+  }, [markAsRead, onSelectRoom]);
+
+  // Close menu on outside click (web)
+  useEffect(() => {
+    if (!menuRoom || Platform.OS !== 'web') return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuRoom(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuRoom]);
+
+  const openMenu = (e, room) => {
+    e.stopPropagation();
+    if (Platform.OS === 'web') {
+      const rect = e.target.getBoundingClientRect?.();
+      setMenuRoom({ room, x: rect?.left || 0, y: rect?.bottom || 0 });
+    } else {
+      setMenuRoom({ room });
+    }
+  };
+
+  const doMenuAction = async (action) => {
+    const room = menuRoom?.room;
+    setMenuRoom(null);
+    if (!room) return;
+    if (action === 'unread')  await markAsUnread(room.id);
+    if (action === 'archive') await archiveRoom(room.id);
+    if (action === 'delete')  await deleteRoom(room.id);
+  };
+
   if (loading) return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
       <ActivityIndicator size="large" color={C.gold} />
@@ -2162,84 +2235,188 @@ const AdminChatInbox = ({ onSelectRoom }) => {
   );
 
   return (
-    <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 48 }]} showsVerticalScrollIndicator={true}>
-      <Text style={a.pageTitle}>📥 Chat Inbox</Text>
-      <Text style={a.pageSub}>Real-time support messages from members. Tap to reply.</Text>
+    <View style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={[a.pageOuter, { paddingBottom: 48 }]} showsVerticalScrollIndicator={true}>
+        <Text style={a.pageTitle}>📥 Chat Inbox</Text>
+        <Text style={a.pageSub}>Real-time support messages from members. Tap to reply.</Text>
 
-      {/* Search */}
-      <View style={a.searchWrap}>
-        <Text style={{ color: C.textMuted, fontSize: 14, marginRight: 6 }}>🔍</Text>
-        <TextInput
-          style={a.searchInput}
-          value={search} onChangeText={setSearch}
-          placeholder="Search member name..."
-          placeholderTextColor={C.textMuted}
-          autoCapitalize="none"
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Text style={{ color: C.textMuted, fontSize: 14 }}>✕</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        {/* Search */}
+        <View style={a.searchWrap}>
+          <Text style={{ color: C.textMuted, fontSize: 14, marginRight: 6 }}>🔍</Text>
+          <TextInput
+            style={a.searchInput}
+            value={search} onChangeText={setSearch}
+            placeholder="Search member name..."
+            placeholderTextColor={C.textMuted}
+            autoCapitalize="none"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Text style={{ color: C.textMuted, fontSize: 14 }}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-      {/* Summary badges */}
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-        {[
-          { l: 'Total Chats',  v: rooms.length,                                              c: C.blue   },
-          { l: 'Unread',       v: Object.values(unreadMap).reduce((s, n) => s + n, 0),       c: C.red    },
-          { l: 'Active Today', v: rooms.filter(r => { const d = r.lastAt?.toDate?.() || new Date(r.lastAt || 0); return d.toDateString() === new Date().toDateString(); }).length, c: C.green },
-        ].map(s => (
-          <GCard key={s.l} style={{ flex: 1, alignItems: 'center', padding: 12, marginBottom: 0 }}>
-            <Text style={[a.tileVal, { color: s.c, fontSize: 20 }]}>{s.v}</Text>
-            <Text style={[a.tileLbl, { textAlign: 'center' }]}>{s.l}</Text>
+        {/* Summary badges */}
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+          {[
+            { l: 'Total Chats',  v: rooms.length,                                              c: C.blue   },
+            { l: 'Unread',       v: Object.values(unreadMap).reduce((s, n) => s + n, 0),       c: C.red    },
+            { l: 'Active Today', v: rooms.filter(r => { const d = r.lastAt?.toDate?.() || new Date(r.lastAt || 0); return d.toDateString() === new Date().toDateString(); }).length, c: C.green },
+          ].map(s => (
+            <GCard key={s.l} style={{ flex: 1, alignItems: 'center', padding: 12, marginBottom: 0 }}>
+              <Text style={[a.tileVal, { color: s.c, fontSize: 20 }]}>{s.v}</Text>
+              <Text style={[a.tileLbl, { textAlign: 'center' }]}>{s.l}</Text>
+            </GCard>
+          ))}
+        </View>
+
+        {filtered.length === 0 && (
+          <GCard style={{ alignItems: 'center', padding: 40 }}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>💬</Text>
+            <Text style={a.emptyTxt}>{search ? 'No chats match your search.' : 'No member chats yet.\nMembers can message you from the Member Portal.'}</Text>
           </GCard>
-        ))}
-      </View>
+        )}
 
-      {filtered.length === 0 && (
-        <GCard style={{ alignItems: 'center', padding: 40 }}>
-          <Text style={{ fontSize: 40, marginBottom: 12 }}>💬</Text>
-          <Text style={a.emptyTxt}>{search ? 'No chats match your search.' : 'No member chats yet.\nMembers can message you from the Member Portal.'}</Text>
-        </GCard>
+        {filtered.map(room => {
+          const unread = unreadMap[room.id] || 0;
+          const hasUnread = unread > 0;
+          const isLongPressed = longPressId === room.id;
+          return (
+            <TouchableOpacity
+              key={room.id}
+              onPress={() => handleOpen(room)}
+              onLongPress={() => {
+                if (Platform.OS !== 'web') {
+                  setLongPressId(room.id);
+                  setMenuRoom({ room });
+                }
+              }}
+              activeOpacity={0.80}
+            >
+              <GCard style={[
+                { padding: 14, marginBottom: 8 },
+                hasUnread && { borderLeftWidth: 3, borderLeftColor: C.gold, backgroundColor: 'rgba(201,168,76,0.08)' },
+                isLongPressed && { backgroundColor: 'rgba(15,30,53,0.08)' },
+              ]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  {/* Avatar */}
+                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: hasUnread ? 'rgba(201,168,76,0.28)' : 'rgba(15,30,53,0.10)', borderWidth: 2, borderColor: hasUnread ? C.gold : 'rgba(15,30,53,0.15)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 16, color: hasUnread ? C.gold : C.textMuted }}>{mkChatInit(room.memberName)}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy }} numberOfLines={1}>{room.memberName || 'Member'}</Text>
+                      {hasUnread && (
+                        <View style={{ backgroundColor: C.red, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+                          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#fff' }}>{unread} new</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: hasUnread ? C.navy : C.textSec, marginTop: 2 }} numberOfLines={1}>
+                      {room.lastMessage
+                        ? `${room.lastSender === 'Admin' ? 'You' : room.lastSender || 'Member'}: ${room.lastMessage}`
+                        : 'No messages yet'}
+                    </Text>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+                      {fmtTime(room.lastAt)}
+                    </Text>
+                  </View>
+                  {/* Web: 3-dot menu button */}
+                  {Platform.OS === 'web' ? (
+                    <TouchableOpacity
+                      onPress={(e) => openMenu(e, room)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' }}
+                    >
+                      <Text style={{ color: C.textMuted, fontSize: 18, letterSpacing: 1 }}>⋮</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={{ color: C.textMuted, fontSize: 18 }}>›</Text>
+                  )}
+                </View>
+              </GCard>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Dropdown menu — web (fixed position) */}
+      {menuRoom && Platform.OS === 'web' && (
+        <View
+          ref={menuRef}
+          style={{
+            position: 'absolute',
+            right: 20,
+            top: menuRoom.y ? menuRoom.y - 60 : 200,
+            backgroundColor: '#fff',
+            borderRadius: 12,
+            shadowColor: '#0f1e35',
+            shadowOpacity: 0.18,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 4 },
+            borderWidth: 1,
+            borderColor: 'rgba(15,30,53,0.10)',
+            zIndex: 999,
+            minWidth: 160,
+            overflow: 'hidden',
+          }}
+        >
+          {[
+            { key: 'unread',  icon: '🔵', label: 'Mark as Unread' },
+            { key: 'archive', icon: '📦', label: 'Archive'         },
+            { key: 'delete',  icon: '🗑️', label: 'Delete',  danger: true },
+          ].map((item, i) => (
+            <TouchableOpacity
+              key={item.key}
+              onPress={() => doMenuAction(item.key)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10,
+                paddingHorizontal: 16, paddingVertical: 13,
+                borderTopWidth: i === 0 ? 0 : 1,
+                borderColor: 'rgba(15,30,53,0.07)',
+                backgroundColor: 'transparent',
+              }}
+            >
+              <Text style={{ fontSize: 15 }}>{item.icon}</Text>
+              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: item.danger ? C.red : C.navy }}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       )}
 
-      {filtered.map(room => {
-        const unread = unreadMap[room.id] || 0;
-        const hasUnread = unread > 0;
-        return (
-          <TouchableOpacity key={room.id} onPress={() => onSelectRoom(room)} activeOpacity={0.80}>
-            <GCard style={[{ padding: 14, marginBottom: 8 }, hasUnread && { borderLeftWidth: 3, borderLeftColor: C.gold, backgroundColor: 'rgba(201,168,76,0.08)' }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                {/* Avatar */}
-                <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: hasUnread ? 'rgba(201,168,76,0.28)' : 'rgba(15,30,53,0.10)', borderWidth: 2, borderColor: hasUnread ? C.gold : 'rgba(15,30,53,0.15)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 16, color: hasUnread ? C.gold : C.textMuted }}>{mkChatInit(room.memberName)}</Text>
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy }} numberOfLines={1}>{room.memberName || 'Member'}</Text>
-                    {hasUnread && (
-                      <View style={{ backgroundColor: C.red, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
-                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#fff' }}>{unread} new</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: hasUnread ? C.navy : C.textSec, marginTop: 2 }} numberOfLines={1}>
-                    {room.lastMessage
-                      ? `${room.lastSender === 'Admin' ? 'You' : room.lastSender || 'Member'}: ${room.lastMessage}`
-                      : 'No messages yet'}
-                  </Text>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 2 }}>
-                    {fmtTime(room.lastAt)}
-                  </Text>
-                </View>
-                <Text style={{ color: C.textMuted, fontSize: 18 }}>›</Text>
-              </View>
-            </GCard>
+      {/* Bottom sheet menu — mobile (long press) */}
+      {menuRoom && Platform.OS !== 'web' && (
+        <Modal transparent animationType="fade" visible={true} onRequestClose={() => { setMenuRoom(null); setLongPressId(null); }}>
+          <TouchableOpacity
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.40)', justifyContent: 'flex-end' }}
+            activeOpacity={1}
+            onPress={() => { setMenuRoom(null); setLongPressId(null); }}
+          >
+            <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 32 }}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(15,30,53,0.18)', alignSelf: 'center', marginTop: 12, marginBottom: 8 }} />
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy, textAlign: 'center', paddingVertical: 10, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
+                {menuRoom.room?.memberName || 'Member'}
+              </Text>
+              {[
+                { key: 'unread',  icon: '🔵', label: 'Mark as Unread' },
+                { key: 'archive', icon: '📦', label: 'Archive'         },
+                { key: 'delete',  icon: '🗑️', label: 'Delete',  danger: true },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  onPress={() => { setLongPressId(null); doMenuAction(item.key); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 24, paddingVertical: 16 }}
+                >
+                  <Text style={{ fontSize: 20 }}>{item.icon}</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 15, color: item.danger ? C.red : C.navy }}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
+        </Modal>
+      )}
+    </View>
   );
 };
 

@@ -581,7 +581,7 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
         <Text style={{ fontSize: 13 }}>📅</Text>
       </TouchableOpacity>
       {open && (
-        <View style={[af.dropdownList, { padding: 10 }]}>
+        <View style={{ borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)', backgroundColor: 'rgba(240,246,252,0.98)', padding: 12, marginTop: 4, marginBottom: 4 }}>
           {/* Month row */}
           <Text style={[af.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>MONTH</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
@@ -653,7 +653,135 @@ const AF = ({ label: l, value, onChangeText, placeholder, keyboardType, half, ed
 );
 
 const RELIGIONS = ['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Born Again Christian','Baptist','Methodist','Jehovah\'s Witness','Buddhism','Others'];
-const PROVINCES_PH = ['Agusan del Norte','Agusan del Sur','Bukidnon','Camiguin','Davao de Oro','Davao del Norte','Davao del Sur','Davao Occidental','Davao Oriental','Dinagat Islands','Lanao del Norte','Lanao del Sur','Maguindanao','Misamis Occidental','Misamis Oriental','North Cotabato','Sarangani','South Cotabato','Sultan Kudarat','Surigao del Norte','Surigao del Sur','Zamboanga del Norte','Zamboanga del Sur','Zamboanga Sibugay','Others'];
+const PROVINCES_PH = [
+  'Abra','Agusan del Norte','Agusan del Sur','Aklan','Albay','Antique','Apayao','Aurora',
+  'Basilan','Bataan','Batanes','Batangas','Benguet','Biliran','Bohol','Bukidnon','Bulacan',
+  'Cagayan','Camarines Norte','Camarines Sur','Camiguin','Capiz','Catanduanes','Cavite','Cebu',
+  'Compostela Valley (Davao de Oro)','Cotabato (North Cotabato)','Davao de Oro','Davao del Norte',
+  'Davao del Sur','Davao Occidental','Davao Oriental','Dinagat Islands','Eastern Samar',
+  'Guimaras','Ifugao','Ilocos Norte','Ilocos Sur','Iloilo','Isabela','Kalinga','La Union',
+  'Laguna','Lanao del Norte','Lanao del Sur','Leyte','Maguindanao','Marinduque','Masbate',
+  'Metro Manila (NCR)','Misamis Occidental','Misamis Oriental','Mountain Province','Negros Occidental',
+  'Negros Oriental','Northern Samar','Nueva Ecija','Nueva Vizcaya','Occidental Mindoro',
+  'Oriental Mindoro','Palawan','Pampanga','Pangasinan','Quezon','Quirino','Rizal','Romblon',
+  'Samar (Western Samar)','Sarangani','Siquijor','Sorsogon','South Cotabato','Southern Leyte',
+  'Sultan Kudarat','Sulu','Surigao del Norte','Surigao del Sur','Tarlac','Tawi-Tawi',
+  'Zambales','Zamboanga del Norte','Zamboanga del Sur','Zamboanga Sibugay','Others',
+];
+
+const MUNICIPALITIES_BY_PROVINCE = {
+  'Misamis Oriental': ['Alubijid','Balingasag','Balingoan','Binuangan','Cagayan de Oro City','Claveria','El Salvador','Gingoog City','Gitagum','Initao','Jasaan','Kinoguitan','Lagonglong','Laguindingan','Libertad','Lugait','Magsaysay','Manticao','Medina','Naawan','Opol','Salay','Sugbongcogon','Tagoloan','Talisayan','Villanueva','Others'],
+  'Davao del Sur': ['Bansalan','Davao City','Digos City','Don Marcelino','Hagonoy','Jose Abad Santos','Kiblawan','Magsaysay','Malalag','Malita','Matanao','Padada','Santa Cruz','Sulop','Others'],
+  'Davao del Norte': ['Asuncion','Braulio E. Dujali','Carmen','Island Garden City of Samal','Kapalong','Monkayo','New Corella','Panabo City','San Isidro','Santo Tomas','Tagum City','Talaingod','Others'],
+  'Bukidnon': ['Baungon','Cabanglasan','Damulog','Dangcagan','Don Carlos','Impasug-ong','Kadingilan','Kalilangan','Kibawe','Kitaotao','Lantapan','Libona','Malaybalay City','Malitbog','Manolo Fortich','Maramag','Pangantucan','Quezon','San Fernando','Sumilao','Talakag','Valencia City','Others'],
+  'Lanao del Norte': ['Bacolod','Baloi','Baroy','Iligan City','Kapatagan','Kauswagan','Kolambugan','Lala','Linamon','Maigo','Matungao','Munai','Nunungan','Pantao Ragat','Pantar','Poona Piagapo','Salvador','Sapad','Sultan Naga Dimaporo','Tagoloan II','Tangcal','Tubod','Others'],
+  'Metro Manila (NCR)': ['Caloocan','Las Piñas','Makati','Malabon','Mandaluyong','Manila','Marikina','Muntinlupa','Navotas','Parañaque','Pasay','Pasig','Pateros','Quezon City','San Juan','Taguig','Valenzuela','Others'],
+  'Cebu': ['Alcantara','Alcoy','Alegria','Aloguinsan','Argao','Asturias','Badian','Balamban','Bantayan','Barili','Bogo City','Boljoon','Borbon','Carcar City','Carmen','Catmon','Cebu City','Compostela','Consolacion','Cordova','Daanbantayan','Dalaguete','Danao City','Dumanjug','Ginatilan','Lapu-Lapu City','Liloan','Madridejos','Malabuyoc','Mandaue City','Medellin','Minglanilla','Moalboal','Naga City','Oslob','Pilar','Pinamungahan','Poro','Ronda','Samboan','San Fernando','San Francisco','San Remigio','Santa Fe','Santander','Sibonga','Sogod','Tabogon','Tabuelan','Talisay City','Toledo City','Tuburan','Tudela','Others'],
+  'Others': ['Others'],
+};
+
+// Barangay suggestions per municipality (common ones — expand as needed)
+const BARANGAYS_BY_CITY = {
+  'Cagayan de Oro City': ['Agusan','Balubal','Balulang','Barangay 1','Barangay 2','Barangay 3','Barangay 4','Barangay 5','Barangay 6','Barangay 7','Barangay 8','Barangay 9','Barangay 10','Barangay 11','Barangay 12','Barangay 13','Barangay 14','Barangay 15','Barangay 16','Barangay 17','Barangay 18','Barangay 19','Barangay 20','Barangay 21','Barangay 22','Barangay 23','Barangay 24','Barangay 25','Baikingon','Bayabas','Bayanga','Besigan','Bonbon','Bugo','Bulua','Canitoan','Carmen','Consolacion','Cugman','Dansolihon','Del Monte','Dologon','Dungguan','Gusa','Indahag','Iponan','Kauswagan','Lapasan','Lawis','Layawan','Lumbia','Macabalan','Macasandig','Mambuaya','Mamugtan','Maraymaray','Maybolo','Nazareth','Pagalungan','Pagatpat','Patpat','Pigsag-an','Puerto','Puntod','Rodero','Rosal','Sto. Niño','Tablon','Taglimao','Tagpangi','Tignapoloan','Tumpagon','Tuburan','Upper Carmen','Upper Hilltop','Upper Lumbia','Velez','Others'],
+  'Tagum City': ['Apokon','Bincungan','Busaon','Canocotan','Cuambogan','La Filipina','Liboganon','Madaum','Magdum','Magugpo East','Magugpo North','Magugpo Poblacion','Magugpo South','Magugpo West','Mankilam','New Balamban','New Visayas','Pagsabangan','Pandapan','San Agustin','San Isidro','San Miguel','Visayan Village','Others'],
+  'Iligan City': ['Abuno','Acmac','Bagong Silang','Buru-un','Dalipuga','Del Carmen','Digkilaan','Ditucalan','Dulag','Hunyon','Hinaplanon','Hindang','Kabacsanan','Kalilangan','Kiwalan','Lanipao','Luinab','Mahayahay','Mainit','Mandulog','Maria Cristina','Palao','Panorugon','Puga-an','Rogongon','San Miguel','San Roque','Santiago','Santo Rosario','Saray','Suarez','Tambacan','Tibanga','Tipanoy','Tominobo Lower','Tominobo Upper','Tubod','Ubaldo Laya','Upper Hinaplanon','Upper Tominobo','Villa Verde','Others'],
+};
+
+// Address search component with separate Barangay/Municipality/Province
+const AddressPicker = ({ label, barangay, municipality, province, houseStreet, zip, onChangeBgy, onChangeMun, onChangeProv, onChangeHouseStreet, onChangeZip }) => {
+  const [showProvDrop, setShowProvDrop] = useState(false);
+  const [showMunDrop,  setShowMunDrop]  = useState(false);
+  const [showBgyDrop,  setShowBgyDrop]  = useState(false);
+  const [provSearch,   setProvSearch]   = useState('');
+  const [munSearch,    setMunSearch]    = useState('');
+  const [bgySearch,    setBgySearch]    = useState('');
+
+  const munList  = (municipality && MUNICIPALITIES_BY_PROVINCE[province]) ? MUNICIPALITIES_BY_PROVINCE[province] : (MUNICIPALITIES_BY_PROVINCE[province] || []);
+  const bgyList  = BARANGAYS_BY_CITY[municipality] || [];
+
+  const filteredProv = PROVINCES_PH.filter(p => p.toLowerCase().includes(provSearch.toLowerCase()));
+  const filteredMun  = munList.filter(m => m.toLowerCase().includes(munSearch.toLowerCase()));
+  const filteredBgy  = bgyList.filter(b => b.toLowerCase().includes(bgySearch.toLowerCase()));
+
+  return (
+    <View style={{ marginBottom: 12 }}>
+      {label && <Text style={af.fieldLabel}>{label}</Text>}
+      {/* House No. / Street */}
+      <Text style={[af.fieldLabel, { marginBottom: 4 }]}>HOUSE NO. / STREET</Text>
+      <TextInput style={[af.input, { marginBottom: 8 }]} value={houseStreet} onChangeText={onChangeHouseStreet} placeholder="e.g. 123 Rizal Street" placeholderTextColor={C.textMuted} autoCorrect={false} />
+
+      {/* Province */}
+      <Text style={[af.fieldLabel, { marginBottom: 4 }]}>PROVINCE / REGION</Text>
+      <TouchableOpacity style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }]} onPress={() => { setShowProvDrop(o => !o); setShowMunDrop(false); setShowBgyDrop(false); }} activeOpacity={0.8}>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: province ? C.navy : C.textMuted, flex: 1 }}>{province || 'Select province'}</Text>
+        <Text style={{ fontSize: 11, color: C.textMuted }}>{showProvDrop ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+      {showProvDrop && (
+        <View style={[af.dropdownList, { marginBottom: 8, maxHeight: 220 }]}>
+          <TextInput style={[af.input, { marginBottom: 6, fontSize: 12 }]} value={provSearch} onChangeText={setProvSearch} placeholder="Search province..." placeholderTextColor={C.textMuted} autoCorrect={false} />
+          <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled showsVerticalScrollIndicator>
+            {filteredProv.map(opt => (
+              <TouchableOpacity key={opt} style={[af.dropdownItem, province === opt && af.dropdownItemActive]} onPress={() => { onChangeProv(opt); onChangeMun(''); onChangeBgy(''); setShowProvDrop(false); setProvSearch(''); }} activeOpacity={0.8}>
+                <Text style={[af.dropdownTxt, province === opt && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{opt}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Municipality / City */}
+      <Text style={[af.fieldLabel, { marginBottom: 4 }]}>CITY / MUNICIPALITY</Text>
+      <TouchableOpacity style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }]} onPress={() => { setShowMunDrop(o => !o); setShowProvDrop(false); setShowBgyDrop(false); }} activeOpacity={0.8}>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: municipality ? C.navy : C.textMuted, flex: 1 }}>{municipality || 'Select city / municipality'}</Text>
+        <Text style={{ fontSize: 11, color: C.textMuted }}>{showMunDrop ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+      {showMunDrop && (
+        <View style={[af.dropdownList, { marginBottom: 8, maxHeight: 220 }]}>
+          <TextInput style={[af.input, { marginBottom: 6, fontSize: 12 }]} value={munSearch} onChangeText={setMunSearch} placeholder="Search city/municipality..." placeholderTextColor={C.textMuted} autoCorrect={false} />
+          <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled showsVerticalScrollIndicator>
+            {(filteredMun.length > 0 ? filteredMun : ['Others']).map(opt => (
+              <TouchableOpacity key={opt} style={[af.dropdownItem, municipality === opt && af.dropdownItemActive]} onPress={() => { onChangeMun(opt); onChangeBgy(''); setShowMunDrop(false); setMunSearch(''); }} activeOpacity={0.8}>
+                <Text style={[af.dropdownTxt, municipality === opt && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{opt}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={af.dropdownItem} onPress={() => { setShowMunDrop(false); }}>
+              <TextInput style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy, padding: 0 }} value={munSearch} onChangeText={v => { setMunSearch(v); onChangeMun(v); }} placeholder="Type manually..." placeholderTextColor={C.textMuted} autoCorrect={false} />
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Barangay */}
+      <Text style={[af.fieldLabel, { marginBottom: 4 }]}>BARANGAY</Text>
+      {bgyList.length > 0 ? (
+        <>
+          <TouchableOpacity style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }]} onPress={() => { setShowBgyDrop(o => !o); setShowProvDrop(false); setShowMunDrop(false); }} activeOpacity={0.8}>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: barangay ? C.navy : C.textMuted, flex: 1 }}>{barangay || 'Select barangay'}</Text>
+            <Text style={{ fontSize: 11, color: C.textMuted }}>{showBgyDrop ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+          {showBgyDrop && (
+            <View style={[af.dropdownList, { marginBottom: 8, maxHeight: 220 }]}>
+              <TextInput style={[af.input, { marginBottom: 6, fontSize: 12 }]} value={bgySearch} onChangeText={setBgySearch} placeholder="Search barangay..." placeholderTextColor={C.textMuted} autoCorrect={false} />
+              <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled showsVerticalScrollIndicator>
+                {filteredBgy.map(opt => (
+                  <TouchableOpacity key={opt} style={[af.dropdownItem, barangay === opt && af.dropdownItemActive]} onPress={() => { onChangeBgy(opt); setShowBgyDrop(false); setBgySearch(''); }} activeOpacity={0.8}>
+                    <Text style={[af.dropdownTxt, barangay === opt && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{opt}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </>
+      ) : (
+        <TextInput style={[af.input, { marginBottom: 8 }]} value={barangay} onChangeText={onChangeBgy} placeholder="e.g. Brgy. Poblacion" placeholderTextColor={C.textMuted} autoCorrect={false} />
+      )}
+
+      {/* ZIP */}
+      <Text style={[af.fieldLabel, { marginBottom: 4 }]}>ZIP CODE</Text>
+      <TextInput style={af.input} value={zip} onChangeText={onChangeZip} placeholder="e.g. 9000" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
+    </View>
+  );
+};
 
 const GOV_ID_TYPES = [
   'SSS', 'GSIS', 'TIN', 'PhilHealth', 'Pag-IBIG (HDMF)',
@@ -702,146 +830,244 @@ const GovIdPicker = ({ label: l, idType, idNumber, onTypeChange, onNumberChange,
 
 // ─── Application Form HTML Generator (for Print/PDF) ─────────────────────────
 const generateAppFormHTML = (member, form) => {
-  const af = form;
-  const govIds = (af.govIds || []).filter(g => g.type || g.number);
-  const fullName = [af.salutation, member.firstName, member.middleName, member.lastName, af.suffix].filter(Boolean).join(' ') || member.name;
-  const fieldStyle = 'border-bottom:1px solid #333;min-width:160px;display:inline-block;padding:2px 4px;font-size:11px;';
-  const labelStyle = 'font-size:9px;font-weight:bold;color:#444;text-transform:uppercase;letter-spacing:1px;';
-  const row = (label, value, width = '45%') => `
-    <div style="display:inline-block;width:${width};margin-bottom:8px;padding-right:10px;">
-      <div style="${labelStyle}">${label}</div>
-      <div style="${fieldStyle}">${value || '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</div>
-    </div>`;
-  const check = (label, checked) => `
-    <span style="margin-right:12px;font-size:11px;">
-      <span style="display:inline-block;width:12px;height:12px;border:1.5px solid #333;text-align:center;line-height:12px;font-size:10px;vertical-align:middle;">${checked ? '✓' : ''}</span>
-      <span style="margin-left:3px;">${label}</span>
-    </span>`;
+  const f = form;
+  const govIds = (f.govIds || []).filter(g => g.type || g.number);
+  const fullName = [member.lastName, member.firstName, member.middleName].filter(Boolean).join(', ');
+  const presentAddr = [f.presentHouseStreet, f.presentBarangay, f.presentMunicipality, f.presentProvince].filter(Boolean).join(', ') || f.presentAddress || '';
+  const permanentAddr = [f.permanentHouseStreet, f.permanentBarangay, f.permanentMunicipality, f.permanentProvince].filter(Boolean).join(', ') || f.permanentAddress || '';
+  const religion = f.religion === 'Others' ? f.religionOther : f.religion;
+  const nationality = f.nationality === 'Others' ? f.nationalityOther : f.nationality;
+  const sssGsis = govIds.find(g => g.type === 'SSS' || g.type === 'GSIS');
+  const tin     = govIds.find(g => g.type === 'TIN');
+  const otherIds = govIds.filter(g => g.type !== 'SSS' && g.type !== 'GSIS' && g.type !== 'TIN');
+
+  const line = (val, minW = '180px') => `<span style="display:inline-block;min-width:${minW};border-bottom:1px solid #333;padding:1px 4px;font-size:11px;">${val || ''}</span>`;
+  const radio = (checked) => `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid #333;text-align:center;line-height:10px;font-size:8px;vertical-align:middle;margin-right:2px;">${checked ? '●' : ''}</span>`;
+  const cell = (val, style='') => `<td style="border:1px solid #555;padding:4px 6px;font-size:10px;${style}">${val || '&nbsp;'}</td>`;
+  const hdr  = (val, style='') => `<th style="border:1px solid #555;padding:4px 6px;font-size:10px;font-weight:bold;text-align:center;background:#f0f0f0;${style}">${val}</th>`;
+
+  const today = new Date().toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: Arial, sans-serif; font-size:11px; color:#1a1a1a; padding:18px 24px; }
-    h1 { font-size:14px; font-weight:bold; text-align:center; letter-spacing:2px; text-transform:uppercase; margin-bottom:2px; }
-    h2 { font-size:11px; text-align:center; color:#555; margin-bottom:4px; }
-    .effective { font-size:9px; text-align:center; color:#777; margin-bottom:12px; }
-    .section { font-size:9px; font-weight:bold; text-transform:uppercase; letter-spacing:2px; color:#1a2d4e; border-bottom:2px solid #1a2d4e; margin:12px 0 8px; padding-bottom:2px; }
-    table { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:10px; }
-    th { background:#1a2d4e; color:#c9a84c; padding:5px 6px; font-size:9px; text-align:center; font-weight:bold; letter-spacing:1px; }
-    td { border:1px solid #aaa; padding:5px 6px; vertical-align:middle; }
-    .sig-block { display:flex; gap:20px; margin-top:24px; }
-    .sig-line { flex:1; border-top:1px solid #333; padding-top:3px; font-size:9px; text-align:center; color:#555; }
-    @media print { body { padding: 10px 16px; } }
-  </style></head><body>
+<title>CESLA MPC Application Form</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: Arial, sans-serif; font-size:11px; color:#111; }
+  .page { width:210mm; min-height:277mm; padding:12mm 16mm 10mm; page-break-after:always; }
+  .page:last-child { page-break-after:auto; }
+  .header { display:flex; align-items:flex-start; gap:14px; margin-bottom:8px; }
+  .header img { width:70px; height:70px; object-fit:contain; }
+  .header-text { flex:1; }
+  .header-text h1 { font-size:17px; font-weight:bold; margin-bottom:2px; }
+  .header-text p { font-size:10px; color:#444; line-height:1.5; }
+  .photo-box { width:65px; height:80px; border:1.5px solid #333; display:flex; align-items:center; justify-content:center; font-size:9px; color:#666; text-align:center; flex-shrink:0; }
+  .form-title { text-align:center; font-size:13px; font-weight:bold; letter-spacing:2px; margin:8px 0 10px; text-transform:uppercase; }
+  .outer { border:1.5px solid #444; }
+  .rb { border-bottom:1px solid #555; padding:5px 8px; font-size:11px; line-height:1.9; }
+  .rb:last-child { border-bottom:none; }
+  .sec { background:#1a2d4e; color:#fff; text-align:center; font-size:10px; font-weight:bold; letter-spacing:1.5px; padding:4px 8px; }
+  table { width:100%; border-collapse:collapse; font-size:10px; }
+  @media print {
+    body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .page { padding:8mm 14mm; }
+  }
+</style>
+</head><body>
 
-  <h1>CESLA Multi-Purpose Cooperative</h1>
-  <h2>Membership Application Form</h2>
-  <div class="effective">Effective January 1, 2026 &nbsp;|&nbsp; User ID: ${member.userId}</div>
-
-  <div class="section">Personal Details</div>
-  <div style="display:flex;flex-wrap:wrap;">
-    ${row('Salutation', af.salutation, '20%')}
-    ${row('Last Name', member.lastName, '30%')}
-    ${row('First Name', member.firstName, '30%')}
-    ${row('Middle Name', member.middleName, '20%')}
-    ${row('Suffix', af.suffix, '15%')}
-    ${row('Date of Birth', af.dob, '25%')}
-    ${row('Place of Birth', af.placeOfBirth, '35%')}
-    ${row('Nationality', af.nationality === 'Others' ? af.nationalityOther : af.nationality, '25%')}
-    ${row('Religion', af.religion === 'Others' ? af.religionOther : af.religion, '30%')}
-    ${row('No. of Dependents', af.numDependents, '20%')}
-    ${row('Contact No.', af.contactNo || member.contact, '30%')}
-    ${row('Recommended By', af.recommendedBy, '35%')}
+<!-- PAGE 1 -->
+<div class="page">
+  <div class="header">
+    <img src="CESLA_logo.png" alt="CESLA" onerror="this.style.display='none'" />
+    <div class="header-text">
+      <h1>CESLA Multi-Purpose Cooperative</h1>
+      <p>CLIMBS Bldg., Upper Zone 5, National Highway, Bulua, Cagayan De Oro City</p>
+      <p>Email: cec@climbs.coop</p>
+    </div>
+    <div class="photo-box">2x2<br/>Photo</div>
   </div>
-  <div style="margin-bottom:8px;">
-    <div style="${labelStyle}">Civil Status</div>
-    <div style="margin-top:4px;">
-      ${check('Single', af.civilStatus === 'Single')}
-      ${check('Married', af.civilStatus === 'Married')}
-      ${check('Legally Separated', af.civilStatus === 'Legally Separated')}
-      ${check('Others', af.civilStatus === 'Others')}
+
+  <div class="form-title">Application Form</div>
+
+  <div class="outer">
+    <!-- App Date + No -->
+    <div class="rb" style="display:flex;justify-content:space-between;">
+      <span>Application Date: &nbsp;${line(f.appDate,'130px')}</span>
+      <span>Application No: &nbsp;${line(f.appNo,'130px')}</span>
+    </div>
+
+    <div class="sec">PERSONAL DETAILS</div>
+
+    <!-- Salutation + Gender -->
+    <div class="rb">
+      ${radio(f.salutation==='Mr.')} Mr. &nbsp;&nbsp;
+      ${radio(f.salutation==='Mrs.')} Mrs. &nbsp;&nbsp;
+      ${radio(f.salutation==='Ms.')} Ms.
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      Gender: &nbsp;${radio(f.gender==='Male')} Male &nbsp;&nbsp; ${radio(f.gender==='Female')} Female
+    </div>
+
+    <!-- Name -->
+    <div class="rb" style="display:flex;gap:0;padding:0;">
+      <div style="flex:2;border-right:1px solid #555;padding:5px 8px;">
+        <div style="font-size:9px;color:#777;">Last Name</div>
+        <div style="font-size:12px;font-weight:bold;">${member.lastName || '&nbsp;'}</div>
+      </div>
+      <div style="flex:2;border-right:1px solid #555;padding:5px 8px;">
+        <div style="font-size:9px;color:#777;">First Name</div>
+        <div style="font-size:12px;">${member.firstName || '&nbsp;'}</div>
+      </div>
+      <div style="flex:2;border-right:1px solid #555;padding:5px 8px;">
+        <div style="font-size:9px;color:#777;">Middle Name</div>
+        <div style="font-size:12px;">${member.middleName || '&nbsp;'}</div>
+      </div>
+      <div style="flex:1;padding:5px 8px;">
+        <div style="font-size:9px;color:#777;">Suffix</div>
+        <div style="font-size:12px;">${f.suffix || '&nbsp;'}</div>
+      </div>
+    </div>
+
+    <!-- DOB + Nationality -->
+    <div class="rb">
+      Date of Birth (MM/DD/YYYY): ${line(f.dob,'120px')}
+      &nbsp;&nbsp;&nbsp;
+      Nationality: &nbsp;${radio(f.nationality==='Filipino')} Filipino &nbsp;
+      ${radio(f.nationality==='Others')} Others (please specify) ${line(nationality==='Filipino'?'':nationality,'90px')}
+    </div>
+
+    <!-- Place of Birth + Religion + Dependents -->
+    <div class="rb">
+      Place of Birth: ${line(f.placeOfBirth,'190px')}
+      &nbsp;&nbsp;&nbsp;
+      Religion: ${line(religion,'130px')}
+      &nbsp;&nbsp;&nbsp;
+      Number of Dependents: ${line(f.numDependents,'55px')}
+    </div>
+
+    <!-- Civil Status -->
+    <div class="rb">
+      Civil Status: &nbsp;
+      ${radio(f.civilStatus==='Single')} Single &nbsp;&nbsp;
+      ${radio(f.civilStatus==='Married')} Married &nbsp;&nbsp;
+      ${radio(f.civilStatus==='Legally Separated')} Legally Separated &nbsp;&nbsp;
+      ${radio(f.civilStatus==='Others')} Others
+    </div>
+
+    <!-- Gov IDs -->
+    <div class="rb">
+      SSS/GSIS Number: ${line(sssGsis?.number,'120px')} &nbsp;&nbsp;
+      Tax Identification Number: ${line(tin?.number,'120px')} &nbsp;&nbsp;
+      Other IDs: ${line(otherIds.map(g=>`${g.type}: ${g.number}`).join(' | '),'120px')}
+    </div>
+
+    <!-- Referrer -->
+    <div class="rb">
+      Who recommended you to CEC? ${line(f.recommendedBy,'170px')}
+    </div>
+    <div class="rb">
+      Contact No: ${line(f.contactNo || member.contact,'170px')}
+    </div>
+
+    <!-- Family Members -->
+    <div class="rb" style="font-weight:bold;font-size:11px;padding:5px 8px;">Family Members:</div>
+    <table>
+      <tr>
+        ${hdr('Name','width:35%')}${hdr('Relation','width:20%')}${hdr('Age','width:10%')}${hdr('Occupation')}
+      </tr>
+      ${(f.family || Array(5).fill({})).map(r=>`<tr style="height:20px;">${cell(r.name)}${cell(r.relation)}${cell(r.age)}${cell(r.occupation)}</tr>`).join('')}
+    </table>
+
+    <!-- Contact Details -->
+    <div class="sec">CONTACT DETAILS</div>
+    <div class="rb">
+      Present Address: ${line(presentAddr,'300px')} &nbsp;&nbsp; Zip Code: ${line(f.presentZip,'65px')}
+    </div>
+    <div class="rb">
+      Length of Stay in Present Address: ${line(f.stayYears,'50px')} years &nbsp; ${line(f.stayMonths,'50px')} months
+    </div>
+    <div class="rb">
+      Permanent Address: ${line(permanentAddr || '(Same as present address)','295px')} &nbsp;&nbsp; Zip Code: ${line(f.permanentZip,'65px')}
     </div>
   </div>
-  <div style="margin-bottom:8px;">
-    <div style="${labelStyle}">Gender</div>
-    <div style="margin-top:4px;">
-      ${check('Male', af.gender === 'Male')}
-      ${check('Female', af.gender === 'Female')}
+</div>
+
+<!-- PAGE 2 -->
+<div class="page">
+  <div style="text-align:center;font-size:11px;font-weight:bold;border-bottom:1px solid #333;padding-bottom:5px;margin-bottom:8px;">
+    CESLA Multi-Purpose Cooperative &nbsp;—&nbsp; Application Form (Page 2) &nbsp;—&nbsp; ${fullName}
+  </div>
+
+  <div class="outer">
+    <div class="sec">EMPLOYMENT DETAILS</div>
+    <table>
+      <tr>
+        ${hdr('EMPLOYED','width:34%')}${hdr('SELF-EMPLOYED','width:33%')}${hdr('UNEMPLOYED','width:33%')}
+      </tr>
+      <tr style="vertical-align:top;">
+        <td style="border:1px solid #555;padding:6px 8px;font-size:10px;line-height:2;vertical-align:top;">
+          Employer/Business Name:<br>${line(f.employerName,'165px')}<br>
+          Office Address:<br>${line(f.officeAddress,'165px')}<br>
+          Nature of Business: ${line(f.natureOfBiz,'115px')}<br>
+          Office No: ${line(f.officeNo,'75px')} &nbsp; Fax No: ${line(f.faxNo,'55px')}<br>
+          Employment Type: &nbsp;
+          ${radio(f.employmentType==='Private')} Private &nbsp;
+          ${radio(f.employmentType==='Government')} Government<br>
+          &nbsp;&nbsp;${radio(f.employmentType==='Others')} Others: ${line(f.employmentTypeOther,'75px')}<br>
+          Position/Rank: ${line(f.positionRank,'115px')}<br>
+          Monthly Income: ${line(f.monthlyIncome,'105px')}<br>
+          <span style="font-size:9px;font-style:italic;">*If less than six (6) months in current<br>employment, please fill-up below:</span><br>
+          Previous Employer:<br>${line(f.prevEmployer,'165px')}<br>
+          Yrs. In Company: ${line(f.yrsInCompany,'75px')}<br>
+          Position/Rank: ${line(f.prevPosition,'110px')}
+        </td>
+        <td style="border:1px solid #555;padding:6px 8px;font-size:10px;line-height:2;vertical-align:top;">
+          Name of Business:<br>${line(f.bizName,'155px')}<br>
+          Type of Business:<br>
+          ${radio(f.bizType==='Sole Prop')} Sole Prop &nbsp;
+          ${radio(f.bizType==='Partnership')} Partnership &nbsp;
+          ${radio(f.bizType==='Corp')} Corp<br>
+          Nature of Business: ${line(f.bizNature,'115px')}<br>
+          Asset Size of Business (Php):<br>${line(f.assetSize,'150px')}<br>
+          Share in Business (%): ${line(f.shareInBiz,'85px')}<br>
+          Monthly Income: ${line(f.selfMonthlyIncome,'105px')}
+        </td>
+        <td style="border:1px solid #555;padding:6px 8px;font-size:10px;line-height:2.2;vertical-align:top;">
+          ${radio(f.unemployedType==='Housewife')} Housewife<br>
+          ${radio(f.unemployedType==='Student')} Student<br>
+          ${radio(f.unemployedType==='Others')} Others (please specify)<br>
+          ${line(f.unemployedOther,'140px')}
+        </td>
+      </tr>
+    </table>
+
+    <!-- Certification -->
+    <div style="padding:8px 10px;font-size:10px;line-height:1.65;border-top:1px solid #555;">
+      I/We hereby certify that all the data and statements in this application are correct and are made for obtaining
+      credit, and the signature(s) appearing thereon is(are) genuine. I/We authorize you to obtain such information as
+      you may require connecting the statements made in this application and that the sources which you may apply
+      are authorized to provide any information relative to this application. <strong>I/We agree this will remain your property
+      whether the credit is granted or not.</strong>
+    </div>
+
+    <!-- Signatures -->
+    <div style="display:flex;border-top:1px solid #555;">
+      <div style="flex:1;border-right:1px solid #555;padding:32px 8px 8px;font-size:9px;text-align:center;color:#555;">
+        Signature of Applicant over Printed Name
+      </div>
+      <div style="flex:1;border-right:1px solid #555;padding:32px 8px 8px;font-size:9px;text-align:center;color:#555;">
+        Signature of Spouse over Printed Name
+      </div>
+      <div style="flex:1;padding:32px 8px 8px;font-size:9px;text-align:center;color:#555;">
+        Witnessed by
+      </div>
     </div>
   </div>
 
-  <div class="section">Government IDs</div>
-  <table>
-    <tr><th style="width:40%">ID Type</th><th>ID Number</th></tr>
-    ${govIds.length > 0
-      ? govIds.map(g => `<tr><td>${g.type || ''}</td><td>${g.number || ''}</td></tr>`).join('')
-      : '<tr><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr>'}
-  </table>
-
-  <div class="section">Contact Details</div>
-  <div style="display:flex;flex-wrap:wrap;">
-    ${row('Present Address', af.presentAddress, '55%')}
-    ${row('ZIP Code', af.presentZip, '15%')}
-    ${row('Years of Stay', af.stayYears, '15%')}
-    ${row('Months of Stay', af.stayMonths, '15%')}
-    ${row('Permanent Address', af.permanentAddress || '(Same as present)', '55%')}
-    ${row('ZIP Code', af.permanentZip, '15%')}
+  <div style="text-align:center;margin-top:10px;font-size:8px;color:#999;">
+    CESLA Multi-Purpose Cooperative &nbsp;|&nbsp; CLIMBS Employee Cooperative &nbsp;|&nbsp;
+    Generated: ${today} &nbsp;|&nbsp; User ID: ${member.userId || ''}
   </div>
+</div>
 
-  <div class="section">Family Members</div>
-  <table>
-    <tr><th style="width:35%">Name</th><th style="width:20%">Relation</th><th style="width:10%">Age</th><th>Occupation</th></tr>
-    ${(af.family || []).map(f => `<tr><td>${f.name || '&nbsp;'}</td><td>${f.relation || '&nbsp;'}</td><td>${f.age || '&nbsp;'}</td><td>${f.occupation || '&nbsp;'}</td></tr>`).join('')}
-  </table>
-
-  <div class="section">Employment Details</div>
-  <div style="margin-bottom:8px;">
-    <div style="${labelStyle}">Employment Status</div>
-    <div style="margin-top:4px;">
-      ${check('Employed', af.empType === 'Employed')}
-      ${check('Self-Employed', af.empType === 'Self-Employed')}
-      ${check('Unemployed', af.empType === 'Unemployed')}
-    </div>
-  </div>
-  ${af.empType === 'Employed' ? `
-  <div style="display:flex;flex-wrap:wrap;">
-    ${row('Employer / Business Name', af.employerName, '55%')}
-    ${row('Nature of Business', af.natureOfBiz, '40%')}
-    ${row('Office Address', af.officeAddress, '55%')}
-    ${row('Office No.', af.officeNo, '22%')}
-    ${row('Fax No.', af.faxNo, '22%')}
-    ${row('Employment Type', af.employmentType === 'Others' ? af.employmentTypeOther : af.employmentType, '30%')}
-    ${row('Position / Rank', af.positionRank, '30%')}
-    ${row('Monthly Income (₱)', af.monthlyIncome, '25%')}
-    ${row('Previous Employer', af.prevEmployer, '40%')}
-    ${row('Yrs in Company', af.yrsInCompany, '20%')}
-    ${row('Prev. Position', af.prevPosition, '30%')}
-  </div>` : ''}
-  ${af.empType === 'Self-Employed' ? `
-  <div style="display:flex;flex-wrap:wrap;">
-    ${row('Business Name', af.bizName, '45%')}
-    ${row('Type', af.bizType, '20%')}
-    ${row('Nature', af.bizNature, '30%')}
-    ${row('Asset Size (₱)', af.assetSize, '30%')}
-    ${row('Share in Business (%)', af.shareInBiz, '25%')}
-    ${row('Monthly Income (₱)', af.selfMonthlyIncome, '30%')}
-  </div>` : ''}
-  ${af.empType === 'Unemployed' ? `
-  <div style="margin-bottom:8px;">${check('Housewife', af.unemployedType === 'Housewife')}${check('Student', af.unemployedType === 'Student')}${check('Others', af.unemployedType === 'Others')}${af.unemployedOther ? ` — ${af.unemployedOther}` : ''}</div>` : ''}
-
-  <div style="margin-top:16px;border:1px solid #aaa;padding:10px;font-size:10px;line-height:1.6;color:#333;">
-    I/We hereby certify that all the data and statements in this application are correct and are made for obtaining credit, and the signature(s) appearing thereon is(are) genuine. I/We authorize you to obtain such information as you may require connecting the statements made in this application and that the sources which you may apply are authorized to provide any information relative to this application. <strong>I/We agree this will remain your property whether the credit is granted or not.</strong>
-  </div>
-
-  <div class="sig-block">
-    <div class="sig-line">Applicant's Signature over Printed Name / Date</div>
-    <div class="sig-line">Processed by / Date</div>
-    <div class="sig-line">Approved by / Date</div>
-  </div>
-
-  <div style="text-align:center;margin-top:16px;font-size:8px;color:#999;">
-    CESLA Multi-Purpose Cooperative &nbsp;|&nbsp; CLIMBS Employee Cooperative &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
-  </div>
 </body></html>`;
 };
 
@@ -849,8 +1075,11 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
   const { isMobile: rwdMobile, rowDir, halfStyle } = useRwd();
   const isMobile = isMobileProp ?? rwdMobile;
   const af0 = member.appForm || {};
+  const today = new Date();
+  const todayStr = today.toLocaleDateString('en-PH', { month: '2-digit', day: '2-digit', year: '2-digit' }).replace(/\//g, '/');
+  const autoAppNo = af0.appNo || `APP-${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}-${member.uid?.slice(-4)?.toUpperCase() || 'XXXX'}`;
   const [form, setForm] = useState({
-    appDate: af0.appDate || '', appNo: af0.appNo || '',
+    appDate: af0.appDate || todayStr, appNo: autoAppNo,
     salutation: af0.salutation || '', gender: af0.gender || '',
     suffix: af0.suffix || '',
     dob: af0.dob || '',
@@ -869,8 +1098,12 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
     recommendedBy: af0.recommendedBy || '',
     contactNo: af0.contactNo || '',
     family: af0.family || Array(5).fill(null).map(() => ({ name: '', relation: '', age: '', occupation: '' })),
+    presentHouseStreet: af0.presentHouseStreet || '', presentBarangay: af0.presentBarangay || '',
+    presentMunicipality: af0.presentMunicipality || '', presentProvince: af0.presentProvince || '',
     presentAddress: af0.presentAddress || '', presentZip: af0.presentZip || '',
     stayYears: af0.stayYears || '', stayMonths: af0.stayMonths || '',
+    permanentHouseStreet: af0.permanentHouseStreet || '', permanentBarangay: af0.permanentBarangay || '',
+    permanentMunicipality: af0.permanentMunicipality || '', permanentProvince: af0.permanentProvince || '',
     permanentAddress: af0.permanentAddress || '', permanentZip: af0.permanentZip || '',
     empType: af0.empType || '',
     employerName: af0.employerName || '', officeAddress: af0.officeAddress || '',
@@ -891,13 +1124,24 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
   const handlePrint = async () => {
     setPrinting(true);
     try {
-      const html = generateAppFormHTML(member, form);
+      let html = generateAppFormHTML(member, form);
       if (Platform.OS === 'web') {
+        // Embed logo as base64 so it prints correctly
+        try {
+          const resp = await fetch(require('../../../assets/CESLA_logo.png'));
+          const blob = await resp.blob();
+          const b64 = await new Promise(res => {
+            const reader = new FileReader();
+            reader.onloadend = () => res(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          html = html.replace('src="CESLA_logo.png"', `src="${b64}"`);
+        } catch (e) {}
         const win = window.open('', '_blank');
         win.document.write(html);
         win.document.close();
         win.focus();
-        setTimeout(() => win.print(), 500);
+        setTimeout(() => win.print(), 600);
       } else {
         const { uri } = await Print.printToFileAsync({ html, base64: false });
         if (await Sharing.isAvailableAsync()) {
@@ -962,8 +1206,18 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
         <>
           <GCard>
             <View style={{ flexDirection: rowDir, gap: 10 }}>
-              <View style={halfStyle}><AF l="APPLICATION DATE" value={form.appDate} onChangeText={v => set('appDate', v)} placeholder="e.g. 01/15/2026" /></View>
-              <View style={halfStyle}><AF l="APPLICATION NO."  value={form.appNo}   onChangeText={v => set('appNo', v)}   placeholder="Auto-assigned"   /></View>
+              <View style={halfStyle}>
+                <Text style={af.fieldLabel}>APPLICATION DATE</Text>
+                <View style={[af.input, { justifyContent: 'center', opacity: 0.85, backgroundColor: 'rgba(15,30,53,0.06)' }]}>
+                  <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: C.navy }}>{form.appDate}</Text>
+                </View>
+              </View>
+              <View style={halfStyle}>
+                <Text style={af.fieldLabel}>APPLICATION NO.</Text>
+                <View style={[af.input, { justifyContent: 'center', opacity: 0.85, backgroundColor: 'rgba(15,30,53,0.06)' }]}>
+                  <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.navy }}>{form.appNo}</Text>
+                </View>
+              </View>
             </View>
           </GCard>
 
@@ -993,7 +1247,8 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
               <AF l="SPECIFY RELIGION" value={form.religionOther} onChangeText={v => set('religionOther', v)} placeholder="Enter religion" />
             )}
 
-            <DropdownPicker l="NUMBER OF DEPENDENTS" options={['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15+']} value={form.numDependents} onSelect={v => set('numDependents', v)} placeholder="Select number" />
+            <Text style={[af.fieldLabel, { marginTop: 4 }]}>NO. OF DEPENDENTS</Text>
+            <DropdownPicker l="" options={['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15+']} value={form.numDependents} onSelect={v => set('numDependents', v)} placeholder="Select number" />
             <RadioRow label="Civil Status" options={['Single', 'Married', 'Legally Separated', 'Others']} selected={form.civilStatus} onSelect={v => set('civilStatus', v)} />
 
             <Text style={[af.secHeader, { marginTop: 4 }]}>GOVERNMENT IDs</Text>
@@ -1029,8 +1284,8 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
             </TouchableOpacity>
 
             <View style={{ flexDirection: rowDir, gap: 8 }}>
-              <View style={halfStyle}><AF l="RECOMMENDED BY (CEC)" value={form.recommendedBy} onChangeText={v => set('recommendedBy', v)} placeholder="Name of referrer" /></View>
-              <View style={halfStyle}><AF l="CONTACT NO."          value={form.contactNo}     onChangeText={v => set('contactNo', v)}     placeholder="09XXXXXXXXX" keyboardType="phone-pad" /></View>
+              <View style={halfStyle}><AF l="NAME OF REFERRER (CEC)" value={form.recommendedBy} onChangeText={v => set('recommendedBy', v)} placeholder="Full name of referrer" /></View>
+              <View style={halfStyle}><AF l="REFERRER CONTACT NO."   value={form.contactNo}     onChangeText={v => set('contactNo', v)}     placeholder="09XXXXXXXXX" keyboardType="phone-pad" /></View>
             </View>
           </GCard>
 
@@ -1053,12 +1308,20 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
 
           <Text style={af.secHeader}>CONTACT DETAILS</Text>
           <GCard>
-            <AF l="PRESENT ADDRESS" value={form.presentAddress} onChangeText={v => set('presentAddress', v)} placeholder="House No., Street, Barangay, City" />
-            <View style={{ flexDirection: rowDir, gap: 8 }}>
-              <View style={isMobile ? {} : { flex: 1.2 }}>
-                <Text style={af.fieldLabel}>ZIP CODE</Text>
-                <TextInput style={[af.input, { marginBottom: 0 }]} value={form.presentZip} onChangeText={v => set('presentZip', v)} placeholder="e.g. 9000" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
-              </View>
+            <Text style={[af.fieldLabel, { fontSize: 10, color: C.navyMid, marginBottom: 8 }]}>📍 PRESENT ADDRESS</Text>
+            <AddressPicker
+              barangay={form.presentBarangay}
+              municipality={form.presentMunicipality}
+              province={form.presentProvince}
+              houseStreet={form.presentHouseStreet}
+              zip={form.presentZip}
+              onChangeBgy={v => set('presentBarangay', v)}
+              onChangeMun={v => set('presentMunicipality', v)}
+              onChangeProv={v => set('presentProvince', v)}
+              onChangeHouseStreet={v => set('presentHouseStreet', v)}
+              onChangeZip={v => set('presentZip', v)}
+            />
+            <View style={{ flexDirection: rowDir, gap: 8, marginBottom: 8 }}>
               <View style={isMobile ? {} : { flex: 1 }}>
                 <Text style={af.fieldLabel}>YEARS OF STAY</Text>
                 <TextInput style={[af.input, { marginBottom: 0 }]} value={form.stayYears} onChangeText={v => set('stayYears', v)} placeholder="e.g. 3" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
@@ -1068,14 +1331,22 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
                 <TextInput style={[af.input, { marginBottom: 0 }]} value={form.stayMonths} onChangeText={v => set('stayMonths', v)} placeholder="e.g. 6" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
               </View>
             </View>
+
             <View style={{ height: 12 }} />
-            <Text style={[af.fieldLabel, { color: C.textSec, fontSize: 9 }]}>PERMANENT ADDRESS</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginBottom: 4, fontStyle: 'italic' }}>Leave blank if same as present address</Text>
-            <TextInput style={af.input} value={form.permanentAddress} onChangeText={v => set('permanentAddress', v)} placeholder="House No., Street, Barangay, City" placeholderTextColor={C.textMuted} autoCorrect={false} />
-            <View style={{ flex: 1, maxWidth: '50%' }}>
-              <Text style={af.fieldLabel}>ZIP CODE (PERMANENT)</Text>
-              <TextInput style={af.input} value={form.permanentZip} onChangeText={v => set('permanentZip', v)} placeholder="e.g. 9000" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
-            </View>
+            <Text style={[af.fieldLabel, { fontSize: 10, color: C.navyMid, marginBottom: 4 }]}>📍 PERMANENT ADDRESS</Text>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginBottom: 8, fontStyle: 'italic' }}>Leave blank if same as present address</Text>
+            <AddressPicker
+              barangay={form.permanentBarangay}
+              municipality={form.permanentMunicipality}
+              province={form.permanentProvince}
+              houseStreet={form.permanentHouseStreet}
+              zip={form.permanentZip}
+              onChangeBgy={v => set('permanentBarangay', v)}
+              onChangeMun={v => set('permanentMunicipality', v)}
+              onChangeProv={v => set('permanentProvince', v)}
+              onChangeHouseStreet={v => set('permanentHouseStreet', v)}
+              onChangeZip={v => set('permanentZip', v)}
+            />
           </GCard>
 
           <TouchableOpacity style={af.fullBtn} onPress={() => setPage(2)} activeOpacity={0.85}>
@@ -1154,41 +1425,35 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
             </Text>
           </GCard>
 
-          {/* Buttons — stacked, no overlap */}
-          <TouchableOpacity style={[af.fullBtn, { marginBottom: 10 }]} onPress={() => setPage(1)} activeOpacity={0.85}>
-            <LinearGradient colors={['#304674', '#1a2d4e']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
-              <Text style={af.fullBtnTxt}>←  Back to Personal Details</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          {/* Buttons — 3 columns in one row */}
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 24 }}>
+            {/* Back */}
+            <TouchableOpacity style={{ flex: 1, borderRadius: 12, overflow: 'hidden' }} onPress={() => setPage(1)} activeOpacity={0.85}>
+              <LinearGradient colors={['#304674', '#1a2d4e']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 13, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff', textAlign: 'center' }}>← Back</Text>
+              </LinearGradient>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[af.fullBtn, { marginBottom: 16, opacity: saving ? 0.7 : 1 }]}
-            onPress={save} disabled={saving} activeOpacity={0.85}>
-            <LinearGradient
-              colors={saved ? ['#1a8a4a', '#25a85a'] : ['#c9a84c', '#e8c87a']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
-              {saving
-                ? <ActivityIndicator color={C.navy} />
-                : <Text style={[af.fullBtnTxt, { color: saved ? '#fff' : C.navy }]}>
-                    {saved ? '✓  Application Saved!' : '💾  Save Application Form'}
-                  </Text>}
-            </LinearGradient>
-          </TouchableOpacity>
+            {/* Submit */}
+            <TouchableOpacity style={{ flex: 1.4, borderRadius: 12, overflow: 'hidden', opacity: saving ? 0.7 : 1 }} onPress={save} disabled={saving} activeOpacity={0.85}>
+              <LinearGradient colors={saved ? ['#1a8a4a', '#25a85a'] : ['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 13, alignItems: 'center', justifyContent: 'center' }}>
+                {saving
+                  ? <ActivityIndicator color={C.navy} />
+                  : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: saved ? '#fff' : C.navy, textAlign: 'center' }}>
+                      {saved ? '✓ Submitted!' : '📨 Submit'}
+                    </Text>}
+              </LinearGradient>
+            </TouchableOpacity>
 
-          {/* Print / Save as PDF */}
-          <TouchableOpacity
-            style={[af.fullBtn, { marginBottom: 24, opacity: printing ? 0.7 : 1 }]}
-            onPress={handlePrint} disabled={printing} activeOpacity={0.85}>
-            <LinearGradient
-              colors={['#1a2d4e', '#243554']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
-              {printing
-                ? <ActivityIndicator color={C.gold} />
-                : <Text style={[af.fullBtnTxt, { color: C.gold }]}>
-                    🖨️  {Platform.OS === 'web' ? 'Print / Save as PDF' : 'Save as PDF'}
-                  </Text>}
-            </LinearGradient>
-          </TouchableOpacity>
+            {/* Print */}
+            <TouchableOpacity style={{ flex: 1, borderRadius: 12, overflow: 'hidden', opacity: printing ? 0.7 : 1 }} onPress={handlePrint} disabled={printing} activeOpacity={0.85}>
+              <LinearGradient colors={['#1a2d4e', '#243554']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 13, alignItems: 'center', justifyContent: 'center' }}>
+                {printing
+                  ? <ActivityIndicator color={C.gold} />
+                  : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold, textAlign: 'center' }}>🖨️ Print</Text>}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </>
       )}
     </ScrollView>
