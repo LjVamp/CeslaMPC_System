@@ -1038,8 +1038,11 @@ const EmployeeCreditsScreen = () => {
       await updateDoc(doc(db, 'canteen_orders', docId), {
         settled: true, settledAt: serverTimestamp(),
       });
-    } catch (e) {}
-    setSettlingId(null);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to mark as settled. Please try again.\n' + (e?.message || ''));
+    } finally {
+      setSettlingId(null);
+    }
   };
 
   // Get live data for selected member from grouped
@@ -1235,18 +1238,99 @@ const EmployeeCreditsScreen = () => {
                 const orderItems = order.items || [];
                 // One row per item; first row shows order info, rest merges
                 const isPaid = activeModalTab === 'paid';
-                return orderItems.length === 0 ? (
-                  <View key={order.docId} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8, backgroundColor: idx % 2 === 0 ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.30)', borderRadius: 8, marginBottom: 3 }}>
+                const rowBg  = idx % 2 === 0 ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.30)';
+                const orderTotal = Number(order.total || 0);
+
+                // ── empty-items fallback ──────────────────────────────────
+                if (orderItems.length === 0) return (
+                  <View key={order.docId} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8, backgroundColor: rowBg, borderRadius: 8, marginBottom: 3 }}>
                     <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#0f1e35', flex: 0.8 }}>#{order.orderNo || '—'}</Text>
                     <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.55)', flex: 1.3 }}>{fmtDateTime(order.createdAt)}</Text>
                     <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.45)', flex: 2.0 }}>—</Text>
-                    <Text style={{ flex: 0.5 }} />
-                    <Text style={{ flex: 0.7 }} />
-                    <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 13, color: isPaid ? '#27ae60' : '#c9a84c', flex: 0.8, textAlign: 'right' }}>₱{Number(order.total || 0).toFixed(2)}</Text>
+                    <Text style={{ flex: 0.5 }} /><Text style={{ flex: 0.7 }} />
+                    <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 13, color: isPaid ? '#27ae60' : '#c9a84c', flex: 0.8, textAlign: 'right' }}>₱{orderTotal.toFixed(2)}</Text>
                     <View style={{ flex: 0.8, alignItems: 'flex-end' }}>
                       {!isPaid && (
+                        <TouchableOpacity onPress={async () => { await markSettled(order.docId); setActiveModalTab('paid'); }} disabled={settlingId === order.docId} activeOpacity={0.80}
+                          style={{ backgroundColor: '#27ae60', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, opacity: settlingId === order.docId ? 0.6 : 1 }}>
+                          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#fff' }}>{settlingId === order.docId ? '...' : 'Paid'}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+
+                // ── item rows ────────────────────────────────────────────
+                return [
+                  // One row per item — Amount = price × qty (correct per-item amount)
+                  ...orderItems.map((it, j) => {
+                    const item     = it.item || it;
+                    const qty      = it.qty || it.quantity || 1;
+                    const lineAmt  = Number(item.price || 0) * qty;   // ← FIXED: always item×qty
+                    const isFirst  = j === 0;
+                    return (
+                      <View key={`${order.docId}-${j}`} style={{
+                        flexDirection: 'row', alignItems: 'center',
+                        paddingVertical: 8, paddingHorizontal: 8,
+                        backgroundColor: rowBg,
+                        borderTopLeftRadius: isFirst ? 8 : 0,
+                        borderTopRightRadius: isFirst ? 8 : 0,
+                        borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.06)',
+                      }}>
+                        {/* Order No — only first row */}
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: isFirst ? '#0f1e35' : 'transparent', flex: 0.8 }}>
+                          {isFirst ? `#${order.orderNo || '—'}` : ''}
+                        </Text>
+                        {/* Date — only first row */}
+                        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9.5, color: isFirst ? 'rgba(1,31,75,0.55)' : 'transparent', flex: 1.3, lineHeight: 14 }}>
+                          {isFirst ? fmtDateTime(order.createdAt) : ''}
+                        </Text>
+                        {/* Item name */}
+                        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: '#0f1e35', flex: 2.0 }} numberOfLines={1}>
+                          {item.emoji || '🍽️'} {item.name || '—'}
+                        </Text>
+                        {/* Qty */}
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35', flex: 0.5, textAlign: 'right' }}>
+                          {qty}
+                        </Text>
+                        {/* Unit price */}
+                        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.55)', flex: 0.7, textAlign: 'right' }}>
+                          ₱{Number(item.price || 0).toFixed(2)}
+                        </Text>
+                        {/* Amount = price × qty — always correct per item */}
+                        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.65)', flex: 0.8, textAlign: 'right' }}>
+                          ₱{lineAmt.toFixed(2)}
+                        </Text>
+                        {/* Empty spacer to keep alignment with subtotal row */}
+                        <View style={{ flex: 0.8 }} />
+                      </View>
+                    );
+                  }),
+
+                  // Subtotal row — shows order total + Paid button / settled date
+                  <View key={`${order.docId}-subtotal`} style={{
+                    flexDirection: 'row', alignItems: 'center',
+                    paddingVertical: 8, paddingHorizontal: 8,
+                    backgroundColor: rowBg,
+                    borderBottomLeftRadius: 8, borderBottomRightRadius: 8,
+                    marginBottom: 6,
+                    borderTopWidth: 1, borderColor: 'rgba(1,31,75,0.12)',
+                  }}>
+                    {/* empty cols to align with item rows */}
+                    <Text style={{ flex: 0.8 }} />
+                    <Text style={{ flex: 1.3 }} />
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(1,31,75,0.45)', flex: 2.0, letterSpacing: 1 }}>ORDER TOTAL</Text>
+                    <Text style={{ flex: 0.5 }} />
+                    <Text style={{ flex: 0.7 }} />
+                    {/* Total amount — highlighted */}
+                    <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 13, color: isPaid ? '#27ae60' : '#c9a84c', flex: 0.8, textAlign: 'right' }}>
+                      ₱{orderTotal.toFixed(2)}
+                    </Text>
+                    {/* Paid button OR settled timestamp */}
+                    <View style={{ flex: 0.8, alignItems: 'flex-end' }}>
+                      {!isPaid ? (
                         <TouchableOpacity
-                          onPress={() => markSettled(order.docId)}
+                          onPress={async () => { await markSettled(order.docId); setActiveModalTab('paid'); }}
                           disabled={settlingId === order.docId}
                           activeOpacity={0.80}
                           style={{ backgroundColor: '#27ae60', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, opacity: settlingId === order.docId ? 0.6 : 1 }}
@@ -1255,74 +1339,14 @@ const EmployeeCreditsScreen = () => {
                             {settlingId === order.docId ? '...' : 'Paid'}
                           </Text>
                         </TouchableOpacity>
-                      )}
+                      ) : order.settledAt ? (
+                        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#27ae60', textAlign: 'right' }}>
+                          ✓ {fmtDateTime(order.settledAt)}
+                        </Text>
+                      ) : null}
                     </View>
-                  </View>
-                ) : orderItems.map((it, j) => {
-                  const item = it.item || it;
-                  const qty  = it.qty || it.quantity || 1;
-                  const isFirst = j === 0;
-                  const isLast  = j === orderItems.length - 1;
-                  return (
-                    <View key={`${order.docId}-${j}`} style={{
-                      flexDirection: 'row', alignItems: 'center',
-                      paddingVertical: 8, paddingHorizontal: 8,
-                      backgroundColor: idx % 2 === 0 ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.30)',
-                      borderTopLeftRadius: isFirst ? 8 : 0,
-                      borderTopRightRadius: isFirst ? 8 : 0,
-                      borderBottomLeftRadius: isLast ? 8 : 0,
-                      borderBottomRightRadius: isLast ? 8 : 0,
-                      borderBottomWidth: isLast ? 0 : 1,
-                      borderColor: 'rgba(1,31,75,0.06)',
-                      marginBottom: isLast ? 3 : 0,
-                    }}>
-                      {/* Order No — only on first row */}
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: isFirst ? '#0f1e35' : 'transparent', flex: 0.8 }}>
-                        {isFirst ? `#${order.orderNo || '—'}` : ''}
-                      </Text>
-                      {/* Date — only on first row */}
-                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9.5, color: isFirst ? 'rgba(1,31,75,0.55)' : 'transparent', flex: 1.3, lineHeight: 14 }}>
-                        {isFirst ? fmtDateTime(order.createdAt) : ''}
-                      </Text>
-                      {/* Item name */}
-                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: '#0f1e35', flex: 2.0 }} numberOfLines={1}>
-                        {item.emoji || '🍽️'} {item.name || '—'}
-                      </Text>
-                      {/* Qty */}
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35', flex: 0.5, textAlign: 'right' }}>
-                        {qty}
-                      </Text>
-                      {/* Unit price */}
-                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.55)', flex: 0.7, textAlign: 'right' }}>
-                        ₱{Number(item.price || 0).toFixed(2)}
-                      </Text>
-                      {/* Amount */}
-                      <Text style={{ fontFamily: isLast ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize: isLast ? 13 : 11, color: isLast ? (isPaid ? '#27ae60' : '#c9a84c') : 'rgba(1,31,75,0.65)', flex: 0.8, textAlign: 'right' }}>
-                        {isLast ? `₱${Number(order.total || 0).toFixed(2)}` : `₱${(Number(item.price || 0) * qty).toFixed(2)}`}
-                      </Text>
-                      {/* Paid button — only on last row, only for unpaid tab */}
-                      <View style={{ flex: 0.8, alignItems: 'flex-end' }}>
-                        {isLast && !isPaid && (
-                          <TouchableOpacity
-                            onPress={() => markSettled(order.docId)}
-                            disabled={settlingId === order.docId}
-                            activeOpacity={0.80}
-                            style={{ backgroundColor: '#27ae60', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, opacity: settlingId === order.docId ? 0.6 : 1 }}
-                          >
-                            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#fff' }}>
-                              {settlingId === order.docId ? '...' : 'Paid'}
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                        {isLast && isPaid && order.settledAt && (
-                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#27ae60', textAlign: 'right' }}>
-                            ✓ {fmtDateTime(order.settledAt)}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                  );
-                });
+                  </View>,
+                ];
               })}
             </ScrollView>
           </View>

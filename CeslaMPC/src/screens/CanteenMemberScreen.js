@@ -778,6 +778,98 @@ const adStyles = StyleSheet.create({
   dotActive: { backgroundColor:'#fff', width:18 },
 });
 
+// ─── CREDIT ORDER CARD — top-level component (hooks not allowed inside IIFEs) ──
+const fmtCreditDate = (ts) => {
+  try {
+    let d;
+    if (!ts) return '—';
+    if (ts?.toDate) d = ts.toDate();
+    else if (typeof ts === 'number') d = new Date(ts);
+    else d = new Date(ts);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
+      + ' · ' + d.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit', hour12:true });
+  } catch { return '—'; }
+};
+
+const CreditOrderCard = ({ order }) => {
+  const orderItems  = order.items || [];
+  const total       = Number(order.total || 0);
+  const isSettled   = order.settled === true;
+  const accentColor = isSettled ? '#27ae60' : '#c9a84c';
+  return (
+    <View style={{
+      backgroundColor: isSettled ? 'rgba(39,174,96,0.07)' : 'rgba(255,255,255,0.55)',
+      borderRadius:14, marginBottom:10,
+      borderWidth:1.5,
+      borderColor: isSettled ? 'rgba(39,174,96,0.35)' : 'rgba(201,168,76,0.30)',
+      overflow:'hidden',
+      shadowColor:'#011f4b', shadowOpacity:0.07, shadowRadius:6, elevation:2,
+    }}>
+      {/* Left accent stripe */}
+      <View style={{ position:'absolute', left:0, top:0, bottom:0, width:4,
+        backgroundColor: accentColor,
+        borderTopLeftRadius:14, borderBottomLeftRadius:14 }} />
+
+      <View style={{ padding:12, paddingLeft:16 }}>
+        {/* Order # + Amount + Status badge */}
+        <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
+          <View style={{ flex:1 }}>
+            <View style={{ flexDirection:'row', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:14, color:'#0f1e35' }}>
+                Order #{order.orderNo || '—'}
+              </Text>
+              <View style={{
+                paddingHorizontal:8, paddingVertical:3, borderRadius:20,
+                backgroundColor: isSettled ? 'rgba(39,174,96,0.18)' : 'rgba(230,126,34,0.15)',
+                borderWidth:1,
+                borderColor: isSettled ? 'rgba(39,174,96,0.50)' : 'rgba(230,126,34,0.45)',
+              }}>
+                <Text style={{
+                  fontFamily:'GoogleSans_700Bold', fontSize:9,
+                  color: isSettled ? '#1a6b3a' : '#a05000',
+                  letterSpacing:0.8, textTransform:'uppercase',
+                }}>
+                  {isSettled ? '✅ Settled' : '⏳ Unsettled'}
+                </Text>
+              </View>
+            </View>
+            <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:3 }}>
+              🕐 {fmtCreditDate(order.createdAt)}
+            </Text>
+            {isSettled && order.settledAt && (
+              <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, color:'#27ae60', marginTop:2 }}>
+                ✓ Settled: {fmtCreditDate(order.settledAt)}
+              </Text>
+            )}
+          </View>
+          <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:17, color: accentColor, marginLeft:8 }}>
+            ₱ {total.toFixed(2)}
+          </Text>
+        </View>
+
+        {/* Items */}
+        <View style={{ borderTopWidth:1, borderColor:'rgba(1,31,75,0.07)', paddingTop:6, gap:3 }}>
+          {orderItems.map((it, j) => {
+            const item = it.item || it;
+            const qty  = it.qty || it.quantity || 1;
+            return (
+              <View key={j} style={{ flexDirection:'row', justifyContent:'space-between' }}>
+                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'#0f1e35', flex:1 }}>
+                  {item.emoji || '🍽️'} {item.name}{' '}
+                  <Text style={{ color:'rgba(1,31,75,0.40)' }}>×{qty}</Text>
+                </Text>
+                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.60)' }}>
+                  ₱{(Number(item.price || 0) * qty).toFixed(2)}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    </View>
+  );
+};
 
 export default function CanteenMemberScreen({ navigation }) {
   const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock, orders, reloadFromStorage } = useCanteen();
@@ -799,7 +891,17 @@ export default function CanteenMemberScreen({ navigation }) {
   const [loginError,   setLoginError]   = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [orderHistory, setOrderHistory] = useState([]);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuOpen,     setMenuOpen]     = useState(false);
+
+  // ── Per-session UI state — declared before login/logout handlers so they can reset all ──
+  const [activeCategory, setActiveCategory] = useState('All');
+  const [search,         setSearch]         = useState('');
+  const [cart,           setCart]           = useState({});
+  const [cartOpen,       setCartOpen]       = useState(false);
+  const [receiptVisible, setReceiptVisible] = useState(false);
+  const [lastOrder,      setLastOrder]      = useState(null);
+  const [mainTab,        setMainTab]        = useState('order'); // 'order' | 'history' | 'credit'
+  const [creditTab,      setCreditTab]      = useState('unpaid'); // 'unpaid' | 'paid'
 
   const handleLogin = async () => {
     if (!loginUserId.trim()) { setLoginError('Please enter your User ID.'); return; }
@@ -807,16 +909,59 @@ export default function CanteenMemberScreen({ navigation }) {
     setLoginLoading(true); setLoginError('');
     try {
       const m = await loginByUserIdFS(loginUserId.trim(), loginPw);
+      // ── Reset ALL per-session state before entering as new user ──
+      setCart({});
+      setCartOpen(false);
+      setMainTab('order');
+      setLastOrder(null);
+      setReceiptVisible(false);
+      setSearch('');
+      setActiveCategory('All');
+      setOrderHistory([]);
+      setMenuOpen(false);
+      setQueueVisible(false);
+      setQueueMinimized(false);
+      setTrackedOrderId(null);
+      setLiveStatus('pending');
+      prevStatusRef.current = null;
+      setCreditTab('unpaid');
       setMember(m);
       setLoginView(false);
     } catch (e) { setLoginError(e.message || 'Invalid credentials.'); }
     finally { setLoginLoading(false); }
   };
 
-  const handleLogout = () => { setMember(null); setLoginView(true); setLoginUserId(''); setLoginPw(''); };
+  // ── Reset ALL per-session state on logout ────────────────────────────────
+  const handleLogout = () => {
+    setMember(null);
+    setLoginView(true);
+    setLoginUserId('');
+    setLoginPw('');
+    setLoginError('');
+    setLoginShowPw(false);
+    // Clear all session-specific state so the next user starts fresh
+    setCart({});
+    setCartOpen(false);
+    setMainTab('order');
+    setLastOrder(null);
+    setReceiptVisible(false);
+    setSearch('');
+    setActiveCategory('All');
+    setOrderHistory([]);
+    setMenuOpen(false);
+    setQueueVisible(false);
+    setQueueMinimized(false);
+    setTrackedOrderId(null);
+    setLiveStatus('pending');
+    prevStatusRef.current = null;
+    setCreditTab('unpaid');
+  };
 
   // ── Order history from Firestore ─────────────────────────────────────────
+  // Clears stale data immediately when uid changes, then re-subscribes.
   useEffect(() => {
+    // Always clear previous user's history first to avoid data bleed
+    setOrderHistory([]);
     if (!member?.uid) return;
     const q = query(
       collection(db, 'canteen_orders'),
@@ -825,19 +970,16 @@ export default function CanteenMemberScreen({ navigation }) {
     );
     const unsub = onSnapshot(q, snap => {
       setOrderHistory(snap.docs.map(d => ({ docId: d.id, ...d.data() })));
-    }, () => {});
-    return unsub;
+    }, () => { setOrderHistory([]); });
+    // Unsubscribe when member changes or component unmounts
+    return () => unsub();
   }, [member?.uid]);
 
-  const [activeCategory, setActiveCategory] = useState('All');
-  const [search, setSearch] = useState('');
-  const [cart, setCart] = useState({});
-  const [cartOpen, setCartOpen] = useState(false);
-  const [receiptVisible, setReceiptVisible] = useState(false);
-  const [lastOrder, setLastOrder] = useState(null);
-  const [mainTab, setMainTab] = useState('order'); // 'order' | 'history' | 'credit'
-
-  // Queue status tracking — removed, no longer needed
+  // ── Queue status tracking (same as CanteenVisitor) ──────────────────────
+  const [queueVisible,   setQueueVisible]   = useState(false);
+  const [queueMinimized, setQueueMinimized] = useState(false);
+  const [trackedOrderId, setTrackedOrderId] = useState(null);
+  const [liveStatus,     setLiveStatus]     = useState('pending');
   const prevStatusRef = useRef(null);
 
   const hdrFade  = useRef(new Animated.Value(0)).current;
@@ -858,6 +1000,41 @@ export default function CanteenMemberScreen({ navigation }) {
   useEffect(() => {
     reloadFromStorage();
   }, []);
+
+  // ── Watch orders array for status change on tracked order ─────────────────
+  useEffect(() => {
+    if (!trackedOrderId) return;
+    const found = orders.find(o => o.id === trackedOrderId);
+    if (!found) return;
+    const newStatus = found.status;
+    if (newStatus !== prevStatusRef.current) {
+      prevStatusRef.current = newStatus;
+      setLiveStatus(newStatus);
+      // Re-expand if minimized when status changes
+      if (newStatus === 'ready' || newStatus === 'preparing') {
+        setQueueMinimized(false);
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window) {
+          const msg = newStatus === 'ready'
+            ? '✅ Your order is ready to pick up!'
+            : '🔥 The canteen is now preparing your order!';
+          if (Notification.permission === 'granted') {
+            new Notification('CLIMBS Canteen', { body: msg, icon: '🍽️' });
+          } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(p => {
+              if (p === 'granted') new Notification('CLIMBS Canteen', { body: msg });
+            });
+          }
+        }
+      }
+      if (newStatus === 'done') {
+        setQueueMinimized(false);
+        setTimeout(() => {
+          setQueueVisible(false);
+          setTrackedOrderId(null);
+        }, 2500);
+      }
+    }
+  }, [orders, trackedOrderId]);
 
   const addToCart = (item) => setCart(prev => ({
     ...prev,
@@ -896,14 +1073,27 @@ export default function CanteenMemberScreen({ navigation }) {
       memberUserId: member?.userId || null,
     };
 
-    await addOrder(fullOrder);
+    // Save to Firestore — returns the real document ID
+    const firestoreId = await addOrder(fullOrder);
     await deductStock(orderData.items);
 
-    setLastOrder({ ...orderData, orderNo, time });
+    const trackedId = firestoreId || `ORD-${orderNo}`;
+    setLastOrder({ ...orderData, orderNo, time, id: trackedId });
     setCartOpen(false);
     clearCart();
-    // Switch to history tab so they can see the order immediately
-    setMainTab('history');
+
+    // Start queue tracking with the real Firestore ID
+    setTrackedOrderId(trackedId);
+    setLiveStatus('pending');
+    prevStatusRef.current = 'pending';
+    setQueueMinimized(false);
+    setTimeout(() => setQueueVisible(true), 300);
+
+    // Request notification permission early
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window
+        && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
   };
 
   const handleShowReceipt = () => setReceiptVisible(true);
@@ -1516,10 +1706,17 @@ export default function CanteenMemberScreen({ navigation }) {
             } catch { return '—'; }
           };
 
-          const creditOrders = orderHistory.filter(o =>
+          // ── Live-reactive: orderHistory is already an onSnapshot feed ──
+          // settled field is written directly to the same Firestore doc by admin,
+          // so it arrives instantly via the existing listener — no refresh needed.
+          const creditOrders  = orderHistory.filter(o =>
             (o.payment || o.paymentMode || '').toLowerCase() === 'credit'
           );
-          const totalUtang = creditOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+          const unpaidOrders  = creditOrders.filter(o => o.settled !== true);
+          const paidOrders    = creditOrders.filter(o => o.settled === true);
+          const totalUnpaid   = unpaidOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+          const totalPaid     = paidOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+          const displayOrders = creditTab === 'unpaid' ? unpaidOrders : paidOrders;
 
           return (
             <ScrollView
@@ -1556,88 +1753,117 @@ export default function CanteenMemberScreen({ navigation }) {
               <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
                 <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'rgba(1,31,75,0.65)', letterSpacing:2, textTransform:'uppercase' }}>🪙 My Credit</Text>
                 <View style={{ backgroundColor:'rgba(201,168,76,0.18)', borderRadius:20, paddingHorizontal:10, paddingVertical:4, borderWidth:1, borderColor:'rgba(201,168,76,0.40)' }}>
-                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#7a5c00' }}>{creditOrders.length} utang</Text>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#7a5c00' }}>
+                    {unpaidOrders.length} unsettled
+                  </Text>
                 </View>
               </View>
 
-              {/* Total Balance Card */}
-              <View style={{ borderRadius:18, overflow:'hidden', marginBottom:14, shadowColor:'#011f4b', shadowOpacity:0.20, shadowRadius:12, elevation:6 }}>
-                <LinearGradient colors={['#1a2d4e','#2c4a7a']} start={{x:0,y:0}} end={{x:1,y:1}} style={{ padding:20 }}>
-                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(255,255,255,0.50)', letterSpacing:2, textTransform:'uppercase', marginBottom:4 }}>Total Unpaid Balance</Text>
-                  <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:38, color:'#c9a84c' }}>
-                    ₱ {totalUtang.toFixed(2)}
-                  </Text>
-                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(255,255,255,0.45)', marginTop:4 }}>
-                    {member?.name || '—'}  ·  {member?.userId || '—'}
-                  </Text>
-                </LinearGradient>
+              {/* ── Summary cards: Unpaid | Paid ── */}
+              <View style={{ flexDirection:'row', gap:10, marginBottom:14 }}>
+                {/* Unpaid card */}
+                <TouchableOpacity
+                  onPress={() => setCreditTab('unpaid')}
+                  activeOpacity={0.85}
+                  style={{ flex:1, borderRadius:16, overflow:'hidden',
+                    shadowColor:'#011f4b', shadowOpacity:0.18, shadowRadius:10, elevation:5 }}
+                >
+                  <LinearGradient
+                    colors={creditTab === 'unpaid' ? ['#1a2d4e','#2c4a7a'] : ['rgba(255,255,255,0.60)','rgba(240,246,252,0.80)']}
+                    start={{x:0,y:0}} end={{x:1,y:1}}
+                    style={{ padding:16, borderRadius:16, borderWidth:1.5,
+                      borderColor: creditTab === 'unpaid' ? '#c9a84c' : 'rgba(255,255,255,0.75)' }}
+                  >
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9,
+                      color: creditTab === 'unpaid' ? 'rgba(255,255,255,0.55)' : 'rgba(1,31,75,0.45)',
+                      letterSpacing:1.2, textTransform:'uppercase', marginBottom:4 }}>⏳ Unsettled</Text>
+                    <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:22,
+                      color: creditTab === 'unpaid' ? '#c9a84c' : '#e67e22' }}>
+                      ₱ {totalUnpaid.toFixed(2)}
+                    </Text>
+                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, marginTop:3,
+                      color: creditTab === 'unpaid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.45)' }}>
+                      {unpaidOrders.length} order{unpaidOrders.length !== 1 ? 's' : ''}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                {/* Paid card */}
+                <TouchableOpacity
+                  onPress={() => setCreditTab('paid')}
+                  activeOpacity={0.85}
+                  style={{ flex:1, borderRadius:16, overflow:'hidden',
+                    shadowColor:'#011f4b', shadowOpacity:0.18, shadowRadius:10, elevation:5 }}
+                >
+                  <LinearGradient
+                    colors={creditTab === 'paid' ? ['#1a4a2e','#2a6b40'] : ['rgba(255,255,255,0.60)','rgba(240,252,245,0.80)']}
+                    start={{x:0,y:0}} end={{x:1,y:1}}
+                    style={{ padding:16, borderRadius:16, borderWidth:1.5,
+                      borderColor: creditTab === 'paid' ? '#27ae60' : 'rgba(255,255,255,0.75)' }}
+                  >
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9,
+                      color: creditTab === 'paid' ? 'rgba(255,255,255,0.55)' : 'rgba(1,31,75,0.45)',
+                      letterSpacing:1.2, textTransform:'uppercase', marginBottom:4 }}>✅ Settled</Text>
+                    <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:22,
+                      color: creditTab === 'paid' ? '#4cde8a' : '#27ae60' }}>
+                      ₱ {totalPaid.toFixed(2)}
+                    </Text>
+                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, marginTop:3,
+                      color: creditTab === 'paid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.45)' }}>
+                      {paidOrders.length} order{paidOrders.length !== 1 ? 's' : ''}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
 
-              {/* Notice */}
-              <View style={{ backgroundColor:'rgba(231,76,60,0.10)', borderRadius:12, padding:10, borderWidth:1, borderColor:'rgba(231,76,60,0.25)', marginBottom:14, flexDirection:'row', gap:8, alignItems:'flex-start' }}>
-                <Text style={{ fontSize:14 }}>⚠️</Text>
-                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.70)', lineHeight:17, flex:1 }}>
-                  Ang mga orders nga <Text style={{ fontFamily:'GoogleSans_700Bold' }}>Credit</Text> ang payment kay ilusot sa imong sweldo o dividend sa payday. Kontaka ang canteen admin para sa settlement.
-                </Text>
-              </View>
+              {/* Notice — only show when on unsettled tab and there are unpaid orders */}
+              {creditTab === 'unpaid' && unpaidOrders.length > 0 && (
+                <View style={{ backgroundColor:'rgba(231,76,60,0.10)', borderRadius:12, padding:10,
+                  borderWidth:1, borderColor:'rgba(231,76,60,0.25)', marginBottom:14,
+                  flexDirection:'row', gap:8, alignItems:'flex-start' }}>
+                  <Text style={{ fontSize:14 }}>⚠️</Text>
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.70)', lineHeight:17, flex:1 }}>
+                    Ang mga orders nga <Text style={{ fontFamily:'GoogleSans_700Bold' }}>Credit</Text> ang payment kay ilusot sa imong sweldo o dividend sa payday. Kontaka ang canteen admin para sa settlement.
+                  </Text>
+                </View>
+              )}
 
-              {/* Credit orders list */}
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.45)', letterSpacing:1.5, textTransform:'uppercase', marginBottom:8 }}>Credit Transactions</Text>
+              {/* Settled all-clear notice */}
+              {creditTab === 'unpaid' && unpaidOrders.length === 0 && creditOrders.length > 0 && (
+                <View style={{ backgroundColor:'rgba(39,174,96,0.10)', borderRadius:12, padding:12,
+                  borderWidth:1, borderColor:'rgba(39,174,96,0.30)', marginBottom:14,
+                  flexDirection:'row', gap:8, alignItems:'center' }}>
+                  <Text style={{ fontSize:20 }}>🎉</Text>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a6b3a', flex:1 }}>
+                    Wala nay unsettled credit! Bayad naka tanan. 
+                  </Text>
+                </View>
+              )}
 
+              {/* Section label */}
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.45)',
+                letterSpacing:1.5, textTransform:'uppercase', marginBottom:8 }}>
+                {creditTab === 'unpaid' ? '⏳ Unsettled Transactions' : '✅ Settled Transactions'}
+              </Text>
+
+              {/* Orders list */}
               {creditOrders.length === 0 ? (
                 <View style={{ alignItems:'center', paddingVertical:40, backgroundColor:'rgba(255,255,255,0.35)', borderRadius:14 }}>
                   <Text style={{ fontSize:36, marginBottom:8 }}>🪙</Text>
                   <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:14, color:'rgba(1,31,75,0.50)', textAlign:'center' }}>Wala pay credit orders</Text>
                   <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.40)', textAlign:'center', marginTop:4 }}>Mag-order usa gamit Credit para makita diri.</Text>
                 </View>
+              ) : displayOrders.length === 0 ? (
+                <View style={{ alignItems:'center', paddingVertical:32, backgroundColor:'rgba(255,255,255,0.35)', borderRadius:14 }}>
+                  <Text style={{ fontSize:28, marginBottom:8 }}>{creditTab === 'unpaid' ? '🎉' : '📋'}</Text>
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:13, color:'rgba(1,31,75,0.45)', textAlign:'center' }}>
+                    {creditTab === 'unpaid' ? 'Wala nay unsettled orders!' : 'Wala pay settled orders.'}
+                  </Text>
+                </View>
               ) : (
-                creditOrders.map((order, idx) => {
-                  const orderItems = order.items || [];
-                  const total      = Number(order.total || 0);
-                  return (
-                    <View key={order.docId || idx} style={{
-                      backgroundColor:'rgba(255,255,255,0.55)',
-                      borderRadius:14, marginBottom:10,
-                      borderWidth:1.5, borderColor:'rgba(201,168,76,0.30)',
-                      overflow:'hidden',
-                      shadowColor:'#011f4b', shadowOpacity:0.07, shadowRadius:6, elevation:2,
-                    }}>
-                      {/* gold left accent */}
-                      <View style={{ position:'absolute', left:0, top:0, bottom:0, width:4, backgroundColor:'#c9a84c', borderTopLeftRadius:14, borderBottomLeftRadius:14 }} />
-
-                      <View style={{ padding:12, paddingLeft:16 }}>
-                        {/* Order # + Date */}
-                        <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
-                          <View>
-                            <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:14, color:'#0f1e35' }}>Order #{order.orderNo || '—'}</Text>
-                            <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:2 }}>
-                              🕐 {fmtDateTime(order.createdAt)}
-                            </Text>
-                          </View>
-                          <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:17, color:'#c9a84c' }}>₱ {total.toFixed(2)}</Text>
-                        </View>
-
-                        {/* Items */}
-                        <View style={{ borderTopWidth:1, borderColor:'rgba(1,31,75,0.07)', paddingTop:6, gap:3 }}>
-                          {orderItems.map((it, j) => {
-                            const item = it.item || it;
-                            const qty  = it.qty || it.quantity || 1;
-                            return (
-                              <View key={j} style={{ flexDirection:'row', justifyContent:'space-between' }}>
-                                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'#0f1e35', flex:1 }}>
-                                  {item.emoji || '🍽️'} {item.name} <Text style={{ color:'rgba(1,31,75,0.40)' }}>×{qty}</Text>
-                                </Text>
-                                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.60)' }}>
-                                  ₱{(item.price * qty).toFixed(2)}
-                                </Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    </View>
-                  );
-                })
+                displayOrders.map((order, idx) => (
+                  <CreditOrderCard key={order.docId || idx} order={order} />
+                ))
               )}
             </ScrollView>
           );
@@ -1667,6 +1893,30 @@ export default function CanteenMemberScreen({ navigation }) {
         onPrint={handlePrint}
         receiptViewRef={receiptViewRef}
       />
+
+      {/* ── QUEUE STATUS — shown after placing order, minimizes to pill ── */}
+      {queueVisible && !queueMinimized && (
+        <QueueStatusModal
+          visible={queueVisible}
+          minimized={false}
+          orderId={trackedOrderId}
+          orderNo={lastOrder?.orderNo}
+          currentStatus={liveStatus}
+          onClose={() => { setQueueVisible(false); setTrackedOrderId(null); }}
+          onMinimize={() => setQueueMinimized(true)}
+        />
+      )}
+      {queueVisible && queueMinimized && (
+        <QueueStatusModal
+          visible={true}
+          minimized={true}
+          orderId={trackedOrderId}
+          orderNo={lastOrder?.orderNo}
+          currentStatus={liveStatus}
+          onClose={() => { setQueueVisible(false); setTrackedOrderId(null); }}
+          onMinimize={() => setQueueMinimized(false)}
+        />
+      )}
 
     </View>
   );
