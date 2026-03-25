@@ -1348,6 +1348,7 @@ export default function CanteenMemberScreen({ navigation }) {
 
                     {/* Menu options */}
                     {[
+                      { icon: '🛒', label: 'Order Now',        tab: 'order'   },
                       { icon: '📋', label: 'My Order History', tab: 'history' },
                       { icon: '🪙', label: 'My Credit',        tab: 'credit'  },
                     ].map(opt => (
@@ -1503,30 +1504,8 @@ export default function CanteenMemberScreen({ navigation }) {
         {/* CENTER — Search + Menu grid */}
         <View style={styles.centerPanel}>
 
-          {/* Mobile: nav tabs + category tabs */}
+          {/* Mobile: category tabs */}
           {!isWide && (<>
-            {/* Nav tabs row */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              style={{ flexGrow:0, marginBottom:6 }}
-              contentContainerStyle={{ paddingHorizontal:4, gap:5, paddingVertical:2 }}
-            >
-              {[
-                { key:'order',   icon:'🛒', label:'Order Now'     },
-                { key:'history', icon:'📋', label:'Order History' },
-                { key:'credit',  icon:'🪙', label:'My Credit'     },
-              ].map(tab => {
-                const isActive = mainTab === tab.key;
-                return (
-                  <TouchableOpacity key={tab.key}
-                    style={[styles.catTab, isActive && styles.catTabActive, { flexDirection:'row', gap:5, alignItems:'center' }]}
-                    onPress={() => setMainTab(tab.key)}
-                  >
-                    <Text style={{ fontSize:12 }}>{tab.icon}</Text>
-                    <Text style={[styles.catTabText, isActive && styles.catTabTextActive]}>{tab.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
             {/* Category tabs row */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false}
               style={{ flexGrow:0, marginBottom:8 }}
@@ -1644,37 +1623,15 @@ export default function CanteenMemberScreen({ navigation }) {
             } catch { return '—'; }
           };
           return (
-            <ScrollView style={{ flex:1, paddingHorizontal: isWide ? 20 : 10 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom:32, paddingTop:4 }}>
-
-              {/* Tab nav — always visible on history/credit (replaces left category panel) */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                style={{ marginHorizontal: isWide ? 0 : -10, marginBottom:12, flexGrow:0 }}
-                contentContainerStyle={{ paddingHorizontal: isWide ? 0 : 10, gap:5, paddingVertical:2 }}
-              >
-                {[
-                  { key:'order',   icon:'🛒', label:'Order Now'     },
-                  { key:'history', icon:'📋', label:'Order History' },
-                  { key:'credit',  icon:'🪙', label:'My Credit'     },
-                ].map(tab => {
-                  const isActive = mainTab === tab.key;
-                  return (
-                    <TouchableOpacity key={tab.key}
-                      style={[styles.catTab, isActive && styles.catTabActive, { flexDirection:'row', gap:5, alignItems:'center' }]}
-                      onPress={() => setMainTab(tab.key)}
-                    >
-                      <Text style={{ fontSize:12 }}>{tab.icon}</Text>
-                      <Text style={[styles.catTabText, isActive && styles.catTabTextActive]}>{tab.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-
+            <View style={{ flex:1, paddingHorizontal: isWide ? 20 : 10, paddingTop:4, minHeight:0 }}>
+              {/* Header row */}
               <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:1.8, textTransform:'uppercase' }}>Order History</Text>
+                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:1.8, textTransform:'uppercase' }}>📋 Order History</Text>
                 <View style={{ backgroundColor:'rgba(1,31,75,0.08)', borderRadius:6, paddingHorizontal:8, paddingVertical:3 }}>
                   <Text style={{ fontFamily:'GoogleSans_500Medium', fontSize:10, color:'rgba(1,31,75,0.50)' }}>{orderHistory.length} order{orderHistory.length !== 1 ? 's' : ''}</Text>
                 </View>
               </View>
+
               {orderHistory.length === 0 ? (
                 <View style={{ alignItems:'center', paddingVertical:60 }}>
                   <Text style={{ fontSize:48, marginBottom:12 }}>📋</Text>
@@ -1685,61 +1642,66 @@ export default function CanteenMemberScreen({ navigation }) {
                   </TouchableOpacity>
                 </View>
               ) : (
-                orderHistory.map((order, idx) => {
-                  const orderItems  = order.items || [];
-                  const total       = order.total || 0;
-                  const pm          = order.payment || order.paymentMode || 'cash';
-                  const pmIcon      = pm === 'gcash' ? '📱' : pm === 'credit' ? '🪙' : '💵';
-                  const pmLabel     = pm === 'gcash' ? 'GCash' : pm === 'credit' ? 'Credit' : 'Cash';
-                  const pmBg        = pm === 'credit' ? 'rgba(201,168,76,0.15)' : pm === 'gcash' ? 'rgba(52,152,219,0.12)' : 'rgba(39,174,96,0.12)';
-                  const pmBorder    = pm === 'credit' ? 'rgba(201,168,76,0.45)' : pm === 'gcash' ? 'rgba(52,152,219,0.35)' : 'rgba(39,174,96,0.35)';
-                  const statusColor = order.status === 'done' ? '#27ae60' : order.status === 'ready' ? '#2980b9' : order.status === 'preparing' ? '#e67e22' : '#95a5a6';
-                  const statusBg    = order.status === 'done' ? 'rgba(39,174,96,0.12)' : order.status === 'ready' ? 'rgba(41,128,185,0.12)' : order.status === 'preparing' ? 'rgba(230,126,34,0.12)' : 'rgba(149,165,166,0.15)';
-                  const statusLabel = order.status === 'done' ? '✅ Completed' : order.status === 'ready' ? '📦 Ready' : order.status === 'preparing' ? '🔥 Preparing' : '🕐 Pending';
-                  return (
-                    <View key={order.docId || idx} style={{ backgroundColor:'rgba(255,255,255,0.55)', borderRadius:10, marginBottom:6, borderWidth:1, borderColor:'rgba(255,255,255,0.75)', overflow:'hidden' }}>
-                      <View style={{ height:2, backgroundColor: statusColor }} />
-                      <View style={{ paddingHorizontal:12, paddingVertical:9, gap:5 }}>
-                        {/* Order # + date + status */}
-                        <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center' }}>
-                          <View style={{ flexDirection:'row', alignItems:'center' }}>
-                            <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#0f1e35' }}>#{order.orderNo || '—'}</Text>
-                            <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.40)', marginLeft:6 }}>{fmtDateTime(order.createdAt)}</Text>
+                /* ── TABLE ── */
+                <View style={{ flex:1, backgroundColor:'rgba(255,255,255,0.40)', borderRadius:12, borderWidth:1, borderColor:'rgba(255,255,255,0.70)', overflow:'hidden', minHeight:0 }}>
+                  {/* Table header */}
+                  <View style={{ flexDirection:'row', alignItems:'center', paddingHorizontal:10, paddingVertical:7, backgroundColor:'rgba(26,45,78,0.92)' }}>
+                    <Text style={[tblStyle.hCell, { width:58 }]}>ORDER</Text>
+                    <Text style={[tblStyle.hCell, { flex:1 }]}>ITEMS</Text>
+                    <Text style={[tblStyle.hCell, { width:52, textAlign:'center' }]}>PAY</Text>
+                    <Text style={[tblStyle.hCell, { width:60, textAlign:'right' }]}>TOTAL</Text>
+                    <Text style={[tblStyle.hCell, { width:62, textAlign:'center' }]}>STATUS</Text>
+                  </View>
+                  <ScrollView showsVerticalScrollIndicator={false} style={{ flex:1 }}>
+                    {orderHistory.map((order, idx) => {
+                      const orderItems  = order.items || [];
+                      const total       = order.total || 0;
+                      const pm          = order.payment || order.paymentMode || 'cash';
+                      const pmIcon      = pm === 'gcash' ? '📱' : pm === 'credit' ? '🪙' : '💵';
+                      const pmLabel     = pm === 'gcash' ? 'GCash' : pm === 'credit' ? 'Credit' : 'Cash';
+                      const pmColor     = pm === 'credit' ? '#c9a84c' : pm === 'gcash' ? '#3498db' : '#27ae60';
+                      const statusColor = order.status === 'done' ? '#27ae60' : order.status === 'ready' ? '#2980b9' : order.status === 'preparing' ? '#e67e22' : '#95a5a6';
+                      const statusLabel = order.status === 'done' ? '✅ Done' : order.status === 'ready' ? '📦 Ready' : order.status === 'preparing' ? '🔥 Prep' : '⏳ Pending';
+                      const isEven = idx % 2 === 0;
+                      return (
+                        <View key={order.docId || idx} style={[tblStyle.row, isEven && tblStyle.rowEven, idx === orderHistory.length - 1 && { borderBottomWidth:0 }]}>
+                          {/* Order # + date stacked */}
+                          <View style={{ width:58 }}>
+                            <Text style={tblStyle.ordNo} numberOfLines={1}>#{order.orderNo || '—'}</Text>
+                            <Text style={tblStyle.ordDate} numberOfLines={2}>{fmtDateTime(order.createdAt)}</Text>
                           </View>
-                          <View style={{ backgroundColor: statusBg, borderRadius:5, paddingHorizontal:6, paddingVertical:2, borderWidth:1, borderColor: statusColor+'55' }}>
-                            <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, color: statusColor }}>{statusLabel}</Text>
-                          </View>
-                        </View>
-                        {/* Items */}
-                        <View style={{ gap:1 }}>
-                          {orderItems.map((it, j) => {
-                            const item = it.item || it;
-                            const qty  = it.qty || it.quantity || 1;
-                            return (
-                              <View key={j} style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center' }}>
-                                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.72)', flex:1 }} numberOfLines={1}>
-                                  {item.emoji || '·'} {item.name}{' '}
-                                  <Text style={{ color:'rgba(1,31,75,0.35)' }}>×{qty}</Text>
+                          {/* Items */}
+                          <View style={{ flex:1, paddingHorizontal:5 }}>
+                            {orderItems.slice(0,2).map((it, j) => {
+                              const item = it.item || it;
+                              const qty  = it.qty || it.quantity || 1;
+                              return (
+                                <Text key={j} style={tblStyle.itemLine} numberOfLines={1}>
+                                  {item.name} ×{qty}
                                 </Text>
-                                <Text style={{ fontFamily:'GoogleSans_500Medium', fontSize:11, color:'rgba(1,31,75,0.60)', marginLeft:8 }}>₱{(item.price * qty).toFixed(2)}</Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                        {/* Payment + total */}
-                        <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingTop:5, borderTopWidth:1, borderColor:'rgba(1,31,75,0.06)' }}>
-                          <View style={{ flexDirection:'row', alignItems:'center', gap:3, backgroundColor: pmBg, borderRadius:5, paddingHorizontal:7, paddingVertical:2, borderWidth:1, borderColor: pmBorder }}>
-                            <Text style={{ fontSize:10 }}>{pmIcon}</Text>
-                            <Text style={{ fontFamily:'GoogleSans_500Medium', fontSize:9, color:'rgba(1,31,75,0.62)' }}>{pmLabel}</Text>
+                              );
+                            })}
+                            {orderItems.length > 2 && (
+                              <Text style={[tblStyle.itemLine, { color:'rgba(1,31,75,0.35)' }]}>+{orderItems.length - 2} more</Text>
+                            )}
                           </View>
-                          <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:13, color:'#c9a84c' }}>₱ {Number(total).toFixed(2)}</Text>
+                          {/* Payment */}
+                          <View style={{ width:52, alignItems:'center', justifyContent:'center' }}>
+                            <Text style={{ fontSize:8, fontFamily:'GoogleSans_700Bold', color: pmColor }}>{pmIcon} {pmLabel}</Text>
+                          </View>
+                          {/* Total */}
+                          <Text style={[tblStyle.total, { width:60, textAlign:'right', alignSelf:'center' }]}>₱{Number(total).toFixed(0)}</Text>
+                          {/* Status */}
+                          <View style={{ width:62, alignItems:'center', justifyContent:'center' }}>
+                            <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color: statusColor, textAlign:'center' }}>{statusLabel}</Text>
+                          </View>
                         </View>
-                      </View>
-                    </View>
-                  );
-                })
+                      );
+                    })}
+                  </ScrollView>
+                </View>
               )}
-            </ScrollView>
+            </View>
           );
         })()}
         {/* ══════════════════════════════════════════════
@@ -1759,9 +1721,6 @@ export default function CanteenMemberScreen({ navigation }) {
             } catch { return '—'; }
           };
 
-          // ── Live-reactive: orderHistory is already an onSnapshot feed ──
-          // settled field is written directly to the same Firestore doc by admin,
-          // so it arrives instantly via the existing listener — no refresh needed.
           const creditOrders  = orderHistory.filter(o =>
             (o.payment || o.paymentMode || '').toLowerCase() === 'credit'
           );
@@ -1772,37 +1731,11 @@ export default function CanteenMemberScreen({ navigation }) {
           const displayOrders = creditTab === 'unpaid' ? unpaidOrders : paidOrders;
 
           return (
-            <ScrollView
-              style={{ flex:1, paddingHorizontal: isWide ? 20 : 10 }}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom:32, paddingTop:4 }}
-            >
-              {/* Tab nav — always visible (replaces left category panel on desktop) */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                style={{ marginHorizontal: isWide ? 0 : -10, marginBottom:12, flexGrow:0 }}
-                contentContainerStyle={{ paddingHorizontal: isWide ? 0 : 10, gap:5, paddingVertical:2 }}
-              >
-                {[
-                  { key:'order',   icon:'🛒', label:'Order Now'     },
-                  { key:'history', icon:'📋', label:'Order History' },
-                  { key:'credit',  icon:'🪙', label:'My Credit'     },
-                ].map(tab => {
-                  const isActive = mainTab === tab.key;
-                  return (
-                    <TouchableOpacity key={tab.key}
-                      style={[styles.catTab, isActive && styles.catTabActive, { flexDirection:'row', gap:5, alignItems:'center' }]}
-                      onPress={() => setMainTab(tab.key)}
-                    >
-                      <Text style={{ fontSize:12 }}>{tab.icon}</Text>
-                      <Text style={[styles.catTabText, isActive && styles.catTabTextActive]}>{tab.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+            <View style={{ flex:1, paddingHorizontal: isWide ? 20 : 10, paddingTop:4, minHeight:0 }}>
 
               {/* ── Page header ── */}
               <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:2, textTransform:'uppercase' }}>My Credit</Text>
+                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:2, textTransform:'uppercase' }}>🪙 My Credit</Text>
                 {unpaidOrders.length > 0 && (
                   <View style={{ backgroundColor:'rgba(201,168,76,0.18)', borderRadius:20, paddingHorizontal:9, paddingVertical:3, borderWidth:1, borderColor:'rgba(201,168,76,0.38)' }}>
                     <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#8a5c00' }}>
@@ -1814,130 +1747,107 @@ export default function CanteenMemberScreen({ navigation }) {
 
               {/* ── Summary tab cards ── */}
               <View style={{ flexDirection:'row', gap:8, marginBottom:10 }}>
-                {/* Unsettled */}
-                <TouchableOpacity
-                  onPress={() => setCreditTab('unpaid')}
-                  activeOpacity={0.85}
-                  style={{ flex:1, borderRadius:12, overflow:'hidden' }}
-                >
-                  <View style={{
-                    padding:14,
-                    borderRadius:12,
-                    borderWidth: creditTab === 'unpaid' ? 1.5 : 1,
-                    borderColor: creditTab === 'unpaid' ? '#c9a84c' : 'rgba(255,255,255,0.70)',
-                    backgroundColor: creditTab === 'unpaid' ? '#1a2d4e' : 'rgba(255,255,255,0.50)',
-                  }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:1.5,
-                      textTransform:'uppercase', marginBottom:5,
-                      color: creditTab === 'unpaid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.40)' }}>
-                      Unsettled
-                    </Text>
-                    <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20, lineHeight:24,
-                      color: creditTab === 'unpaid' ? '#c9a84c' : '#c87a1a' }}>
-                      ₱ {totalUnpaid.toFixed(2)}
-                    </Text>
-                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, marginTop:3,
-                      color: creditTab === 'unpaid' ? 'rgba(255,255,255,0.38)' : 'rgba(1,31,75,0.40)' }}>
-                      {unpaidOrders.length} order{unpaidOrders.length !== 1 ? 's' : ''}
-                    </Text>
+                <TouchableOpacity onPress={() => setCreditTab('unpaid')} activeOpacity={0.85} style={{ flex:1, borderRadius:12, overflow:'hidden' }}>
+                  <View style={{ padding:14, borderRadius:12, borderWidth: creditTab === 'unpaid' ? 1.5 : 1, borderColor: creditTab === 'unpaid' ? '#c9a84c' : 'rgba(255,255,255,0.70)', backgroundColor: creditTab === 'unpaid' ? '#1a2d4e' : 'rgba(255,255,255,0.50)' }}>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:1.5, textTransform:'uppercase', marginBottom:5, color: creditTab === 'unpaid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.40)' }}>Unsettled</Text>
+                    <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20, lineHeight:24, color: creditTab === 'unpaid' ? '#c9a84c' : '#c87a1a' }}>₱ {totalUnpaid.toFixed(2)}</Text>
+                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, marginTop:3, color: creditTab === 'unpaid' ? 'rgba(255,255,255,0.38)' : 'rgba(1,31,75,0.40)' }}>{unpaidOrders.length} order{unpaidOrders.length !== 1 ? 's' : ''}</Text>
                   </View>
                 </TouchableOpacity>
-
-                {/* Settled */}
-                <TouchableOpacity
-                  onPress={() => setCreditTab('paid')}
-                  activeOpacity={0.85}
-                  style={{ flex:1, borderRadius:12, overflow:'hidden' }}
-                >
-                  <View style={{
-                    padding:14,
-                    borderRadius:12,
-                    borderWidth: creditTab === 'paid' ? 1.5 : 1,
-                    borderColor: creditTab === 'paid' ? '#27ae60' : 'rgba(255,255,255,0.70)',
-                    backgroundColor: creditTab === 'paid' ? '#0f3320' : 'rgba(255,255,255,0.50)',
-                  }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:1.5,
-                      textTransform:'uppercase', marginBottom:5,
-                      color: creditTab === 'paid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.40)' }}>
-                      Settled
-                    </Text>
-                    <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20, lineHeight:24,
-                      color: creditTab === 'paid' ? '#3edb82' : '#27ae60' }}>
-                      ₱ {totalPaid.toFixed(2)}
-                    </Text>
-                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, marginTop:3,
-                      color: creditTab === 'paid' ? 'rgba(255,255,255,0.38)' : 'rgba(1,31,75,0.40)' }}>
-                      {paidOrders.length} order{paidOrders.length !== 1 ? 's' : ''}
-                    </Text>
+                <TouchableOpacity onPress={() => setCreditTab('paid')} activeOpacity={0.85} style={{ flex:1, borderRadius:12, overflow:'hidden' }}>
+                  <View style={{ padding:14, borderRadius:12, borderWidth: creditTab === 'paid' ? 1.5 : 1, borderColor: creditTab === 'paid' ? '#27ae60' : 'rgba(255,255,255,0.70)', backgroundColor: creditTab === 'paid' ? '#0f3320' : 'rgba(255,255,255,0.50)' }}>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:1.5, textTransform:'uppercase', marginBottom:5, color: creditTab === 'paid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.40)' }}>Settled</Text>
+                    <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20, lineHeight:24, color: creditTab === 'paid' ? '#3edb82' : '#27ae60' }}>₱ {totalPaid.toFixed(2)}</Text>
+                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, marginTop:3, color: creditTab === 'paid' ? 'rgba(255,255,255,0.38)' : 'rgba(1,31,75,0.40)' }}>{paidOrders.length} order{paidOrders.length !== 1 ? 's' : ''}</Text>
                   </View>
                 </TouchableOpacity>
               </View>
 
               {/* ── Notice banner ── */}
               {creditTab === 'unpaid' && unpaidOrders.length > 0 && (
-                <View style={{ flexDirection:'row', alignItems:'flex-start', gap:8,
-                  padding:9, borderRadius:9, marginBottom:10,
-                  backgroundColor:'rgba(201,168,76,0.10)',
-                  borderWidth:1, borderColor:'rgba(201,168,76,0.28)' }}>
+                <View style={{ flexDirection:'row', alignItems:'flex-start', gap:8, padding:9, borderRadius:9, marginBottom:10, backgroundColor:'rgba(201,168,76,0.10)', borderWidth:1, borderColor:'rgba(201,168,76,0.28)' }}>
                   <Text style={{ fontSize:12 }}>⚠️</Text>
-                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11,
-                    color:'rgba(1,31,75,0.68)', lineHeight:17, flex:1 }}>
-                    Ang mga orders nga{' '}
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', color:'rgba(1,31,75,0.82)' }}>Credit</Text>
-                    {' '}ang payment kay ilusot sa imong sweldo o dividend sa payday.{' '}
-                    Kontaka ang canteen admin para sa settlement.
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.68)', lineHeight:17, flex:1 }}>
+                    Ang mga orders nga <Text style={{ fontFamily:'GoogleSans_700Bold', color:'rgba(1,31,75,0.82)' }}>Credit</Text> ang payment kay ilusot sa imong sweldo o dividend sa payday. Kontaka ang canteen admin para sa settlement.
                   </Text>
                 </View>
               )}
-
-              {/* ── All-clear notice ── */}
               {creditTab === 'unpaid' && unpaidOrders.length === 0 && creditOrders.length > 0 && (
-                <View style={{ flexDirection:'row', alignItems:'center', gap:8,
-                  padding:9, borderRadius:9, marginBottom:10,
-                  backgroundColor:'rgba(39,174,96,0.10)',
-                  borderWidth:1, borderColor:'rgba(39,174,96,0.28)' }}>
+                <View style={{ flexDirection:'row', alignItems:'center', gap:8, padding:9, borderRadius:9, marginBottom:10, backgroundColor:'rgba(39,174,96,0.10)', borderWidth:1, borderColor:'rgba(39,174,96,0.28)' }}>
                   <Text style={{ fontSize:14 }}>🎉</Text>
-                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#165c2e', flex:1 }}>
-                    Wala nay unsettled credit! Bayad naka tanan.
-                  </Text>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#165c2e', flex:1 }}>Wala nay unsettled credit! Bayad naka tanan.</Text>
                 </View>
               )}
 
-              {/* ── Section label ── */}
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:1.8,
-                textTransform:'uppercase', color:'rgba(1,31,75,0.38)', marginBottom:6 }}>
-                {creditTab === 'unpaid' ? 'Unsettled transactions' : 'Settled transactions'}
-              </Text>
-
-              {/* ── Orders list ── */}
+              {/* ── Table ── */}
               {creditOrders.length === 0 ? (
-                <View style={{ alignItems:'center', paddingVertical:36,
-                  backgroundColor:'rgba(255,255,255,0.32)', borderRadius:12 }}>
+                <View style={{ alignItems:'center', paddingVertical:36, backgroundColor:'rgba(255,255,255,0.32)', borderRadius:12 }}>
                   <Text style={{ fontSize:28, marginBottom:8 }}>🪙</Text>
-                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13,
-                    color:'rgba(1,31,75,0.48)', textAlign:'center' }}>Wala pay credit orders</Text>
-                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11,
-                    color:'rgba(1,31,75,0.38)', textAlign:'center', marginTop:4 }}>
-                    Mag-order gamit Credit para makita diri.
-                  </Text>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'rgba(1,31,75,0.48)', textAlign:'center' }}>Wala pay credit orders</Text>
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.38)', textAlign:'center', marginTop:4 }}>Mag-order gamit Credit para makita diri.</Text>
                 </View>
               ) : displayOrders.length === 0 ? (
-                <View style={{ alignItems:'center', paddingVertical:28,
-                  backgroundColor:'rgba(255,255,255,0.32)', borderRadius:12 }}>
-                  <Text style={{ fontSize:24, marginBottom:6 }}>
-                    {creditTab === 'unpaid' ? '🎉' : '📋'}
-                  </Text>
-                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12,
-                    color:'rgba(1,31,75,0.43)', textAlign:'center' }}>
+                <View style={{ alignItems:'center', paddingVertical:28, backgroundColor:'rgba(255,255,255,0.32)', borderRadius:12 }}>
+                  <Text style={{ fontSize:24, marginBottom:6 }}>{creditTab === 'unpaid' ? '🎉' : '📋'}</Text>
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.43)', textAlign:'center' }}>
                     {creditTab === 'unpaid' ? 'Wala nay unsettled orders!' : 'Wala pay settled orders.'}
                   </Text>
                 </View>
               ) : (
-                displayOrders.map((order, idx) => (
-                  <CreditOrderCard key={order.docId || idx} order={order} />
-                ))
+                <View style={{ flex:1, backgroundColor:'rgba(255,255,255,0.40)', borderRadius:12, borderWidth:1, borderColor:'rgba(255,255,255,0.70)', overflow:'hidden', minHeight:0 }}>
+                  {/* Table header */}
+                  <View style={{ flexDirection:'row', alignItems:'center', paddingHorizontal:10, paddingVertical:7, backgroundColor:'rgba(26,45,78,0.92)' }}>
+                    <Text style={[tblStyle.hCell, { width:58 }]}>ORDER</Text>
+                    <Text style={[tblStyle.hCell, { flex:1 }]}>ITEMS</Text>
+                    <Text style={[tblStyle.hCell, { width:64, textAlign:'right' }]}>AMOUNT</Text>
+                    <Text style={[tblStyle.hCell, { width:72, textAlign:'center' }]}>STATUS</Text>
+                  </View>
+                  <ScrollView showsVerticalScrollIndicator={false} style={{ flex:1 }}>
+                    {displayOrders.map((order, idx) => {
+                      const orderItems = order.items || [];
+                      const total      = Number(order.total || 0);
+                      const isSettled  = order.settled === true;
+                      const accentColor = isSettled ? '#27ae60' : '#c9a84c';
+                      const isEven = idx % 2 === 0;
+                      return (
+                        <View key={order.docId || idx} style={[tblStyle.row, isEven && tblStyle.rowEven, idx === displayOrders.length - 1 && { borderBottomWidth:0 }, { borderLeftWidth:2, borderLeftColor: accentColor }]}>
+                          {/* Order # + date */}
+                          <View style={{ width:58 }}>
+                            <Text style={tblStyle.ordNo} numberOfLines={1}>#{order.orderNo || '—'}</Text>
+                            <Text style={tblStyle.ordDate} numberOfLines={2}>{fmtDateTime(order.createdAt)}</Text>
+                          </View>
+                          {/* Items */}
+                          <View style={{ flex:1, paddingHorizontal:5 }}>
+                            {orderItems.slice(0,2).map((it, j) => {
+                              const item = it.item || it;
+                              const qty  = it.qty || it.quantity || 1;
+                              return (
+                                <Text key={j} style={tblStyle.itemLine} numberOfLines={1}>
+                                  {item.name} ×{qty}
+                                </Text>
+                              );
+                            })}
+                            {orderItems.length > 2 && (
+                              <Text style={[tblStyle.itemLine, { color:'rgba(1,31,75,0.35)' }]}>+{orderItems.length - 2} more</Text>
+                            )}
+                          </View>
+                          {/* Amount */}
+                          <Text style={[tblStyle.total, { width:64, textAlign:'right', alignSelf:'center', color: accentColor }]}>₱{total.toFixed(0)}</Text>
+                          {/* Status badge */}
+                          <View style={{ width:72, alignItems:'center', justifyContent:'center' }}>
+                            <View style={{ paddingHorizontal:6, paddingVertical:2, borderRadius:4, backgroundColor: isSettled ? 'rgba(39,174,96,0.14)' : 'rgba(201,168,76,0.18)', borderWidth:1, borderColor: isSettled ? 'rgba(39,174,96,0.40)' : 'rgba(201,168,76,0.42)' }}>
+                              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color: isSettled ? '#165c2e' : '#7a5200' }}>
+                                {isSettled ? '✓ Settled' : '● Unsettled'}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
               )}
-            </ScrollView>
+            </View>
           );
         })()}
 
@@ -1993,6 +1903,25 @@ export default function CanteenMemberScreen({ navigation }) {
     </View>
   );
 }
+
+// ─── TABLE STYLES — shared by Order History & My Credit ──────────────────────
+const tblStyle = StyleSheet.create({
+  hCell: {
+    fontFamily:'GoogleSans_700Bold', fontSize:8,
+    color:'rgba(255,255,255,0.65)', letterSpacing:1.2,
+    textTransform:'uppercase',
+  },
+  row: {
+    flexDirection:'row', alignItems:'flex-start',
+    paddingHorizontal:10, paddingVertical:7,
+    borderBottomWidth:1, borderColor:'rgba(1,31,75,0.07)',
+  },
+  rowEven: { backgroundColor:'rgba(255,255,255,0.28)' },
+  ordNo:   { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#0f1e35' },
+  ordDate: { fontFamily:'GoogleSans_400Regular', fontSize:8, color:'rgba(1,31,75,0.40)', marginTop:1, lineHeight:12 },
+  itemLine:{ fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.70)', lineHeight:14 },
+  total:   { fontFamily:'NotoSerif_700Bold', fontSize:12, color:'#c9a84c' },
+});
 
 // ──────────────── STYLES ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
