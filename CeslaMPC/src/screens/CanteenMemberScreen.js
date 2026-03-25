@@ -42,6 +42,7 @@ import {
   useWindowDimensions, Platform, TextInput, Modal, Alert, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/noto-serif';
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
@@ -1232,8 +1233,18 @@ export default function CanteenMemberScreen({ navigation }) {
       }}>
         <View style={[styles.header, { paddingHorizontal: isWide ? 40:12, paddingVertical: isWide ? 16:7 }]}>
           <TouchableOpacity style={styles.backBtn} onPress={() => {
-            if (!loginView && member) { setMenuOpen(false); handleLogout(); }
-            else { navigation && navigation.goBack(); }
+            if (!loginView && member && (mainTab === 'history' || mainTab === 'credit')) {
+              // If on Order History or My Credit, go back to the ordering view
+              setMenuOpen(false);
+              setMainTab('order');
+            } else if (!loginView && member) {
+              // If on the main ordering view, logout
+              setMenuOpen(false);
+              handleLogout();
+            } else {
+              // If on login view, go back to previous screen
+              navigation && navigation.goBack();
+            }
           }}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
@@ -1384,7 +1395,7 @@ export default function CanteenMemberScreen({ navigation }) {
                   placeholder="Enter your password" placeholderTextColor="rgba(15,30,53,0.35)"
                   secureTextEntry={!loginShowPw} autoCapitalize="none" autoCorrect={false} />
                 <TouchableOpacity onPress={() => setLoginShowPw(p => !p)} style={{ padding:6 }}>
-                  <Text style={{ fontSize:16 }}>{loginShowPw ? '🙈' : '👁'}</Text>
+                  <MaterialIcons name={loginShowPw ? 'visibility-off' : 'visibility'} size={20} color="rgba(1,31,75,0.45)" />
                 </TouchableOpacity>
               </View>
             </View>
