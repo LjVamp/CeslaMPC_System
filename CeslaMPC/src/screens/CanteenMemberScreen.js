@@ -1471,7 +1471,7 @@ export default function CanteenMemberScreen({ navigation }) {
       {!loginView && (
       <View style={styles.body}>
 
-      <Animated.View style={{ flex:1, flexDirection:'row', alignItems:'stretch', opacity: bodyFade, minHeight:0, overflow: Platform.OS==='web' ? 'hidden' : 'visible' }}>
+      <Animated.View style={{ flex:1, flexDirection:'row', alignItems:'stretch', opacity: bodyFade, minHeight:0, overflow: Platform.OS==='web' ? 'hidden' : 'visible', maxWidth: (mainTab==='credit' || mainTab==='history') ? 640 : undefined, alignSelf: (mainTab==='credit' || mainTab==='history') ? 'center' : undefined, width:'100%', paddingHorizontal: (mainTab==='credit' || mainTab==='history') ? 16 : 0 }}>
 
         {/* ══════════════════
             LEFT PANEL (web)
@@ -1623,7 +1623,7 @@ export default function CanteenMemberScreen({ navigation }) {
             } catch { return '—'; }
           };
           return (
-            <View style={{ flex:1, paddingHorizontal: isWide ? 20 : 10, paddingTop:4, minHeight:0 }}>
+            <View style={{ flex:1, paddingTop:8, minHeight:0 }}>
               {/* Header row */}
               <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
                 <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:1.8, textTransform:'uppercase' }}>📋 Order History</Text>
@@ -1731,113 +1731,131 @@ export default function CanteenMemberScreen({ navigation }) {
           const displayOrders = creditTab === 'unpaid' ? unpaidOrders : paidOrders;
 
           return (
-            <View style={{ flex:1, paddingHorizontal: isWide ? 20 : 10, paddingTop:4, minHeight:0 }}>
+            <View style={{ flex:1, minHeight:0, paddingTop:8 }}>
 
-              {/* ── Page header ── */}
-              <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:2, textTransform:'uppercase' }}>🪙 My Credit</Text>
-                {unpaidOrders.length > 0 && (
-                  <View style={{ backgroundColor:'rgba(201,168,76,0.18)', borderRadius:20, paddingHorizontal:9, paddingVertical:3, borderWidth:1, borderColor:'rgba(201,168,76,0.38)' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#8a5c00' }}>
-                      {unpaidOrders.length} unsettled
+              {/* ── Summary Cards ── */}
+              <View style={{ flexDirection:'row', gap:10, marginBottom:12 }}>
+                <TouchableOpacity onPress={() => setCreditTab('unpaid')} activeOpacity={0.85}
+                  style={{ flex:1, borderRadius:12,
+                    borderWidth:2, borderColor: creditTab==='unpaid' ? '#c9a84c' : 'rgba(255,255,255,0.60)',
+                    backgroundColor: creditTab==='unpaid' ? '#1a2d4e' : 'rgba(255,255,255,0.60)',
+                  }}>
+                  <View style={{ padding:12 }}>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, letterSpacing:1.2, textTransform:'uppercase', marginBottom:4,
+                      color: creditTab==='unpaid' ? 'rgba(255,255,255,0.50)' : 'rgba(1,31,75,0.45)' }}>Unsettled</Text>
+                    <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20,
+                      color: creditTab==='unpaid' ? '#c9a84c' : '#b87a10' }}>₱{totalUnpaid.toFixed(2)}</Text>
+                    <Text style={{ fontFamily:'GoogleSans_500Medium', fontSize:11, marginTop:3,
+                      color: creditTab==='unpaid' ? 'rgba(255,255,255,0.40)' : 'rgba(1,31,75,0.45)' }}>
+                      {unpaidOrders.length} order{unpaidOrders.length !== 1 ? 's' : ''}
                     </Text>
                   </View>
-                )}
-              </View>
-
-              {/* ── Summary tab cards ── */}
-              <View style={{ flexDirection:'row', gap:8, marginBottom:10 }}>
-                <TouchableOpacity onPress={() => setCreditTab('unpaid')} activeOpacity={0.85} style={{ flex:1, borderRadius:12, overflow:'hidden' }}>
-                  <View style={{ padding:14, borderRadius:12, borderWidth: creditTab === 'unpaid' ? 1.5 : 1, borderColor: creditTab === 'unpaid' ? '#c9a84c' : 'rgba(255,255,255,0.70)', backgroundColor: creditTab === 'unpaid' ? '#1a2d4e' : 'rgba(255,255,255,0.50)' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:1.5, textTransform:'uppercase', marginBottom:5, color: creditTab === 'unpaid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.40)' }}>Unsettled</Text>
-                    <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20, lineHeight:24, color: creditTab === 'unpaid' ? '#c9a84c' : '#c87a1a' }}>₱ {totalUnpaid.toFixed(2)}</Text>
-                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, marginTop:3, color: creditTab === 'unpaid' ? 'rgba(255,255,255,0.38)' : 'rgba(1,31,75,0.40)' }}>{unpaidOrders.length} order{unpaidOrders.length !== 1 ? 's' : ''}</Text>
-                  </View>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setCreditTab('paid')} activeOpacity={0.85} style={{ flex:1, borderRadius:12, overflow:'hidden' }}>
-                  <View style={{ padding:14, borderRadius:12, borderWidth: creditTab === 'paid' ? 1.5 : 1, borderColor: creditTab === 'paid' ? '#27ae60' : 'rgba(255,255,255,0.70)', backgroundColor: creditTab === 'paid' ? '#0f3320' : 'rgba(255,255,255,0.50)' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, letterSpacing:1.5, textTransform:'uppercase', marginBottom:5, color: creditTab === 'paid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.40)' }}>Settled</Text>
-                    <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20, lineHeight:24, color: creditTab === 'paid' ? '#3edb82' : '#27ae60' }}>₱ {totalPaid.toFixed(2)}</Text>
-                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, marginTop:3, color: creditTab === 'paid' ? 'rgba(255,255,255,0.38)' : 'rgba(1,31,75,0.40)' }}>{paidOrders.length} order{paidOrders.length !== 1 ? 's' : ''}</Text>
+                <TouchableOpacity onPress={() => setCreditTab('paid')} activeOpacity={0.85}
+                  style={{ flex:1, borderRadius:12,
+                    borderWidth:2, borderColor: creditTab==='paid' ? '#27ae60' : 'rgba(255,255,255,0.60)',
+                    backgroundColor: creditTab==='paid' ? '#0f3320' : 'rgba(255,255,255,0.60)',
+                  }}>
+                  <View style={{ padding:12 }}>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, letterSpacing:1.2, textTransform:'uppercase', marginBottom:4,
+                      color: creditTab==='paid' ? 'rgba(255,255,255,0.50)' : 'rgba(1,31,75,0.45)' }}>Settled</Text>
+                    <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20,
+                      color: creditTab==='paid' ? '#3edb82' : '#1a8a4a' }}>₱{totalPaid.toFixed(2)}</Text>
+                    <Text style={{ fontFamily:'GoogleSans_500Medium', fontSize:11, marginTop:3,
+                      color: creditTab==='paid' ? 'rgba(255,255,255,0.40)' : 'rgba(1,31,75,0.45)' }}>
+                      {paidOrders.length} order{paidOrders.length !== 1 ? 's' : ''}
+                    </Text>
                   </View>
                 </TouchableOpacity>
               </View>
 
               {/* ── Notice banner ── */}
               {creditTab === 'unpaid' && unpaidOrders.length > 0 && (
-                <View style={{ flexDirection:'row', alignItems:'flex-start', gap:8, padding:9, borderRadius:9, marginBottom:10, backgroundColor:'rgba(201,168,76,0.10)', borderWidth:1, borderColor:'rgba(201,168,76,0.28)' }}>
-                  <Text style={{ fontSize:12 }}>⚠️</Text>
-                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.68)', lineHeight:17, flex:1 }}>
-                    Ang mga orders nga <Text style={{ fontFamily:'GoogleSans_700Bold', color:'rgba(1,31,75,0.82)' }}>Credit</Text> ang payment kay ilusot sa imong sweldo o dividend sa payday. Kontaka ang canteen admin para sa settlement.
+                <View style={{ flexDirection:'row', alignItems:'center', gap:8, paddingVertical:9, paddingHorizontal:12,
+                  borderRadius:10, marginBottom:10,
+                  backgroundColor:'rgba(201,168,76,0.12)', borderWidth:1, borderColor:'rgba(201,168,76,0.30)' }}>
+                  <Text style={{ fontSize:13 }}>⚠️</Text>
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.72)', lineHeight:18, flex:1 }}>
+                    Credit orders will be deducted from your salary or dividend on payday.
                   </Text>
                 </View>
               )}
               {creditTab === 'unpaid' && unpaidOrders.length === 0 && creditOrders.length > 0 && (
-                <View style={{ flexDirection:'row', alignItems:'center', gap:8, padding:9, borderRadius:9, marginBottom:10, backgroundColor:'rgba(39,174,96,0.10)', borderWidth:1, borderColor:'rgba(39,174,96,0.28)' }}>
+                <View style={{ flexDirection:'row', alignItems:'center', gap:8, paddingVertical:9, paddingHorizontal:12,
+                  borderRadius:10, marginBottom:10,
+                  backgroundColor:'rgba(39,174,96,0.10)', borderWidth:1, borderColor:'rgba(39,174,96,0.28)' }}>
                   <Text style={{ fontSize:14 }}>🎉</Text>
-                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#165c2e', flex:1 }}>Wala nay unsettled credit! Bayad naka tanan.</Text>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#165c2e', flex:1 }}>All credits settled! You're all clear.</Text>
                 </View>
               )}
 
               {/* ── Table ── */}
               {creditOrders.length === 0 ? (
-                <View style={{ alignItems:'center', paddingVertical:36, backgroundColor:'rgba(255,255,255,0.32)', borderRadius:12 }}>
-                  <Text style={{ fontSize:28, marginBottom:8 }}>🪙</Text>
-                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'rgba(1,31,75,0.48)', textAlign:'center' }}>Wala pay credit orders</Text>
-                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.38)', textAlign:'center', marginTop:4 }}>Mag-order gamit Credit para makita diri.</Text>
+                <View style={{ alignItems:'center', paddingVertical:40, backgroundColor:'rgba(255,255,255,0.45)', borderRadius:12, borderWidth:1, borderColor:'rgba(255,255,255,0.65)' }}>
+                  <Text style={{ fontSize:30, marginBottom:8 }}>🪙</Text>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:14, color:'rgba(1,31,75,0.50)', textAlign:'center' }}>No credit orders yet</Text>
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.38)', textAlign:'center', marginTop:5 }}>Place an order using Credit to see it here.</Text>
                 </View>
               ) : displayOrders.length === 0 ? (
-                <View style={{ alignItems:'center', paddingVertical:28, backgroundColor:'rgba(255,255,255,0.32)', borderRadius:12 }}>
-                  <Text style={{ fontSize:24, marginBottom:6 }}>{creditTab === 'unpaid' ? '🎉' : '📋'}</Text>
-                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.43)', textAlign:'center' }}>
-                    {creditTab === 'unpaid' ? 'Wala nay unsettled orders!' : 'Wala pay settled orders.'}
+                <View style={{ alignItems:'center', paddingVertical:32, backgroundColor:'rgba(255,255,255,0.45)', borderRadius:12, borderWidth:1, borderColor:'rgba(255,255,255,0.65)' }}>
+                  <Text style={{ fontSize:26, marginBottom:8 }}>{creditTab==='unpaid' ? '🎉' : '📋'}</Text>
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:13, color:'rgba(1,31,75,0.45)', textAlign:'center' }}>
+                    {creditTab==='unpaid' ? 'No unsettled orders!' : 'No settled orders yet.'}
                   </Text>
                 </View>
               ) : (
-                <View style={{ flex:1, backgroundColor:'rgba(255,255,255,0.40)', borderRadius:12, borderWidth:1, borderColor:'rgba(255,255,255,0.70)', overflow:'hidden', minHeight:0 }}>
+                <View style={{ flex:1, minHeight:0, borderRadius:12, overflow:'hidden', borderWidth:1, borderColor:'rgba(255,255,255,0.65)' }}>
                   {/* Table header */}
-                  <View style={{ flexDirection:'row', alignItems:'center', paddingHorizontal:10, paddingVertical:7, backgroundColor:'rgba(26,45,78,0.92)' }}>
-                    <Text style={[tblStyle.hCell, { width:58 }]}>ORDER</Text>
-                    <Text style={[tblStyle.hCell, { flex:1 }]}>ITEMS</Text>
-                    <Text style={[tblStyle.hCell, { width:64, textAlign:'right' }]}>AMOUNT</Text>
-                    <Text style={[tblStyle.hCell, { width:72, textAlign:'center' }]}>STATUS</Text>
+                  <View style={{ flexDirection:'row', alignItems:'center', backgroundColor:'#1a2d4e', paddingVertical:12 }}>
+                    <Text style={crdTbl.hCell} style={[crdTbl.hCell, { width:72, textAlign:'center' }]}>ORDER #</Text>
+                    <Text style={[crdTbl.hCell, { flex:1, textAlign:'left' }]}>ITEMS</Text>
+                    <Text style={[crdTbl.hCell, { width:86, textAlign:'right', paddingRight:12 }]}>AMOUNT</Text>
+                    <Text style={[crdTbl.hCell, { width:90, textAlign:'center' }]}>STATUS</Text>
                   </View>
-                  <ScrollView showsVerticalScrollIndicator={false} style={{ flex:1 }}>
+                  <ScrollView showsVerticalScrollIndicator={false} style={{ flex:1, backgroundColor:'rgba(255,255,255,0.45)' }}>
                     {displayOrders.map((order, idx) => {
-                      const orderItems = order.items || [];
-                      const total      = Number(order.total || 0);
-                      const isSettled  = order.settled === true;
-                      const accentColor = isSettled ? '#27ae60' : '#c9a84c';
-                      const isEven = idx % 2 === 0;
+                      const orderItems  = order.items || [];
+                      const total       = Number(order.total || 0);
+                      const isSettled   = order.settled === true;
+                      const stripe      = isSettled ? '#27ae60' : '#c9a84c';
+                      const isEven      = idx % 2 === 0;
                       return (
-                        <View key={order.docId || idx} style={[tblStyle.row, isEven && tblStyle.rowEven, idx === displayOrders.length - 1 && { borderBottomWidth:0 }, { borderLeftWidth:2, borderLeftColor: accentColor }]}>
+                        <View key={order.docId || idx}
+                          style={[crdTbl.row, isEven && crdTbl.rowAlt,
+                            idx === displayOrders.length - 1 && { borderBottomWidth:0 },
+                            { borderLeftWidth:3, borderLeftColor: stripe }]}>
                           {/* Order # + date */}
-                          <View style={{ width:58 }}>
-                            <Text style={tblStyle.ordNo} numberOfLines={1}>#{order.orderNo || '—'}</Text>
-                            <Text style={tblStyle.ordDate} numberOfLines={2}>{fmtDateTime(order.createdAt)}</Text>
+                          <View style={{ width:72, alignItems:'center', justifyContent:'center' }}>
+                            <Text style={crdTbl.ordNo}>#{order.orderNo || '—'}</Text>
+                            <Text style={crdTbl.dateText} numberOfLines={2}>{fmtDateTime(order.createdAt)}</Text>
                           </View>
                           {/* Items */}
-                          <View style={{ flex:1, paddingHorizontal:5 }}>
+                          <View style={{ flex:1, paddingHorizontal:10, justifyContent:'center' }}>
                             {orderItems.slice(0,2).map((it, j) => {
                               const item = it.item || it;
                               const qty  = it.qty || it.quantity || 1;
                               return (
-                                <Text key={j} style={tblStyle.itemLine} numberOfLines={1}>
-                                  {item.name} ×{qty}
+                                <Text key={j} style={crdTbl.itemText} numberOfLines={1}>
+                                  {item.emoji ? `${item.emoji} ` : ''}{item.name} ×{qty}
                                 </Text>
                               );
                             })}
                             {orderItems.length > 2 && (
-                              <Text style={[tblStyle.itemLine, { color:'rgba(1,31,75,0.35)' }]}>+{orderItems.length - 2} more</Text>
+                              <Text style={crdTbl.moreText}>+{orderItems.length - 2} more</Text>
                             )}
                           </View>
                           {/* Amount */}
-                          <Text style={[tblStyle.total, { width:64, textAlign:'right', alignSelf:'center', color: accentColor }]}>₱{total.toFixed(0)}</Text>
-                          {/* Status badge */}
-                          <View style={{ width:72, alignItems:'center', justifyContent:'center' }}>
-                            <View style={{ paddingHorizontal:6, paddingVertical:2, borderRadius:4, backgroundColor: isSettled ? 'rgba(39,174,96,0.14)' : 'rgba(201,168,76,0.18)', borderWidth:1, borderColor: isSettled ? 'rgba(39,174,96,0.40)' : 'rgba(201,168,76,0.42)' }}>
-                              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color: isSettled ? '#165c2e' : '#7a5200' }}>
-                                {isSettled ? '✓ Settled' : '● Unsettled'}
+                          <View style={{ width:86, paddingRight:12, alignItems:'flex-end', justifyContent:'center' }}>
+                            <Text style={[crdTbl.amountText, { color: stripe }]}>₱{total.toFixed(2)}</Text>
+                          </View>
+                          {/* Status */}
+                          <View style={{ width:90, alignItems:'center', justifyContent:'center' }}>
+                            <View style={{ paddingHorizontal:10, paddingVertical:5, borderRadius:20,
+                              backgroundColor: isSettled ? 'rgba(39,174,96,0.15)' : 'rgba(201,168,76,0.18)',
+                              borderWidth:1.5, borderColor: isSettled ? 'rgba(39,174,96,0.50)' : 'rgba(201,168,76,0.50)' }}>
+                              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11,
+                                color: isSettled ? '#1a7a40' : '#8a5c00' }}>
+                                {isSettled ? '✓ Settled' : 'Unpaid'}
                               </Text>
                             </View>
                           </View>
@@ -1903,6 +1921,18 @@ export default function CanteenMemberScreen({ navigation }) {
     </View>
   );
 }
+
+// ─── CREDIT TAB TABLE STYLES ─────────────────────────────────────────────────
+const crdTbl = StyleSheet.create({
+  hCell:      { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(255,255,255,0.78)', letterSpacing:0.6, textTransform:'uppercase', paddingHorizontal:8 },
+  row:        { flexDirection:'row', alignItems:'center', minHeight:54, borderBottomWidth:1, borderColor:'rgba(1,31,75,0.07)' },
+  rowAlt:     { backgroundColor:'rgba(240,246,252,0.60)' },
+  ordNo:      { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a2d4e', textAlign:'center' },
+  dateText:   { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.50)', textAlign:'center', lineHeight:15, marginTop:2 },
+  itemText:   { fontFamily:'GoogleSans_400Regular', fontSize:13, color:'rgba(1,31,75,0.80)', lineHeight:19 },
+  moreText:   { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.38)', marginTop:1 },
+  amountText: { fontFamily:'NotoSerif_700Bold', fontSize:15 },
+});
 
 // ─── TABLE STYLES — shared by Order History & My Credit ──────────────────────
 const tblStyle = StyleSheet.create({
