@@ -1669,359 +1669,6 @@ const EmployeeCreditsScreen = () => (
   </View>
 );
 
-// ─── SALES REPORT ─────────────────────────────────────────────────────────────
-const SalesReportScreen = ({ orders, items }) => {
-  const currentYear = new Date().getFullYear();
-  const [year,         setYear]         = useState(currentYear);
-  const [yearDropdown, setYearDropdown] = useState(false);
-  const [activeMonth,  setActiveMonth]  = useState(new Date().getMonth());
-  const [expandedTxDate,  setExpandedTxDate]  = useState(null);
-  const [expandedInvDate, setExpandedInvDate] = useState(null);
-  const [showTx,      setShowTx]      = useState(true);
-  const [showInv,     setShowInv]     = useState(true);
-  const [showCredits, setShowCredits] = useState(true);
-
-  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  const years = Array.from({ length: 30 }, (_, i) => 2025 + i); // 2025 - 2054
-
-  // Parse order date
-  const parseDate = (timeStr) => {
-    if (!timeStr) return null;
-    try {
-      // Handle numeric timestamp (Date.now() stored as createdAt)
-      if (typeof timeStr === 'number') return new Date(timeStr);
-      const d = new Date(timeStr);
-      return isNaN(d.getTime()) ? null : d;
-    } catch { return null; }
-  };
-
-  // Use createdAt (reliable number) first, fallback to time string
-  const getDate = (order) => {
-    if (order.createdAt) return parseDate(order.createdAt);
-    return parseDate(order.time);
-  };
-
-  const fmtDateKey = (d) =>
-    String(d.getMonth()+1).padStart(2,'0') + '-' +
-    String(d.getDate()).padStart(2,'0') + '-' +
-    d.getFullYear();
-
-  // All done orders for selected year + month
-  const monthOrders = orders.filter(o => {
-    const d = getDate(o);
-    return d && d.getFullYear() === year && d.getMonth() === activeMonth;
-  });
-
-  // Group by day — Transaction History
-  const txByDay = React.useMemo(() => {
-    const map = {};
-    monthOrders.forEach(o => {
-      const d = getDate(o);
-      if (!d) return;
-      const k = fmtDateKey(d);
-      if (!map[k]) map[k] = { key: k, orders: [] };
-      map[k].orders.push(o);
-    });
-    return Object.values(map).sort((a, b) => a.key.localeCompare(b.key));
-  }, [monthOrders.length, activeMonth, year]);
-
-  // Inventory snapshot per day (use items for stock data)
-  const invByDay = React.useMemo(() => {
-    // Use same dates as transaction history (days that have activity)
-    return txByDay.map(g => {
-      const totalStock = (items || []).reduce((s, i) => s + (i.stock || 0), 0);
-      const totalValue = (items || []).reduce((s, i) => s + (i.price || 0) * (i.stock || 0), 0);
-      return { key: g.key, totalStock, totalValue };
-    });
-  }, [txByDay, items]);
-
-  // Print transaction history for a specific day
-  const printTxDay = (dayGroup) => {
-    if (typeof window === 'undefined') return;
-    const total = dayGroup.orders.reduce((s, o) => s + Number(o.total), 0);
-    const rows = dayGroup.orders.map((o, i) => {
-      const items = (o.items || []).map(it => ((it.item&&it.item.name) || it.name || 'Item') + ' x' + it.qty).join(', ');
-      return '<tr><td>' + (i+1) + '</td><td>#' + (o.orderNo||o.id) + '</td><td>' + (o.time||'') + '</td><td>' + items + '</td><td>&#8369;' + Number(o.total).toFixed(2) + '</td></tr>';
-    }).join('');
-    const html = '<html><head><title>Transaction Report ' + dayGroup.key + '</title>'
-      + '<style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style>'
-      + '</head><body><h2>Transaction History Report</h2><p><b>Date:</b> ' + dayGroup.key + ' &nbsp;|&nbsp; <b>Total Orders:</b> ' + dayGroup.orders.length + ' &nbsp;|&nbsp; <b>Total Earnings:</b> &#8369;' + total.toFixed(2) + '</p>'
-      + '<table><thead><tr><th>#</th><th>Order No</th><th>Time</th><th>Items</th><th>Amount</th></tr></thead><tbody>' + rows + '</tbody>'
-      + '<tfoot><tr><td colspan="4">TOTAL</td><td>&#8369;' + total.toFixed(2) + '</td></tr></tfoot></table></body></html>';
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => w.print(), 400);
-  };
-
-  // Print inventory for a specific day
-  const printInvDay = (invDay) => {
-    if (typeof window === 'undefined') return;
-    const rows = (items || []).map(it =>
-      '<tr><td>' + (it.emoji||'') + ' ' + (it.name||'') + '</td><td>' + (it.cat||'') + '</td><td>' + (it.stock||0) + '</td><td>&#8369;' + (it.price||0).toLocaleString() + '</td><td>&#8369;' + ((it.price||0)*(it.stock||0)).toLocaleString() + '</td></tr>'
-    ).join('');
-    const totalStock = (items||[]).reduce((s,i)=>s+(i.stock||0),0);
-    const totalValue = (items||[]).reduce((s,i)=>s+(i.price||0)*(i.stock||0),0);
-    const html = '<html><head><title>Inventory Report ' + invDay.key + '</title>'
-      + '<style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style>'
-      + '</head><body><h2>Inventory Report</h2><p><b>Date:</b> ' + invDay.key + ' &nbsp;|&nbsp; <b>Total Stock:</b> ' + invDay.totalStock + ' &nbsp;|&nbsp; <b>Total Value:</b> &#8369;' + invDay.totalValue.toLocaleString() + '</p>'
-      + '<table><thead><tr><th>Item</th><th>Category</th><th>Stock</th><th>Price</th><th>Value</th></tr></thead><tbody>' + rows + '</tbody>'
-      + '<tfoot><tr><td colspan="2">TOTAL</td><td>' + totalStock + '</td><td></td><td>&#8369;' + totalValue.toLocaleString() + '</td></tr></tfoot></table></body></html>';
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => w.print(), 400);
-  };
-
-  return (
-    <View style={sub.root}>
-      <WebScrollView contentContainerStyle={{ gap:0, paddingBottom:20 }}>
-
-        {/* ── Year selector ── */}
-        <View style={{ alignItems:'center', marginBottom:14, position:'relative', zIndex:100 }}>
-          <TouchableOpacity
-            style={rpt.yearBtn}
-            onPress={() => setYearDropdown(p => !p)}
-            activeOpacity={0.80}
-          >
-            <Text style={rpt.yearTxt}>YEAR  {year}</Text>
-            <Text style={rpt.yearCaret}>{yearDropdown ? '\u25b2' : '\u25bc'}</Text>
-          </TouchableOpacity>
-          {yearDropdown && (
-            <ScrollView style={rpt.yearMenu} showsVerticalScrollIndicator={false}>
-              {years.map(y => (
-                <TouchableOpacity key={y} style={[rpt.yearOpt, y === year && rpt.yearOptActive]}
-                  onPress={() => { setYear(y); setYearDropdown(false); }}>
-                  <Text style={[rpt.yearOptTxt, y === year && rpt.yearOptTxtActive]}>{y}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-
-        {/* ── Month tabs ── */}
-        <View style={{ flexDirection:'row', flexWrap:'wrap', justifyContent:'center', gap:6, marginBottom:16 }}>
-          {MONTHS.map((m, i) => (
-            <TouchableOpacity key={m}
-              style={[rpt.monthBtn, activeMonth === i && rpt.monthBtnActive]}
-              onPress={() => { setActiveMonth(i); setExpandedTxDate(null); setExpandedInvDate(null); }}>
-              <Text style={[rpt.monthTxt, activeMonth === i && rpt.monthTxtActive]}>{m}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* ── Transaction History Report ── */}
-        <View style={rpt.section}>
-          <TouchableOpacity style={rpt.sectionTitleRow} onPress={() => setShowTx(p=>!p)} activeOpacity={0.80}>
-            <Text style={rpt.sectionTitle}>Transaction History Reports</Text>
-            <Text style={rpt.sectionToggle}>{showTx ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-          {showTx && <View>
-          {/* Table header */}
-          <View style={rpt.thead}>
-            <Text style={[rpt.th, { flex:1.0, textAlign:'left', paddingLeft:12 }]}>DATE</Text>
-            <Text style={[rpt.th, { flex:1.1 }]}>TOTAL ORDERS</Text>
-            <Text style={[rpt.th, { flex:1.3 }]}>TOTAL EARNINGS</Text>
-            <Text style={[rpt.th, { width:80 }]}>PRINT</Text>
-          </View>
-          {txByDay.length === 0 ? (
-            <View style={rpt.emptyRow}>
-              <Text style={rpt.emptyTxt}>No transactions for {MONTHS[activeMonth]} {year}</Text>
-            </View>
-          ) : (
-            txByDay.map((g, idx) => {
-              const total = g.orders.reduce((s, o) => s + Number(o.total), 0);
-              const isOpen = expandedTxDate === g.key;
-              return (
-                <View key={g.key}>
-                  <TouchableOpacity
-                    style={[rpt.trow, idx % 2 === 0 && rpt.trowAlt]}
-                    onPress={() => setExpandedTxDate(isOpen ? null : g.key)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[rpt.td, { flex:1.0, fontFamily:'GoogleSans_700Bold', color:'#1a3a6b', textAlign:'left', paddingLeft:12 }]}>{g.key}</Text>
-                    <Text style={[rpt.td, { flex:1.1 }]}>{g.orders.length}</Text>
-                    <Text style={[rpt.td, { flex:1.3, fontFamily:'GoogleSans_700Bold', color:'#1a7a45' }]}>
-                      {'\u20b1'}{total.toFixed(2)}
-                    </Text>
-                    <View style={{ width:80, alignItems:'center', justifyContent:'center', alignSelf:'stretch', borderRightWidth:1, borderColor:'rgba(26,58,107,0.08)' }}><TouchableOpacity style={rpt.printBtn} onPress={() => printTxDay(g)}>
-                      <Text style={rpt.printBtnTxt}>Print</Text>
-                    </TouchableOpacity></View>
-                  </TouchableOpacity>
-                  {isOpen && (
-                    <View style={rpt.expandPanel}>
-                      <View style={rpt.expandHead}>
-                        <Text style={[rpt.expandTh, { flex:0.4 }]}>#</Text>
-                        <Text style={[rpt.expandTh, { flex:0.8 }]}>ORDER NO</Text>
-                        <Text style={[rpt.expandTh, { flex:1.8 }]}>ITEMS</Text>
-                        <Text style={[rpt.expandTh, { flex:0.8, textAlign:'right' }]}>AMOUNT</Text>
-                      </View>
-                      {g.orders.map((o, i) => {
-                        const itms = (o.items||[]).map(it => ((it.item&&it.item.name)||it.name||'Item') + ' x' + it.qty).join(', ');
-                        return (
-                          <View key={o.id} style={[rpt.expandRow, i%2===0 && { backgroundColor:'rgba(255,255,255,0.30)' }]}>
-                            <Text style={[rpt.expandTd, { flex:0.4 }]}>{i+1}</Text>
-                            <Text style={[rpt.expandTd, { flex:0.8, fontFamily:'GoogleSans_700Bold' }]}>#{o.orderNo||o.id}</Text>
-                            <Text style={[rpt.expandTd, { flex:1.8 }]} numberOfLines={2}>{itms}</Text>
-                            <Text style={[rpt.expandTd, { flex:0.8, textAlign:'right', color:'#c9a84c', fontFamily:'GoogleSans_700Bold' }]}>
-                              {'\u20b1'}{Number(o.total).toFixed(2)}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          )}
-          </View>}
-        </View>
-
-        {/* ── Inventory Report ── */}
-        <View style={[rpt.section, { marginTop:16 }]}>
-          <TouchableOpacity style={rpt.sectionTitleRow} onPress={() => setShowInv(p=>!p)} activeOpacity={0.80}>
-            <Text style={rpt.sectionTitle}>Inventory Reports</Text>
-            <Text style={rpt.sectionToggle}>{showInv ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-          {showInv && <View>
-          <View style={rpt.thead}>
-            <Text style={[rpt.th, { flex:1.0, textAlign:'left', paddingLeft:12 }]}>DATE</Text>
-            <Text style={[rpt.th, { flex:1.1 }]}>TOTAL STOCK</Text>
-            <Text style={[rpt.th, { flex:1.3 }]}>TOTAL VALUE</Text>
-            <Text style={[rpt.th, { width:80 }]}>PRINT</Text>
-          </View>
-          {invByDay.length === 0 ? (
-            <View style={rpt.emptyRow}>
-              <Text style={rpt.emptyTxt}>No inventory data for {MONTHS[activeMonth]} {year}</Text>
-            </View>
-          ) : (
-            invByDay.map((g, idx) => {
-              const isOpen = expandedInvDate === g.key;
-              return (
-                <View key={g.key}>
-                  <TouchableOpacity
-                    style={[rpt.trow, idx % 2 === 0 && rpt.trowAlt]}
-                    onPress={() => setExpandedInvDate(isOpen ? null : g.key)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[rpt.td, { flex:1.0, fontFamily:'GoogleSans_700Bold', color:'#1a3a6b', textAlign:'left', paddingLeft:12 }]}>{g.key}</Text>
-                    <Text style={[rpt.td, { flex:1.1 }]}>{g.totalStock}</Text>
-                    <Text style={[rpt.td, { flex:1.3, fontFamily:'GoogleSans_700Bold', color:'#1a7a45' }]}>
-                      {'\u20b1'}{g.totalValue.toLocaleString()}
-                    </Text>
-                    <View style={{ width:80, alignItems:'center', justifyContent:'center', alignSelf:'stretch', borderRightWidth:1, borderColor:'rgba(26,58,107,0.08)' }}><TouchableOpacity style={rpt.printBtn} onPress={() => printInvDay(g)}>
-                      <Text style={rpt.printBtnTxt}>Print</Text>
-                    </TouchableOpacity></View>
-                  </TouchableOpacity>
-                  {isOpen && (
-                    <View style={rpt.expandPanel}>
-                      <View style={rpt.expandHead}>
-                        <Text style={[rpt.expandTh, { flex:2 }]}>ITEM</Text>
-                        <Text style={[rpt.expandTh, { flex:1 }]}>CATEGORY</Text>
-                        <Text style={[rpt.expandTh, { flex:0.6, textAlign:'center' }]}>STOCK</Text>
-                        <Text style={[rpt.expandTh, { flex:0.8, textAlign:'right' }]}>VALUE</Text>
-                      </View>
-                      {(items||[]).map((it, i) => (
-                        <View key={it.id} style={[rpt.expandRow, i%2===0 && { backgroundColor:'rgba(255,255,255,0.30)' }]}>
-                          <Text style={[rpt.expandTd, { flex:2, fontFamily:'GoogleSans_700Bold' }]} numberOfLines={1}>{it.emoji} {it.name}</Text>
-                          <Text style={[rpt.expandTd, { flex:1 }]} numberOfLines={1}>{it.cat}</Text>
-                          <Text style={[rpt.expandTd, { flex:0.6, textAlign:'center' }]}>{it.stock}</Text>
-                          <Text style={[rpt.expandTd, { flex:0.8, textAlign:'right', color:'#c9a84c', fontFamily:'GoogleSans_700Bold' }]}>
-                            {'\u20b1'}{((it.price||0)*(it.stock||0)).toLocaleString()}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          )}
-          </View>}
-        </View>
-
-        {/* ── Credits Report ── */}
-        <View style={[rpt.section, { marginTop:16 }]}>
-          <TouchableOpacity style={rpt.sectionTitleRow} onPress={() => setShowCredits(p=>!p)} activeOpacity={0.80}>
-            <Text style={rpt.sectionTitle}>Credits Reports</Text>
-            <Text style={rpt.sectionToggle}>{showCredits ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-          {showCredits && <View style={rpt.comingSoon}>
-            <Text style={rpt.comingSoonEmoji}>🚧</Text>
-            <Text style={rpt.comingSoonTxt}>Coming Soon</Text>
-            <Text style={rpt.comingSoonSub}>Credits reporting will be available in a future update.</Text>
-          </View>}
-        </View>
-
-      </WebScrollView>
-    </View>
-  );
-};
-
-const rpt = StyleSheet.create({
-  yearBtn: {
-    flexDirection:'row', alignItems:'center', gap:10,
-    paddingVertical:10, paddingHorizontal:28,
-    backgroundColor:'rgba(26,58,107,0.12)', borderRadius:12,
-    borderWidth:1.5, borderColor:'rgba(26,58,107,0.20)',
-  },
-  yearTxt:  { fontFamily:'GoogleSans_700Bold', fontSize:20, color:'#1a3a6b', letterSpacing:1 },
-  yearCaret:{ fontSize:12, color:'rgba(26,58,107,0.50)' },
-  yearMenu: {
-    position:'absolute', top:48, zIndex:9999,
-    backgroundColor:'rgba(255,255,255,0.99)',
-    borderRadius:10, borderWidth:1, borderColor:'rgba(26,58,107,0.18)',
-    shadowColor:'#000', shadowOpacity:0.18, shadowRadius:12, elevation:20,
-    minWidth:140, maxHeight:200,
-  },
-  yearOpt:       { paddingVertical:10, paddingHorizontal:20, alignItems:'center' },
-  yearOptActive: { backgroundColor:'rgba(26,58,107,0.08)' },
-  yearOptTxt:    { fontFamily:'GoogleSans_400Regular', fontSize:14, color:'#1a3a6b' },
-  yearOptTxtActive:{ fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
-
-
-  monthBtn:       { paddingHorizontal:14, paddingVertical:7, borderRadius:20, backgroundColor:'#1a3a6b', borderWidth:1, borderColor:'rgba(26,58,107,0.60)' },
-  monthBtnActive: { backgroundColor:'rgba(198,220,240,0.90)', borderColor:'#304674', borderWidth:1.5 },
-  monthTxt:       { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(255,255,255,0.90)' },
-  monthTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
-
-  section: { backgroundColor:'rgba(255,255,255,0.22)', borderRadius:12, borderWidth:1, borderColor:'rgba(255,255,255,0.45)', overflow:'hidden' },
-  sectionTitleRow: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical:10, paddingHorizontal:12 },
-  sectionToggle:   { fontSize:13, color:'rgba(26,58,107,0.45)', paddingLeft:8 },
-  sectionTitle: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b', letterSpacing:0.5 },
-
-  thead:   { flexDirection:'row', alignItems:'center', paddingVertical:8, paddingHorizontal:0, backgroundColor:'rgba(26,58,107,0.12)' },
-  th:      { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.60)', letterSpacing:0.8, textTransform:'uppercase',
-             textAlign:'center', paddingVertical:8, paddingHorizontal:6,
-             borderRightWidth:1, borderColor:'rgba(26,58,107,0.10)' },
-
-  trow:    { flexDirection:'row', alignItems:'center', paddingVertical:0, paddingHorizontal:0, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.07)', minHeight:42 },
-  trowAlt: { backgroundColor:'rgba(255,255,255,0.35)' },
-  td:      { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#1a2d4e',
-             textAlign:'center', paddingVertical:10, paddingHorizontal:6,
-             borderRightWidth:1, borderColor:'rgba(26,58,107,0.08)',
-             alignSelf:'stretch', justifyContent:'center' },
-
-  printBtn:    { alignItems:'center', backgroundColor:'#1a3a6b', borderRadius:6, paddingVertical:5, paddingHorizontal:10 },
-  printBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'#fff', letterSpacing:0.3 },
-
-  expandPanel: { backgroundColor:'rgba(26,58,107,0.04)', borderBottomWidth:1, borderColor:'rgba(26,58,107,0.10)' },
-  expandHead:  { flexDirection:'row', paddingVertical:6, paddingHorizontal:20, backgroundColor:'rgba(26,58,107,0.08)' },
-  expandTh:    { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'rgba(26,58,107,0.50)', letterSpacing:0.5, textTransform:'uppercase', flex:1 },
-  expandRow:   { flexDirection:'row', paddingVertical:7, paddingHorizontal:20, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.04)' },
-  expandTd:    { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'#1a2d4e', flex:1 },
-
-  emptyRow: { paddingVertical:20, alignItems:'center' },
-  emptyTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.40)' },
-
-  comingSoon:    { alignItems:'center', paddingVertical:32, gap:8 },
-  comingSoonEmoji:{ fontSize:32 },
-  comingSoonTxt: { fontFamily:'GoogleSans_700Bold', fontSize:16, color:'rgba(1,31,75,0.40)' },
-  comingSoonSub: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.35)', textAlign:'center', paddingHorizontal:20 },
-});
-
 
 const sub = StyleSheet.create({
   root: { flex:1, padding:14, overflow:'hidden', minHeight:0 },
@@ -2073,16 +1720,13 @@ const hst = StyleSheet.create({
   topBar: { flexDirection:'row', alignItems:'flex-start', gap:10, marginBottom:4 },
   txHeaderDate: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:'#1a3a6b' },
   txHeaderSub: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:2 },
-
   dropBtn: { flexDirection:'row', alignItems:'center', gap:5, backgroundColor:'rgba(255,255,255,0.70)', borderRadius:10, paddingVertical:7, paddingHorizontal:10, borderWidth:1, borderColor:'rgba(1,31,75,0.15)', flexShrink:0 },
   dropBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a3a6b' },
-
   dropdown: { backgroundColor:'rgba(255,255,255,0.95)', borderRadius:12, borderWidth:1, borderColor:'rgba(1,31,75,0.15)', marginBottom:4, overflow:'hidden', shadowColor:'#000', shadowOpacity:0.10, shadowRadius:8, elevation:6 },
   dropItem: { flexDirection:'row', alignItems:'center', paddingVertical:10, paddingHorizontal:14, borderBottomWidth:1, borderColor:'rgba(1,31,75,0.06)', gap:8 },
   dropItemLabel: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#1a3a6b' },
   dropItemSub: { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.45)', marginTop:1 },
   dropItemTotal: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#c9a84c', flexShrink:0 },
-
   txRow: { flexDirection:'row', gap:0, minHeight:56 },
   txTimeCol: { width:52, flexShrink:0, alignItems:'flex-end', paddingRight:8, paddingTop:3, gap:4 },
   txTime: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.55)', textAlign:'right' },
@@ -2098,6 +1742,634 @@ const hst = StyleSheet.create({
   txAmount: { fontFamily:'NotoSerif_700Bold', fontSize:13, color:'#c9a84c' },
   txPay: { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.45)' },
 });
+
+// ─── SALES REPORT ─────────────────────────────────────────────────────────────
+const SalesReportScreen = ({ orders, items }) => {
+  const currentYear = new Date().getFullYear();
+  const [year,         setYear]         = useState(currentYear);
+  const [yearDropdown, setYearDropdown] = useState(false);
+  const [activeMonth,  setActiveMonth]  = useState(new Date().getMonth());
+  const [activeFolder, setActiveFolder] = useState('sales'); // 'sales' | 'tx' | 'inv' | 'credits'
+  const [salesView,    setSalesView]    = useState('daily'); // 'daily' | 'monthly' | 'yearly'
+  const [expandedTxDate,  setExpandedTxDate]  = useState(null);
+  const [expandedInvDate, setExpandedInvDate] = useState(null);
+
+  const MONTHS     = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const MONTHS_FULL= ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const years = Array.from({ length: 30 }, (_, i) => 2025 + i);
+
+  // ── Date helpers ────────────────────────────────────────────────────────────
+  const getDate = (order) => {
+    if (order.createdAt) return new Date(order.createdAt);
+    if (order.time) { const d = new Date(order.time); return isNaN(d) ? null : d; }
+    return null;
+  };
+  const fmtDateKey = (d) =>
+    String(d.getMonth()+1).padStart(2,'0') + '-' +
+    String(d.getDate()).padStart(2,'0') + '-' + d.getFullYear();
+
+  // ── Filtered orders ─────────────────────────────────────────────────────────
+  const yearOrders = orders.filter(o => {
+    const d = getDate(o); return d && d.getFullYear() === year;
+  });
+  const monthOrders = yearOrders.filter(o => {
+    const d = getDate(o); return d && d.getMonth() === activeMonth;
+  });
+
+  // ── SALES COLLECTION DATA ───────────────────────────────────────────────────
+  // Daily (for selected month)
+  const dailyData = React.useMemo(() => {
+    const map = {};
+    monthOrders.forEach(o => {
+      const d = getDate(o); if (!d) return;
+      const k = fmtDateKey(d);
+      if (!map[k]) map[k] = { key: k, total: 0, count: 0, cashier: 0, visitor: 0 };
+      map[k].total += Number(o.total || 0);
+      map[k].count += 1;
+      if (o.source === 'visitor') map[k].visitor += Number(o.total || 0);
+      else map[k].cashier += Number(o.total || 0);
+    });
+    return Object.values(map).sort((a,b) => a.key.localeCompare(b.key));
+  }, [monthOrders.length, activeMonth, year]);
+
+  // Monthly (for selected year)
+  const monthlyData = React.useMemo(() => {
+    return MONTHS.map((m, i) => {
+      const mo = yearOrders.filter(o => { const d = getDate(o); return d && d.getMonth() === i; });
+      return {
+        month: m, monthFull: MONTHS_FULL[i], idx: i,
+        total: mo.reduce((s,o) => s + Number(o.total||0), 0),
+        count: mo.length,
+        cashier: mo.filter(o => o.source !== 'visitor').reduce((s,o) => s+Number(o.total||0), 0),
+        visitor: mo.filter(o => o.source === 'visitor').reduce((s,o) => s+Number(o.total||0), 0),
+      };
+    });
+  }, [yearOrders.length, year]);
+
+  // Yearly (all years with data)
+  const yearlyData = React.useMemo(() => {
+    const map = {};
+    orders.forEach(o => {
+      const d = getDate(o); if (!d) return;
+      const y = d.getFullYear();
+      if (!map[y]) map[y] = { year: y, total: 0, count: 0, cashier: 0, visitor: 0 };
+      map[y].total += Number(o.total||0);
+      map[y].count += 1;
+      if (o.source === 'visitor') map[y].visitor += Number(o.total||0);
+      else map[y].cashier += Number(o.total||0);
+    });
+    return Object.values(map).sort((a,b) => b.year - a.year);
+  }, [orders.length]);
+
+  // ── TX History ──────────────────────────────────────────────────────────────
+  const txByDay = React.useMemo(() => {
+    const map = {};
+    monthOrders.forEach(o => {
+      const d = getDate(o); if (!d) return;
+      const k = fmtDateKey(d);
+      if (!map[k]) map[k] = { key: k, orders: [] };
+      map[k].orders.push(o);
+    });
+    return Object.values(map).sort((a,b) => a.key.localeCompare(b.key));
+  }, [monthOrders.length, activeMonth, year]);
+
+  // ── Inventory ───────────────────────────────────────────────────────────────
+  const invByDay = React.useMemo(() => txByDay.map(g => {
+    const totalStock = (items||[]).reduce((s,i) => s+(i.stock||0), 0);
+    const totalValue = (items||[]).reduce((s,i) => s+(i.price||0)*(i.stock||0), 0);
+    return { key: g.key, totalStock, totalValue };
+  }), [txByDay, items]);
+
+  // ── Print helpers ────────────────────────────────────────────────────────────
+  const printTxDay = (dayGroup) => {
+    if (typeof window === 'undefined') return;
+    const total = dayGroup.orders.reduce((s,o) => s+Number(o.total),0);
+    const rows = dayGroup.orders.map((o,i) => {
+      const itms = (o.items||[]).map(it=>((it.item&&it.item.name)||it.name||'Item')+' x'+it.qty).join(', ');
+      return '<tr><td>'+(i+1)+'</td><td>#'+(o.orderNo||o.id)+'</td><td>'+(o.time||'')+'</td><td>'+itms+'</td><td>&#8369;'+Number(o.total).toFixed(2)+'</td></tr>';
+    }).join('');
+    const html = '<html><head><title>Transaction Report '+dayGroup.key+'</title>'
+      +'<style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style>'
+      +'</head><body><h2>Transaction History Report</h2><p><b>Date:</b> '+dayGroup.key+' &nbsp;|&nbsp; <b>Total Orders:</b> '+dayGroup.orders.length+' &nbsp;|&nbsp; <b>Total Earnings:</b> &#8369;'+total.toFixed(2)+'</p>'
+      +'<table><thead><tr><th>#</th><th>Order No</th><th>Time</th><th>Items</th><th>Amount</th></tr></thead><tbody>'+rows+'</tbody>'
+      +'<tfoot><tr><td colspan="4">TOTAL</td><td>&#8369;'+total.toFixed(2)+'</td></tr></tfoot></table></body></html>';
+    const w = window.open('','_blank'); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400);
+  };
+
+  const printInvDay = (invDay) => {
+    if (typeof window === 'undefined') return;
+    const rows = (items||[]).map(it=>'<tr><td>'+(it.emoji||'')+' '+(it.name||'')+'</td><td>'+(it.cat||'')+'</td><td>'+(it.stock||0)+'</td><td>&#8369;'+(it.price||0).toLocaleString()+'</td><td>&#8369;'+((it.price||0)*(it.stock||0)).toLocaleString()+'</td></tr>').join('');
+    const totalStock=(items||[]).reduce((s,i)=>s+(i.stock||0),0);
+    const totalValue=(items||[]).reduce((s,i)=>s+(i.price||0)*(i.stock||0),0);
+    const html='<html><head><title>Inventory Report '+invDay.key+'</title>'
+      +'<style>body{font-family:Arial,sans-serif;padding:24px}h2{color:#1a3a6b}table{width:100%;border-collapse:collapse}th{background:#1a3a6b;color:#fff;padding:8px;text-align:left;font-size:12px}td{padding:7px 8px;border-bottom:1px solid #e0e8f0;font-size:12px}tfoot td{font-weight:bold;background:#f0f5f9}</style>'
+      +'</head><body><h2>Inventory Report</h2><p><b>Date:</b> '+invDay.key+' &nbsp;|&nbsp; <b>Total Stock:</b> '+invDay.totalStock+' &nbsp;|&nbsp; <b>Total Value:</b> &#8369;'+invDay.totalValue.toLocaleString()+'</p>'
+      +'<table><thead><tr><th>Item</th><th>Category</th><th>Stock</th><th>Price</th><th>Value</th></tr></thead><tbody>'+rows+'</tbody>'
+      +'<tfoot><tr><td colspan="2">TOTAL</td><td>'+totalStock+'</td><td></td><td>&#8369;'+totalValue.toLocaleString()+'</td></tr></tfoot></table></body></html>';
+    const w=window.open('','_blank'); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400);
+  };
+
+  // ── Grand totals for selected month ─────────────────────────────────────────
+  const monthTotal   = monthOrders.reduce((s,o) => s+Number(o.total||0), 0);
+  const monthCashier = monthOrders.filter(o=>o.source!=='visitor').reduce((s,o)=>s+Number(o.total||0),0);
+  const monthVisitor = monthOrders.filter(o=>o.source==='visitor').reduce((s,o)=>s+Number(o.total||0),0);
+
+  // ── Folder tabs config ────────────────────────────────────────────────────
+  const FOLDERS = [
+    { key:'sales',   label:'Sales Collection',        icon:'💰' },
+    { key:'tx',      label:'Transaction History',     icon:'📋' },
+    { key:'inv',     label:'Inventory Reports',       icon:'📦' },
+    { key:'credits', label:'Credits Reports',         icon:'💳' },
+  ];
+
+  // ── Render folder content ────────────────────────────────────────────────
+  const renderFolderContent = () => {
+
+    // ── SALES COLLECTION ──────────────────────────────────────────────────
+    if (activeFolder === 'sales') {
+      return (
+        <View style={{ flex:1, minHeight:0 }}>
+          {/* Year + Month controls */}
+          <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+            {/* Year picker */}
+            <View style={{ position:'relative', zIndex:100 }}>
+              <TouchableOpacity style={rpt2.yearBtn} onPress={()=>setYearDropdown(p=>!p)} activeOpacity={0.80}>
+                <Text style={rpt2.yearTxt}>YEAR  {year}</Text>
+                <Text style={rpt2.yearCaret}>{yearDropdown?'▲':'▼'}</Text>
+              </TouchableOpacity>
+              {yearDropdown && (
+                <ScrollView style={rpt2.yearMenu} showsVerticalScrollIndicator={false}>
+                  {years.map(y=>(
+                    <TouchableOpacity key={y} style={[rpt2.yearOpt, y===year&&rpt2.yearOptActive]} onPress={()=>{setYear(y);setYearDropdown(false);}}>
+                      <Text style={[rpt2.yearOptTxt, y===year&&rpt2.yearOptTxtActive]}>{y}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+            {/* View toggle: Daily / Monthly / Yearly */}
+            {[['daily','Daily'],['monthly','Monthly'],['yearly','Yearly']].map(([k,l])=>(
+              <TouchableOpacity key={k} style={[rpt2.viewToggleBtn, salesView===k&&rpt2.viewToggleBtnActive]} onPress={()=>setSalesView(k)}>
+                <Text style={[rpt2.viewToggleTxt, salesView===k&&rpt2.viewToggleTxtActive]}>{l}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Month tabs — only for daily view */}
+          {salesView === 'daily' && (
+            <View style={{ flexDirection:'row', flexWrap:'wrap', gap:5, marginBottom:10 }}>
+              {MONTHS.map((m,i)=>(
+                <TouchableOpacity key={m} style={[rpt2.monthBtn, activeMonth===i&&rpt2.monthBtnActive]} onPress={()=>setActiveMonth(i)}>
+                  <Text style={[rpt2.monthTxt, activeMonth===i&&rpt2.monthTxtActive]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Summary row */}
+          {salesView === 'daily' && (
+            <View style={rpt2.summaryRow}>
+              <View style={rpt2.summaryCard}>
+                <Text style={rpt2.summaryVal}>₱{monthTotal.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</Text>
+                <Text style={rpt2.summaryLbl}>{MONTHS_FULL[activeMonth]} {year} Total</Text>
+              </View>
+              <View style={[rpt2.summaryCard,{backgroundColor:'rgba(41,121,255,0.12)'}]}>
+                <Text style={[rpt2.summaryVal,{color:'#2979ff'}]}>₱{monthCashier.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</Text>
+                <Text style={rpt2.summaryLbl}>🖥️ Cashier</Text>
+              </View>
+              <View style={[rpt2.summaryCard,{backgroundColor:'rgba(39,174,96,0.12)'}]}>
+                <Text style={[rpt2.summaryVal,{color:'#1a7a45'}]}>₱{monthVisitor.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</Text>
+                <Text style={rpt2.summaryLbl}>🌐 Visitor</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Table */}
+          <WebScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{paddingBottom:16}}>
+
+            {/* ── DAILY TABLE ── */}
+            {salesView === 'daily' && (
+              <View>
+                <View style={rpt2.thead}>
+                  <Text style={[rpt2.th,{flex:1.2,textAlign:'left',paddingLeft:10}]}>DATE</Text>
+                  <Text style={[rpt2.th,{flex:0.8}]}>ORDERS</Text>
+                  <Text style={[rpt2.th,{flex:1.2}]}>🖥️ CASHIER</Text>
+                  <Text style={[rpt2.th,{flex:1.2}]}>🌐 VISITOR</Text>
+                  <Text style={[rpt2.th,{flex:1.2}]}>TOTAL</Text>
+                </View>
+                {dailyData.length === 0 ? (
+                  <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No sales for {MONTHS_FULL[activeMonth]} {year}</Text></View>
+                ) : dailyData.map((g,idx)=>(
+                  <View key={g.key} style={[rpt2.trow, idx%2===0&&rpt2.trowAlt]}>
+                    <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.key}</Text>
+                    <Text style={[rpt2.td,{flex:0.8}]}>{g.count}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,color:'#2979ff',fontFamily:'GoogleSans_700Bold'}]}>₱{g.cashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,color:'#1a7a45',fontFamily:'GoogleSans_700Bold'}]}>₱{g.visitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{g.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  </View>
+                ))}
+                {/* Totals footer */}
+                {dailyData.length > 0 && (
+                  <View style={rpt2.tfooter}>
+                    <Text style={[rpt2.tfootLbl,{flex:1.2,paddingLeft:10}]}>TOTAL</Text>
+                    <Text style={[rpt2.tfootVal,{flex:0.8}]}>{monthOrders.length}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#2979ff'}]}>₱{monthCashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#1a7a45'}]}>₱{monthVisitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#c9a84c'}]}>₱{monthTotal.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* ── MONTHLY TABLE ── */}
+            {salesView === 'monthly' && (
+              <View>
+                <View style={rpt2.thead}>
+                  <Text style={[rpt2.th,{flex:1.2,textAlign:'left',paddingLeft:10}]}>MONTH</Text>
+                  <Text style={[rpt2.th,{flex:0.8}]}>ORDERS</Text>
+                  <Text style={[rpt2.th,{flex:1.2}]}>🖥️ CASHIER</Text>
+                  <Text style={[rpt2.th,{flex:1.2}]}>🌐 VISITOR</Text>
+                  <Text style={[rpt2.th,{flex:1.2}]}>TOTAL</Text>
+                </View>
+                {monthlyData.map((g,idx)=>(
+                  <View key={g.month} style={[rpt2.trow, idx%2===0&&rpt2.trowAlt]}>
+                    <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.monthFull}</Text>
+                    <Text style={[rpt2.td,{flex:0.8}]}>{g.count}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,color:'#2979ff',fontFamily:g.cashier>0?'GoogleSans_700Bold':'GoogleSans_400Regular'}]}>₱{g.cashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,color:'#1a7a45',fontFamily:g.visitor>0?'GoogleSans_700Bold':'GoogleSans_400Regular'}]}>₱{g.visitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,color:'#c9a84c',fontFamily:g.total>0?'GoogleSans_700Bold':'GoogleSans_400Regular'}]}>₱{g.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  </View>
+                ))}
+                {/* Yearly total footer */}
+                <View style={rpt2.tfooter}>
+                  <Text style={[rpt2.tfootLbl,{flex:1.2,paddingLeft:10}]}>{year} TOTAL</Text>
+                  <Text style={[rpt2.tfootVal,{flex:0.8}]}>{yearOrders.length}</Text>
+                  <Text style={[rpt2.tfootVal,{flex:1.2,color:'#2979ff'}]}>₱{yearOrders.filter(o=>o.source!=='visitor').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  <Text style={[rpt2.tfootVal,{flex:1.2,color:'#1a7a45'}]}>₱{yearOrders.filter(o=>o.source==='visitor').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  <Text style={[rpt2.tfootVal,{flex:1.2,color:'#c9a84c'}]}>₱{yearOrders.reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* ── YEARLY TABLE ── */}
+            {salesView === 'yearly' && (
+              <View>
+                <View style={rpt2.thead}>
+                  <Text style={[rpt2.th,{flex:1,textAlign:'left',paddingLeft:10}]}>YEAR</Text>
+                  <Text style={[rpt2.th,{flex:0.8}]}>ORDERS</Text>
+                  <Text style={[rpt2.th,{flex:1.2}]}>🖥️ CASHIER</Text>
+                  <Text style={[rpt2.th,{flex:1.2}]}>🌐 VISITOR</Text>
+                  <Text style={[rpt2.th,{flex:1.2}]}>TOTAL</Text>
+                </View>
+                {yearlyData.length === 0 ? (
+                  <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No yearly data available</Text></View>
+                ) : yearlyData.map((g,idx)=>(
+                  <View key={g.year} style={[rpt2.trow, idx%2===0&&rpt2.trowAlt]}>
+                    <Text style={[rpt2.td,{flex:1,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.year}</Text>
+                    <Text style={[rpt2.td,{flex:0.8}]}>{g.count}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,color:'#2979ff',fontFamily:'GoogleSans_700Bold'}]}>₱{g.cashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,color:'#1a7a45',fontFamily:'GoogleSans_700Bold'}]}>₱{g.visitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{g.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  </View>
+                ))}
+                {yearlyData.length > 0 && (
+                  <View style={rpt2.tfooter}>
+                    <Text style={[rpt2.tfootLbl,{flex:1,paddingLeft:10}]}>ALL TIME</Text>
+                    <Text style={[rpt2.tfootVal,{flex:0.8}]}>{orders.length}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#2979ff'}]}>₱{orders.filter(o=>o.source!=='visitor').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#1a7a45'}]}>₱{orders.filter(o=>o.source==='visitor').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#c9a84c'}]}>₱{orders.reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </WebScrollView>
+        </View>
+      );
+    }
+
+    // ── TRANSACTION HISTORY ──────────────────────────────────────────────────
+    if (activeFolder === 'tx') {
+      return (
+        <View style={{flex:1,minHeight:0}}>
+          <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+            <View style={{position:'relative',zIndex:100}}>
+              <TouchableOpacity style={rpt2.yearBtn} onPress={()=>setYearDropdown(p=>!p)} activeOpacity={0.80}>
+                <Text style={rpt2.yearTxt}>YEAR  {year}</Text>
+                <Text style={rpt2.yearCaret}>{yearDropdown?'▲':'▼'}</Text>
+              </TouchableOpacity>
+              {yearDropdown && (
+                <ScrollView style={rpt2.yearMenu} showsVerticalScrollIndicator={false}>
+                  {years.map(y=>(
+                    <TouchableOpacity key={y} style={[rpt2.yearOpt,y===year&&rpt2.yearOptActive]} onPress={()=>{setYear(y);setYearDropdown(false);}}>
+                      <Text style={[rpt2.yearOptTxt,y===year&&rpt2.yearOptTxtActive]}>{y}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+            <View style={{flexDirection:'row',flexWrap:'wrap',gap:4}}>
+              {MONTHS.map((m,i)=>(
+                <TouchableOpacity key={m} style={[rpt2.monthBtn,activeMonth===i&&rpt2.monthBtnActive]} onPress={()=>setActiveMonth(i)}>
+                  <Text style={[rpt2.monthTxt,activeMonth===i&&rpt2.monthTxtActive]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <View style={rpt2.thead}>
+            <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>DATE</Text>
+            <Text style={[rpt2.th,{flex:1.0}]}>TOTAL ORDERS</Text>
+            <Text style={[rpt2.th,{flex:1.2}]}>TOTAL EARNINGS</Text>
+            <Text style={[rpt2.th,{width:72}]}>PRINT</Text>
+          </View>
+          <WebScrollView style={{flex:1}} contentContainerStyle={{paddingBottom:16}}>
+            {txByDay.length===0?(
+              <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No transactions for {MONTHS_FULL[activeMonth]} {year}</Text></View>
+            ):txByDay.map((g,idx)=>{
+              const total=g.orders.reduce((s,o)=>s+Number(o.total),0);
+              const isOpen=expandedTxDate===g.key;
+              return (
+                <View key={g.key}>
+                  <TouchableOpacity style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]} onPress={()=>setExpandedTxDate(isOpen?null:g.key)} activeOpacity={0.75}>
+                    <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.key}</Text>
+                    <Text style={[rpt2.td,{flex:1.0}]}>{g.orders.length}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>₱{total.toFixed(2)}</Text>
+                    <View style={{width:72,alignItems:'center',justifyContent:'center',alignSelf:'stretch',borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)'}}>
+                      <TouchableOpacity style={rpt2.printBtn} onPress={()=>printTxDay(g)}><Text style={rpt2.printBtnTxt}>Print</Text></TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                  {isOpen&&(
+                    <View style={rpt2.expandPanel}>
+                      <View style={rpt2.expandHead}>
+                        <Text style={[rpt2.expandTh,{flex:0.4}]}>#</Text>
+                        <Text style={[rpt2.expandTh,{flex:0.8}]}>ORDER NO</Text>
+                        <Text style={[rpt2.expandTh,{flex:0.6}]}>SOURCE</Text>
+                        <Text style={[rpt2.expandTh,{flex:1.8}]}>ITEMS</Text>
+                        <Text style={[rpt2.expandTh,{flex:0.8,textAlign:'right'}]}>AMOUNT</Text>
+                      </View>
+                      {g.orders.map((o,i)=>{
+                        const itms=(o.items||[]).map(it=>((it.item&&it.item.name)||it.name||'Item')+' x'+it.qty).join(', ');
+                        const src=o.source==='visitor'?'🌐 Visitor':'🖥️ Cashier';
+                        return(
+                          <View key={o.id} style={[rpt2.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}>
+                            <Text style={[rpt2.expandTd,{flex:0.4}]}>{i+1}</Text>
+                            <Text style={[rpt2.expandTd,{flex:0.8,fontFamily:'GoogleSans_700Bold'}]}>#{o.orderNo||o.id}</Text>
+                            <Text style={[rpt2.expandTd,{flex:0.6}]}>{src}</Text>
+                            <Text style={[rpt2.expandTd,{flex:1.8}]} numberOfLines={2}>{itms}</Text>
+                            <Text style={[rpt2.expandTd,{flex:0.8,textAlign:'right',color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{Number(o.total).toFixed(2)}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </WebScrollView>
+        </View>
+      );
+    }
+
+    // ── INVENTORY REPORTS ────────────────────────────────────────────────────
+    if (activeFolder === 'inv') {
+      return (
+        <View style={{flex:1,minHeight:0}}>
+          <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+            <View style={{position:'relative',zIndex:100}}>
+              <TouchableOpacity style={rpt2.yearBtn} onPress={()=>setYearDropdown(p=>!p)} activeOpacity={0.80}>
+                <Text style={rpt2.yearTxt}>YEAR  {year}</Text>
+                <Text style={rpt2.yearCaret}>{yearDropdown?'▲':'▼'}</Text>
+              </TouchableOpacity>
+              {yearDropdown && (
+                <ScrollView style={rpt2.yearMenu} showsVerticalScrollIndicator={false}>
+                  {years.map(y=>(
+                    <TouchableOpacity key={y} style={[rpt2.yearOpt,y===year&&rpt2.yearOptActive]} onPress={()=>{setYear(y);setYearDropdown(false);}}>
+                      <Text style={[rpt2.yearOptTxt,y===year&&rpt2.yearOptTxtActive]}>{y}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+            <View style={{flexDirection:'row',flexWrap:'wrap',gap:4}}>
+              {MONTHS.map((m,i)=>(
+                <TouchableOpacity key={m} style={[rpt2.monthBtn,activeMonth===i&&rpt2.monthBtnActive]} onPress={()=>setActiveMonth(i)}>
+                  <Text style={[rpt2.monthTxt,activeMonth===i&&rpt2.monthTxtActive]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <View style={rpt2.thead}>
+            <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>DATE</Text>
+            <Text style={[rpt2.th,{flex:1.0}]}>TOTAL STOCK</Text>
+            <Text style={[rpt2.th,{flex:1.2}]}>TOTAL VALUE</Text>
+            <Text style={[rpt2.th,{width:72}]}>PRINT</Text>
+          </View>
+          <WebScrollView style={{flex:1}} contentContainerStyle={{paddingBottom:16}}>
+            {invByDay.length===0?(
+              <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No inventory data for {MONTHS_FULL[activeMonth]} {year}</Text></View>
+            ):invByDay.map((g,idx)=>{
+              const isOpen=expandedInvDate===g.key;
+              return(
+                <View key={g.key}>
+                  <TouchableOpacity style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]} onPress={()=>setExpandedInvDate(isOpen?null:g.key)} activeOpacity={0.75}>
+                    <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.key}</Text>
+                    <Text style={[rpt2.td,{flex:1.0}]}>{g.totalStock}</Text>
+                    <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>₱{g.totalValue.toLocaleString()}</Text>
+                    <View style={{width:72,alignItems:'center',justifyContent:'center',alignSelf:'stretch',borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)'}}>
+                      <TouchableOpacity style={rpt2.printBtn} onPress={()=>printInvDay(g)}><Text style={rpt2.printBtnTxt}>Print</Text></TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                  {isOpen&&(
+                    <View style={rpt2.expandPanel}>
+                      <View style={rpt2.expandHead}>
+                        <Text style={[rpt2.expandTh,{flex:2}]}>ITEM</Text>
+                        <Text style={[rpt2.expandTh,{flex:1}]}>CATEGORY</Text>
+                        <Text style={[rpt2.expandTh,{flex:0.6,textAlign:'center'}]}>STOCK</Text>
+                        <Text style={[rpt2.expandTh,{flex:0.8,textAlign:'right'}]}>VALUE</Text>
+                      </View>
+                      {(items||[]).map((it,i)=>(
+                        <View key={it.id} style={[rpt2.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}>
+                          <Text style={[rpt2.expandTd,{flex:2,fontFamily:'GoogleSans_700Bold'}]} numberOfLines={1}>{it.emoji} {it.name}</Text>
+                          <Text style={[rpt2.expandTd,{flex:1}]} numberOfLines={1}>{it.cat}</Text>
+                          <Text style={[rpt2.expandTd,{flex:0.6,textAlign:'center'}]}>{it.stock}</Text>
+                          <Text style={[rpt2.expandTd,{flex:0.8,textAlign:'right',color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{((it.price||0)*(it.stock||0)).toLocaleString()}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </WebScrollView>
+        </View>
+      );
+    }
+
+    // ── CREDITS REPORTS ──────────────────────────────────────────────────────
+    if (activeFolder === 'credits') {
+      return (
+        <View style={{flex:1,justifyContent:'center',alignItems:'center',gap:10}}>
+          <Text style={{fontSize:36}}>🚧</Text>
+          <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:18,color:'rgba(1,31,75,0.35)'}}>Coming Soon</Text>
+          <Text style={{fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(1,31,75,0.30)',textAlign:'center',paddingHorizontal:24,lineHeight:18}}>
+            Credits reporting will be available in a future update.
+          </Text>
+        </View>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <View style={sub.root}>
+      {/* ── Folder tab bar ── */}
+      <View style={rpt2.folderTabBar}>
+        {FOLDERS.map((f,i) => {
+          const isActive = activeFolder === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key}
+              onPress={() => setActiveFolder(f.key)}
+              style={[
+                rpt2.folderTab,
+                isActive && rpt2.folderTabActive,
+                i === 0 && { marginLeft: 0 },
+              ]}
+              activeOpacity={0.80}
+            >
+              <Text style={[rpt2.folderTabTxt, isActive && rpt2.folderTabTxtActive]}>
+                {f.icon}  {f.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* ── Folder content card ── */}
+      <View style={rpt2.folderCard}>
+        {renderFolderContent()}
+      </View>
+    </View>
+  );
+};
+
+const rpt2 = StyleSheet.create({
+  // Folder tabs (browser-tab style, same look as main tabs)
+  folderTabBar: {
+    flexDirection: 'row',
+    flexShrink: 0,
+    marginTop: 0,
+    paddingHorizontal: 0,
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  folderTab: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    backgroundColor: 'rgba(26,58,107,0.45)',
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: 'rgba(255,255,255,0.20)',
+    marginRight: 2,
+    marginBottom: 0,
+    bottom: 0,
+  },
+  folderTabActive: {
+    backgroundColor: 'rgba(240,245,249,0.97)',
+    borderColor: 'rgba(255,255,255,0.55)',
+    paddingBottom: 10,
+  },
+  folderTabTxt: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.80)',
+  },
+  folderTabTxtActive: {
+    color: '#1a3a6b',
+  },
+
+  // Content card that sits below the tabs (flush top edge)
+  folderCard: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: 'rgba(240,245,249,0.97)',
+    borderRadius: 14,
+    borderTopLeftRadius: 0,  // flush with first tab
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    padding: 12,
+    overflow: 'hidden',
+  },
+
+  // Year picker
+  yearBtn: {
+    flexDirection:'row', alignItems:'center', gap:8,
+    paddingVertical:6, paddingHorizontal:14,
+    backgroundColor:'rgba(26,58,107,0.12)', borderRadius:8,
+    borderWidth:1.5, borderColor:'rgba(26,58,107,0.20)',
+  },
+  yearTxt:  { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#1a3a6b', letterSpacing:0.5 },
+  yearCaret:{ fontSize:11, color:'rgba(26,58,107,0.50)' },
+  yearMenu: {
+    position:'absolute', top:36, left:0, zIndex:9999,
+    backgroundColor:'rgba(255,255,255,0.99)',
+    borderRadius:10, borderWidth:1, borderColor:'rgba(26,58,107,0.18)',
+    shadowColor:'#000', shadowOpacity:0.18, shadowRadius:12, elevation:20,
+    minWidth:120, maxHeight:180,
+  },
+  yearOpt:       { paddingVertical:8, paddingHorizontal:16, alignItems:'center' },
+  yearOptActive: { backgroundColor:'rgba(26,58,107,0.08)' },
+  yearOptTxt:    { fontFamily:'GoogleSans_400Regular', fontSize:13, color:'#1a3a6b' },
+  yearOptTxtActive:{ fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
+
+  // View toggle (Daily / Monthly / Yearly)
+  viewToggleBtn: { paddingHorizontal:12, paddingVertical:6, borderRadius:20, backgroundColor:'rgba(26,58,107,0.12)', borderWidth:1, borderColor:'rgba(26,58,107,0.18)' },
+  viewToggleBtnActive: { backgroundColor:'#1a3a6b', borderColor:'#1a3a6b' },
+  viewToggleTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(26,58,107,0.70)' },
+  viewToggleTxtActive: { color:'#fff' },
+
+  // Month tabs
+  monthBtn:       { paddingHorizontal:11, paddingVertical:5, borderRadius:20, backgroundColor:'rgba(26,58,107,0.85)', borderWidth:1, borderColor:'rgba(26,58,107,0.50)' },
+  monthBtnActive: { backgroundColor:'rgba(198,220,240,0.90)', borderColor:'#304674', borderWidth:1.5 },
+  monthTxt:       { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(255,255,255,0.90)' },
+  monthTxtActive: { fontFamily:'GoogleSans_700Bold', color:'#1a3a6b' },
+
+  // Summary row (Sales Collection)
+  summaryRow: { flexDirection:'row', gap:6, marginBottom:10, flexWrap:'wrap' },
+  summaryCard: { flex:1, minWidth:80, backgroundColor:'rgba(26,58,107,0.10)', borderRadius:10, padding:10, alignItems:'center', gap:3, borderWidth:1, borderColor:'rgba(26,58,107,0.12)' },
+  summaryVal: { fontFamily:'NotoSerif_700Bold', fontSize:14, color:'#1a3a6b', textAlign:'center' },
+  summaryLbl: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.55)', textAlign:'center', letterSpacing:0.5 },
+
+  // Table
+  thead: { flexDirection:'row', alignItems:'center', paddingVertical:8, backgroundColor:'rgba(26,58,107,0.14)', borderRadius:6, marginBottom:0 },
+  th:    { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(26,58,107,0.60)', letterSpacing:0.8, textTransform:'uppercase', textAlign:'center', paddingVertical:6, paddingHorizontal:4, borderRightWidth:1, borderColor:'rgba(26,58,107,0.10)' },
+  trow:  { flexDirection:'row', alignItems:'center', borderBottomWidth:1, borderColor:'rgba(26,58,107,0.07)', minHeight:38 },
+  trowAlt: { backgroundColor:'rgba(255,255,255,0.45)' },
+  td:    { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#1a2d4e', textAlign:'center', paddingVertical:9, paddingHorizontal:4, borderRightWidth:1, borderColor:'rgba(26,58,107,0.08)', alignSelf:'stretch', justifyContent:'center' },
+
+  // Print button
+  printBtn:    { alignItems:'center', backgroundColor:'#1a3a6b', borderRadius:6, paddingVertical:5, paddingHorizontal:10 },
+  printBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'#fff', letterSpacing:0.3 },
+
+  // Expand panel
+  expandPanel: { backgroundColor:'rgba(26,58,107,0.04)', borderBottomWidth:1, borderColor:'rgba(26,58,107,0.10)' },
+  expandHead:  { flexDirection:'row', paddingVertical:6, paddingHorizontal:16, backgroundColor:'rgba(26,58,107,0.08)' },
+  expandTh:    { fontFamily:'GoogleSans_700Bold', fontSize:8, color:'rgba(26,58,107,0.50)', letterSpacing:0.5, textTransform:'uppercase', flex:1 },
+  expandRow:   { flexDirection:'row', paddingVertical:6, paddingHorizontal:16, borderBottomWidth:1, borderColor:'rgba(26,58,107,0.04)' },
+  expandTd:    { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'#1a2d4e', flex:1 },
+
+  // Footer totals
+  tfooter: { flexDirection:'row', alignItems:'center', paddingVertical:9, backgroundColor:'rgba(26,58,107,0.12)', borderRadius:4, marginTop:2, borderTopWidth:1.5, borderColor:'rgba(26,58,107,0.18)' },
+  tfootLbl: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a3a6b', letterSpacing:0.3 },
+  tfootVal: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a3a6b', textAlign:'center', flex:1 },
+
+  // Empty row
+  emptyRow: { paddingVertical:20, alignItems:'center' },
+  emptyTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.40)' },
+});
+
 
 // ─── LEFT PANEL: ORDERING MONITORING ─────────────────────────────────────────
 // ─── STATUS CONFIG for order cards ───────────────────────────────────────────
