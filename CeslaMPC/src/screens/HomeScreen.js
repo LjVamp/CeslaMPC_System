@@ -113,7 +113,7 @@ const MODULES = [
   },
   {
     id: 'merch',
-    title: 'Merchandise Ordering\nSystem',
+    title: 'Merchandise\nOrdering System',
     description: 'Place, track & manage merchandise orders with real-time status',
     icon: '📦',
     isNew: true,
@@ -123,7 +123,8 @@ const MODULES = [
 ];
 
 // ── MODULE CARD ───────────────────────────────────────────────────────────────
-const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
+const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
+  // layout = 'wide-col' | 'mobile-full' | 'mobile-half'
   const fadeY     = useRef(new Animated.Value(0)).current;
   const transY    = useRef(new Animated.Value(30)).current;
   const cardScale = useRef(new Animated.Value(1)).current;
@@ -165,9 +166,10 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
     setArrowPressed(false);
   };
 
-  // ── Wide (tablet/web): vertical card layout ──
-  // ── Narrow (mobile): horizontal row layout ──
-  const ICON_SIZE = isWide ? 72 : 52;
+  // ── Sizes based on layout ──
+  const isMobileHalf = layout === 'mobile-half';
+  const isMobileFull = layout === 'mobile-full';
+  const ICON_SIZE = isWide ? 72 : isMobileHalf ? 44 : 52;
   const RING_SIZE = ICON_SIZE + 14;
 
   const iconNode = (
@@ -177,7 +179,10 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
       borderRadius: ICON_SIZE / 2,
       flexShrink: 0,
     }]}>
-      <Animated.Text style={{ fontSize: isWide ? 30 : 22, transform: [{ scale: iconScale }] }}>
+      <Animated.Text style={{
+        fontSize: isWide ? 30 : isMobileHalf ? 20 : 22,
+        transform: [{ scale: iconScale }],
+      }}>
         {mod.icon}
       </Animated.Text>
       <Animated.View style={{
@@ -196,18 +201,18 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
     </View>
   );
 
-  // ── MOBILE inner: horizontal layout ──
-  const mobileInner = (
+  // ── MOBILE FULL (Row 1 — Coop): horizontal layout ──
+  const mobileFull = (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }}>
       {iconNode}
-
-      {/* Text block fills remaining space */}
       <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle} numberOfLines={2}>{mod.title.replace('\n', ' ')}</Text>
-        <Text style={styles.cardDesc} numberOfLines={2}>{mod.description}</Text>
+        <Text style={[styles.cardTitle, { fontSize: 14 }]} numberOfLines={2}>
+          {mod.title.replace('\n', ' ')}
+        </Text>
+        <Text style={[styles.cardDesc, { fontSize: 12 }]} numberOfLines={2}>
+          {mod.description}
+        </Text>
       </View>
-
-      {/* Arrow button on the right */}
       <Animated.View style={[
         styles.arrowBtn,
         { transform: [{ translateX: arrowX }], flexShrink: 0 },
@@ -215,8 +220,6 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
       ]}>
         <Text style={styles.arrowText}>→</Text>
       </Animated.View>
-
-      {/* Accent line along bottom */}
       <Animated.View style={[styles.accentLine, {
         backgroundColor: mod.accent,
         transform: [{ scaleX: lineScale }],
@@ -224,30 +227,34 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
     </View>
   );
 
-  // ── WIDE inner: original vertical layout ──
-  const wideInner = (
+  // ── MOBILE HALF (Row 2 — Canteen & Merch): vertical/compact layout ──
+  const mobileHalf = (
     <>
       {mod.isNew && (
-        <View style={styles.badge}>
+        <View style={[styles.badge, { top: 8, right: 8 }]}>
           <Text style={styles.badgeText}>NEW</Text>
         </View>
       )}
-
       {iconNode}
-
-      <View style={[styles.textBlock, { alignItems: 'center' }]}>
-        <Text style={[styles.cardTitle, { fontSize: 15, textAlign: 'center' }]}>{mod.title}</Text>
-        <Text style={[styles.cardDesc, { fontSize: 12, textAlign: 'center' }]}>{mod.description}</Text>
-      </View>
-
+      <Text
+        style={[styles.cardTitle, { fontSize: 11, textAlign: 'center', marginTop: 6 }]}
+        numberOfLines={3}
+      >
+        {mod.title}
+      </Text>
+      <Text
+        style={[styles.cardDesc, { fontSize: 10, textAlign: 'center' }]}
+        numberOfLines={3}
+      >
+        {mod.description}
+      </Text>
       <Animated.View style={[
         styles.arrowBtn,
-        { transform: [{ translateX: arrowX }] },
+        { transform: [{ translateX: arrowX }], marginTop: 6 },
         arrowPressed && { backgroundColor: mod.accent },
       ]}>
         <Text style={styles.arrowText}>→</Text>
       </Animated.View>
-
       <Animated.View style={[styles.accentLine, {
         backgroundColor: mod.accent,
         transform: [{ scaleX: lineScale }],
@@ -255,15 +262,45 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
     </>
   );
 
-  const inner = isWide ? wideInner : mobileInner;
+  // ── WIDE (tablet/web): vertical card layout ──
+  const wideInner = (
+    <>
+      {mod.isNew && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>NEW</Text>
+        </View>
+      )}
+      {iconNode}
+      <View style={[styles.textBlock, { alignItems: 'center' }]}>
+        <Text style={[styles.cardTitle, { fontSize: 15, textAlign: 'center' }]}>{mod.title}</Text>
+        <Text style={[styles.cardDesc, { fontSize: 12, textAlign: 'center' }]}>{mod.description}</Text>
+      </View>
+      <Animated.View style={[
+        styles.arrowBtn,
+        { transform: [{ translateX: arrowX }] },
+        arrowPressed && { backgroundColor: mod.accent },
+      ]}>
+        <Text style={styles.arrowText}>→</Text>
+      </Animated.View>
+      <Animated.View style={[styles.accentLine, {
+        backgroundColor: mod.accent,
+        transform: [{ scaleX: lineScale }],
+      }]} />
+    </>
+  );
+
+  const inner = isWide ? wideInner : isMobileHalf ? mobileHalf : mobileFull;
+
+  const cardStyle = isWide
+    ? { paddingHorizontal: 22, paddingVertical: 28, alignItems: 'center', flex: 1 }
+    : isMobileHalf
+      ? { paddingHorizontal: 12, paddingVertical: 16, alignItems: 'center', flex: 1 }
+      : { paddingHorizontal: 18, paddingVertical: 16, alignItems: 'stretch', flex: 1 };
 
   return (
-    <Animated.View style={{
-      width: cardWidth,
-      alignSelf: 'stretch',
-      opacity: fadeY,
-      transform: [{ translateY: transY }, { scale: cardScale }],
-    }}>
+    <Animated.View style={[
+      { flex: 1, opacity: fadeY, transform: [{ translateY: transY }, { scale: cardScale }] },
+    ]}>
       <TouchableOpacity
         activeOpacity={0.88}
         onPress={() => onPress(mod.screen)}
@@ -276,29 +313,12 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
             colors={['rgba(255,255,255,0.20)', 'rgba(255,255,255,0.08)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
-            style={[
-              styles.card,
-              isWide
-                ? { paddingHorizontal: 22, paddingVertical: 28, alignItems: 'center', flex: 1 }
-                : { paddingHorizontal: 18, paddingVertical: 16, alignItems: 'stretch', flex: 1 },
-            ]}
+            style={[styles.card, cardStyle]}
           >
             {inner}
           </LinearGradient>
         ) : (
-          <View style={[
-            styles.card,
-            styles.cardMobile,
-            isWide
-              ? { paddingHorizontal: 20, paddingVertical: 28, alignItems: 'center', flex: 1 }
-              : { paddingHorizontal: 18, paddingVertical: 16, alignItems: 'stretch', flex: 1 },
-          ]}>
-            {/* NEW badge for mobile — absolute positioned */}
-            {!isWide && mod.isNew && (
-              <View style={[styles.badge, { top: 10, right: 10 }]}>
-                <Text style={styles.badgeText}>NEW</Text>
-              </View>
-            )}
+          <View style={[styles.card, styles.cardMobile, cardStyle]}>
             {inner}
           </View>
         )}
@@ -322,12 +342,7 @@ export default function HomeScreen({ navigation }) {
   const isSmall = width < 400;
 
   const PAD = isWide ? 40 : 16;
-  const GAP = isWide ? 20 : 12;
-
-  // ── FIXED: mobile uses full width (single column), wide uses 3-column ──
-  const cardWidth = isWide
-    ? (Math.min(width, 1020) - PAD * 2 - GAP * 2) / 3
-    : width - PAD * 2;
+  const GAP = isWide ? 20 : 10;
 
   const logoSize  = isSmall ? 48 : isWide ? 86 : 64;
   const titleSize = isSmall ? 13 : isWide ? 26 : 18;
@@ -342,7 +357,6 @@ export default function HomeScreen({ navigation }) {
   const [adminLoading,   setAdminLoading]   = useState(false);
   const [adminAttempts,  setAdminAttempts]  = useState(0);
   const [adminLocked,    setAdminLocked]    = useState(false);
-  const [savedSession,   setSavedSession]   = useState(null);
   const [feedbackOpen,    setFeedbackOpen]    = useState(false);
   const [feedbackName,    setFeedbackName]    = useState('');
   const [feedbackEmail,   setFeedbackEmail]   = useState('');
@@ -377,6 +391,10 @@ export default function HomeScreen({ navigation }) {
   }, []);
 
   const handlePress = (screen) => { if (navigation) navigation.navigate(screen); };
+
+  // ── Card widths ──
+  // Wide: 3 equal columns
+  const wideCardWidth = (Math.min(width, 1020) - PAD * 2 - GAP * 2) / 3;
 
   return (
     <View style={styles.root}>
@@ -458,26 +476,62 @@ export default function HomeScreen({ navigation }) {
         </Animated.View>
 
         {/* ── CARDS GRID ── */}
-        <View style={[styles.grid, {
-          paddingHorizontal: PAD,
-          // Wide: horizontal 3-column row | Mobile: vertical single column
-          flexDirection: isWide ? 'row' : 'column',
-          flexWrap: 'nowrap',
-          alignItems: isWide ? 'stretch' : 'center',
-          justifyContent: isWide ? 'center' : 'flex-start',
-          gap: GAP,
-        }]}>
-          {MODULES.map((mod, i) => (
+        {isWide ? (
+          // ── WIDE/TABLET: 3 equal columns, horizontal ──
+          <View style={[styles.grid, {
+            paddingHorizontal: PAD,
+            flexDirection: 'row',
+            alignItems: 'stretch',
+            justifyContent: 'center',
+            gap: GAP,
+          }]}>
+            {MODULES.map((mod, i) => (
+              <View key={mod.id} style={{ width: wideCardWidth }}>
+                <ModuleCard
+                  mod={mod}
+                  onPress={handlePress}
+                  delay={[150, 280, 410][i]}
+                  isWide={true}
+                  layout="wide-col"
+                />
+              </View>
+            ))}
+          </View>
+        ) : (
+          // ── MOBILE: Row 1 = Coop full-width | Row 2 = Canteen + Merch side-by-side ──
+          <View style={[styles.grid, {
+            paddingHorizontal: PAD,
+            flexDirection: 'column',
+            gap: GAP,
+          }]}>
+            {/* Row 1 — Coop: full width, horizontal layout */}
             <ModuleCard
-              key={mod.id}
-              mod={mod}
+              mod={MODULES[0]}
               onPress={handlePress}
-              delay={[150, 280, 410][i]}
-              cardWidth={cardWidth}
-              isWide={isWide}
+              delay={150}
+              isWide={false}
+              layout="mobile-full"
             />
-          ))}
-        </View>
+
+            {/* Row 2 — Canteen + Merchandise: side by side */}
+            <View style={{ flexDirection: 'row', gap: GAP }}>
+              <ModuleCard
+                mod={MODULES[1]}
+                onPress={handlePress}
+                delay={280}
+                isWide={false}
+                layout="mobile-half"
+              />
+              <ModuleCard
+                mod={MODULES[2]}
+                onPress={handlePress}
+                delay={410}
+                isWide={false}
+                layout="mobile-half"
+              />
+            </View>
+          </View>
+        )}
 
         {/* ── FOOTER ── */}
         <Animated.View style={[
@@ -1213,19 +1267,19 @@ const styles = StyleSheet.create({
   },
 
   textBlock: { gap: 6, flex: 1, justifyContent: 'flex-start' },
-  cardTitle: { fontFamily: 'GoogleSans_700Bold', fontWeight: '700', color: '#011f4b', letterSpacing: 0.4, lineHeight: 20, fontSize: 13 },
-  cardDesc:  { fontFamily: 'GoogleSans_400Regular', color: 'rgba(3,57,108,0.70)', lineHeight: 17, fontSize: 11 },
+  cardTitle: { fontFamily: 'GoogleSans_700Bold', fontWeight: '700', color: '#011f4b', letterSpacing: 0.4, lineHeight: 18, fontSize: 13 },
+  cardDesc:  { fontFamily: 'GoogleSans_400Regular', color: 'rgba(3,57,108,0.70)', lineHeight: 15, fontSize: 11 },
 
   arrowBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(1,31,75,0.20)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  arrowText: { color: 'rgba(1,31,75,0.6)', fontSize: 15, fontWeight: '600' },
+  arrowText: { color: 'rgba(1,31,75,0.6)', fontSize: 14, fontWeight: '600' },
 
   accentLine: { position: 'absolute', bottom: 0, width: '60%', height: 2, borderRadius: 2, left: '20%' },
 
@@ -1233,12 +1287,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10, right: 10,
     backgroundColor: '#50c896',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 8,
     zIndex: 10,
   },
-  badgeText: { color: '#fff', fontSize: 9, fontWeight: '700', letterSpacing: 1.5 },
+  badgeText: { color: '#fff', fontSize: 8, fontWeight: '700', letterSpacing: 1.5 },
 
   footer: { alignItems: 'center', marginTop: 44, paddingHorizontal: 20, paddingBottom: 20, gap: 6 },
   footerLine: { color: 'rgba(235,239,242,0.5)', fontSize: 11, letterSpacing: 1 },
