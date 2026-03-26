@@ -61,9 +61,12 @@ export default function App() {
                               └── "Visitor" →  MerchandiseScreen         (walk-in ordering)
           ─────────────────────────────────────────────────────────────
         */}
-        <Stack.Screen name="MerchandisePortalScreen"  component={MerchandisePortalScreen} />   // ← entry point
-        <Stack.Screen name="MerchandiseMemberScreen"  component={MerchandiseMemberScreen} />   // ← member
-        <Stack.Screen name="MerchandiseScreen"        component={MerchandiseScreen} />         // ← visitor
+        {/* ── entry point: Member/Visitor chooser ── */}
+        <Stack.Screen name="MerchandisePortalScreen"  component={MerchandisePortalScreen} />
+        {/* ── member login gate + ordering ── */}
+        <Stack.Screen name="MerchandiseMemberScreen"  component={MerchandiseMemberScreen} />
+        {/* ── visitor / walk-in ordering ── */}
+        <Stack.Screen name="MerchandiseScreen"        component={MerchandiseScreen} />
 
         <Stack.Screen name="BillingDashboardScreen"  component={BillingDashboardScreen} />
       </Stack.Navigator>

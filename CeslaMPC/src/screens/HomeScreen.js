@@ -119,7 +119,7 @@ const MODULES = [
     description: 'Place, track & manage merchandise orders with real-time status',
     icon: '📦',
     isNew: true,
-    screen: 'MerchandiseScreen',
+    screen: 'MerchandisePortalScreen',
     accent: '#c9a84c',
   },
 ];

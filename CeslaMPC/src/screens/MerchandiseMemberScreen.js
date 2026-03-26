@@ -748,6 +748,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [lastOrder,      setLastOrder]      = useState(null);
   const [sizePickerItem, setSizePickerItem] = useState(null);
+  const [menuOpen,       setMenuOpen]       = useState(false);
 
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
@@ -870,31 +871,52 @@ export default function MerchandiseMemberScreen({ navigation }) {
       <LinearGradient colors={['rgba(50,80,120,0.0)', 'rgba(60,90,130,0.35)']} locations={[0.4, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFillObject} />
 
       {/* HEADER */}
-      <Animated.View style={{ opacity: hdrFade, transform: [{ translateY: hdrTrans }], marginTop: Platform.OS === 'web' ? 16 : 36, marginHorizontal: isSmall ? 8 : 10, zIndex: 10 }}>
+      <Animated.View style={{ opacity: hdrFade, transform: [{ translateY: hdrTrans }], marginTop: Platform.OS === 'web' ? 16 : 36, marginHorizontal: isSmall ? 8 : 10, zIndex: 100 }}>
         <View style={[styles.header, { paddingHorizontal: isWide ? 40 : 12, paddingVertical: isWide ? 16 : 7 }]}>
-          <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={[styles.headerH1, { fontSize: isWide ? 22 : isSmall ? 14 : 16 }]} numberOfLines={1} adjustsFontSizeToFit>
               <Text style={styles.headerGold}>CESLA </Text>Merchandise — Member
             </Text>
-            {loggedIn && member ? (
-              <View style={styles.visitorTag}>
-                <Text style={styles.visitorTagText}>👤  {member.fullName || member.name || member.userId}</Text>
-              </View>
-            ) : (
-              <View style={styles.visitorTag}>
-                <Text style={styles.visitorTagText}>📦  MEMBER MERCHANDISE</Text>
-              </View>
-            )}
+            <View style={styles.visitorTag}>
+              <Text style={styles.visitorTagText}>📦  MEMBER MERCHANDISE</Text>
+            </View>
           </View>
-          {/* Logout button (when logged in) */}
-          <TouchableOpacity style={styles.backBtn} onPress={loggedIn ? handleLogout : undefined} activeOpacity={loggedIn ? 0.75 : 1}>
-            <Text style={{ color: '#fff', fontSize: 12, textAlign: 'center', lineHeight: 16, includeFontPadding: false }}>
-              {loggedIn ? '🚪' : '≡'}
-            </Text>
-          </TouchableOpacity>
+
+          {/* Right: avatar + firstName + menu icon */}
+          <View style={styles.headerRight}>
+            {loggedIn && member && (
+              <>
+                {member.photoURL ? (
+                  <Image source={{ uri: member.photoURL }} style={styles.headerAvatar} />
+                ) : (
+                  <View style={styles.headerAvatarFallback}>
+                    <Text style={styles.headerAvatarInitial}>
+                      {(member.firstName || member.name || '?')[0].toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.headerFirstName} numberOfLines={1}>
+                  {member.firstName || member.name?.split(' ')[0] || member.userId}
+                </Text>
+              </>
+            )}
+            <TouchableOpacity style={styles.menuBtn} onPress={() => setMenuOpen(prev => !prev)} activeOpacity={0.75}>
+              <Text style={styles.menuIcon}>☰</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Dropdown */}
+          {menuOpen && (
+            <View style={styles.dropdown}>
+              <TouchableOpacity
+                style={styles.dropdownItem}
+                onPress={() => { setMenuOpen(false); if (loggedIn) { handleLogout(); } else { handleBack(); } }}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.dropdownItemText}>{loggedIn ? '🚪  Logout' : '← Back'}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </Animated.View>
 
@@ -1050,6 +1072,50 @@ const styles = StyleSheet.create({
   },
   backIcon: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center', lineHeight: 20 },
   headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 10 },
+  headerRight: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
+  },
+  headerAvatar: {
+    width: 32, height: 32, borderRadius: 16,
+    borderWidth: 2, borderColor: '#c9a84c',
+  },
+  headerAvatarFallback: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(201,168,76,0.25)',
+    borderWidth: 2, borderColor: '#c9a84c',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  headerAvatarInitial: {
+    fontFamily: 'NotoSerif_700Bold', fontSize: 13, color: '#c9a84c',
+  },
+  headerFirstName: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff',
+    maxWidth: 72, letterSpacing: 0.3,
+  },
+  menuBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  menuIcon: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  dropdown: {
+    position: 'absolute', top: '100%', right: 0,
+    marginTop: 6, minWidth: 150,
+    backgroundColor: '#1e3a5f',
+    borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(201,168,76,0.30)',
+    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 }, elevation: 10,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    paddingVertical: 13, paddingHorizontal: 18,
+    borderBottomWidth: 0,
+  },
+  dropdownItemText: {
+    fontFamily: 'GoogleSans_500Medium', fontSize: 14, color: '#fff', letterSpacing: 0.3,
+  },
   headerH1: { fontFamily: 'NotoSerif_700Bold', fontWeight: '700', color: '#ffffff', textAlign: 'center', letterSpacing: 0.3 },
   headerGold: { fontFamily: 'NotoSerif_700Bold_Italic', color: '#c9a84c', fontStyle: 'italic' },
   visitorTag: {
