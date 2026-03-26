@@ -13,12 +13,17 @@ import ManageCoopScreen from "./src/screens/ManageCoopScreen";
 import ManageCanteenScreen from "./src/screens/ManageCanteenScreen";
 import ManageMerchandiseScreen from "./src/screens/ManageMerchandiseScreen";
 import ManageBillingScreen from "./src/screens/ManageBillingScreen";
-import MerchandiseScreen from "./src/screens/MerchandiseScreen";
+
+// ── Merchandise — portal first, then member or visitor ──
+import MerchandisePortalScreen from "./src/screens/MerchandisePortalScreen";   // ← NEW
+import MerchandiseMemberScreen from "./src/screens/MerchandiseMemberScreen";   // ← NEW
+import MerchandiseScreen from "./src/screens/MerchandiseScreen";               // visitor (unchanged)
+
 import BillingDashboardScreen from "./src/screens/BillingDashboardScreen";
 
 import { CanteenProvider } from "./src/context/CanteenContext";
 import { MerchandiseProvider } from "./src/context/MerchandiseContext";
-import { BillingProvider } from "./src/context/BillingContext"; // ← IDUGANG NI
+import { BillingProvider } from "./src/context/BillingContext";
 
 const Stack = createStackNavigator();
 
@@ -26,7 +31,7 @@ export default function App() {
   return (
     <CanteenProvider>
     <MerchandiseProvider>
-    <BillingProvider>  {/* ← IDUGANG NI */}
+    <BillingProvider>
     <NavigationContainer>
       <Stack.Navigator
         initialRouteName="Home"
@@ -38,22 +43,33 @@ export default function App() {
           }),
         }}
       >
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="CoopScreen" component={CoopScreen} />
-        <Stack.Screen name="AdminScreen" component={AdminScreen} />
-        <Stack.Screen name="ManageCoopScreen" component={ManageCoopScreen} />
-        <Stack.Screen name="ManageCanteenScreen" component={ManageCanteenScreen} />
+        <Stack.Screen name="Home"                    component={HomeScreen} />
+        <Stack.Screen name="CoopScreen"              component={CoopScreen} />
+        <Stack.Screen name="AdminScreen"             component={AdminScreen} />
+        <Stack.Screen name="ManageCoopScreen"        component={ManageCoopScreen} />
+        <Stack.Screen name="ManageCanteenScreen"     component={ManageCanteenScreen} />
         <Stack.Screen name="ManageMerchandiseScreen" component={ManageMerchandiseScreen} />
-        <Stack.Screen name="ManageBillingScreen" component={ManageBillingScreen} />
-        <Stack.Screen name="CanteenScreen" component={CanteenScreen} />
-        <Stack.Screen name="CanteenVisitorScreen" component={CanteenVisitor} />
-        <Stack.Screen name="CanteenMemberScreen" component={CanteenMemberScreen} />
-        <Stack.Screen name="MerchandiseScreen" component={MerchandiseScreen} />
-        <Stack.Screen name="BillingDashboardScreen" component={BillingDashboardScreen} />
+        <Stack.Screen name="ManageBillingScreen"     component={ManageBillingScreen} />
+        <Stack.Screen name="CanteenScreen"           component={CanteenScreen} />
+        <Stack.Screen name="CanteenVisitorScreen"    component={CanteenVisitor} />
+        <Stack.Screen name="CanteenMemberScreen"     component={CanteenMemberScreen} />
+
+        {/*
+          ── MERCHANDISE FLOW ──────────────────────────────────────────
+          HomeScreen  →  MerchandisePortalScreen
+                              ├── "Member"  →  MerchandiseMemberScreen  (login gate + ordering)
+                              └── "Visitor" →  MerchandiseScreen         (walk-in ordering)
+          ─────────────────────────────────────────────────────────────
+        */}
+        <Stack.Screen name="MerchandisePortalScreen"  component={MerchandisePortalScreen} />   // ← entry point
+        <Stack.Screen name="MerchandiseMemberScreen"  component={MerchandiseMemberScreen} />   // ← member
+        <Stack.Screen name="MerchandiseScreen"        component={MerchandiseScreen} />         // ← visitor
+
+        <Stack.Screen name="BillingDashboardScreen"  component={BillingDashboardScreen} />
       </Stack.Navigator>
     </NavigationContainer>
-    </BillingProvider>  {/* ← CLOSING TAG */}
+    </BillingProvider>
     </MerchandiseProvider>
     </CanteenProvider>
   );
-} 
+}
