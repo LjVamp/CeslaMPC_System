@@ -104,7 +104,7 @@ const MODULES = [
   },
   {
     id: 'canteen',
-    title: 'Canteen Management\nSystem',
+    title: 'Canteen Ordering\nSystem',
     description: 'Employee food ordering, menu management & daily records',
     icon: '🍽️',
     isNew: false,
