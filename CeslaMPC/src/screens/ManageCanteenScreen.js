@@ -116,9 +116,20 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
 
   const pickImage = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing:true, aspect:[1,1], quality:0.8,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.6,
+      base64: true,
     });
-    if (!res.canceled) setForm(f=>({...f,image:res.assets[0].uri}));
+    if (!res.canceled) {
+      const asset = res.assets[0];
+      const ext = (asset.uri || '').split('.').pop().toLowerCase();
+      const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+      // Store as base64 data-URL so it persists in Firestore across refresh/back
+      const base64url = `data:${mime};base64,${asset.base64}`;
+      setForm(f => ({ ...f, image: base64url }));
+    }
   };
 
   const handleNameChange = (v) => {

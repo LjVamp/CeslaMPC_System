@@ -35,8 +35,6 @@ import {
 } from '@expo-google-fonts/google-sans';
 
 // ── ADMIN ACCOUNTS ───────────────────────────────────────────────────────────
-// access array — which system screens this admin can open
-// 'all' means Super Admin, otherwise array of screen keys
 const ADMIN_ACCOUNTS = [
   {
     id: 'CESLA-ADM-001',
@@ -148,34 +146,86 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
   const rotation = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   const pressIn = () => {
-    // Native driver animations (transform/opacity)
     Animated.parallel([
       Animated.spring(cardScale, { toValue: 0.97, useNativeDriver: true }),
       Animated.spring(iconScale, { toValue: 1.1,  useNativeDriver: true }),
       Animated.timing(arrowX,    { toValue: 4, duration: 200, useNativeDriver: true }),
       Animated.timing(lineScale, { toValue: 1, duration: 300, useNativeDriver: true }),
     ]).start();
-    // JS driver animation (backgroundColor — cannot use native driver)
     setArrowPressed(true);
   };
 
   const pressOut = () => {
-    // Native driver animations
     Animated.parallel([
       Animated.spring(cardScale, { toValue: 1, friction: 4, useNativeDriver: true }),
       Animated.spring(iconScale, { toValue: 1, friction: 4, useNativeDriver: true }),
       Animated.timing(arrowX,    { toValue: 0, duration: 200, useNativeDriver: true }),
       Animated.timing(lineScale, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start();
-    // JS driver animation
     setArrowPressed(false);
   };
 
-  const ICON_SIZE = isWide ? 88 : 56;
+  // ── Wide (tablet/web): vertical card layout ──
+  // ── Narrow (mobile): horizontal row layout ──
+  const ICON_SIZE = isWide ? 72 : 52;
   const RING_SIZE = ICON_SIZE + 14;
 
-  // Shared inner content for both platforms
-  const inner = (
+  const iconNode = (
+    <View style={[styles.iconCircle, {
+      width: ICON_SIZE,
+      height: ICON_SIZE,
+      borderRadius: ICON_SIZE / 2,
+      flexShrink: 0,
+    }]}>
+      <Animated.Text style={{ fontSize: isWide ? 30 : 22, transform: [{ scale: iconScale }] }}>
+        {mod.icon}
+      </Animated.Text>
+      <Animated.View style={{
+        position: 'absolute',
+        width: RING_SIZE,
+        height: RING_SIZE,
+        borderRadius: RING_SIZE / 2,
+        top: -(RING_SIZE - ICON_SIZE) / 2,
+        left: -(RING_SIZE - ICON_SIZE) / 2,
+        borderWidth: 1.5,
+        borderColor: 'rgba(201,168,76,0.40)',
+        borderStyle: 'dashed',
+        backgroundColor: 'transparent',
+        transform: [{ rotate: rotation }],
+      }} />
+    </View>
+  );
+
+  // ── MOBILE inner: horizontal layout ──
+  const mobileInner = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }}>
+      {iconNode}
+
+      {/* Text block fills remaining space */}
+      <View style={{ flex: 1 }}>
+        <Text style={styles.cardTitle} numberOfLines={2}>{mod.title.replace('\n', ' ')}</Text>
+        <Text style={styles.cardDesc} numberOfLines={2}>{mod.description}</Text>
+      </View>
+
+      {/* Arrow button on the right */}
+      <Animated.View style={[
+        styles.arrowBtn,
+        { transform: [{ translateX: arrowX }], flexShrink: 0 },
+        arrowPressed && { backgroundColor: mod.accent },
+      ]}>
+        <Text style={styles.arrowText}>→</Text>
+      </Animated.View>
+
+      {/* Accent line along bottom */}
+      <Animated.View style={[styles.accentLine, {
+        backgroundColor: mod.accent,
+        transform: [{ scaleX: lineScale }],
+      }]} />
+    </View>
+  );
+
+  // ── WIDE inner: original vertical layout ──
+  const wideInner = (
     <>
       {mod.isNew && (
         <View style={styles.badge}>
@@ -183,32 +233,11 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
         </View>
       )}
 
-      <View style={[styles.iconCircle, {
-        width: ICON_SIZE,
-        height: ICON_SIZE,
-        borderRadius: ICON_SIZE / 2,
-      }]}>
-        <Animated.Text style={{ fontSize: isWide ? 36 : 24, transform: [{ scale: iconScale }] }}>
-          {mod.icon}
-        </Animated.Text>
-        <Animated.View style={{
-          position: 'absolute',
-          width: RING_SIZE,
-          height: RING_SIZE,
-          borderRadius: RING_SIZE / 2,
-          top: -(RING_SIZE - ICON_SIZE) / 2,
-          left: -(RING_SIZE - ICON_SIZE) / 2,
-          borderWidth: 1.5,
-          borderColor: 'rgba(201,168,76,0.40)',
-          borderStyle: 'dashed',
-          backgroundColor: 'transparent',
-          transform: [{ rotate: rotation }],
-        }} />
-      </View>
+      {iconNode}
 
-      <View style={styles.textBlock}>
-        <Text style={[styles.cardTitle, { fontSize: isWide ? 15 : 13 }]}>{mod.title}</Text>
-        <Text style={[styles.cardDesc, { fontSize: isWide ? 12 : 11 }]}>{mod.description}</Text>
+      <View style={[styles.textBlock, { alignItems: 'center' }]}>
+        <Text style={[styles.cardTitle, { fontSize: 15, textAlign: 'center' }]}>{mod.title}</Text>
+        <Text style={[styles.cardDesc, { fontSize: 12, textAlign: 'center' }]}>{mod.description}</Text>
       </View>
 
       <Animated.View style={[
@@ -226,6 +255,8 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
     </>
   );
 
+  const inner = isWide ? wideInner : mobileInner;
+
   return (
     <Animated.View style={{
       width: cardWidth,
@@ -240,21 +271,34 @@ const ModuleCard = ({ mod, onPress, delay, cardWidth, isWide }) => {
         onPressOut={pressOut}
         style={{ borderRadius: 20, flex: 1 }}
       >
-        {/* 
-          Web   → LinearGradient (glass effect)
-          Mobile → plain View with static rgba color (no double-box bug)
-        */}
         {Platform.OS === 'web' ? (
           <LinearGradient
             colors={['rgba(255,255,255,0.20)', 'rgba(255,255,255,0.08)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
-            style={[styles.card, { paddingHorizontal: isWide ? 22 : 20, flex: 1 }]}
+            style={[
+              styles.card,
+              isWide
+                ? { paddingHorizontal: 22, paddingVertical: 28, alignItems: 'center', flex: 1 }
+                : { paddingHorizontal: 18, paddingVertical: 16, alignItems: 'stretch', flex: 1 },
+            ]}
           >
             {inner}
           </LinearGradient>
         ) : (
-          <View style={[styles.card, styles.cardMobile, { paddingHorizontal: 20, flex: 1 }]}>
+          <View style={[
+            styles.card,
+            styles.cardMobile,
+            isWide
+              ? { paddingHorizontal: 20, paddingVertical: 28, alignItems: 'center', flex: 1 }
+              : { paddingHorizontal: 18, paddingVertical: 16, alignItems: 'stretch', flex: 1 },
+          ]}>
+            {/* NEW badge for mobile — absolute positioned */}
+            {!isWide && mod.isNew && (
+              <View style={[styles.badge, { top: 10, right: 10 }]}>
+                <Text style={styles.badgeText}>NEW</Text>
+              </View>
+            )}
             {inner}
           </View>
         )}
@@ -277,11 +321,13 @@ export default function HomeScreen({ navigation }) {
   const isWide  = width >= 768;
   const isSmall = width < 400;
 
-  const PAD = isWide ? 40 : 12;
-  const GAP = isWide ? 20 : 10;
+  const PAD = isWide ? 40 : 16;
+  const GAP = isWide ? 20 : 12;
+
+  // ── FIXED: mobile uses full width (single column), wide uses 3-column ──
   const cardWidth = isWide
     ? (Math.min(width, 1020) - PAD * 2 - GAP * 2) / 3
-    : (width - PAD * 2 - GAP * 2) / 3;
+    : width - PAD * 2;
 
   const logoSize  = isSmall ? 48 : isWide ? 86 : 64;
   const titleSize = isSmall ? 13 : isWide ? 26 : 18;
@@ -315,8 +361,6 @@ export default function HomeScreen({ navigation }) {
   const fFade  = useRef(new Animated.Value(0)).current;
   const fTrans = useRef(new Animated.Value(30)).current;
 
-  // Auto-login removed — always start from HomeScreen
-
   useEffect(() => {
     Animated.parallel([
       Animated.timing(hFade,  { toValue: 1, duration: 700, useNativeDriver: true }),
@@ -338,10 +382,8 @@ export default function HomeScreen({ navigation }) {
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
 
-      {/* Background — simulated radial gradient matching original CSS --navy: #98bad5 */}
-      {/* Layer 1: base navy color */}
+      {/* Background layers */}
       <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#98bad5' }]} />
-      {/* Layer 2: lighter center radial via top-center gradient */}
       <LinearGradient
         colors={['rgba(198,220,235,0.85)', 'rgba(152,186,213,0.40)', 'rgba(80,110,150,0.0)']}
         locations={[0, 0.45, 1]}
@@ -349,7 +391,6 @@ export default function HomeScreen({ navigation }) {
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* Layer 3: dark vignette on edges (top-left to bottom-right) */}
       <LinearGradient
         colors={['rgba(50,80,120,0.45)', 'rgba(50,80,120,0.0)', 'rgba(50,80,120,0.45)']}
         locations={[0, 0.5, 1]}
@@ -357,7 +398,6 @@ export default function HomeScreen({ navigation }) {
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* Layer 4: dark vignette bottom */}
       <LinearGradient
         colors={['rgba(50,80,120,0.0)', 'rgba(60,90,130,0.35)']}
         locations={[0.4, 1]}
@@ -366,7 +406,7 @@ export default function HomeScreen({ navigation }) {
         style={StyleSheet.absoluteFillObject}
       />
 
-      {/* ── HEADER — fixed, does not scroll ── */}
+      {/* ── HEADER ── */}
       <Animated.View style={[
         styles.header,
         {
@@ -378,14 +418,11 @@ export default function HomeScreen({ navigation }) {
           transform: [{ translateY: hTrans }],
         },
       ]}>
-        {/* Left Logo */}
         <Image
           source={require('../../assets/CESLA_logo.png')}
           style={{ width: logoSize, height: logoSize, borderRadius: logoSize / 2, flexShrink: 0 }}
           resizeMode="contain"
         />
-
-        {/* Center Title */}
         <View style={styles.titleBlock}>
           <Text style={[styles.titleH1, { fontSize: titleSize, lineHeight: titleSize * 1.35 }]}>
             {'CESLA '}
@@ -396,8 +433,6 @@ export default function HomeScreen({ navigation }) {
             COMPREHENSIVE SYSTEM PORTAL  •  SINCE 1992
           </Text>
         </View>
-
-        {/* Right Logo */}
         <Image
           source={require('../../assets/CLIMBS_Logo.png')}
           style={{ width: logoSize, height: logoSize, borderRadius: logoSize / 2, flexShrink: 0 }}
@@ -422,13 +457,14 @@ export default function HomeScreen({ navigation }) {
           </Text>
         </Animated.View>
 
-        {/* ── CARDS ── */}
+        {/* ── CARDS GRID ── */}
         <View style={[styles.grid, {
           paddingHorizontal: PAD,
-          flexDirection: isWide ? 'row' : 'row',
-          flexWrap: isWide ? 'nowrap' : 'wrap',
-          alignItems: 'stretch',
-          justifyContent: isWide ? 'center' : 'center',
+          // Wide: horizontal 3-column row | Mobile: vertical single column
+          flexDirection: isWide ? 'row' : 'column',
+          flexWrap: 'nowrap',
+          alignItems: isWide ? 'stretch' : 'center',
+          justifyContent: isWide ? 'center' : 'flex-start',
           gap: GAP,
         }]}>
           {MODULES.map((mod, i) => (
@@ -453,7 +489,6 @@ export default function HomeScreen({ navigation }) {
             Choose the service you would like to access  •  CESLA MPC © 2026
           </Text>
 
-          {/* ⚙️ Settings button */}
           <TouchableOpacity
             style={styles.settingsBtn}
             onPress={() => setSettingsOpen(true)}
@@ -479,7 +514,6 @@ export default function HomeScreen({ navigation }) {
             onPress={() => setSettingsOpen(false)}
           />
           <View style={styles.settingsCard}>
-            {/* Header */}
             <View style={styles.settingsCardHeader}>
               <Text style={styles.settingsCardTitle}>⚙️  Settings</Text>
               <TouchableOpacity
@@ -492,7 +526,6 @@ export default function HomeScreen({ navigation }) {
 
             <View style={styles.settingsDivider} />
 
-            {/* Option 1 — Login as Administrator */}
             <TouchableOpacity
               style={styles.settingsOption}
               activeOpacity={0.80}
@@ -511,7 +544,6 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.settingsOptionArrow}>›</Text>
             </TouchableOpacity>
 
-            {/* Option 2 — Send Feedback */}
             <TouchableOpacity
               style={styles.settingsOption}
               activeOpacity={0.80}
@@ -550,7 +582,6 @@ export default function HomeScreen({ navigation }) {
             onPress={() => setAdminWarnOpen(false)}
           />
           <View style={styles.warnCard}>
-            {/* Warning icon */}
             <View style={styles.warnIconWrap}>
               <Text style={{ fontSize: 36 }}>⚠️</Text>
             </View>
@@ -561,12 +592,10 @@ export default function HomeScreen({ navigation }) {
               {' is strictly reserved for authorized CESLA cooperative administrators only.\n\nUnauthorized access attempts are logged and may result in disciplinary action.'}
             </Text>
 
-            {/* Warning badge */}
             <View style={styles.warnBadge}>
               <Text style={styles.warnBadgeTxt}>🔐  FOR AUTHORIZED ADMINS ONLY</Text>
             </View>
 
-            {/* Buttons */}
             <View style={styles.warnBtnRow}>
               <TouchableOpacity
                 style={styles.warnBtnCancel}
@@ -621,7 +650,6 @@ export default function HomeScreen({ navigation }) {
           />
           <View style={styles.adminLoginCard}>
 
-            {/* Header */}
             <View style={styles.settingsCardHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <MaterialIcons name="admin-panel-settings" size={20} color="#c9a84c" />
@@ -644,13 +672,11 @@ export default function HomeScreen({ navigation }) {
 
             <View style={{ padding: 18, gap: 14 }}>
 
-              {/* Warning badge */}
               <View style={styles.adminWarnBadge}>
                 <MaterialIcons name="lock" size={11} color="#7a5c10" />
                 <Text style={styles.adminWarnBadgeTxt}>AUTHORIZED PERSONNEL ONLY</Text>
               </View>
 
-              {/* Admin ID */}
               <View>
                 <Text style={styles.adminFieldLabel}>ADMIN ID</Text>
                 <View style={[styles.adminFieldRow, adminError && styles.adminFieldRowError]}>
@@ -668,7 +694,6 @@ export default function HomeScreen({ navigation }) {
                 </View>
               </View>
 
-              {/* Password */}
               <View>
                 <Text style={styles.adminFieldLabel}>PASSWORD</Text>
                 <View style={[styles.adminFieldRow, adminError && styles.adminFieldRowError]}>
@@ -683,11 +708,6 @@ export default function HomeScreen({ navigation }) {
                     autoCapitalize="none"
                     autoCorrect={false}
                     editable={!adminLocked && !adminLoading}
-                    onSubmitEditing={() => {
-                      if (!adminLocked && !adminLoading) {
-                        // trigger login inline
-                      }
-                    }}
                   />
                   <TouchableOpacity onPress={() => setAdminShowPw(p => !p)} style={{ padding: 4 }}>
                     <MaterialIcons
@@ -698,7 +718,6 @@ export default function HomeScreen({ navigation }) {
                 </View>
               </View>
 
-              {/* Error */}
               {adminError ? (
                 <View style={styles.adminErrorBox}>
                   <MaterialIcons name={adminLocked ? 'block' : 'error-outline'} size={14} color={adminLocked ? '#c0392b' : '#e74c3c'} />
@@ -706,7 +725,6 @@ export default function HomeScreen({ navigation }) {
                 </View>
               ) : null}
 
-              {/* Attempt dots */}
               {adminAttempts > 0 && !adminLocked && (
                 <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>
                   {[1,2,3,4,5].map(i => (
@@ -718,7 +736,6 @@ export default function HomeScreen({ navigation }) {
                 </View>
               )}
 
-              {/* Login button */}
               <TouchableOpacity
                 style={[styles.adminLoginBtn, (adminLocked || adminLoading) && { opacity: 0.55 }]}
                 disabled={adminLocked || adminLoading}
@@ -742,8 +759,6 @@ export default function HomeScreen({ navigation }) {
                       setAdminLoginOpen(false);
                       setAdminId(''); setAdminPw('');
                       setAdminError(''); setAdminShowPw(false);
-                      // Session saving removed — no auto-login
-                      // Navigate to AdminScreen with admin data
                       setTimeout(() => {
                         if (navigation) navigation.navigate('AdminScreen', { admin: found });
                       }, 150);
@@ -817,7 +832,6 @@ export default function HomeScreen({ navigation }) {
             }}
           />
           <View style={styles.feedbackCard}>
-            {/* Header */}
             <View style={styles.settingsCardHeader}>
               <Text style={styles.settingsCardTitle}>💬  Send Feedback</Text>
               <TouchableOpacity
@@ -838,7 +852,6 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.settingsDivider} />
 
             {feedbackSent ? (
-              /* ── SUCCESS STATE ── */
               <View style={styles.feedbackSentWrap}>
                 <Text style={{ fontSize: 48, marginBottom: 12 }}>✅</Text>
                 <Text style={styles.feedbackSentTitle}>Feedback Sent!</Text>
@@ -847,14 +860,12 @@ export default function HomeScreen({ navigation }) {
                 </Text>
               </View>
             ) : (
-              /* ── FORM ── */
               <ScrollView
                 style={{ maxHeight: 520 }}
                 contentContainerStyle={{ padding: 18, paddingTop: 10, gap: 12 }}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
               >
-                {/* Feedback Type pills */}
                 <View>
                   <Text style={styles.feedbackLabel}>FEEDBACK TYPE</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}
@@ -878,7 +889,6 @@ export default function HomeScreen({ navigation }) {
                   </ScrollView>
                 </View>
 
-                {/* Name */}
                 <View>
                   <Text style={styles.feedbackLabel}>YOUR NAME</Text>
                   <TextInput
@@ -890,7 +900,6 @@ export default function HomeScreen({ navigation }) {
                   />
                 </View>
 
-                {/* Email */}
                 <View>
                   <Text style={styles.feedbackLabel}>YOUR EMAIL (optional)</Text>
                   <TextInput
@@ -904,7 +913,6 @@ export default function HomeScreen({ navigation }) {
                   />
                 </View>
 
-                {/* Subject */}
                 <View>
                   <Text style={styles.feedbackLabel}>SUBJECT <Text style={{ color: '#e74c3c' }}>*</Text></Text>
                   <TextInput
@@ -916,7 +924,6 @@ export default function HomeScreen({ navigation }) {
                   />
                 </View>
 
-                {/* Message */}
                 <View>
                   <Text style={styles.feedbackLabel}>MESSAGE <Text style={{ color: '#e74c3c' }}>*</Text></Text>
                   <TextInput
@@ -931,12 +938,10 @@ export default function HomeScreen({ navigation }) {
                   />
                 </View>
 
-                {/* Attachments */}
                 <View>
                   <Text style={styles.feedbackLabel}>ATTACHMENTS (optional)</Text>
                   <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                     {Platform.OS === 'web' ? (
-                      /* ── WEB: native HTML file input ── */
                       <View style={styles.attachBtn}>
                         <MaterialIcons name="attach-file" size={18} color="#2a5ba8" />
                         <Text style={styles.attachBtnTxt}>Add Attachment</Text>
@@ -965,7 +970,6 @@ export default function HomeScreen({ navigation }) {
                         />
                       </View>
                     ) : (
-                      /* ── MOBILE: expo pickers via Action Sheet ── */
                       <TouchableOpacity
                         style={styles.attachBtn}
                         onPress={() => {
@@ -1049,7 +1053,6 @@ export default function HomeScreen({ navigation }) {
                     )}
                   </View>
 
-                  {/* Attached files list */}
                   {feedbackFiles.length > 0 && (
                     <View style={styles.attachedList}>
                       {feedbackFiles.map((f, i) => (
@@ -1066,12 +1069,10 @@ export default function HomeScreen({ navigation }) {
                   )}
                 </View>
 
-                {/* Error */}
                 {feedbackError ? (
                   <Text style={styles.feedbackErrorTxt}>{feedbackError}</Text>
                 ) : null}
 
-                {/* Send button */}
                 <TouchableOpacity
                   style={[styles.feedbackSendBtn,
                     (!feedbackSubject.trim() || !feedbackText.trim()) && { opacity: 0.45 }]}
@@ -1081,21 +1082,14 @@ export default function HomeScreen({ navigation }) {
                     setFeedbackSending(true);
                     setFeedbackError('');
                     try {
-                      // Build attachment list text
                       const attachNames = feedbackFiles.length > 0
                         ? feedbackFiles.map(f => f.name).join(', ')
                         : 'None';
 
-                      // ─────────────────────────────────────────────────────
-                      // ⚠️  REPLACE these 3 values with your actual EmailJS IDs
-                      //    service_id  → EmailJS dashboard > Email Services
-                      //    template_id → EmailJS dashboard > Email Templates
-                      //    user_id     → EmailJS dashboard > Account > Public Key
-                      // ─────────────────────────────────────────────────────
                       const payload = {
-                        service_id:  'service_ceslampc',   // ← YOUR Service ID here
-                        template_id: 'template_feedback',  // ← YOUR Template ID here
-                        user_id:     'yNW-knzcWspVbuQrr', // ✅ EmailJS Public Key
+                        service_id:  'service_ceslampc',
+                        template_id: 'template_feedback',
+                        user_id:     'yNW-knzcWspVbuQrr',
                         template_params: {
                           feedback_type:    feedbackType,
                           from_name:        feedbackName.trim() || 'Anonymous User',
@@ -1125,7 +1119,6 @@ export default function HomeScreen({ navigation }) {
                           setFeedbackSent(false);
                         }, 3000);
                       } else {
-                        const errText = await res.text();
                         setFeedbackError('Failed to send. Please try again. (' + res.status + ')');
                       }
                     } catch (e) {
@@ -1171,22 +1164,11 @@ const styles = StyleSheet.create({
     zIndex: 100,
     backgroundColor: 'transparent',
   },
-  hdrCenter: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
   titleBlock: { alignItems: 'center', paddingHorizontal: 10, flexShrink: 1 },
-  hdrMobile: {
-    width: '100%',
-    alignItems: 'center',
-    gap: 12,
-  },
-  hdrMobileLogos: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 24,
-  },
   titleH1: { fontFamily: 'NotoSerif_700Bold', fontWeight: '700', color: '#011f4b', letterSpacing: 0.5, textAlign: 'center' },
   titleBold: { fontFamily: 'NotoSerif_700Bold_Italic', color: '#fff', fontWeight: '700', fontStyle: 'italic' },
-  titleSub: { fontFamily: 'GoogleSans_400Regular',
+  titleSub: {
+    fontFamily: 'GoogleSans_400Regular',
     color: 'rgba(3,57,108,0.65)',
     letterSpacing: 2,
     textTransform: 'uppercase',
@@ -1200,13 +1182,8 @@ const styles = StyleSheet.create({
 
   grid: { alignSelf: 'center', width: '100%', maxWidth: 1020 },
 
-  // Base card style (shared)
   card: {
     borderRadius: 20,
-    paddingTop: 28,
-    paddingBottom: 22,
-    alignItems: 'center',
-    gap: 10,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.55)',
     overflow: 'hidden',
@@ -1216,7 +1193,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
-  // Mobile-only: static rgba color instead of gradient — eliminates double-box bug
   cardMobile: {
     backgroundColor: 'rgba(178,203,222,0.50)',
     borderColor: 'rgba(255,255,255,0.55)',
@@ -1236,12 +1212,11 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
-  textBlock: { alignItems: 'center', gap: 6, flex: 1, justifyContent: 'flex-start' },
-  cardTitle: { fontFamily: 'GoogleSans_700Bold', fontWeight: '700', color: '#011f4b', letterSpacing: 0.4, lineHeight: 22, textAlign: 'center' },
-  cardDesc:  { fontFamily: 'GoogleSans_400Regular', color: 'rgba(3,57,108,0.70)', lineHeight: 17, textAlign: 'center' },
+  textBlock: { gap: 6, flex: 1, justifyContent: 'flex-start' },
+  cardTitle: { fontFamily: 'GoogleSans_700Bold', fontWeight: '700', color: '#011f4b', letterSpacing: 0.4, lineHeight: 20, fontSize: 13 },
+  cardDesc:  { fontFamily: 'GoogleSans_400Regular', color: 'rgba(3,57,108,0.70)', lineHeight: 17, fontSize: 11 },
 
   arrowBtn: {
-    marginTop: 6,
     width: 34,
     height: 34,
     borderRadius: 17,
@@ -1252,15 +1227,16 @@ const styles = StyleSheet.create({
   },
   arrowText: { color: 'rgba(1,31,75,0.6)', fontSize: 15, fontWeight: '600' },
 
-  accentLine: { position: 'absolute', bottom: 0, width: '60%', height: 2, borderRadius: 2 },
+  accentLine: { position: 'absolute', bottom: 0, width: '60%', height: 2, borderRadius: 2, left: '20%' },
 
   badge: {
     position: 'absolute',
-    top: 14, right: 14,
+    top: 10, right: 10,
     backgroundColor: '#50c896',
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 8,
+    zIndex: 10,
   },
   badgeText: { color: '#fff', fontSize: 9, fontWeight: '700', letterSpacing: 1.5 },
 
@@ -1268,7 +1244,6 @@ const styles = StyleSheet.create({
   footerLine: { color: 'rgba(235,239,242,0.5)', fontSize: 11, letterSpacing: 1 },
   footerText: { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(235,239,242,0.5)', letterSpacing: 0.5, textAlign: 'center' },
 
-  // ── SETTINGS BUTTON ──
   settingsBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginTop: 10, paddingHorizontal: 16, paddingVertical: 8,
@@ -1282,7 +1257,6 @@ const styles = StyleSheet.create({
     color: 'rgba(235,239,242,0.75)', letterSpacing: 0.5,
   },
 
-  // ── SHARED MODAL OVERLAY ──
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(1,20,50,0.55)',
@@ -1291,7 +1265,6 @@ const styles = StyleSheet.create({
     padding: 24,
   },
 
-  // ── SETTINGS CARD ──
   settingsCard: {
     width: '100%', maxWidth: 380,
     backgroundColor: 'rgba(220,232,242,0.97)',
@@ -1353,7 +1326,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5, marginTop: 6,
   },
 
-  // ── ADMIN WARNING CARD ──
   warnCard: {
     width: '100%', maxWidth: 380,
     backgroundColor: 'rgba(220,232,242,0.97)',
@@ -1420,7 +1392,6 @@ const styles = StyleSheet.create({
     color: '#0d1b3e',
   },
 
-  // ── FEEDBACK CARD ──
   feedbackCard: {
     width: '100%', maxWidth: 420,
     backgroundColor: 'rgba(220,232,242,0.97)',
@@ -1473,7 +1444,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(111,163,247,0.45)',
     position: 'relative', overflow: 'hidden',
   },
-  // attachBtnIcon: not used — replaced by MaterialIcons component
   attachBtnTxt: {
     fontFamily: 'GoogleSans_700Bold', fontSize: 13,
     color: '#2a5ba8',
@@ -1540,7 +1510,6 @@ const styles = StyleSheet.create({
     color: 'rgba(1,31,75,0.60)', textAlign: 'center', lineHeight: 20,
   },
 
-  // ── ADMIN LOGIN MODAL ──
   adminLoginCard: {
     width: '100%', maxWidth: 390,
     backgroundColor: 'rgba(220,232,242,0.97)',
