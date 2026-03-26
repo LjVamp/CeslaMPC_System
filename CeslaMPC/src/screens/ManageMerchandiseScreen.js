@@ -1671,7 +1671,7 @@ const EmployeeCreditsScreen = () => (
 
 
 const sub = StyleSheet.create({
-  root: { flex:1, padding:14, overflow:'hidden', minHeight:0 },
+  root: { flex:1, padding:14, minHeight:0 },
   emptyBox: { flex:1, alignItems:'center', justifyContent:'center', gap:10, paddingTop:60 },
   emptyTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.35)', textAlign:'center', lineHeight:18 },
   filterBtn: { paddingHorizontal:14, paddingVertical:7, borderRadius:20, backgroundColor:'rgba(255,255,255,0.40)', borderWidth:1, borderColor:'rgba(255,255,255,0.60)' },
@@ -1744,13 +1744,71 @@ const hst = StyleSheet.create({
 });
 
 // ─── SALES REPORT ─────────────────────────────────────────────────────────────
+
+// ── Year Picker Modal — drops down below the button using onLayout measurement ─
+const YearPickerModal = ({ visible, year, years, onSelect, onClose, btnRef }) => {
+  const [pos, setPos] = React.useState({ x:0, y:0, w:0 });
+
+  React.useEffect(() => {
+    if (visible && btnRef && btnRef.current) {
+      btnRef.current.measureInWindow((x, y, w, h) => {
+        setPos({ x, y: y + h + 4, w });
+      });
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      <TouchableOpacity
+        style={{ flex:1 }}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View style={{
+          position:'absolute',
+          top: pos.y,
+          left: pos.x,
+          minWidth: Math.max(pos.w, 130),
+          backgroundColor:'#ffffff',
+          borderRadius:10, borderWidth:1, borderColor:'rgba(26,58,107,0.18)',
+          shadowColor:'#000', shadowOpacity:0.22, shadowRadius:14, elevation:28,
+          maxHeight:220, overflow:'hidden',
+        }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical:4 }}>
+            {years.map(y=>(
+              <TouchableOpacity
+                key={y}
+                style={{
+                  paddingVertical:9, paddingHorizontal:16, alignItems:'center',
+                  backgroundColor: y===year ? 'rgba(26,58,107,0.10)' : 'transparent',
+                }}
+                onPress={()=>{ onSelect(y); onClose(); }}
+              >
+                <Text style={{ fontFamily: y===year ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize:13, color:'#1a3a6b' }}>{y}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
 const SalesReportScreen = ({ orders, items }) => {
   const currentYear = new Date().getFullYear();
   const [year,         setYear]         = useState(currentYear);
   const [yearDropdown, setYearDropdown] = useState(false);
+  const yearBtnRef = useRef(null);
   const [activeMonth,  setActiveMonth]  = useState(new Date().getMonth());
   const [activeFolder, setActiveFolder] = useState('sales'); // 'sales' | 'tx' | 'inv' | 'credits'
+
+  // Close year dropdown whenever user switches folders
+  useEffect(() => { setYearDropdown(false); }, [activeFolder]);
   const [salesView,    setSalesView]    = useState('daily'); // 'daily' | 'monthly' | 'yearly'
+  const [txView,       setTxView]       = useState('daily'); // 'daily' | 'monthly' | 'yearly'
+  const [invView,      setInvView]      = useState('daily'); // 'daily' | 'monthly' | 'yearly'
+  const [creditsView,  setCreditsView]  = useState('daily'); // 'daily' | 'monthly' | 'yearly'
   const [expandedTxDate,  setExpandedTxDate]  = useState(null);
   const [expandedInvDate, setExpandedInvDate] = useState(null);
 
@@ -1790,7 +1848,7 @@ const SalesReportScreen = ({ orders, items }) => {
       else map[k].cashier += Number(o.total || 0);
     });
     return Object.values(map).sort((a,b) => a.key.localeCompare(b.key));
-  }, [monthOrders.length, activeMonth, year]);
+  }, [monthOrders, activeMonth, year]);
 
   // Monthly (for selected year)
   const monthlyData = React.useMemo(() => {
@@ -1804,7 +1862,7 @@ const SalesReportScreen = ({ orders, items }) => {
         visitor: mo.filter(o => o.source === 'visitor').reduce((s,o) => s+Number(o.total||0), 0),
       };
     });
-  }, [yearOrders.length, year]);
+  }, [yearOrders, year]);
 
   // Yearly (all years with data)
   const yearlyData = React.useMemo(() => {
@@ -1819,7 +1877,7 @@ const SalesReportScreen = ({ orders, items }) => {
       else map[y].cashier += Number(o.total||0);
     });
     return Object.values(map).sort((a,b) => b.year - a.year);
-  }, [orders.length]);
+  }, [orders]);
 
   // ── TX History ──────────────────────────────────────────────────────────────
   const txByDay = React.useMemo(() => {
@@ -1831,7 +1889,7 @@ const SalesReportScreen = ({ orders, items }) => {
       map[k].orders.push(o);
     });
     return Object.values(map).sort((a,b) => a.key.localeCompare(b.key));
-  }, [monthOrders.length, activeMonth, year]);
+  }, [monthOrders, activeMonth, year]);
 
   // ── Inventory ───────────────────────────────────────────────────────────────
   const invByDay = React.useMemo(() => txByDay.map(g => {
@@ -1839,6 +1897,57 @@ const SalesReportScreen = ({ orders, items }) => {
     const totalValue = (items||[]).reduce((s,i) => s+(i.price||0)*(i.stock||0), 0);
     return { key: g.key, totalStock, totalValue };
   }), [txByDay, items]);
+
+  // ── TX Monthly (for selected year) ─────────────────────────────────────────
+  const txByMonth = React.useMemo(() => {
+    return MONTHS.map((m, i) => {
+      const mo = yearOrders.filter(o => { const d = getDate(o); return d && d.getMonth() === i; });
+      return {
+        month: m, monthFull: MONTHS_FULL[i], idx: i,
+        orders: mo,
+        total: mo.reduce((s,o) => s+Number(o.total||0), 0),
+        count: mo.length,
+      };
+    });
+  }, [yearOrders, year]);
+
+  // ── TX Yearly (all years) ───────────────────────────────────────────────────
+  const txByYear = React.useMemo(() => {
+    const map = {};
+    orders.forEach(o => {
+      const d = getDate(o); if (!d) return;
+      const y = d.getFullYear();
+      if (!map[y]) map[y] = { year: y, orders: [], total: 0, count: 0 };
+      map[y].orders.push(o);
+      map[y].total += Number(o.total||0);
+      map[y].count += 1;
+    });
+    return Object.values(map).sort((a,b) => b.year - a.year);
+  }, [orders]);
+
+  // ── Inventory Monthly snapshot ──────────────────────────────────────────────
+  const invByMonth = React.useMemo(() => {
+    const totalStock = (items||[]).reduce((s,i) => s+(i.stock||0), 0);
+    const totalValue = (items||[]).reduce((s,i) => s+(i.price||0)*(i.stock||0), 0);
+    return MONTHS.map((m, i) => {
+      const mo = yearOrders.filter(o => { const d = getDate(o); return d && d.getMonth() === i; });
+      return { month: m, monthFull: MONTHS_FULL[i], idx: i, totalStock, totalValue, count: mo.length };
+    });
+  }, [yearOrders, year, items]);
+
+  // ── Inventory Yearly snapshot ───────────────────────────────────────────────
+  const invByYear = React.useMemo(() => {
+    const totalStock = (items||[]).reduce((s,i) => s+(i.stock||0), 0);
+    const totalValue = (items||[]).reduce((s,i) => s+(i.price||0)*(i.stock||0), 0);
+    const map = {};
+    orders.forEach(o => {
+      const d = getDate(o); if (!d) return;
+      const y = d.getFullYear();
+      if (!map[y]) map[y] = { year: y, totalStock, totalValue, count: 0 };
+      map[y].count += 1;
+    });
+    return Object.values(map).sort((a,b) => b.year - a.year);
+  }, [orders, items]);
 
   // ── Print helpers ────────────────────────────────────────────────────────────
   const printTxDay = (dayGroup) => {
@@ -1892,20 +2001,12 @@ const SalesReportScreen = ({ orders, items }) => {
           {/* Year + Month controls */}
           <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
             {/* Year picker */}
-            <View style={{ position:'relative', zIndex:100 }}>
-              <TouchableOpacity style={rpt2.yearBtn} onPress={()=>setYearDropdown(p=>!p)} activeOpacity={0.80}>
+            <View>
+              <TouchableOpacity ref={yearBtnRef} style={rpt2.yearBtn} onPress={()=>setYearDropdown(true)} activeOpacity={0.80}>
                 <Text style={rpt2.yearTxt}>YEAR  {year}</Text>
-                <Text style={rpt2.yearCaret}>{yearDropdown?'▲':'▼'}</Text>
+                <Text style={rpt2.yearCaret}>▼</Text>
               </TouchableOpacity>
-              {yearDropdown && (
-                <ScrollView style={rpt2.yearMenu} showsVerticalScrollIndicator={false}>
-                  {years.map(y=>(
-                    <TouchableOpacity key={y} style={[rpt2.yearOpt, y===year&&rpt2.yearOptActive]} onPress={()=>{setYear(y);setYearDropdown(false);}}>
-                      <Text style={[rpt2.yearOptTxt, y===year&&rpt2.yearOptTxtActive]}>{y}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
+              <YearPickerModal visible={yearDropdown} year={year} years={years} onSelect={setYear} onClose={()=>setYearDropdown(false)} btnRef={yearBtnRef} />
             </View>
             {/* View toggle: Daily / Monthly / Yearly */}
             {[['daily','Daily'],['monthly','Monthly'],['yearly','Yearly']].map(([k,l])=>(
@@ -2052,168 +2153,402 @@ const SalesReportScreen = ({ orders, items }) => {
     if (activeFolder === 'tx') {
       return (
         <View style={{flex:1,minHeight:0}}>
-          <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
-            <View style={{position:'relative',zIndex:100}}>
-              <TouchableOpacity style={rpt2.yearBtn} onPress={()=>setYearDropdown(p=>!p)} activeOpacity={0.80}>
+          {/* Controls row */}
+          <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+            {/* Year picker */}
+            <View>
+              <TouchableOpacity ref={yearBtnRef} style={rpt2.yearBtn} onPress={()=>setYearDropdown(true)} activeOpacity={0.80}>
                 <Text style={rpt2.yearTxt}>YEAR  {year}</Text>
-                <Text style={rpt2.yearCaret}>{yearDropdown?'▲':'▼'}</Text>
+                <Text style={rpt2.yearCaret}>▼</Text>
               </TouchableOpacity>
-              {yearDropdown && (
-                <ScrollView style={rpt2.yearMenu} showsVerticalScrollIndicator={false}>
-                  {years.map(y=>(
-                    <TouchableOpacity key={y} style={[rpt2.yearOpt,y===year&&rpt2.yearOptActive]} onPress={()=>{setYear(y);setYearDropdown(false);}}>
-                      <Text style={[rpt2.yearOptTxt,y===year&&rpt2.yearOptTxtActive]}>{y}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
+              <YearPickerModal visible={yearDropdown} year={year} years={years} onSelect={setYear} onClose={()=>setYearDropdown(false)} btnRef={yearBtnRef} />
             </View>
-            <View style={{flexDirection:'row',flexWrap:'wrap',gap:4}}>
+            {/* View toggle: Daily / Monthly / Yearly */}
+            {[['daily','Daily'],['monthly','Monthly'],['yearly','Yearly']].map(([k,l])=>(
+              <TouchableOpacity key={k} style={[rpt2.viewToggleBtn, txView===k&&rpt2.viewToggleBtnActive]} onPress={()=>setTxView(k)}>
+                <Text style={[rpt2.viewToggleTxt, txView===k&&rpt2.viewToggleTxtActive]}>{l}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Month tabs — only for daily view */}
+          {txView === 'daily' && (
+            <View style={{ flexDirection:'row', flexWrap:'wrap', gap:5, marginBottom:10 }}>
               {MONTHS.map((m,i)=>(
-                <TouchableOpacity key={m} style={[rpt2.monthBtn,activeMonth===i&&rpt2.monthBtnActive]} onPress={()=>setActiveMonth(i)}>
-                  <Text style={[rpt2.monthTxt,activeMonth===i&&rpt2.monthTxtActive]}>{m}</Text>
+                <TouchableOpacity key={m} style={[rpt2.monthBtn, activeMonth===i&&rpt2.monthBtnActive]} onPress={()=>setActiveMonth(i)}>
+                  <Text style={[rpt2.monthTxt, activeMonth===i&&rpt2.monthTxtActive]}>{m}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
-          <View style={rpt2.thead}>
-            <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>DATE</Text>
-            <Text style={[rpt2.th,{flex:1.0}]}>TOTAL ORDERS</Text>
-            <Text style={[rpt2.th,{flex:1.2}]}>TOTAL EARNINGS</Text>
-            <Text style={[rpt2.th,{width:72}]}>PRINT</Text>
-          </View>
+          )}
+
+          {/* Table header */}
+          {txView === 'daily' && (
+            <View style={rpt2.thead}>
+              <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>DATE</Text>
+              <Text style={[rpt2.th,{flex:1.0}]}>TOTAL ORDERS</Text>
+              <Text style={[rpt2.th,{flex:1.2}]}>TOTAL EARNINGS</Text>
+              <Text style={[rpt2.th,{width:72}]}>PRINT</Text>
+            </View>
+          )}
+          {txView === 'monthly' && (
+            <View style={rpt2.thead}>
+              <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>MONTH</Text>
+              <Text style={[rpt2.th,{flex:1.0}]}>TOTAL ORDERS</Text>
+              <Text style={[rpt2.th,{flex:1.2}]}>TOTAL EARNINGS</Text>
+            </View>
+          )}
+          {txView === 'yearly' && (
+            <View style={rpt2.thead}>
+              <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>YEAR</Text>
+              <Text style={[rpt2.th,{flex:1.0}]}>TOTAL ORDERS</Text>
+              <Text style={[rpt2.th,{flex:1.2}]}>TOTAL EARNINGS</Text>
+            </View>
+          )}
+
           <WebScrollView style={{flex:1}} contentContainerStyle={{paddingBottom:16}}>
-            {txByDay.length===0?(
-              <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No transactions for {MONTHS_FULL[activeMonth]} {year}</Text></View>
-            ):txByDay.map((g,idx)=>{
-              const total=g.orders.reduce((s,o)=>s+Number(o.total),0);
-              const isOpen=expandedTxDate===g.key;
-              return (
-                <View key={g.key}>
-                  <TouchableOpacity style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]} onPress={()=>setExpandedTxDate(isOpen?null:g.key)} activeOpacity={0.75}>
-                    <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.key}</Text>
-                    <Text style={[rpt2.td,{flex:1.0}]}>{g.orders.length}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>₱{total.toFixed(2)}</Text>
-                    <View style={{width:72,alignItems:'center',justifyContent:'center',alignSelf:'stretch',borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)'}}>
-                      <TouchableOpacity style={rpt2.printBtn} onPress={()=>printTxDay(g)}><Text style={rpt2.printBtnTxt}>Print</Text></TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                  {isOpen&&(
-                    <View style={rpt2.expandPanel}>
-                      <View style={rpt2.expandHead}>
-                        <Text style={[rpt2.expandTh,{flex:0.4}]}>#</Text>
-                        <Text style={[rpt2.expandTh,{flex:0.8}]}>ORDER NO</Text>
-                        <Text style={[rpt2.expandTh,{flex:0.6}]}>SOURCE</Text>
-                        <Text style={[rpt2.expandTh,{flex:1.8}]}>ITEMS</Text>
-                        <Text style={[rpt2.expandTh,{flex:0.8,textAlign:'right'}]}>AMOUNT</Text>
-                      </View>
-                      {g.orders.map((o,i)=>{
-                        const itms=(o.items||[]).map(it=>((it.item&&it.item.name)||it.name||'Item')+' x'+it.qty).join(', ');
-                        const src=o.source==='visitor'?'🌐 Visitor':'🖥️ Cashier';
-                        return(
-                          <View key={o.id} style={[rpt2.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}>
-                            <Text style={[rpt2.expandTd,{flex:0.4}]}>{i+1}</Text>
-                            <Text style={[rpt2.expandTd,{flex:0.8,fontFamily:'GoogleSans_700Bold'}]}>#{o.orderNo||o.id}</Text>
-                            <Text style={[rpt2.expandTd,{flex:0.6}]}>{src}</Text>
-                            <Text style={[rpt2.expandTd,{flex:1.8}]} numberOfLines={2}>{itms}</Text>
-                            <Text style={[rpt2.expandTd,{flex:0.8,textAlign:'right',color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{Number(o.total).toFixed(2)}</Text>
+
+            {/* ── DAILY ── */}
+            {txView === 'daily' && (
+              txByDay.length===0
+                ? <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No transactions for {MONTHS_FULL[activeMonth]} {year}</Text></View>
+                : txByDay.map((g,idx)=>{
+                    const total=g.orders.reduce((s,o)=>s+Number(o.total),0);
+                    const isOpen=expandedTxDate===g.key;
+                    return (
+                      <View key={g.key}>
+                        <TouchableOpacity style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]} onPress={()=>setExpandedTxDate(isOpen?null:g.key)} activeOpacity={0.75}>
+                          <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.key}</Text>
+                          <Text style={[rpt2.td,{flex:1.0}]}>{g.orders.length}</Text>
+                          <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>₱{total.toFixed(2)}</Text>
+                          <View style={{width:72,alignItems:'center',justifyContent:'center',alignSelf:'stretch',borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)'}}>
+                            <TouchableOpacity style={rpt2.printBtn} onPress={()=>printTxDay(g)}><Text style={rpt2.printBtnTxt}>Print</Text></TouchableOpacity>
                           </View>
-                        );
-                      })}
+                        </TouchableOpacity>
+                        {isOpen&&(
+                          <View style={rpt2.expandPanel}>
+                            <View style={rpt2.expandHead}>
+                              <Text style={[rpt2.expandTh,{flex:0.4}]}>#</Text>
+                              <Text style={[rpt2.expandTh,{flex:0.8}]}>ORDER NO</Text>
+                              <Text style={[rpt2.expandTh,{flex:0.6}]}>SOURCE</Text>
+                              <Text style={[rpt2.expandTh,{flex:1.8}]}>ITEMS</Text>
+                              <Text style={[rpt2.expandTh,{flex:0.8,textAlign:'right'}]}>AMOUNT</Text>
+                            </View>
+                            {g.orders.map((o,i)=>{
+                              const itms=(o.items||[]).map(it=>((it.item&&it.item.name)||it.name||'Item')+' x'+it.qty).join(', ');
+                              const src=o.source==='visitor'?'🌐 Visitor':'🖥️ Cashier';
+                              return(
+                                <View key={o.id} style={[rpt2.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}>
+                                  <Text style={[rpt2.expandTd,{flex:0.4}]}>{i+1}</Text>
+                                  <Text style={[rpt2.expandTd,{flex:0.8,fontFamily:'GoogleSans_700Bold'}]}>#{o.orderNo||o.id}</Text>
+                                  <Text style={[rpt2.expandTd,{flex:0.6}]}>{src}</Text>
+                                  <Text style={[rpt2.expandTd,{flex:1.8}]} numberOfLines={2}>{itms}</Text>
+                                  <Text style={[rpt2.expandTd,{flex:0.8,textAlign:'right',color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{Number(o.total).toFixed(2)}</Text>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })
+            )}
+
+            {/* ── MONTHLY ── */}
+            {txView === 'monthly' && (
+              txByMonth.every(m=>m.count===0)
+                ? <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No transactions for {year}</Text></View>
+                : txByMonth.map((m,idx)=>(
+                    <View key={m.month} style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]}>
+                      <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{m.monthFull} {year}</Text>
+                      <Text style={[rpt2.td,{flex:1.0}]}>{m.count}</Text>
+                      <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>₱{m.total.toFixed(2)}</Text>
                     </View>
-                  )}
-                </View>
-              );
-            })}
+                  ))
+            )}
+
+            {/* ── YEARLY ── */}
+            {txView === 'yearly' && (
+              txByYear.length===0
+                ? <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No transaction data available</Text></View>
+                : txByYear.map((y,idx)=>(
+                    <View key={y.year} style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]}>
+                      <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{y.year}</Text>
+                      <Text style={[rpt2.td,{flex:1.0}]}>{y.count}</Text>
+                      <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>₱{y.total.toFixed(2)}</Text>
+                    </View>
+                  ))
+            )}
+
           </WebScrollView>
         </View>
       );
     }
-
     // ── INVENTORY REPORTS ────────────────────────────────────────────────────
     if (activeFolder === 'inv') {
       return (
         <View style={{flex:1,minHeight:0}}>
-          <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
-            <View style={{position:'relative',zIndex:100}}>
-              <TouchableOpacity style={rpt2.yearBtn} onPress={()=>setYearDropdown(p=>!p)} activeOpacity={0.80}>
+          {/* Controls row */}
+          <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+            {/* Year picker */}
+            <View>
+              <TouchableOpacity ref={yearBtnRef} style={rpt2.yearBtn} onPress={()=>setYearDropdown(true)} activeOpacity={0.80}>
                 <Text style={rpt2.yearTxt}>YEAR  {year}</Text>
-                <Text style={rpt2.yearCaret}>{yearDropdown?'▲':'▼'}</Text>
+                <Text style={rpt2.yearCaret}>▼</Text>
               </TouchableOpacity>
-              {yearDropdown && (
-                <ScrollView style={rpt2.yearMenu} showsVerticalScrollIndicator={false}>
-                  {years.map(y=>(
-                    <TouchableOpacity key={y} style={[rpt2.yearOpt,y===year&&rpt2.yearOptActive]} onPress={()=>{setYear(y);setYearDropdown(false);}}>
-                      <Text style={[rpt2.yearOptTxt,y===year&&rpt2.yearOptTxtActive]}>{y}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
+              <YearPickerModal visible={yearDropdown} year={year} years={years} onSelect={setYear} onClose={()=>setYearDropdown(false)} btnRef={yearBtnRef} />
             </View>
-            <View style={{flexDirection:'row',flexWrap:'wrap',gap:4}}>
+            {/* View toggle: Daily / Monthly / Yearly */}
+            {[['daily','Daily'],['monthly','Monthly'],['yearly','Yearly']].map(([k,l])=>(
+              <TouchableOpacity key={k} style={[rpt2.viewToggleBtn, invView===k&&rpt2.viewToggleBtnActive]} onPress={()=>setInvView(k)}>
+                <Text style={[rpt2.viewToggleTxt, invView===k&&rpt2.viewToggleTxtActive]}>{l}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Month tabs — only for daily view */}
+          {invView === 'daily' && (
+            <View style={{ flexDirection:'row', flexWrap:'wrap', gap:5, marginBottom:10 }}>
               {MONTHS.map((m,i)=>(
-                <TouchableOpacity key={m} style={[rpt2.monthBtn,activeMonth===i&&rpt2.monthBtnActive]} onPress={()=>setActiveMonth(i)}>
-                  <Text style={[rpt2.monthTxt,activeMonth===i&&rpt2.monthTxtActive]}>{m}</Text>
+                <TouchableOpacity key={m} style={[rpt2.monthBtn, activeMonth===i&&rpt2.monthBtnActive]} onPress={()=>setActiveMonth(i)}>
+                  <Text style={[rpt2.monthTxt, activeMonth===i&&rpt2.monthTxtActive]}>{m}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
-          <View style={rpt2.thead}>
-            <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>DATE</Text>
-            <Text style={[rpt2.th,{flex:1.0}]}>TOTAL STOCK</Text>
-            <Text style={[rpt2.th,{flex:1.2}]}>TOTAL VALUE</Text>
-            <Text style={[rpt2.th,{width:72}]}>PRINT</Text>
-          </View>
+          )}
+
+          {/* Table header */}
+          {invView === 'daily' && (
+            <View style={rpt2.thead}>
+              <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>DATE</Text>
+              <Text style={[rpt2.th,{flex:1.0}]}>TOTAL STOCK</Text>
+              <Text style={[rpt2.th,{flex:1.2}]}>TOTAL VALUE</Text>
+              <Text style={[rpt2.th,{width:72}]}>PRINT</Text>
+            </View>
+          )}
+          {invView === 'monthly' && (
+            <View style={rpt2.thead}>
+              <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>MONTH</Text>
+              <Text style={[rpt2.th,{flex:1.0}]}>TOTAL STOCK</Text>
+              <Text style={[rpt2.th,{flex:1.2}]}>TOTAL VALUE</Text>
+            </View>
+          )}
+          {invView === 'yearly' && (
+            <View style={rpt2.thead}>
+              <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>YEAR</Text>
+              <Text style={[rpt2.th,{flex:1.0}]}>TOTAL STOCK</Text>
+              <Text style={[rpt2.th,{flex:1.2}]}>TOTAL VALUE</Text>
+            </View>
+          )}
+
           <WebScrollView style={{flex:1}} contentContainerStyle={{paddingBottom:16}}>
-            {invByDay.length===0?(
-              <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No inventory data for {MONTHS_FULL[activeMonth]} {year}</Text></View>
-            ):invByDay.map((g,idx)=>{
-              const isOpen=expandedInvDate===g.key;
-              return(
-                <View key={g.key}>
-                  <TouchableOpacity style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]} onPress={()=>setExpandedInvDate(isOpen?null:g.key)} activeOpacity={0.75}>
-                    <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.key}</Text>
-                    <Text style={[rpt2.td,{flex:1.0}]}>{g.totalStock}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>₱{g.totalValue.toLocaleString()}</Text>
-                    <View style={{width:72,alignItems:'center',justifyContent:'center',alignSelf:'stretch',borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)'}}>
-                      <TouchableOpacity style={rpt2.printBtn} onPress={()=>printInvDay(g)}><Text style={rpt2.printBtnTxt}>Print</Text></TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                  {isOpen&&(
-                    <View style={rpt2.expandPanel}>
-                      <View style={rpt2.expandHead}>
-                        <Text style={[rpt2.expandTh,{flex:2}]}>ITEM</Text>
-                        <Text style={[rpt2.expandTh,{flex:1}]}>CATEGORY</Text>
-                        <Text style={[rpt2.expandTh,{flex:0.6,textAlign:'center'}]}>STOCK</Text>
-                        <Text style={[rpt2.expandTh,{flex:0.8,textAlign:'right'}]}>VALUE</Text>
+
+            {/* ── DAILY ── */}
+            {invView === 'daily' && (
+              invByDay.length===0
+                ? <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No inventory data for {MONTHS_FULL[activeMonth]} {year}</Text></View>
+                : invByDay.map((g,idx)=>{
+                    const isOpen=expandedInvDate===g.key;
+                    return(
+                      <View key={g.key}>
+                        <TouchableOpacity style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]} onPress={()=>setExpandedInvDate(isOpen?null:g.key)} activeOpacity={0.75}>
+                          <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.key}</Text>
+                          <Text style={[rpt2.td,{flex:1.0}]}>{g.totalStock}</Text>
+                          <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>₱{g.totalValue.toLocaleString()}</Text>
+                          <View style={{width:72,alignItems:'center',justifyContent:'center',alignSelf:'stretch',borderRightWidth:1,borderColor:'rgba(26,58,107,0.08)'}}>
+                            <TouchableOpacity style={rpt2.printBtn} onPress={()=>printInvDay(g)}><Text style={rpt2.printBtnTxt}>Print</Text></TouchableOpacity>
+                          </View>
+                        </TouchableOpacity>
+                        {isOpen&&(
+                          <View style={rpt2.expandPanel}>
+                            <View style={rpt2.expandHead}>
+                              <Text style={[rpt2.expandTh,{flex:2}]}>ITEM</Text>
+                              <Text style={[rpt2.expandTh,{flex:1}]}>CATEGORY</Text>
+                              <Text style={[rpt2.expandTh,{flex:0.6,textAlign:'center'}]}>STOCK</Text>
+                              <Text style={[rpt2.expandTh,{flex:0.8,textAlign:'right'}]}>VALUE</Text>
+                            </View>
+                            {(items||[]).map((it,i)=>(
+                              <View key={it.id} style={[rpt2.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}>
+                                <Text style={[rpt2.expandTd,{flex:2,fontFamily:'GoogleSans_700Bold'}]} numberOfLines={1}>{it.emoji} {it.name}</Text>
+                                <Text style={[rpt2.expandTd,{flex:1}]} numberOfLines={1}>{it.cat}</Text>
+                                <Text style={[rpt2.expandTd,{flex:0.6,textAlign:'center'}]}>{it.stock}</Text>
+                                <Text style={[rpt2.expandTd,{flex:0.8,textAlign:'right',color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{((it.price||0)*(it.stock||0)).toLocaleString()}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
                       </View>
-                      {(items||[]).map((it,i)=>(
-                        <View key={it.id} style={[rpt2.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}>
-                          <Text style={[rpt2.expandTd,{flex:2,fontFamily:'GoogleSans_700Bold'}]} numberOfLines={1}>{it.emoji} {it.name}</Text>
-                          <Text style={[rpt2.expandTd,{flex:1}]} numberOfLines={1}>{it.cat}</Text>
-                          <Text style={[rpt2.expandTd,{flex:0.6,textAlign:'center'}]}>{it.stock}</Text>
-                          <Text style={[rpt2.expandTd,{flex:0.8,textAlign:'right',color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{((it.price||0)*(it.stock||0)).toLocaleString()}</Text>
-                        </View>
-                      ))}
+                    );
+                  })
+            )}
+
+            {/* ── MONTHLY ── */}
+            {invView === 'monthly' && (
+              invByMonth.every(m=>m.count===0)
+                ? <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No inventory data for {year}</Text></View>
+                : invByMonth.map((m,idx)=>(
+                    <View key={m.month} style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]}>
+                      <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{m.monthFull} {year}</Text>
+                      <Text style={[rpt2.td,{flex:1.0}]}>{m.totalStock}</Text>
+                      <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>₱{m.totalValue.toLocaleString()}</Text>
                     </View>
-                  )}
-                </View>
-              );
-            })}
+                  ))
+            )}
+
+            {/* ── YEARLY ── */}
+            {invView === 'yearly' && (
+              invByYear.length===0
+                ? <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No inventory data available</Text></View>
+                : invByYear.map((y,idx)=>(
+                    <View key={y.year} style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]}>
+                      <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{y.year}</Text>
+                      <Text style={[rpt2.td,{flex:1.0}]}>{y.totalStock}</Text>
+                      <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a7a45'}]}>₱{y.totalValue.toLocaleString()}</Text>
+                    </View>
+                  ))
+            )}
+
           </WebScrollView>
         </View>
       );
     }
-
     // ── CREDITS REPORTS ──────────────────────────────────────────────────────
     if (activeFolder === 'credits') {
+      // Filter only credit orders
+      const creditOrders = orders.filter(o => o.payment === 'credit');
+      const creditYearOrders = creditOrders.filter(o => { const d = getDate(o); return d && d.getFullYear() === year; });
+      const creditMonthOrders = creditYearOrders.filter(o => { const d = getDate(o); return d && d.getMonth() === activeMonth; });
+
+      // Daily credit data
+      const creditByDay = (() => {
+        const map = {};
+        creditMonthOrders.forEach(o => {
+          const d = getDate(o); if (!d) return;
+          const k = fmtDateKey(d);
+          if (!map[k]) map[k] = { key: k, orders: [], total: 0, count: 0 };
+          map[k].orders.push(o);
+          map[k].total += Number(o.total||0);
+          map[k].count += 1;
+        });
+        return Object.values(map).sort((a,b) => a.key.localeCompare(b.key));
+      })();
+
+      // Monthly credit data
+      const creditByMonth = MONTHS.map((m, i) => {
+        const mo = creditYearOrders.filter(o => { const d = getDate(o); return d && d.getMonth() === i; });
+        return { month: m, monthFull: MONTHS_FULL[i], idx: i, orders: mo, total: mo.reduce((s,o)=>s+Number(o.total||0),0), count: mo.length };
+      });
+
+      // Yearly credit data
+      const creditByYear = (() => {
+        const map = {};
+        creditOrders.forEach(o => {
+          const d = getDate(o); if (!d) return;
+          const y = d.getFullYear();
+          if (!map[y]) map[y] = { year: y, orders: [], total: 0, count: 0 };
+          map[y].orders.push(o);
+          map[y].total += Number(o.total||0);
+          map[y].count += 1;
+        });
+        return Object.values(map).sort((a,b) => b.year - a.year);
+      })();
+
       return (
-        <View style={{flex:1,justifyContent:'center',alignItems:'center',gap:10}}>
-          <Text style={{fontSize:36}}>🚧</Text>
-          <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:18,color:'rgba(1,31,75,0.35)'}}>Coming Soon</Text>
-          <Text style={{fontFamily:'GoogleSans_400Regular',fontSize:12,color:'rgba(1,31,75,0.30)',textAlign:'center',paddingHorizontal:24,lineHeight:18}}>
-            Credits reporting will be available in a future update.
-          </Text>
+        <View style={{flex:1,minHeight:0}}>
+          {/* Controls row */}
+          <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+            {/* Year picker */}
+            <View>
+              <TouchableOpacity ref={yearBtnRef} style={rpt2.yearBtn} onPress={()=>setYearDropdown(true)} activeOpacity={0.80}>
+                <Text style={rpt2.yearTxt}>YEAR  {year}</Text>
+                <Text style={rpt2.yearCaret}>▼</Text>
+              </TouchableOpacity>
+              <YearPickerModal visible={yearDropdown} year={year} years={years} onSelect={setYear} onClose={()=>setYearDropdown(false)} btnRef={yearBtnRef} />
+            </View>
+            {/* View toggle: Daily / Monthly / Yearly */}
+            {[['daily','Daily'],['monthly','Monthly'],['yearly','Yearly']].map(([k,l])=>(
+              <TouchableOpacity key={k} style={[rpt2.viewToggleBtn, creditsView===k&&rpt2.viewToggleBtnActive]} onPress={()=>setCreditsView(k)}>
+                <Text style={[rpt2.viewToggleTxt, creditsView===k&&rpt2.viewToggleTxtActive]}>{l}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Month tabs — only for daily view */}
+          {creditsView === 'daily' && (
+            <View style={{ flexDirection:'row', flexWrap:'wrap', gap:5, marginBottom:10 }}>
+              {MONTHS.map((m,i)=>(
+                <TouchableOpacity key={m} style={[rpt2.monthBtn, activeMonth===i&&rpt2.monthBtnActive]} onPress={()=>setActiveMonth(i)}>
+                  <Text style={[rpt2.monthTxt, activeMonth===i&&rpt2.monthTxtActive]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Table header */}
+          {creditsView === 'daily' && (
+            <View style={rpt2.thead}>
+              <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>DATE</Text>
+              <Text style={[rpt2.th,{flex:1.0}]}>CREDIT ORDERS</Text>
+              <Text style={[rpt2.th,{flex:1.2}]}>TOTAL CREDIT</Text>
+            </View>
+          )}
+          {creditsView === 'monthly' && (
+            <View style={rpt2.thead}>
+              <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>MONTH</Text>
+              <Text style={[rpt2.th,{flex:1.0}]}>CREDIT ORDERS</Text>
+              <Text style={[rpt2.th,{flex:1.2}]}>TOTAL CREDIT</Text>
+            </View>
+          )}
+          {creditsView === 'yearly' && (
+            <View style={rpt2.thead}>
+              <Text style={[rpt2.th,{flex:1.0,textAlign:'left',paddingLeft:10}]}>YEAR</Text>
+              <Text style={[rpt2.th,{flex:1.0}]}>CREDIT ORDERS</Text>
+              <Text style={[rpt2.th,{flex:1.2}]}>TOTAL CREDIT</Text>
+            </View>
+          )}
+
+          <WebScrollView style={{flex:1}} contentContainerStyle={{paddingBottom:16}}>
+
+            {/* ── DAILY ── */}
+            {creditsView === 'daily' && (
+              creditByDay.length===0
+                ? <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No credit orders for {MONTHS_FULL[activeMonth]} {year}</Text></View>
+                : creditByDay.map((g,idx)=>(
+                    <View key={g.key} style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]}>
+                      <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.key}</Text>
+                      <Text style={[rpt2.td,{flex:1.0}]}>{g.count}</Text>
+                      <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#c9a84c'}]}>₱{g.total.toFixed(2)}</Text>
+                    </View>
+                  ))
+            )}
+
+            {/* ── MONTHLY ── */}
+            {creditsView === 'monthly' && (
+              creditByMonth.every(m=>m.count===0)
+                ? <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No credit orders for {year}</Text></View>
+                : creditByMonth.map((m,idx)=>(
+                    <View key={m.month} style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]}>
+                      <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{m.monthFull} {year}</Text>
+                      <Text style={[rpt2.td,{flex:1.0}]}>{m.count}</Text>
+                      <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#c9a84c'}]}>₱{m.total.toFixed(2)}</Text>
+                    </View>
+                  ))
+            )}
+
+            {/* ── YEARLY ── */}
+            {creditsView === 'yearly' && (
+              creditByYear.length===0
+                ? <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No credit order data available</Text></View>
+                : creditByYear.map((y,idx)=>(
+                    <View key={y.year} style={[rpt2.trow,idx%2===0&&rpt2.trowAlt]}>
+                      <Text style={[rpt2.td,{flex:1.0,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{y.year}</Text>
+                      <Text style={[rpt2.td,{flex:1.0}]}>{y.count}</Text>
+                      <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#c9a84c'}]}>₱{y.total.toFixed(2)}</Text>
+                    </View>
+                  ))
+            )}
+
+          </WebScrollView>
         </View>
       );
     }
@@ -2300,7 +2635,6 @@ const rpt2 = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.55)',
     padding: 12,
-    overflow: 'hidden',
   },
 
   // Year picker
@@ -2314,7 +2648,7 @@ const rpt2 = StyleSheet.create({
   yearCaret:{ fontSize:11, color:'rgba(26,58,107,0.50)' },
   yearMenu: {
     position:'absolute', top:36, left:0, zIndex:9999,
-    backgroundColor:'rgba(255,255,255,0.99)',
+    backgroundColor:'#ffffff',
     borderRadius:10, borderWidth:1, borderColor:'rgba(26,58,107,0.18)',
     shadowColor:'#000', shadowOpacity:0.18, shadowRadius:12, elevation:20,
     minWidth:120, maxHeight:180,
