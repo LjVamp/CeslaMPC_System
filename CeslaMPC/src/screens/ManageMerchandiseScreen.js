@@ -70,6 +70,33 @@ const WebScrollView = ({ children, style, contentContainerStyle, horizontal, ...
   );
 };
 
+// ─── IMAGE RESIZE HELPER ──────────────────────────────────────────────────────
+// Resizes any image to max 300×300 and compresses to JPEG 0.5 using canvas.
+// Output is a base64 data-URL small enough to fit in a Firestore document (<50KB).
+// Works on both web and React Native Web (Expo web build).
+const resizeImageToBase64 = (uri) =>
+  new Promise((resolve, reject) => {
+    const MAX = 300;
+    if (Platform.OS === 'web') {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+        const w = Math.round(img.width  * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width  = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.5));
+      };
+      img.onerror = reject;
+      img.src = uri;
+    } else {
+      resolve(uri);
+    }
+  });
+
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const STORAGE_KEYS = {
   items:  'merch_items',
@@ -195,38 +222,58 @@ const autoEmoji = (name) => {
 
 const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
   const [form, setForm] = useState(item || emptyItem());
+
+  // FIX BUG 1: Only reset form when modal opens with a NEW item (different id),
+  // NOT on every re-render. Previously [item] fired after pickImage triggered a
+  // parent re-render, causing setForm to reset and wipe the just-picked image.
+  const prevIdRef = useRef(null);
   useEffect(() => {
-    if (item) {
-      const base = { ...item, price: String(item.price), stock: String(item.stock) };
-      // Backfill sizes for apparel items saved before sizes feature
-      if (isApparelCategory(base.cat) && (!Array.isArray(base.sizes) || base.sizes.length === 0)) {
-        base.sizes = defaultSizesForCat(base.cat);
-      } else if (!Array.isArray(base.sizes)) {
-        base.sizes = [];
+    if (!visible) { prevIdRef.current = null; return; }
+    const incomingId = item?.id ?? '__new__';
+    if (incomingId !== prevIdRef.current) {
+      prevIdRef.current = incomingId;
+      if (item) {
+        const base = { ...item, price: String(item.price), stock: String(item.stock) };
+        // Backfill sizes for apparel items saved before sizes feature
+        if (isApparelCategory(base.cat) && (!Array.isArray(base.sizes) || base.sizes.length === 0)) {
+          base.sizes = defaultSizesForCat(base.cat);
+        } else if (!Array.isArray(base.sizes)) {
+          base.sizes = [];
+        }
+        // Backfill colors array
+        if (!Array.isArray(base.colors)) {
+          base.colors = [];
+        }
+        setForm(base);
+      } else {
+        setForm(emptyItem());
       }
-      // Backfill colors array
-      if (!Array.isArray(base.colors)) {
-        base.colors = [];
-      }
-      setForm(base);
     }
-  }, [item]);
+  }, [visible, item?.id]);
 
   const pickImage = async () => {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photo library in Settings.');
+        return;
+      }
+    }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.6,
-      base64: true,
+      quality: 0.5,
+      base64: false,
     });
     if (!res.canceled) {
       const asset = res.assets[0];
-      const ext  = (asset.uri || '').split('.').pop().toLowerCase();
-      const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-      // Store as base64 data-URL so it persists in Firestore across refresh/back
-      const base64url = `data:${mime};base64,${asset.base64}`;
-      setForm(f => ({ ...f, image: base64url }));
+      try {
+        const resized = await resizeImageToBase64(asset.uri);
+        setForm(f => ({ ...f, image: resized }));
+      } catch (e) {
+        Alert.alert('Error', 'Could not process image. Please try a different photo.');
+      }
     }
   };
 
