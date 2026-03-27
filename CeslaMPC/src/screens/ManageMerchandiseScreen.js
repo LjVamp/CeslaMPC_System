@@ -17,9 +17,10 @@ import { NotoSerif_700Bold } from '@expo-google-fonts/noto-serif';
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useMerchandise } from '../context/MerchandiseContext';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 // ─── WEB SCROLLBAR STYLING ────────────────────────────────────────────────────
 if (Platform.OS === 'web') {
@@ -2967,16 +2968,42 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
     }
   };
 
-  const handleSaveAd = (updated) => {
+  const handleSaveAd = async (updated) => {
     if (updated.isNew) {
-      const newAd = { ...updated, id: Date.now().toString(), isNew: undefined, bg: ['#1a3a6b', '#2e5fa3'], emoji: updated.emoji || '📢' };
-      setAds(prev => [...prev, newAd]);
+      // New ad — save to Firestore so both web and mobile see it in real-time
+      const newAd = {
+        id: Date.now().toString(),
+        title: updated.title || '',
+        sub: updated.sub || '',
+        emoji: updated.emoji || '📢',
+        image: updated.image || null,
+        imageUrl: updated.imageUrl || '',
+        bg: updated.bg || ['#1a3a6b', '#2e5fa3'],
+      };
+      await saveAd(newAd);
     } else {
-      saveAd(updated);
+      // Existing ad — clean and save to Firestore
+      const cleanAd = {
+        id: updated.id,
+        title: updated.title || '',
+        sub: updated.sub || '',
+        emoji: updated.emoji || '📢',
+        image: updated.image || null,
+        imageUrl: updated.imageUrl || '',
+        bg: updated.bg || ['#1a3a6b', '#2e5fa3'],
+      };
+      await saveAd(cleanAd);
     }
     setEditAdModal(false);
   };
-  const handleDeleteAd = (id) => { setAds(prev => prev.filter(a => a.id !== id)); };
+  const handleDeleteAd = async (id) => {
+    // Delete from Firestore — real-time listener will update both web and mobile
+    try {
+      await deleteDoc(doc(db, 'merchandise_ads', id));
+    } catch (e) {
+      console.warn('handleDeleteAd error:', e);
+    }
+  };
 
   const pendingCount = items.filter(i => i.stock <= 5).length; // low stock alert
 
