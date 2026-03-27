@@ -11,6 +11,7 @@ import {
   useWindowDimensions, Platform, TextInput, Modal, Alert, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/noto-serif';
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
@@ -50,7 +51,7 @@ const ADULT_SIZES_REF = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 const KIDS_SIZES_REF  = ['2T', '3T', '4T', '5T', '6', '8', '10', '12', '14'];
 const needsSize = (item) => Array.isArray(item.sizes) && item.sizes.length > 0;
 
-// ─── LOGIN GATE MODAL ─────────────────────────────────────────────────────────
+// ─── LOGIN GATE ───────────────────────────────────────────────────────────────
 const LoginGate = ({ onLogin, onBack }) => {
   const [userId,   setUserId]   = useState('');
   const [password, setPassword] = useState('');
@@ -58,21 +59,18 @@ const LoginGate = ({ onLogin, onBack }) => {
   const [error,    setError]    = useState('');
   const [showPw,   setShowPw]   = useState(false);
 
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(40)).current;
+  const bodyFade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.spring(slideAnim, { toValue: 0, tension: 65, friction: 11, useNativeDriver: true }),
-    ]).start();
+    Animated.timing(bodyFade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
   }, []);
 
   const handleLogin = async () => {
-    if (!userId.trim() || !password) { setError('Please enter your User ID and password.'); return; }
+    if (!userId.trim()) { setError('Please enter your User ID.'); return; }
+    if (!password)      { setError('Please enter your password.'); return; }
     setLoading(true); setError('');
     try {
-      const member = await loginByUserIdFS(userId, password);
+      const member = await loginByUserIdFS(userId.trim(), password);
       onLogin(member);
     } catch (e) {
       setError(e.message || 'Login failed. Please try again.');
@@ -82,164 +80,107 @@ const LoginGate = ({ onLogin, onBack }) => {
   };
 
   return (
-    <Animated.View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, opacity: fadeAnim }}>
-      <Animated.View style={[loginStyles.card, { transform: [{ translateY: slideAnim }] }]}>
+    <ScrollView
+      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 32, paddingHorizontal: 20 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Animated.View style={{ width: '100%', maxWidth: 420, borderRadius: 22, backgroundColor: 'rgba(178,203,222,0.38)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)', padding: 24, alignItems: 'center', opacity: bodyFade }}>
 
-        {/* Icon */}
-        <View style={loginStyles.iconCircle}>
-          <Text style={{ fontSize: 36 }}>👤</Text>
+        {/* Logo */}
+        <LinearGradient colors={['#1a2d4e', '#304674']} style={{ width: 76, height: 76, borderRadius: 38, justifyContent: 'center', alignItems: 'center', borderWidth: 2.5, borderColor: '#c9a84c', marginBottom: 16 }}>
+          <Text style={{ fontSize: 32 }}>📦</Text>
+        </LinearGradient>
+        <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: '#0f1e35', textAlign: 'center', marginBottom: 4 }}>Merchandise Member Portal</Text>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(15,30,53,0.60)', textAlign: 'center', marginBottom: 14, lineHeight: 18 }}>CESLA Cooperative — Member Login</Text>
+
+        {/* Hint */}
+        <View style={{ width: '100%', backgroundColor: 'rgba(201,168,76,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(201,168,76,0.38)', padding: 10, marginBottom: 14 }}>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.80)', lineHeight: 17 }}>
+            🔑 Use your <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>CESLA Member User ID</Text> and password to login.
+          </Text>
         </View>
 
-        <Text style={loginStyles.title}>Member Login</Text>
-        <Text style={loginStyles.sub}>Sign in with your CESLA member account{'\n'}to access merchandise ordering.</Text>
-
-        {/* Error */}
-        {!!error && (
-          <View style={loginStyles.errorBox}>
-            <Text style={loginStyles.errorText}>⚠️  {error}</Text>
-          </View>
-        )}
-
         {/* User ID */}
-        <View style={loginStyles.fieldGroup}>
-          <Text style={loginStyles.label}>User ID</Text>
-          <TextInput
-            style={loginStyles.input}
-            placeholder="Enter your User ID"
-            placeholderTextColor="rgba(1,31,75,0.35)"
-            value={userId}
-            onChangeText={setUserId}
-            autoCapitalize="none"
-            editable={!loading}
-            {...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {})}
-          />
+        <View style={{ width: '100%', marginBottom: 10 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.55)', letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 4 }}>MEMBER USER ID</Text>
+          <View style={[{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(240,246,252,0.92)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)' }, !!error && { borderColor: '#e74c3c' }]}>
+            <TextInput
+              style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: '#0f1e35', flex: 1 }}
+              value={userId}
+              onChangeText={v => { setUserId(v); setError(''); }}
+              placeholder="e.g. CESLA-2026-00001"
+              placeholderTextColor="rgba(15,30,53,0.35)"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!loading}
+              {...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {})}
+            />
+          </View>
         </View>
 
         {/* Password */}
-        <View style={loginStyles.fieldGroup}>
-          <Text style={loginStyles.label}>Password</Text>
-          <View style={loginStyles.pwRow}>
+        <View style={{ width: '100%', marginBottom: 10 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.55)', letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 4 }}>PASSWORD</Text>
+          <View style={[{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(240,246,252,0.92)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)' }, !!error && { borderColor: '#e74c3c' }]}>
             <TextInput
-              style={[loginStyles.input, { flex: 1 }]}
-              placeholder="Enter your password"
-              placeholderTextColor="rgba(1,31,75,0.35)"
+              style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: '#0f1e35', flex: 1 }}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={v => { setPassword(v); setError(''); }}
+              placeholder="Enter your password"
+              placeholderTextColor="rgba(15,30,53,0.35)"
               secureTextEntry={!showPw}
+              autoCapitalize="none"
+              autoCorrect={false}
               editable={!loading}
               onSubmitEditing={handleLogin}
               {...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {})}
             />
-            <TouchableOpacity style={loginStyles.eyeBtn} onPress={() => setShowPw(p => !p)}>
-              <Text style={{ fontSize: 16 }}>{showPw ? '🙈' : '👁️'}</Text>
+            <TouchableOpacity onPress={() => setShowPw(p => !p)} style={{ padding: 6 }}>
+              <MaterialIcons name={showPw ? 'visibility-off' : 'visibility'} size={20} color="rgba(1,31,75,0.45)" />
             </TouchableOpacity>
           </View>
         </View>
 
+        {/* Error */}
+        {!!error && (
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, width: '100%', backgroundColor: 'rgba(231,76,60,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(231,76,60,0.28)', padding: 9, marginBottom: 6 }}>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: '#e74c3c', flex: 1, lineHeight: 17 }}>{error}</Text>
+          </View>
+        )}
+
         {/* Login button */}
         <TouchableOpacity
-          style={loginStyles.loginBtn}
+          style={{ width: '100%', borderRadius: 28, overflow: 'hidden', marginTop: 10, opacity: loading ? 0.65 : 1 }}
           onPress={handleLogin}
-          activeOpacity={0.85}
           disabled={loading}
+          activeOpacity={0.85}
         >
-          <LinearGradient
-            colors={loading ? ['#aaa', '#bbb'] : ['#1a3a6b', '#2c5282']}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={loginStyles.loginBtnGrad}
-          >
+          <LinearGradient colors={['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 14, alignItems: 'center', justifyContent: 'center' }}>
             {loading
-              ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={loginStyles.loginBtnText}>🔐  Sign In as Member</Text>
+              ? <ActivityIndicator color="#0f1e35" />
+              : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#0f1e35', letterSpacing: 1.5 }}>📦  ENTER MERCHANDISE</Text>
             }
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Back */}
-        <TouchableOpacity style={loginStyles.backBtn} onPress={onBack} activeOpacity={0.75}>
-          <Text style={loginStyles.backBtnText}>← Back to Portal</Text>
-        </TouchableOpacity>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.50)', textAlign: 'center', marginTop: 10, lineHeight: 17 }}>
+          Don't have an account? Register via the{' '}
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', color: '#c9a84c' }}>CESLA Cooperative Portal</Text>.
+        </Text>
 
       </Animated.View>
-    </Animated.View>
+    </ScrollView>
   );
 };
 
 const loginStyles = StyleSheet.create({
-  card: {
-    backgroundColor: 'rgba(255,255,255,0.88)',
-    borderRadius: 20, padding: 28,
-    width: '100%', maxWidth: 400,
-    alignItems: 'center', gap: 14,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.90)',
-    shadowColor: '#011f4b', shadowOpacity: 0.18,
-    shadowRadius: 24, shadowOffset: { width: 0, height: 6 }, elevation: 10,
-  },
-  iconCircle: {
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: 'rgba(26,58,107,0.10)',
-    borderWidth: 1.5, borderColor: 'rgba(26,58,107,0.18)',
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: 4,
-  },
-  title: {
-    fontFamily: 'NotoSerif_700Bold', fontSize: 20,
-    color: '#011f4b', letterSpacing: 0.5,
-  },
-  sub: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 13,
-    color: 'rgba(1,31,75,0.65)', textAlign: 'center', lineHeight: 19,
-  },
-  errorBox: {
-    width: '100%', backgroundColor: 'rgba(231,76,60,0.12)',
-    borderRadius: 10, padding: 10,
-    borderWidth: 1, borderColor: 'rgba(231,76,60,0.30)',
-  },
-  errorText: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 12,
-    color: '#c0392b', textAlign: 'center',
-  },
-  fieldGroup: { width: '100%', gap: 4 },
-  label: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 11,
-    color: 'rgba(1,31,75,0.60)', letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  input: {
-    backgroundColor: 'rgba(255,255,255,0.90)',
-    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
-    fontFamily: 'GoogleSans_400Regular', fontSize: 14,
-    color: '#011f4b', borderWidth: 1.5,
-    borderColor: 'rgba(1,31,75,0.18)',
-  },
-  pwRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  eyeBtn: {
-    width: 44, height: 44, borderRadius: 10,
-    backgroundColor: 'rgba(1,31,75,0.07)',
-    borderWidth: 1.5, borderColor: 'rgba(1,31,75,0.15)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  loginBtn: {
-    width: '100%', borderRadius: 12, overflow: 'hidden',
-    shadowColor: '#1a3a6b', shadowOpacity: 0.30,
-    shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
-    marginTop: 4,
-  },
-  loginBtnGrad: {
-    paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
-  },
-  loginBtnText: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 15,
-    color: '#fff', letterSpacing: 0.5,
-  },
   backBtn: {
-    paddingVertical: 8, paddingHorizontal: 16,
-    borderRadius: 8, marginTop: 2,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
   },
-  backBtnText: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 13,
-    color: 'rgba(1,31,75,0.55)',
-  },
+  backBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center', lineHeight: 20 },
 });
 
 // ─── SIZE PICKER MODAL ────────────────────────────────────────────────────────
@@ -750,6 +691,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
   const [sizePickerItem, setSizePickerItem] = useState(null);
   const [menuOpen,       setMenuOpen]       = useState(false);
   const [mainTab,        setMainTab]        = useState('order'); // 'order' | 'history' | 'credit'
+  const [creditTab,      setCreditTab]      = useState('unpaid'); // 'unpaid' | 'paid'
   const [orderHistory,   setOrderHistory]   = useState([]);
 
   const hdrFade  = useRef(new Animated.Value(0)).current;
@@ -785,6 +727,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
     setLastOrder(null);
     setOrderHistory([]);
     setMainTab('order');
+    setCreditTab('unpaid');
   };
 
   // Subscribe to member's merchandise orders from Firestore
@@ -896,6 +839,15 @@ export default function MerchandiseMemberScreen({ navigation }) {
       {/* HEADER */}
       <Animated.View style={{ opacity: hdrFade, transform: [{ translateY: hdrTrans }], marginTop: Platform.OS === 'web' ? 16 : 36, marginHorizontal: isSmall ? 8 : 10, zIndex: 100 }}>
         <View style={[styles.header, { paddingHorizontal: isWide ? 40 : 12, paddingVertical: isWide ? 16 : 7 }]}>
+          {/* Left: back button (login view) or spacer (logged in) */}
+          {!loggedIn ? (
+            <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.80}>
+              <Text style={styles.backIcon}>←</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 40 }} />
+          )}
+
           <View style={styles.headerCenter}>
             <Text style={[styles.headerH1, { fontSize: isWide ? 22 : isSmall ? 14 : 16 }]} numberOfLines={1} adjustsFontSizeToFit>
               <Text style={styles.headerGold}>CESLA </Text>Merchandise — Member
@@ -905,9 +857,9 @@ export default function MerchandiseMemberScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Right: avatar + firstName + menu icon */}
-          <View style={styles.headerRight}>
-            {loggedIn && member && (
+          {/* Right: avatar + firstName + menu icon (logged in only), else spacer */}
+          {loggedIn && member ? (
+            <View style={styles.headerRight}>
               <>
                 {member.photoURL ? (
                   <Image source={{ uri: member.photoURL }} style={styles.headerAvatar} />
@@ -922,16 +874,19 @@ export default function MerchandiseMemberScreen({ navigation }) {
                   {member.firstName || member.name?.split(' ')[0] || member.userId}
                 </Text>
               </>
-            )}
-            <TouchableOpacity style={styles.menuBtn} onPress={() => setMenuOpen(prev => !prev)} activeOpacity={0.75}>
-              <Text style={styles.menuIcon}>☰</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity style={styles.menuBtn} onPress={() => setMenuOpen(prev => !prev)} activeOpacity={0.75}>
+                <Text style={styles.menuIcon}>☰</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ width: 40 }} />
+          )}
 
-          {/* Dropdown */}
-          {menuOpen && (
+          {/* Dropdown (logged in only) */}
+          {menuOpen && loggedIn && (
             <View style={styles.dropdown}>
-              {loggedIn && [
+              {[
+                { icon: '🛒', label: 'Order Now',        tab: 'order'   },
                 { icon: '📋', label: 'My Order History', tab: 'history' },
                 { icon: '🪙', label: 'My Credit',        tab: 'credit'  },
               ].map(opt => (
@@ -941,19 +896,25 @@ export default function MerchandiseMemberScreen({ navigation }) {
                   onPress={() => { setMainTab(opt.tab); setMenuOpen(false); }}
                   activeOpacity={0.75}
                 >
-                  <Text style={[styles.dropdownItemText, { color: mainTab === opt.tab ? '#c9a84c' : 'rgba(255,255,255,0.85)', fontFamily: mainTab === opt.tab ? 'GoogleSans_700Bold' : 'GoogleSans_500Medium' }]}>
-                    {opt.icon}  {opt.label}
+                  <Text style={[styles.dropdownItemText, {
+                    fontFamily: mainTab === opt.tab ? 'GoogleSans_700Bold' : 'GoogleSans_500Medium',
+                    fontSize: 13,
+                    color: mainTab === opt.tab ? '#c9a84c' : 'rgba(255,255,255,0.85)',
+                  }]}>
+                    {opt.icon}{'  '}{opt.label}
                   </Text>
                   {mainTab === opt.tab && <View style={{ width:3, borderRadius:2, backgroundColor:'#c9a84c', position:'absolute', left:0, top:6, bottom:6 }} />}
                 </TouchableOpacity>
               ))}
-              {loggedIn && <View style={{ height:1, backgroundColor:'rgba(255,255,255,0.10)', marginVertical:4 }} />}
+              <View style={{ height:1, backgroundColor:'rgba(255,255,255,0.10)', marginVertical:4 }} />
               <TouchableOpacity
                 style={styles.dropdownItem}
-                onPress={() => { setMenuOpen(false); if (loggedIn) { handleLogout(); } else { handleBack(); } }}
+                onPress={() => { setMenuOpen(false); handleLogout(); }}
                 activeOpacity={0.75}
               >
-                <Text style={styles.dropdownItemText}>{loggedIn ? '🚪  Logout' : '← Back'}</Text>
+                <Text style={[styles.dropdownItemText, { fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)' }]}>
+                  🚪{'  '}Logout
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -961,7 +922,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
       </Animated.View>
 
       {/* BODY */}
-      <Animated.View style={[styles.body, { opacity: bodyFade }]}>
+      <Animated.View style={[styles.body, { opacity: bodyFade }, !loggedIn && { flexDirection: 'column' }]}>
         {!loggedIn ? (
           /* ─── LOGIN GATE ─── */
           <LoginGate onLogin={handleLogin} onBack={handleBack} />
@@ -1059,33 +1020,148 @@ export default function MerchandiseMemberScreen({ navigation }) {
 
           {/* ── CREDIT TAB ── */}
           {mainTab === 'credit' && (() => {
-            const creditBalance = typeof member?.credit === 'number' ? member.credit : 0;
-            const creditOrders  = orderHistory.filter(o => (o.payment || o.paymentMode) === 'credit');
-            const totalCreditUsed = creditOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+            const fmtDateTime = (ts) => {
+              try {
+                let d;
+                if (!ts) return '—';
+                if (ts?.toDate) d = ts.toDate();
+                else if (typeof ts === 'number') d = new Date(ts);
+                else d = new Date(ts);
+                if (isNaN(d.getTime())) return '—';
+                return d.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
+                  + ' · ' + d.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit', hour12:true });
+              } catch { return '—'; }
+            };
+
+            const creditOrders  = orderHistory.filter(o =>
+              (o.payment || o.paymentMode || '').toLowerCase() === 'credit'
+            );
+            const unpaidOrders  = creditOrders.filter(o => o.settled !== true);
+            const paidOrders    = creditOrders.filter(o => o.settled === true);
+            const totalUnpaid   = unpaidOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+            const totalPaid     = paidOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+            const displayOrders = creditTab === 'unpaid' ? unpaidOrders : paidOrders;
+
             return (
               <View style={{ flex:1, minHeight:0, alignItems:'stretch', paddingBottom: isWide ? 16 : 8 }}>
-              <View style={{ flex:1, width:'100%', maxWidth: isWide ? 800 : '100%', alignSelf:'center', paddingHorizontal: isWide ? 24 : 10, paddingTop:4, minHeight:0 }}>
-                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:1.8, textTransform:'uppercase', marginBottom:14 }}>🪙 My Credit</Text>
-                {/* Credit balance card */}
-                <View style={{ backgroundColor:'rgba(201,168,76,0.12)', borderRadius:16, borderWidth:1, borderColor:'rgba(201,168,76,0.35)', padding:20, marginBottom:16, alignItems:'center' }}>
-                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.55)', marginBottom:4 }}>Available Credit Balance</Text>
-                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:32, color:'#c9a84c' }}>₱{creditBalance.toFixed(2)}</Text>
-                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.45)', marginTop:6 }}>Member: {member?.fullName || member?.name || member?.userId}</Text>
+              <View style={{ flex:1, width:'100%', maxWidth: isWide ? 1100 : '100%', alignSelf:'center', paddingHorizontal: isWide ? 24 : 10, paddingTop:4, minHeight:0 }}>
+
+                {/* ── Page header ── */}
+                <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:2, textTransform:'uppercase' }}>🪙 My Credit</Text>
+                  {unpaidOrders.length > 0 && (
+                    <View style={{ backgroundColor:'rgba(201,168,76,0.18)', borderRadius:20, paddingHorizontal:9, paddingVertical:3, borderWidth:1, borderColor:'rgba(201,168,76,0.38)' }}>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#8a5c00' }}>
+                        {unpaidOrders.length} unpaid
+                      </Text>
+                    </View>
+                  )}
                 </View>
-                {/* Stats row */}
-                <View style={{ flexDirection:'row', gap:12, marginBottom:16 }}>
-                  <View style={{ flex:1, backgroundColor:'rgba(255,255,255,0.55)', borderRadius:12, borderWidth:1, borderColor:'rgba(200,218,235,0.80)', padding:14, alignItems:'center' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#1a2d4e' }}>{creditOrders.length}</Text>
-                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:2 }}>Credit Orders</Text>
-                  </View>
-                  <View style={{ flex:1, backgroundColor:'rgba(255,255,255,0.55)', borderRadius:12, borderWidth:1, borderColor:'rgba(200,218,235,0.80)', padding:14, alignItems:'center' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#c9a84c' }}>₱{totalCreditUsed.toFixed(2)}</Text>
-                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:2 }}>Total Credit Used</Text>
-                  </View>
+
+                {/* ── Summary tab cards ── */}
+                <View style={{ flexDirection:'row', gap:8, marginBottom:8 }}>
+                  <TouchableOpacity onPress={() => setCreditTab('unpaid')} activeOpacity={0.85} style={{ flex:1, borderRadius:10, overflow:'hidden' }}>
+                    <View style={{ padding:10, borderRadius:10, borderWidth: creditTab === 'unpaid' ? 1.5 : 1, borderColor: creditTab === 'unpaid' ? '#c9a84c' : 'rgba(255,255,255,0.70)', backgroundColor: creditTab === 'unpaid' ? '#1a2d4e' : 'rgba(255,255,255,0.50)' }}>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, letterSpacing:1.2, textTransform:'uppercase', marginBottom:3, color: creditTab === 'unpaid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.40)' }}>Unpaid</Text>
+                      <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:17, lineHeight:20, color: creditTab === 'unpaid' ? '#c9a84c' : '#c87a1a' }}>₱ {totalUnpaid.toFixed(2)}</Text>
+                      <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:9, marginTop:2, color: creditTab === 'unpaid' ? 'rgba(255,255,255,0.38)' : 'rgba(1,31,75,0.40)' }}>{unpaidOrders.length} order{unpaidOrders.length !== 1 ? 's' : ''}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setCreditTab('paid')} activeOpacity={0.85} style={{ flex:1, borderRadius:10, overflow:'hidden' }}>
+                    <View style={{ padding:10, borderRadius:10, borderWidth: creditTab === 'paid' ? 1.5 : 1, borderColor: creditTab === 'paid' ? '#27ae60' : 'rgba(255,255,255,0.70)', backgroundColor: creditTab === 'paid' ? '#0f3320' : 'rgba(255,255,255,0.50)' }}>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, letterSpacing:1.2, textTransform:'uppercase', marginBottom:3, color: creditTab === 'paid' ? 'rgba(255,255,255,0.45)' : 'rgba(1,31,75,0.40)' }}>Paid</Text>
+                      <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:17, lineHeight:20, color: creditTab === 'paid' ? '#3edb82' : '#27ae60' }}>₱ {totalPaid.toFixed(2)}</Text>
+                      <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:9, marginTop:2, color: creditTab === 'paid' ? 'rgba(255,255,255,0.38)' : 'rgba(1,31,75,0.40)' }}>{paidOrders.length} order{paidOrders.length !== 1 ? 's' : ''}</Text>
+                    </View>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => setMainTab('order')} style={{ backgroundColor:'#1a2d4e', borderRadius:12, paddingVertical:12, alignItems:'center' }}>
-                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#c9a84c' }}>🛒  Shop Now</Text>
-                </TouchableOpacity>
+
+                {/* ── Notice banner ── */}
+                {creditTab === 'unpaid' && unpaidOrders.length > 0 && (
+                  <View style={{ flexDirection:'row', alignItems:'flex-start', gap:8, padding:9, borderRadius:9, marginBottom:10, backgroundColor:'rgba(201,168,76,0.10)', borderWidth:1, borderColor:'rgba(201,168,76,0.28)' }}>
+                    <Text style={{ fontSize:12 }}>⚠️</Text>
+                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.68)', lineHeight:17, flex:1 }}>
+                      Ang mga orders nga <Text style={{ fontFamily:'GoogleSans_700Bold', color:'rgba(1,31,75,0.82)' }}>Credit</Text> ang payment kay ilusot sa imong sweldo o dividend sa payday. Kontaka ang merchandise admin para ma-mark as paid.
+                    </Text>
+                  </View>
+                )}
+                {creditTab === 'unpaid' && unpaidOrders.length === 0 && creditOrders.length > 0 && (
+                  <View style={{ flexDirection:'row', alignItems:'center', gap:8, padding:9, borderRadius:9, marginBottom:10, backgroundColor:'rgba(39,174,96,0.10)', borderWidth:1, borderColor:'rgba(39,174,96,0.28)' }}>
+                    <Text style={{ fontSize:14 }}>🎉</Text>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#165c2e', flex:1 }}>Wala nay unpaid credit! Bayad naka tanan.</Text>
+                  </View>
+                )}
+
+                {/* ── Table ── */}
+                {creditOrders.length === 0 ? (
+                  <View style={{ alignItems:'center', paddingVertical:36, backgroundColor:'rgba(255,255,255,0.32)', borderRadius:12 }}>
+                    <Text style={{ fontSize:28, marginBottom:8 }}>🪙</Text>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'rgba(1,31,75,0.48)', textAlign:'center' }}>Wala pay credit orders</Text>
+                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.38)', textAlign:'center', marginTop:4 }}>Mag-order gamit Credit para makita diri.</Text>
+                  </View>
+                ) : displayOrders.length === 0 ? (
+                  <View style={{ alignItems:'center', paddingVertical:28, backgroundColor:'rgba(255,255,255,0.32)', borderRadius:12 }}>
+                    <Text style={{ fontSize:24, marginBottom:6 }}>{creditTab === 'unpaid' ? '🎉' : '📋'}</Text>
+                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.43)', textAlign:'center' }}>
+                      {creditTab === 'unpaid' ? 'Wala nay unpaid orders!' : 'Wala pay paid orders.'}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={mTbl.tableWrap}>
+                    {/* Table header */}
+                    <View style={mTbl.thead}>
+                      <Text style={[mTbl.hCell, { width:110 }]}>DATE / ORDER</Text>
+                      <View style={mTbl.hDivider}/>
+                      <Text style={[mTbl.hCell, { flex:1 }]}>ITEMS</Text>
+                      <View style={mTbl.hDivider}/>
+                      <Text style={[mTbl.hCell, { width:120, textAlign:'center' }]}>TOTAL AMOUNT</Text>
+                      <View style={mTbl.hDivider}/>
+                      <Text style={[mTbl.hCell, { width:110, textAlign:'center' }]}>STATUS</Text>
+                    </View>
+                    <ScrollView showsVerticalScrollIndicator={true} style={{ flex:1 }}>
+                      {displayOrders.map((order, idx) => {
+                        const orderItems = order.items || [];
+                        const total      = Number(order.total || 0);
+                        const isSettled  = order.settled === true;
+                        const isEven     = idx % 2 === 0;
+                        return (
+                          <View key={order.docId || idx} style={[mTbl.row, isEven && mTbl.rowEven, idx === displayOrders.length - 1 && { borderBottomWidth:0 }]}>
+                            {/* Order # + date */}
+                            <View style={[mTbl.cell, { width:110 }]}>
+                              <Text style={mTbl.ordNo}>#{order.orderNo || '—'}</Text>
+                              <Text style={mTbl.ordDate}>{fmtDateTime(order.createdAt)}</Text>
+                            </View>
+                            {/* Items */}
+                            <View style={[mTbl.cell, { flex:1 }]}>
+                              {orderItems.slice(0,2).map((it, j) => {
+                                const item = it.item || it;
+                                const qty  = it.qty || it.quantity || 1;
+                                return (
+                                  <Text key={j} style={mTbl.itemLine} numberOfLines={1}>
+                                    {item.name} ×{qty}
+                                  </Text>
+                                );
+                              })}
+                              {orderItems.length > 2 && (
+                                <Text style={[mTbl.itemLine, { color:'rgba(1,31,75,0.38)', fontSize:10 }]}>+{orderItems.length - 2} more</Text>
+                              )}
+                            </View>
+                            {/* Amount */}
+                            <View style={[mTbl.cell, { width:120, alignItems:'center' }]}>
+                              <Text style={[mTbl.total, { color: isSettled ? '#27ae60' : '#c9a84c' }]}>₱{total.toFixed(2)}</Text>
+                            </View>
+                            {/* Status */}
+                            <View style={[mTbl.cell, { width:110, alignItems:'center' }]}>
+                              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color: isSettled ? '#27ae60' : '#c9a84c' }}>
+                                {isSettled ? 'Paid' : 'Unpaid'}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
               </View>
               </View>
             );

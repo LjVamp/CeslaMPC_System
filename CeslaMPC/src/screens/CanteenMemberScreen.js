@@ -1304,98 +1304,63 @@ export default function CanteenMemberScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Right side: menu icon if logged in, else spacer */}
+          {/* Right side: avatar + firstName + menu icon if logged in, else spacer */}
           {member && !loginView ? (
-            <View style={{ position: 'relative' }}>
-              <TouchableOpacity
-                style={[styles.backBtn, { backgroundColor: 'rgba(201,168,76,0.25)', borderColor: 'rgba(201,168,76,0.50)' }]}
-                onPress={() => setMenuOpen(o => !o)}
-                activeOpacity={0.80}
-              >
-                <Text style={{ color: '#c9a84c', fontSize: 16, fontWeight: '700', lineHeight: 18 }}>☰</Text>
+            <View style={styles.headerRight}>
+              {/* Profile pic + firstName */}
+              <>
+                {member.photoURL ? (
+                  <Image source={{ uri: member.photoURL }} style={styles.headerAvatar} />
+                ) : (
+                  <View style={styles.headerAvatarFallback}>
+                    <Text style={styles.headerAvatarInitial}>
+                      {(member.firstName || member.name || '?')[0].toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.headerFirstName} numberOfLines={1}>
+                  {member.firstName || member.name?.split(' ')[0] || member.userId}
+                </Text>
+              </>
+
+              {/* Menu button */}
+              <TouchableOpacity style={styles.menuBtn} onPress={() => setMenuOpen(o => !o)} activeOpacity={0.80}>
+                <Text style={styles.menuIcon}>☰</Text>
               </TouchableOpacity>
 
               {/* Dropdown menu */}
               {menuOpen && (
-                <>
-                  {/* Backdrop to close on outside tap */}
-                  <TouchableOpacity
-                    style={Platform.OS === 'web'
-                      ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 98 }
-                      : { position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 98 }
-                    }
-                    activeOpacity={1}
-                    onPress={() => setMenuOpen(false)}
-                  />
-                  <View style={{
-                    position: 'absolute', top: 46, right: 0, zIndex: 99,
-                    backgroundColor: '#1a2d4e',
-                    borderRadius: 14,
-                    borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.40)',
-                    shadowColor: '#000', shadowOpacity: 0.30, shadowRadius: 16,
-                    shadowOffset: { width: 0, height: 6 }, elevation: 16,
-                    minWidth: 180, overflow: 'hidden',
-                  }}>
-                    {/* Member info header */}
-                    <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.20)' }}>
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c9a84c' }} numberOfLines={1}>
-                        {member.name || 'Member'}
-                      </Text>
-                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>
-                        {member.userId || ''}
-                      </Text>
-                    </View>
-
-                    {/* Menu options */}
-                    {[
+                <View style={styles.dropdown}>
+                  {[
                       { icon: '🛒', label: 'Order Now',        tab: 'order'   },
-                      { icon: '📋', label: 'My Order History', tab: 'history' },
+                      { icon: '📋', label: 'Order History', tab: 'history' },
                       { icon: '🪙', label: 'My Credit',        tab: 'credit'  },
                     ].map(opt => (
                       <TouchableOpacity
                         key={opt.tab}
                         onPress={() => { setMainTab(opt.tab); setMenuOpen(false); if (loginView) return; }}
                         activeOpacity={0.75}
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 10,
-                          paddingHorizontal: 16, paddingVertical: 13,
-                          borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-                          backgroundColor: mainTab === opt.tab ? 'rgba(201,168,76,0.15)' : 'transparent',
-                        }}
+                        style={[styles.dropdownItem, { backgroundColor: mainTab === opt.tab ? 'rgba(201,168,76,0.15)' : 'transparent' }]}
                       >
-                        <Text style={{ fontSize: 15 }}>{opt.icon}</Text>
-                        <Text style={{
+                        <Text style={[styles.dropdownItemText, {
                           fontFamily: mainTab === opt.tab ? 'GoogleSans_700Bold' : 'GoogleSans_500Medium',
                           fontSize: 13,
                           color: mainTab === opt.tab ? '#c9a84c' : 'rgba(255,255,255,0.85)',
-                        }}>
-                          {opt.label}
+                        }]}>
+                          {opt.icon}{'  '}{opt.label}
                         </Text>
-                        {mainTab === opt.tab && (
-                          <View style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: 3, backgroundColor: '#c9a84c' }} />
-                        )}
+                        {mainTab === opt.tab && <View style={{ width:3, borderRadius:2, backgroundColor:'#c9a84c', position:'absolute', left:0, top:6, bottom:6 }} />}
                       </TouchableOpacity>
                     ))}
-
-                    {/* Divider */}
-                    <View style={{ height: 1, backgroundColor: 'rgba(201,168,76,0.20)', marginVertical: 2 }} />
-
-                    {/* Logout */}
-                    <TouchableOpacity
-                      onPress={() => { setMenuOpen(false); handleLogout(); }}
-                      activeOpacity={0.75}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 10,
-                        paddingHorizontal: 16, paddingVertical: 13,
-                      }}
-                    >
-                      <Text style={{ fontSize: 15 }}>↩</Text>
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e74c3c' }}>
-                        Logout
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
+                  <View style={{ height:1, backgroundColor:'rgba(255,255,255,0.10)', marginVertical:4 }} />
+                  <TouchableOpacity
+                    style={styles.dropdownItem}
+                    onPress={() => { setMenuOpen(false); handleLogout(); }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.dropdownItemText}>🚪  Logout</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           ) : (
@@ -1971,6 +1936,49 @@ const styles = StyleSheet.create({
     justifyContent:'center', alignItems:'center', flexShrink:0, position:'relative',
   },
   backIcon: { color:'#fff', fontSize:16, fontWeight:'600', textAlign:'center', lineHeight:20 },
+  headerRight: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
+  },
+  headerAvatar: {
+    width: 32, height: 32, borderRadius: 16,
+    borderWidth: 2, borderColor: '#c9a84c',
+  },
+  headerAvatarFallback: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(201,168,76,0.25)',
+    borderWidth: 2, borderColor: '#c9a84c',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  headerAvatarInitial: {
+    fontFamily: 'NotoSerif_700Bold', fontSize: 13, color: '#c9a84c',
+  },
+  headerFirstName: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff',
+    maxWidth: 72, letterSpacing: 0.3,
+  },
+  menuBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  menuIcon: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  dropdown: {
+    position: 'absolute', top: '100%', right: 0,
+    marginTop: 6, minWidth: 160,
+    backgroundColor: '#1e3a5f',
+    borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(201,168,76,0.30)',
+    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 }, elevation: 10,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    paddingVertical: 13, paddingHorizontal: 18,
+  },
+  dropdownItemText: {
+    fontFamily: 'GoogleSans_500Medium', fontSize: 14, color: '#fff', letterSpacing: 0.3,
+  },
   headerCenter: { flex:1, alignItems:'center', paddingHorizontal:10 },
   headerH1: {
     fontFamily:'NotoSerif_700Bold', fontWeight:'700',
