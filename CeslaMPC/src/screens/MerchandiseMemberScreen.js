@@ -20,7 +20,7 @@ import { useMerchandise } from '../context/MerchandiseContext';
 // ── Firebase ──────────────────────────────────────────────────────────────────
 import {
   collection, query, where, getDocs, doc,
-  updateDoc, serverTimestamp,
+  updateDoc, serverTimestamp, onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -749,6 +749,8 @@ export default function MerchandiseMemberScreen({ navigation }) {
   const [lastOrder,      setLastOrder]      = useState(null);
   const [sizePickerItem, setSizePickerItem] = useState(null);
   const [menuOpen,       setMenuOpen]       = useState(false);
+  const [mainTab,        setMainTab]        = useState('order'); // 'order' | 'history' | 'credit'
+  const [orderHistory,   setOrderHistory]   = useState([]);
 
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
@@ -781,7 +783,28 @@ export default function MerchandiseMemberScreen({ navigation }) {
     setLoggedIn(false);
     setCart({});
     setLastOrder(null);
+    setOrderHistory([]);
+    setMainTab('order');
   };
+
+  // Subscribe to member's merchandise orders from Firestore
+  useEffect(() => {
+    if (!loggedIn || !member?.uid) return;
+    const q = query(
+      collection(db, 'merchandise_orders'),
+      where('memberId', '==', member.uid)
+    );
+    const unsub = onSnapshot(q, snap => {
+      const rows = snap.docs.map(d => ({ docId: d.id, ...d.data() }));
+      rows.sort((a, b) => {
+        const ta = a.createdAt?.toDate?.() || new Date(a.createdAt || 0);
+        const tb = b.createdAt?.toDate?.() || new Date(b.createdAt || 0);
+        return tb - ta;
+      });
+      setOrderHistory(rows);
+    }, err => console.warn('merchandise orderHistory snapshot error:', err.message));
+    return () => unsub();
+  }, [loggedIn, member?.uid]);
 
   const addToCart = (item, size) => {
     if (needsSize(item) && !size) { setSizePickerItem(item); return; }
@@ -908,6 +931,23 @@ export default function MerchandiseMemberScreen({ navigation }) {
           {/* Dropdown */}
           {menuOpen && (
             <View style={styles.dropdown}>
+              {loggedIn && [
+                { icon: '📋', label: 'My Order History', tab: 'history' },
+                { icon: '🪙', label: 'My Credit',        tab: 'credit'  },
+              ].map(opt => (
+                <TouchableOpacity
+                  key={opt.tab}
+                  style={[styles.dropdownItem, { backgroundColor: mainTab === opt.tab ? 'rgba(201,168,76,0.15)' : 'transparent' }]}
+                  onPress={() => { setMainTab(opt.tab); setMenuOpen(false); }}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.dropdownItemText, { color: mainTab === opt.tab ? '#c9a84c' : 'rgba(255,255,255,0.85)', fontFamily: mainTab === opt.tab ? 'GoogleSans_700Bold' : 'GoogleSans_500Medium' }]}>
+                    {opt.icon}  {opt.label}
+                  </Text>
+                  {mainTab === opt.tab && <View style={{ width:3, borderRadius:2, backgroundColor:'#c9a84c', position:'absolute', left:0, top:6, bottom:6 }} />}
+                </TouchableOpacity>
+              ))}
+              {loggedIn && <View style={{ height:1, backgroundColor:'rgba(255,255,255,0.10)', marginVertical:4 }} />}
               <TouchableOpacity
                 style={styles.dropdownItem}
                 onPress={() => { setMenuOpen(false); if (loggedIn) { handleLogout(); } else { handleBack(); } }}
@@ -926,8 +966,133 @@ export default function MerchandiseMemberScreen({ navigation }) {
           /* ─── LOGIN GATE ─── */
           <LoginGate onLogin={handleLogin} onBack={handleBack} />
         ) : (
-          /* ─── ORDERING UI (same as MerchandiseScreen) ─── */
+          /* ─── LOGGED IN ─── */
           <>
+          {/* ── HISTORY TAB ── */}
+          {mainTab === 'history' && (() => {
+            const fmtDateTime = (ts) => {
+              try {
+                let d;
+                if (!ts) return '—';
+                if (ts?.toDate) d = ts.toDate();
+                else if (typeof ts === 'number') d = new Date(ts);
+                else d = new Date(ts);
+                if (isNaN(d.getTime())) return '—';
+                return d.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
+                  + ' · ' + d.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit', hour12:true });
+              } catch { return '—'; }
+            };
+            return (
+              <View style={{ flex:1, minHeight:0, alignItems:'stretch', paddingBottom: isWide ? 16 : 8 }}>
+              <View style={{ flex:1, width:'100%', maxWidth: isWide ? 1100 : '100%', alignSelf:'center', paddingHorizontal: isWide ? 24 : 10, paddingTop:4, minHeight:0 }}>
+                <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:1.8, textTransform:'uppercase' }}>📋 My Order History</Text>
+                  <View style={{ backgroundColor:'rgba(1,31,75,0.08)', borderRadius:6, paddingHorizontal:8, paddingVertical:3 }}>
+                    <Text style={{ fontFamily:'GoogleSans_500Medium', fontSize:10, color:'rgba(1,31,75,0.50)' }}>{orderHistory.length} order{orderHistory.length !== 1 ? 's' : ''}</Text>
+                  </View>
+                </View>
+                {orderHistory.length === 0 ? (
+                  <View style={{ alignItems:'center', paddingVertical:60 }}>
+                    <Text style={{ fontSize:48, marginBottom:12 }}>📋</Text>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:15, color:'rgba(1,31,75,0.55)', textAlign:'center' }}>No orders yet</Text>
+                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.40)', textAlign:'center', marginTop:6 }}>Your merchandise orders will appear here.</Text>
+                    <TouchableOpacity onPress={() => setMainTab('order')} style={{ marginTop:18, backgroundColor:'#1a2d4e', borderRadius:12, paddingHorizontal:24, paddingVertical:10 }}>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#c9a84c' }}>Shop Now →</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={mTbl.tableWrap}>
+                    <View style={mTbl.thead}>
+                      <Text style={[mTbl.hCell, { width:110 }]}>DATE / ORDER</Text>
+                      <View style={mTbl.hDivider}/>
+                      <Text style={[mTbl.hCell, { flex:1 }]}>ITEMS</Text>
+                      <View style={mTbl.hDivider}/>
+                      <Text style={[mTbl.hCell, { width:90, textAlign:'center' }]}>PAYMENT</Text>
+                      <View style={mTbl.hDivider}/>
+                      <Text style={[mTbl.hCell, { width:100, textAlign:'center' }]}>TOTAL</Text>
+                      <View style={mTbl.hDivider}/>
+                      <Text style={[mTbl.hCell, { width:90, textAlign:'center' }]}>STATUS</Text>
+                    </View>
+                    <ScrollView showsVerticalScrollIndicator={true} style={{ flex:1 }}>
+                      {orderHistory.map((order, idx) => {
+                        const orderItems  = order.items || [];
+                        const total       = order.total || 0;
+                        const pm          = order.payment || order.paymentMode || 'cash';
+                        const pmLabel     = pm === 'gcash' ? 'GCash' : pm === 'credit' ? 'Credit' : 'Cash';
+                        const pmColor     = pm === 'credit' ? '#c9a84c' : pm === 'gcash' ? '#3498db' : '#27ae60';
+                        const statusColor = order.status === 'done' ? '#27ae60' : order.status === 'ready' ? '#2980b9' : order.status === 'preparing' ? '#e67e22' : '#95a5a6';
+                        const statusLabel = order.status === 'done' ? 'Completed' : order.status === 'ready' ? 'Ready' : order.status === 'preparing' ? 'Preparing' : 'Pending';
+                        const isEven = idx % 2 === 0;
+                        return (
+                          <View key={order.docId || idx} style={[mTbl.row, isEven && mTbl.rowEven, idx === orderHistory.length - 1 && { borderBottomWidth:0 }]}>
+                            <View style={[mTbl.cell, { width:110 }]}>
+                              <Text style={mTbl.ordNo}>#{order.orderNo || '—'}</Text>
+                              <Text style={mTbl.ordDate}>{fmtDateTime(order.createdAt)}</Text>
+                            </View>
+                            <View style={[mTbl.cell, { flex:1 }]}>
+                              {orderItems.slice(0,2).map((it, j) => {
+                                const item = it.item || it;
+                                const qty  = it.qty || it.quantity || 1;
+                                return <Text key={j} style={mTbl.itemLine} numberOfLines={1}>{item.name} ×{qty}</Text>;
+                              })}
+                              {orderItems.length > 2 && <Text style={[mTbl.itemLine, { color:'rgba(1,31,75,0.38)', fontSize:10 }]}>+{orderItems.length - 2} more</Text>}
+                            </View>
+                            <View style={[mTbl.cell, { width:90, alignItems:'center' }]}>
+                              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color: pmColor }}>{pmLabel}</Text>
+                            </View>
+                            <View style={[mTbl.cell, { width:100, alignItems:'center' }]}>
+                              <Text style={mTbl.total}>₱{Number(total).toFixed(2)}</Text>
+                            </View>
+                            <View style={[mTbl.cell, { width:90, alignItems:'center' }]}>
+                              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color: statusColor }}>{statusLabel}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+              </View>
+            );
+          })()}
+
+          {/* ── CREDIT TAB ── */}
+          {mainTab === 'credit' && (() => {
+            const creditBalance = typeof member?.credit === 'number' ? member.credit : 0;
+            const creditOrders  = orderHistory.filter(o => (o.payment || o.paymentMode) === 'credit');
+            const totalCreditUsed = creditOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+            return (
+              <View style={{ flex:1, minHeight:0, alignItems:'stretch', paddingBottom: isWide ? 16 : 8 }}>
+              <View style={{ flex:1, width:'100%', maxWidth: isWide ? 800 : '100%', alignSelf:'center', paddingHorizontal: isWide ? 24 : 10, paddingTop:4, minHeight:0 }}>
+                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:1.8, textTransform:'uppercase', marginBottom:14 }}>🪙 My Credit</Text>
+                {/* Credit balance card */}
+                <View style={{ backgroundColor:'rgba(201,168,76,0.12)', borderRadius:16, borderWidth:1, borderColor:'rgba(201,168,76,0.35)', padding:20, marginBottom:16, alignItems:'center' }}>
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.55)', marginBottom:4 }}>Available Credit Balance</Text>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:32, color:'#c9a84c' }}>₱{creditBalance.toFixed(2)}</Text>
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.45)', marginTop:6 }}>Member: {member?.fullName || member?.name || member?.userId}</Text>
+                </View>
+                {/* Stats row */}
+                <View style={{ flexDirection:'row', gap:12, marginBottom:16 }}>
+                  <View style={{ flex:1, backgroundColor:'rgba(255,255,255,0.55)', borderRadius:12, borderWidth:1, borderColor:'rgba(200,218,235,0.80)', padding:14, alignItems:'center' }}>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#1a2d4e' }}>{creditOrders.length}</Text>
+                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:2 }}>Credit Orders</Text>
+                  </View>
+                  <View style={{ flex:1, backgroundColor:'rgba(255,255,255,0.55)', borderRadius:12, borderWidth:1, borderColor:'rgba(200,218,235,0.80)', padding:14, alignItems:'center' }}>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:18, color:'#c9a84c' }}>₱{totalCreditUsed.toFixed(2)}</Text>
+                    <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:2 }}>Total Credit Used</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setMainTab('order')} style={{ backgroundColor:'#1a2d4e', borderRadius:12, paddingVertical:12, alignItems:'center' }}>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#c9a84c' }}>🛒  Shop Now</Text>
+                </TouchableOpacity>
+              </View>
+              </View>
+            );
+          })()}
+
+          {/* ── ORDERING UI ── */}
+          {mainTab === 'order' && (<>
             {/* LEFT — Categories */}
             {isWide && (
               <View style={styles.catPanel}>
@@ -1024,6 +1189,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
                 </LinearGradient>
               </TouchableOpacity>
             )}
+          </>)}
           </>
         )}
       </Animated.View>
@@ -1322,4 +1488,38 @@ const styles = StyleSheet.create({
   floatCart: { position: 'absolute', bottom: 28, left: 0, right: 0, alignItems: 'center' },
   floatCartGradient: { borderRadius: 30, paddingVertical: 10, paddingHorizontal: 32, alignItems: 'center' },
   floatCartText: { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#0d1b3e', fontWeight: '700' },
+});
+
+const mTbl = StyleSheet.create({
+  tableWrap: {
+    backgroundColor:'rgba(255,255,255,0.55)',
+    borderRadius:10, borderWidth:1,
+    borderColor:'rgba(200,218,235,0.80)',
+    overflow:'hidden', flex:1, minHeight:0,
+    shadowColor:'#011f4b', shadowOpacity:0.06,
+    shadowRadius:8, shadowOffset:{width:0,height:2}, elevation:2,
+  },
+  thead: {
+    flexDirection:'row', alignItems:'center',
+    backgroundColor:'rgba(220,232,242,0.95)',
+    borderBottomWidth:1.5, borderColor:'rgba(180,205,225,0.90)',
+    paddingVertical:10,
+  },
+  hCell: {
+    fontFamily:'GoogleSans_700Bold', fontSize:9,
+    color:'rgba(1,31,75,0.55)', letterSpacing:1.8,
+    textTransform:'uppercase', paddingHorizontal:14,
+  },
+  hDivider: { width:1, alignSelf:'stretch', backgroundColor:'rgba(180,205,225,0.70)' },
+  row: {
+    flexDirection:'row', alignItems:'center',
+    borderBottomWidth:1, borderColor:'rgba(200,218,235,0.55)',
+    paddingVertical:11, backgroundColor:'rgba(255,255,255,0.30)',
+  },
+  rowEven: { backgroundColor:'rgba(210,228,242,0.35)' },
+  cell: { paddingHorizontal:14 },
+  ordNo:    { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#0f1e35' },
+  ordDate:  { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.45)', marginTop:2, lineHeight:13 },
+  itemLine: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.72)', lineHeight:15 },
+  total:    { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#27ae60' },
 });

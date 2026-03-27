@@ -695,6 +695,9 @@ export default function CanteenVisitor({ navigation }) {
   const [cartOpen, setCartOpen] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
+  const [menuOpen,     setMenuOpen]     = useState(false);
+  const [mainTab,      setMainTab]      = useState('order'); // 'order' | 'history'
+  const [orderHistory, setOrderHistory] = useState([]);
 
   // Queue status tracking
   const [queueVisible,   setQueueVisible]   = useState(false);
@@ -805,6 +808,9 @@ export default function CanteenVisitor({ navigation }) {
     setLastOrder({ ...orderData, orderNo, time, id: trackedId });
     setCartOpen(false);
     clearCart();
+
+    // Push to session order history
+    setOrderHistory(prev => [{ ...fullOrder, docId: trackedId, createdAt: now }, ...prev]);
 
     // Start tracking with the real Firestore ID
     setTrackedOrderId(trackedId);
@@ -969,15 +975,138 @@ export default function CanteenVisitor({ navigation }) {
             </View>
           </View>
 
-          {/* Menu icon — same as Web, no cart icon */}
-          <TouchableOpacity style={styles.backBtn}>
+          {/* Menu icon */}
+          <TouchableOpacity style={styles.backBtn} onPress={() => setMenuOpen(v => !v)}>
             <Text style={{ color:'#fff', fontSize:18, textAlign:'center', lineHeight:22, includeFontPadding:false }}>≡</Text>
           </TouchableOpacity>
+
+          {/* Dropdown */}
+          {menuOpen && (
+            <View style={styles.dropdown}>
+              {[
+                { icon: '📋', label: 'My Order History', tab: 'history' },
+              ].map(opt => (
+                <TouchableOpacity
+                  key={opt.tab}
+                  style={[styles.dropdownItem, { backgroundColor: mainTab === opt.tab ? 'rgba(201,168,76,0.15)' : 'transparent' }]}
+                  onPress={() => { setMainTab(opt.tab); setMenuOpen(false); }}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.dropdownItemText, { color: mainTab === opt.tab ? '#c9a84c' : 'rgba(255,255,255,0.85)', fontFamily: mainTab === opt.tab ? 'GoogleSans_700Bold' : 'GoogleSans_500Medium' }]}>
+                    {opt.icon}  {opt.label}
+                  </Text>
+                  {mainTab === opt.tab && <View style={{ width:3, borderRadius:2, backgroundColor:'#c9a84c', position:'absolute', left:0, top:6, bottom:6 }} />}
+                </TouchableOpacity>
+              ))}
+              <View style={{ height:1, backgroundColor:'rgba(255,255,255,0.10)', marginVertical:4 }} />
+              <TouchableOpacity
+                style={styles.dropdownItem}
+                onPress={() => { setMenuOpen(false); setMainTab('order'); }}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.dropdownItemText}>🛒  Back to Ordering</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </Animated.View>
 
       {/* BODY */}
       <View style={styles.body}>
+
+      {/* ── ORDER HISTORY TAB ── */}
+      {mainTab === 'history' && (() => {
+        const fmtDateTime = (ts) => {
+          try {
+            let d;
+            if (!ts) return '—';
+            if (ts?.toDate) d = ts.toDate();
+            else if (typeof ts === 'number') d = new Date(ts);
+            else d = new Date(ts);
+            if (isNaN(d.getTime())) return '—';
+            return d.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
+              + ' · ' + d.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit', hour12:true });
+          } catch { return '—'; }
+        };
+        return (
+          <Animated.View style={{ flex:1, opacity: bodyFade, minHeight:0 }}>
+          <View style={{ flex:1, minHeight:0, alignItems:'stretch', paddingBottom: isWide ? 16 : 8 }}>
+          <View style={{ flex:1, width:'100%', maxWidth: isWide ? 1100 : '100%', alignSelf:'center', paddingHorizontal: isWide ? 24 : 10, paddingTop:4, minHeight:0 }}>
+            <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:1.8, textTransform:'uppercase' }}>📋 My Order History (This Session)</Text>
+              <View style={{ backgroundColor:'rgba(1,31,75,0.08)', borderRadius:6, paddingHorizontal:8, paddingVertical:3 }}>
+                <Text style={{ fontFamily:'GoogleSans_500Medium', fontSize:10, color:'rgba(1,31,75,0.50)' }}>{orderHistory.length} order{orderHistory.length !== 1 ? 's' : ''}</Text>
+              </View>
+            </View>
+            {orderHistory.length === 0 ? (
+              <View style={{ alignItems:'center', paddingVertical:60 }}>
+                <Text style={{ fontSize:48, marginBottom:12 }}>📋</Text>
+                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:15, color:'rgba(1,31,75,0.55)', textAlign:'center' }}>No orders yet</Text>
+                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.40)', textAlign:'center', marginTop:6 }}>Your orders this session will appear here.</Text>
+                <TouchableOpacity onPress={() => setMainTab('order')} style={{ marginTop:18, backgroundColor:'#1a2d4e', borderRadius:12, paddingHorizontal:24, paddingVertical:10 }}>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#c9a84c' }}>Order Now →</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={tblStyle.tableWrap}>
+                <View style={tblStyle.thead}>
+                  <Text style={[tblStyle.hCell, { width:110 }]}>DATE / ORDER</Text>
+                  <View style={tblStyle.hDivider}/>
+                  <Text style={[tblStyle.hCell, { flex:1 }]}>ITEMS</Text>
+                  <View style={tblStyle.hDivider}/>
+                  <Text style={[tblStyle.hCell, { width:90, textAlign:'center' }]}>PAYMENT</Text>
+                  <View style={tblStyle.hDivider}/>
+                  <Text style={[tblStyle.hCell, { width:100, textAlign:'center' }]}>TOTAL</Text>
+                  <View style={tblStyle.hDivider}/>
+                  <Text style={[tblStyle.hCell, { width:90, textAlign:'center' }]}>STATUS</Text>
+                </View>
+                <ScrollView showsVerticalScrollIndicator={true} style={{ flex:1 }}>
+                  {orderHistory.map((order, idx) => {
+                    const orderItems  = order.items || [];
+                    const total       = order.total || 0;
+                    const pm          = order.payment || order.paymentMode || 'cash';
+                    const pmLabel     = pm === 'gcash' ? 'GCash' : pm === 'credit' ? 'Credit' : 'Cash';
+                    const pmColor     = pm === 'credit' ? '#c9a84c' : pm === 'gcash' ? '#3498db' : '#27ae60';
+                    const statusColor = order.status === 'done' ? '#27ae60' : order.status === 'ready' ? '#2980b9' : order.status === 'preparing' ? '#e67e22' : '#95a5a6';
+                    const statusLabel = order.status === 'done' ? 'Completed' : order.status === 'ready' ? 'Ready' : order.status === 'preparing' ? 'Preparing' : 'Pending';
+                    const isEven = idx % 2 === 0;
+                    return (
+                      <View key={order.docId || idx} style={[tblStyle.row, isEven && tblStyle.rowEven, idx === orderHistory.length - 1 && { borderBottomWidth:0 }]}>
+                        <View style={[tblStyle.cell, { width:110 }]}>
+                          <Text style={tblStyle.ordNo}>#{order.orderNo || '—'}</Text>
+                          <Text style={tblStyle.ordDate}>{fmtDateTime(order.createdAt)}</Text>
+                        </View>
+                        <View style={[tblStyle.cell, { flex:1 }]}>
+                          {orderItems.slice(0,2).map((it, j) => {
+                            const item = it.item || it;
+                            const qty  = it.qty || it.quantity || 1;
+                            return <Text key={j} style={tblStyle.itemLine} numberOfLines={1}>{item.name} ×{qty}</Text>;
+                          })}
+                          {orderItems.length > 2 && <Text style={[tblStyle.itemLine, { color:'rgba(1,31,75,0.38)', fontSize:10 }]}>+{orderItems.length - 2} more</Text>}
+                        </View>
+                        <View style={[tblStyle.cell, { width:90, alignItems:'center' }]}>
+                          <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color: pmColor }}>{pmLabel}</Text>
+                        </View>
+                        <View style={[tblStyle.cell, { width:100, alignItems:'center' }]}>
+                          <Text style={tblStyle.total}>₱{Number(total).toFixed(2)}</Text>
+                        </View>
+                        <View style={[tblStyle.cell, { width:90, alignItems:'center' }]}>
+                          <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color: statusColor }}>{statusLabel}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+          </View>
+          </Animated.View>
+        );
+      })()}
+
+      {/* ── ORDERING TAB ── */}
+      {mainTab === 'order' && (
       <Animated.View style={{ flex:1, flexDirection:'row', alignItems:'stretch', opacity: bodyFade, minHeight:0, overflow: Platform.OS==='web' ? 'hidden' : 'visible' }}>
 
         {/* LEFT — Categories (web only) */}
@@ -1113,6 +1242,7 @@ export default function CanteenVisitor({ navigation }) {
           </TouchableOpacity>
         )}
       </Animated.View>
+      )}
       </View>
 
       {/* Mobile cart bottom sheet */}
@@ -1724,4 +1854,56 @@ const styles = StyleSheet.create({
     fontFamily:'GoogleSans_700Bold', fontSize:14,
     color:'#0d1b3e', fontWeight:'700',
   },
+  dropdown: {
+    position:'absolute', top:54, right:8, zIndex:200,
+    backgroundColor:'rgba(10,25,60,0.97)',
+    borderRadius:12, minWidth:200,
+    paddingVertical:6,
+    shadowColor:'#000', shadowOpacity:0.40,
+    shadowRadius:12, shadowOffset:{width:0,height:4}, elevation:20,
+    borderWidth:1, borderColor:'rgba(255,255,255,0.10)',
+  },
+  dropdownItem: {
+    paddingHorizontal:16, paddingVertical:11,
+    borderRadius:8, marginHorizontal:4,
+  },
+  dropdownItemText: {
+    fontFamily:'GoogleSans_500Medium', fontSize:13,
+    color:'rgba(255,255,255,0.85)',
+  },
+});
+
+const tblStyle = StyleSheet.create({
+  tableWrap: {
+    backgroundColor:'rgba(255,255,255,0.55)',
+    borderRadius:10, borderWidth:1,
+    borderColor:'rgba(200,218,235,0.80)',
+    overflow:'hidden', flex:1, minHeight:0,
+    shadowColor:'#011f4b', shadowOpacity:0.06,
+    shadowRadius:8, shadowOffset:{width:0,height:2}, elevation:2,
+  },
+  thead: {
+    flexDirection:'row', alignItems:'center',
+    backgroundColor:'rgba(220,232,242,0.95)',
+    borderBottomWidth:1.5, borderColor:'rgba(180,205,225,0.90)',
+    paddingVertical:10,
+  },
+  hCell: {
+    fontFamily:'GoogleSans_700Bold', fontSize:9,
+    color:'rgba(1,31,75,0.55)', letterSpacing:1.8,
+    textTransform:'uppercase', paddingHorizontal:14,
+  },
+  hDivider: { width:1, alignSelf:'stretch', backgroundColor:'rgba(180,205,225,0.70)' },
+  row: {
+    flexDirection:'row', alignItems:'center',
+    borderBottomWidth:1, borderColor:'rgba(200,218,235,0.55)',
+    paddingVertical:11,
+    backgroundColor:'rgba(255,255,255,0.30)',
+  },
+  rowEven: { backgroundColor:'rgba(210,228,242,0.35)' },
+  cell: { paddingHorizontal:14 },
+  ordNo:    { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#0f1e35' },
+  ordDate:  { fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.45)', marginTop:2, lineHeight:13 },
+  itemLine: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.72)', lineHeight:15 },
+  total:    { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#27ae60' },
 });
