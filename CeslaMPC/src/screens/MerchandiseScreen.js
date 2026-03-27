@@ -679,23 +679,20 @@ export default function MerchandiseScreen({ navigation, route }) {
   const isWide  = width >= 768;
   const isSmall = width < 400;
 
-  // ── Safe back navigation — always go to Home to avoid landing on AdminDashboard ──
+  // ── Safe back navigation — always go to MerchandisePortalScreen ──
   const handleBack = () => {
     if (!navigation) return;
-    if (navigation.canGoBack()) {
-      // Check the previous route name; if it's AdminScreen, skip it and go Home
-      const state = navigation.getState();
-      const routes = state?.routes || [];
-      const prevRoute = routes[routes.length - 2];
-      if (prevRoute && prevRoute.name === 'AdminScreen') {
-        navigation.navigate('Home');
-      } else {
-        navigation.goBack();
-      }
-    } else {
-      navigation.navigate('Home');
-    }
+    navigation.navigate('MerchandisePortalScreen');
   };
+
+  // ── Prevent hardware back button from bypassing portal ──
+  useEffect(() => {
+    const sub = navigation?.addListener('beforeRemove', (e) => {
+      e.preventDefault();
+      navigation.navigate('MerchandisePortalScreen');
+    });
+    return () => sub?.();
+  }, [navigation]);
 
   const [fontsLoaded] = useFonts({
     NotoSerif_700Bold, NotoSerif_700Bold_Italic,
@@ -767,23 +764,31 @@ export default function MerchandiseScreen({ navigation, route }) {
 
   // Called by CartPanel after building order data — saves to Firestore
   const handlePlaceOrder = async (orderData) => {
-    try {
-      // Save order to Firestore → triggers real-time update on ManageMerchandiseScreen
-      await addOrder({
-        ...orderData,
-        status: 'done',
-        source: 'visitor', // so admin knows this came from the order screen
-      });
-      // Deduct stock in Firestore
-      await deductStock(orderData.items);
-    } catch (e) {
-      console.warn('handlePlaceOrder error:', e);
-    }
+    // Always add to local history first so it reflects immediately in Order History tab
+    const localEntry = {
+      ...orderData,
+      createdAt: new Date(),
+      docId: `local-${Date.now()}`,
+      status: 'done',
+      source: 'visitor',
+    };
+    setOrderHistory(prev => [localEntry, ...prev]);
     setLastOrder(orderData);
-    setOrderHistory(prev => [{ ...orderData, createdAt: new Date(), docId: `local-${Date.now()}` }, ...prev]);
     setCartOpen(false);
     clearCart();
     setTimeout(() => setReceiptVisible(true), 300);
+
+    // Then save to Firestore in background
+    try {
+      await addOrder({
+        ...orderData,
+        status: 'done',
+        source: 'visitor',
+      });
+      await deductStock(orderData.items);
+    } catch (e) {
+      console.warn('handlePlaceOrder Firestore error:', e);
+    }
   };
 
   const handleShowReceipt = () => setReceiptVisible(true);
