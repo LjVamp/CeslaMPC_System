@@ -863,9 +863,22 @@ const AdEditModal = ({ visible, ad, onSave, onClose, onDelete }) => {
             {/* ── URL ── */}
             <View style={adms.section}>
               <Text style={adms.sectionTitle}>🔗  LINK URL</Text>
-              <Text style={adms.subLabel}>Clicking this ad will open the URL below</Text>
+              <Text style={adms.subLabel}>Paste a URL — or use the shortcut below</Text>
               <TextInput style={ms.input} value={form.url||''} onChangeText={v=>setForm(f=>({...f,url:v}))}
                 placeholder="https://example.com" autoCapitalize="none" keyboardType="url"/>
+              {/* CoopScreen shortcut */}
+              <TouchableOpacity
+                style={{ flexDirection:'row', alignItems:'center', gap:8, marginTop:4, paddingVertical:9, paddingHorizontal:14, borderRadius:10, backgroundColor:'rgba(26,58,107,0.10)', borderWidth:1.5, borderColor: (form.url||'')==='coop://home' ? '#1a3a6b' : 'rgba(26,58,107,0.18)' }}
+                onPress={() => setForm(f => ({ ...f, url: (f.url||'')==='coop://home' ? '' : 'coop://home' }))}
+                activeOpacity={0.75}
+              >
+                <Text style={{ fontSize:18 }}>🏠</Text>
+                <View style={{ flex:1 }}>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'#1a3a6b' }}>Go to CoopScreen</Text>
+                  <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.50)', marginTop:1 }}>Tapping this ad will navigate to the Coop screen</Text>
+                </View>
+                {(form.url||'')==='coop://home' && <MaterialIcons name="check-circle" size={18} color="#1a3a6b"/>}
+              </TouchableOpacity>
             </View>
 
             {/* ── TARGET ── */}

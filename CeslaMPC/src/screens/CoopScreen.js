@@ -2961,7 +2961,7 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
 // MAIN EXPORT — CoopScreen handles EVERYTHING in one screen
 // Login → Register → (admin approves) → Dashboard — no navigation.navigate()
 // ═════════════════════════════════════════════════════════════════════════════
-export default function CoopScreen({ navigation }) {
+export default function CoopScreen({ navigation, route }) {
   const { width } = useWindowDimensions();
   const isWide  = width >= 768;
   const isSmall = width < 400;
@@ -2969,8 +2969,15 @@ export default function CoopScreen({ navigation }) {
   const [fontsLoaded] = useFonts({ NotoSerif_700Bold, NotoSerif_700Bold_Italic, GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold });
 
   // view: 'login' | 'register' | 'success' | 'dashboard'
-  const [view,   setView]   = useState('login');
+  const [view,   setView]   = useState(route?.params?.view || 'login');
   const [member, setMember] = useState(null);
+
+  // Jump to register view if navigated with params (e.g. from ad tap)
+  useEffect(() => {
+    if (route?.params?.view) {
+      setView(route.params.view);
+    }
+  }, [route?.params?.view]);
 
   // Login state
   const [userId,       setUserId]       = useState('');

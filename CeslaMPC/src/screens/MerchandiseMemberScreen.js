@@ -596,7 +596,7 @@ const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onClose, onPlaceOrder
 };
 
 // ─── AD BANNER ────────────────────────────────────────────────────────────────
-const AdBanner = ({ isWide, adAnim }) => {
+const AdBanner = ({ isWide, adAnim, navigation }) => {
   const [current, setCurrent] = useState(0);
   const scrollRef = useRef(null);
   const { width } = useWindowDimensions();
@@ -658,9 +658,13 @@ const AdBanner = ({ isWide, adAnim }) => {
             textDecorationLine: ad.subFmt?.underline ? 'underline' : 'none',
           };
           const handleAdPress = () => {
-            if (ad.url) {
-              if (Platform.OS === 'web') { window.open(ad.url, '_blank'); }
-              else { import('react-native').then(({ Linking }) => Linking.openURL(ad.url)); }
+            if (!ad.url) return;
+            if (ad.url === 'coop://home') {
+              navigation && navigation.navigate('CoopScreen', { view: 'register' });
+            } else if (Platform.OS === 'web') {
+              window.open(ad.url, '_blank');
+            } else {
+              import('react-native').then(({ Linking }) => Linking.openURL(ad.url));
             }
           };
           const imgSrc = ad.image ? { uri: ad.image } : (ad.imageUrl ? { uri: ad.imageUrl } : null);
@@ -890,10 +894,14 @@ export default function MerchandiseMemberScreen({ navigation }) {
       {/* HEADER */}
       <Animated.View style={{ opacity: hdrFade, transform: [{ translateY: hdrTrans }], marginTop: Platform.OS === 'web' ? 16 : 36, marginHorizontal: isSmall ? 8 : 10, zIndex: 100 }}>
         <View style={[styles.header, { paddingHorizontal: isWide ? 40 : 12, paddingVertical: isWide ? 16 : 7 }]}>
-          {/* Left: back button always shown */}
-          <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.80}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
+          {/* Left: back button only shown when NOT logged in */}
+          {!loggedIn ? (
+            <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.80}>
+              <Text style={styles.backIcon}>←</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 40 }} />
+          )}
 
           <View style={styles.headerCenter}>
             <Text style={[styles.headerH1, { fontSize: isWide ? 22 : isSmall ? 14 : 16 }]} numberOfLines={1} adjustsFontSizeToFit>
@@ -1245,7 +1253,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
               )}
 
               <View style={{ marginBottom: 12, flexShrink: 0 }}>
-                <AdBanner isWide={isWide} adAnim={adAnim} />
+                <AdBanner isWide={isWide} adAnim={adAnim} navigation={navigation} />
               </View>
 
               <View style={styles.itemsPanel}>

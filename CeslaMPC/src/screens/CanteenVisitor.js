@@ -571,7 +571,7 @@ const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onP
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 // ─── AD BANNER — dots inside card, hide/show on mobile scroll ────────────────
-const AdBanner = ({ isWide, adAnim, ads }) => {
+const AdBanner = ({ isWide, adAnim, ads, navigation }) => {
   const [current, setCurrent] = useState(0);
   const scrollRef = useRef(null);
   const { width } = useWindowDimensions();
@@ -628,7 +628,18 @@ const AdBanner = ({ isWide, adAnim, ads }) => {
         style={{ width: bannerW, alignSelf:'center' }}
         contentContainerStyle={{ width: bannerW * ADS.length }}
       >
-        {ADS.map((ad) => (
+        {ADS.map((ad) => {
+          const handleAdPress = () => {
+            if (!ad.url) return;
+            if (ad.url === 'coop://home') {
+              navigation && navigation.navigate('CoopScreen', { view: 'register' });
+            } else if (Platform.OS === 'web') {
+              window.open(ad.url, '_blank');
+            } else {
+              import('react-native').then(({ Linking }) => Linking.openURL(ad.url));
+            }
+          };
+          return (
           <LinearGradient
             key={ad.id}
             colors={ad.bg || ['#1a3a6b','#2e5fa3']}
@@ -639,10 +650,11 @@ const AdBanner = ({ isWide, adAnim, ads }) => {
               ? <Image source={{ uri: ad.image || ad.imageUrl }} style={{ position:'absolute', top:0, left:0, right:0, bottom:0, borderRadius:16 }} resizeMode="cover" />
               : <Text style={adStyles.adEmoji}>{ad.emoji}</Text>
             }
-            <View style={{ flex:1 }}>
+            <TouchableOpacity style={{ flex:1 }} onPress={handleAdPress} activeOpacity={ad.url ? 0.80 : 1}>
               <Text style={adStyles.adTitle}>{ad.title}</Text>
               <Text style={adStyles.adSub}>{ad.sub}</Text>
-            </View>
+              {ad.url ? <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(255,255,255,0.70)', marginTop:2 }}>🔗 Tap to open</Text> : null}
+            </TouchableOpacity>
             <View style={adStyles.adBadge}>
               <Text style={adStyles.adBadgeTxt}>AD</Text>
             </View>
@@ -658,7 +670,8 @@ const AdBanner = ({ isWide, adAnim, ads }) => {
               ))}
             </View>
           </LinearGradient>
-        ))}
+          );
+        })}
       </ScrollView>
     </Animated.View>
   );
@@ -1160,7 +1173,7 @@ export default function CanteenVisitor({ navigation }) {
 
           {/* ── Ad Banner ── */}
           <View style={{ marginBottom: isWide ? 12 : 0 }}>
-            <AdBanner isWide={isWide} adAnim={adAnim} ads={CONTEXT_ADS} />
+            <AdBanner isWide={isWide} adAnim={adAnim} ads={CONTEXT_ADS} navigation={navigation} />
           </View>
 
           {/* Items panel — fills remaining space */}

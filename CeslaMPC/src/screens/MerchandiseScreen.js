@@ -569,7 +569,7 @@ const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onP
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 // ─── AD BANNER — dots inside card, hide/show on mobile scroll ────────────────
-const AdBanner = ({ isWide, adAnim }) => {
+const AdBanner = ({ isWide, adAnim, navigation }) => {
   const [current, setCurrent] = useState(0);
   const scrollRef = useRef(null);
   const { width } = useWindowDimensions();
@@ -644,9 +644,13 @@ const AdBanner = ({ isWide, adAnim }) => {
             textDecorationLine: ad.subFmt?.underline ? 'underline' : 'none',
           };
           const handleAdPress = () => {
-            if (ad.url) {
-              if (Platform.OS === 'web') { window.open(ad.url, '_blank'); }
-              else { import('react-native').then(({ Linking }) => Linking.openURL(ad.url)); }
+            if (!ad.url) return;
+            if (ad.url === 'coop://home') {
+              navigation && navigation.navigate('CoopScreen', { view: 'register' });
+            } else if (Platform.OS === 'web') {
+              window.open(ad.url, '_blank');
+            } else {
+              import('react-native').then(({ Linking }) => Linking.openURL(ad.url));
             }
           };
           const imgSrc = ad.image ? { uri: ad.image } : (ad.imageUrl ? { uri: ad.imageUrl } : null);
@@ -719,20 +723,12 @@ export default function MerchandiseScreen({ navigation, route }) {
   const isWide  = width >= 768;
   const isSmall = width < 400;
 
-  // ── Safe back navigation — always go to MerchandisePortalScreen ──
+  // ── Back navigation — pop this screen off the stack cleanly ──
   const handleBack = () => {
     if (!navigation) return;
-    navigation.navigate('MerchandisePortalScreen');
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('MerchandisePortalScreen');
   };
-
-  // ── Prevent hardware back button from bypassing portal ──
-  useEffect(() => {
-    const sub = navigation?.addListener('beforeRemove', (e) => {
-      e.preventDefault();
-      navigation.navigate('MerchandisePortalScreen');
-    });
-    return () => sub?.();
-  }, [navigation]);
 
   const [fontsLoaded] = useFonts({
     NotoSerif_700Bold, NotoSerif_700Bold_Italic,
@@ -743,10 +739,15 @@ export default function MerchandiseScreen({ navigation, route }) {
   const {
     items: MERCH_ITEMS,
     categories: CATEGORIES,
+    orders: contextOrders,
     reloadFromStorage,
     addOrder,
     deductStock,
   } = useMerchandise();
+
+  // ── Visitor order history — pulled live from Firestore via context ──────────
+  // Filter only visitor orders so member orders don't mix in
+  const orderHistory = (contextOrders || []).filter(o => o.source === 'visitor');
 
   // Reload on focus so visitor always sees latest items from admin
   useFocusEffect(useCallback(() => {
@@ -778,7 +779,6 @@ export default function MerchandiseScreen({ navigation, route }) {
   const [sizePickerItem, setSizePickerItem] = useState(null);
   const [menuOpen,     setMenuOpen]     = useState(false);
   const [mainTab,      setMainTab]      = useState('order'); // 'order' | 'history'
-  const [orderHistory, setOrderHistory] = useState([]);
 
   const addToCart = (item, size) => {
     if (needsSize(item) && !size) { setSizePickerItem(item); return; }
@@ -804,15 +804,6 @@ export default function MerchandiseScreen({ navigation, route }) {
 
   // Called by CartPanel after building order data — saves to Firestore
   const handlePlaceOrder = async (orderData) => {
-    // Always add to local history first so it reflects immediately in Order History tab
-    const localEntry = {
-      ...orderData,
-      createdAt: new Date(),
-      docId: `local-${Date.now()}`,
-      status: 'done',
-      source: 'visitor',
-    };
-    setOrderHistory(prev => [localEntry, ...prev]);
     setLastOrder(orderData);
     setCartOpen(false);
     clearCart();
@@ -1027,7 +1018,7 @@ export default function MerchandiseScreen({ navigation, route }) {
           <View style={{ flex:1, minHeight:0, alignItems:'stretch', paddingBottom: isWide ? 16 : 8 }}>
           <View style={{ flex:1, width:'100%', maxWidth: isWide ? 1100 : '100%', alignSelf:'center', paddingHorizontal: isWide ? 24 : 10, paddingTop:4, minHeight:0 }}>
             <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:1.8, textTransform:'uppercase' }}>📋 Order History (This Session)</Text>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:1.8, textTransform:'uppercase' }}>📋 Order History</Text>
               <View style={{ backgroundColor:'rgba(1,31,75,0.08)', borderRadius:6, paddingHorizontal:8, paddingVertical:3 }}>
                 <Text style={{ fontFamily:'GoogleSans_500Medium', fontSize:10, color:'rgba(1,31,75,0.50)' }}>{orderHistory.length} order{orderHistory.length !== 1 ? 's' : ''}</Text>
               </View>
@@ -1036,7 +1027,7 @@ export default function MerchandiseScreen({ navigation, route }) {
               <View style={{ alignItems:'center', paddingVertical:60 }}>
                 <Text style={{ fontSize:48, marginBottom:12 }}>📋</Text>
                 <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:15, color:'rgba(1,31,75,0.55)', textAlign:'center' }}>No orders yet</Text>
-                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.40)', textAlign:'center', marginTop:6 }}>Your orders this session will appear here.</Text>
+                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.40)', textAlign:'center', marginTop:6 }}>Your completed orders will appear here.</Text>
                 <TouchableOpacity onPress={() => setMainTab('order')} style={{ marginTop:18, backgroundColor:'#1a2d4e', borderRadius:12, paddingHorizontal:24, paddingVertical:10 }}>
                   <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#c9a84c' }}>Shop Now →</Text>
                 </TouchableOpacity>
@@ -1136,7 +1127,7 @@ export default function MerchandiseScreen({ navigation, route }) {
 
           {/* ── Ad Banner ── */}
           <View style={{ marginBottom:12, flexShrink:0 }}>
-            <AdBanner isWide={isWide} adAnim={adAnim} />
+            <AdBanner isWide={isWide} adAnim={adAnim} navigation={navigation} />
           </View>
 
           {/* Items panel — fills remaining space */}
