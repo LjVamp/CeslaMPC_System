@@ -116,7 +116,7 @@ const MODULES = [
     title: 'Merchandise\nOrdering System',
     description: 'Place, track & manage merchandise orders with real-time status',
     icon: '📦',
-    isNew: true,
+    isNew: false,  // ← removed NEW badge
     screen: 'MerchandisePortalScreen',
     accent: '#c9a84c',
   },
@@ -130,8 +130,6 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
   const cardScale = useRef(new Animated.Value(1)).current;
   const iconScale = useRef(new Animated.Value(1)).current;
   const spin      = useRef(new Animated.Value(0)).current;
-  const [arrowPressed, setArrowPressed] = useState(false);
-  const arrowX    = useRef(new Animated.Value(0)).current;
   const lineScale = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -150,25 +148,20 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
     Animated.parallel([
       Animated.spring(cardScale, { toValue: 0.97, useNativeDriver: true }),
       Animated.spring(iconScale, { toValue: 1.1,  useNativeDriver: true }),
-      Animated.timing(arrowX,    { toValue: 4, duration: 200, useNativeDriver: true }),
       Animated.timing(lineScale, { toValue: 1, duration: 300, useNativeDriver: true }),
     ]).start();
-    setArrowPressed(true);
   };
 
   const pressOut = () => {
     Animated.parallel([
       Animated.spring(cardScale, { toValue: 1, friction: 4, useNativeDriver: true }),
       Animated.spring(iconScale, { toValue: 1, friction: 4, useNativeDriver: true }),
-      Animated.timing(arrowX,    { toValue: 0, duration: 200, useNativeDriver: true }),
       Animated.timing(lineScale, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start();
-    setArrowPressed(false);
   };
 
   // ── Sizes based on layout ──
   const isMobileHalf = layout === 'mobile-half';
-  const isMobileFull = layout === 'mobile-full';
   const ICON_SIZE = isWide ? 72 : isMobileHalf ? 44 : 52;
   const RING_SIZE = ICON_SIZE + 14;
 
@@ -213,13 +206,6 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
           {mod.description}
         </Text>
       </View>
-      <Animated.View style={[
-        styles.arrowBtn,
-        { transform: [{ translateX: arrowX }], flexShrink: 0 },
-        arrowPressed && { backgroundColor: mod.accent },
-      ]}>
-        <Text style={styles.arrowText}>→</Text>
-      </Animated.View>
       <Animated.View style={[styles.accentLine, {
         backgroundColor: mod.accent,
         transform: [{ scaleX: lineScale }],
@@ -230,11 +216,6 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
   // ── MOBILE HALF (Row 2 — Canteen & Merch): vertical/compact layout ──
   const mobileHalf = (
     <>
-      {mod.isNew && (
-        <View style={[styles.badge, { top: 8, right: 8 }]}>
-          <Text style={styles.badgeText}>NEW</Text>
-        </View>
-      )}
       {iconNode}
       <Text
         style={[styles.cardTitle, { fontSize: 11, textAlign: 'center', marginTop: 6 }]}
@@ -248,13 +229,6 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
       >
         {mod.description}
       </Text>
-      <Animated.View style={[
-        styles.arrowBtn,
-        { transform: [{ translateX: arrowX }], marginTop: 6 },
-        arrowPressed && { backgroundColor: mod.accent },
-      ]}>
-        <Text style={styles.arrowText}>→</Text>
-      </Animated.View>
       <Animated.View style={[styles.accentLine, {
         backgroundColor: mod.accent,
         transform: [{ scaleX: lineScale }],
@@ -265,23 +239,11 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
   // ── WIDE (tablet/web): vertical card layout ──
   const wideInner = (
     <>
-      {mod.isNew && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>NEW</Text>
-        </View>
-      )}
       {iconNode}
       <View style={[styles.textBlock, { alignItems: 'center' }]}>
         <Text style={[styles.cardTitle, { fontSize: 15, textAlign: 'center' }]}>{mod.title}</Text>
         <Text style={[styles.cardDesc, { fontSize: 12, textAlign: 'center' }]}>{mod.description}</Text>
       </View>
-      <Animated.View style={[
-        styles.arrowBtn,
-        { transform: [{ translateX: arrowX }] },
-        arrowPressed && { backgroundColor: mod.accent },
-      ]}>
-        <Text style={styles.arrowText}>→</Text>
-      </Animated.View>
       <Animated.View style={[styles.accentLine, {
         backgroundColor: mod.accent,
         transform: [{ scaleX: lineScale }],
@@ -393,7 +355,6 @@ export default function HomeScreen({ navigation }) {
   const handlePress = (screen) => { if (navigation) navigation.navigate(screen); };
 
   // ── Card widths ──
-  // Wide: 3 equal columns
   const wideCardWidth = (Math.min(width, 1020) - PAD * 2 - GAP * 2) / 3;
 
   return (
@@ -1270,29 +1231,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontFamily: 'GoogleSans_700Bold', fontWeight: '700', color: '#011f4b', letterSpacing: 0.4, lineHeight: 18, fontSize: 13 },
   cardDesc:  { fontFamily: 'GoogleSans_400Regular', color: 'rgba(3,57,108,0.70)', lineHeight: 15, fontSize: 11 },
 
-  arrowBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(1,31,75,0.20)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  arrowText: { color: 'rgba(1,31,75,0.6)', fontSize: 14, fontWeight: '600' },
-
   accentLine: { position: 'absolute', bottom: 0, width: '60%', height: 2, borderRadius: 2, left: '20%' },
-
-  badge: {
-    position: 'absolute',
-    top: 10, right: 10,
-    backgroundColor: '#50c896',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    zIndex: 10,
-  },
-  badgeText: { color: '#fff', fontSize: 8, fontWeight: '700', letterSpacing: 1.5 },
 
   footer: { alignItems: 'center', marginTop: 44, paddingHorizontal: 20, paddingBottom: 20, gap: 6 },
   footerLine: { color: 'rgba(235,239,242,0.5)', fontSize: 11, letterSpacing: 1 },

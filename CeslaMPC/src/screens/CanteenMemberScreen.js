@@ -678,10 +678,21 @@ const AdBanner = ({ isWide, adAnim, ads }) => {
   const scrollRef = useRef(null);
   const { width } = useWindowDimensions();
 
-  const ADS = ads && ads.length > 0 ? ads : [
+  // ── Filter: show only ads targeted to 'member' or 'both' ───────────────────
+  const filteredAds = ads && ads.length > 0
+    ? ads.filter(ad => !ad.target || ad.target === 'both' || ad.target === 'member')
+    : [];
+
+  const ADS = filteredAds.length > 0 ? filteredAds : [
     { id:1, bg:['#1a3a6b','#2e5fa3'], emoji:'🍽️', title:"Today's Special", sub:'Fresh meals served daily!' },
     { id:2, bg:['#7b3f00','#c9a84c'], emoji:'☕',  title:'Merienda Promo',   sub:'Snacks & drinks available!' },
   ];
+
+  // Reset current index when ADS list changes to avoid out-of-bounds
+  useEffect(() => {
+    setCurrent(0);
+    scrollRef.current?.scrollTo({ x: 0, animated: false });
+  }, [ADS.length]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -692,7 +703,7 @@ const AdBanner = ({ isWide, adAnim, ads }) => {
       });
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [ADS.length]);
 
   const bannerW = isWide ? Math.min(width * 0.55, 700) : width - 48;
 

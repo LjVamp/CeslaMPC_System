@@ -547,52 +547,313 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
 };
 
 // ─── AD EDIT MODAL ────────────────────────────────────────────────────────────
+// Crop helper: crops a loaded <img> to 16:9 via canvas and returns a base64 JPEG
+const cropTo16x9Base64 = (imgEl) => {
+  const srcW = imgEl.naturalWidth;
+  const srcH = imgEl.naturalHeight;
+  const targetAspect = 16 / 9;
+  let sx = 0, sy = 0, sw = srcW, sh = srcH;
+  if (srcW / srcH > targetAspect) {
+    sw = Math.round(srcH * targetAspect);
+    sx = Math.round((srcW - sw) / 2);
+  } else {
+    sh = Math.round(srcW / targetAspect);
+    sy = Math.round((srcH - sh) / 2);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.min(sw, 960);
+  canvas.height = Math.round(canvas.width / targetAspect);
+  canvas.getContext('2d').drawImage(imgEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.70);
+};
+
+const AD_FONT_OPTIONS = [
+  { label: 'Google Sans', value: 'GoogleSans_700Bold' },
+  { label: 'Noto Serif',  value: 'NotoSerif_700Bold'  },
+  { label: 'Monospace',   value: 'monospace'           },
+  { label: 'Sans-Serif',  value: 'sans-serif'          },
+];
+
+const AD_GRADIENT_PRESETS = [
+  { label: 'Navy',    colors: ['#1a3a6b','#2e5fa3']  },
+  { label: 'Gold',    colors: ['#7b3f00','#c9a84c']  },
+  { label: 'Green',   colors: ['#1a5c2e','#27ae60']  },
+  { label: 'Red',     colors: ['#7a0000','#c0392b']  },
+  { label: 'Purple',  colors: ['#3d1a7a','#8e44ad']  },
+  { label: 'Teal',    colors: ['#0a4d5c','#1abc9c']  },
+  { label: 'Sunset',  colors: ['#c0392b','#f39c12']  },
+  { label: 'Night',   colors: ['#0d0d0d','#2c3e50']  },
+];
+
 const AdEditModal = ({ visible, ad, onSave, onClose, onDelete }) => {
   const [form, setForm] = useState(ad || {});
-  useEffect(() => { if (ad) setForm(ad); }, [ad]);
+  const [bgMode, setBgMode] = useState('gradient'); // 'image' | 'gradient'
+  const [titleFmt, setTitleFmt] = useState({ bold: true, italic: false, underline: false, font: 'GoogleSans_700Bold' });
+  const [subFmt,   setSubFmt]   = useState({ bold: false, italic: false, underline: false, font: 'GoogleSans_400Regular' });
+  const [cropLoading, setCropLoading] = useState(false);
+  const [customColor1, setCustomColor1] = useState('#1a3a6b');
+  const [customColor2, setCustomColor2] = useState('#2e5fa3');
+  const [showFontPickerTitle, setShowFontPickerTitle] = useState(false);
+  const [showFontPickerSub,   setShowFontPickerSub]   = useState(false);
 
-  const [uploading, setUploading] = useState(false);
+  const prevAdIdRef = useRef(null);
+  useEffect(() => {
+    if (!visible) { prevAdIdRef.current = null; return; }
+    const inId = ad?.id ?? '__new__';
+    if (inId !== prevAdIdRef.current) {
+      prevAdIdRef.current = inId;
+      if (ad) {
+        setForm({ ...ad });
+        setBgMode((ad.image || ad.imageUrl) ? 'image' : 'gradient');
+        setTitleFmt(ad.titleFmt || { bold: true, italic: false, underline: false, font: 'GoogleSans_700Bold' });
+        setSubFmt(ad.subFmt   || { bold: false, italic: false, underline: false, font: 'GoogleSans_400Regular' });
+        if (ad.bg && ad.bg.length >= 2) { setCustomColor1(ad.bg[0]); setCustomColor2(ad.bg[1]); }
+      }
+    }
+  }, [visible, ad?.id]);
 
   const pickImage = async () => {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') { Alert.alert('Permission Required', 'Allow photo library access in Settings.'); return; }
+    }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, aspect: [16, 5], quality: 0.6,
-      base64: true,
+      allowsEditing: true, aspect: [16, 9], quality: 0.70,
+      base64: Platform.OS !== 'web',
     });
-    if (!res.canceled) {
-      const asset = res.assets[0];
-      const ext = asset.uri.split('.').pop()?.toLowerCase() || 'jpg';
-      const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-      const base64url = `data:${mime};base64,${asset.base64}`;
-      setForm(f => ({ ...f, imageUrl: base64url, image: null }));
-    }
+    if (res.canceled) return;
+    const asset = res.assets[0];
+    setCropLoading(true);
+    try {
+      if (Platform.OS === 'web') {
+        const imgEl = new window.Image();
+        imgEl.crossOrigin = 'anonymous';
+        imgEl.onload = () => {
+          const cropped = cropTo16x9Base64(imgEl);
+          setForm(f => ({ ...f, imageUrl: cropped, image: null }));
+          setBgMode('image'); setCropLoading(false);
+        };
+        imgEl.onerror = () => setCropLoading(false);
+        imgEl.src = asset.uri;
+      } else {
+        const ext  = asset.uri.split('.').pop()?.toLowerCase() || 'jpg';
+        const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+        setForm(f => ({ ...f, imageUrl: `data:${mime};base64,${asset.base64}`, image: null }));
+        setBgMode('image'); setCropLoading(false);
+      }
+    } catch { setCropLoading(false); }
+  };
+
+  const applyCustomGradient = () => { setForm(f => ({ ...f, bg: [customColor1, customColor2] })); setBgMode('gradient'); };
+
+  const toggleFmt = (which, key) => {
+    if (which === 'title') setTitleFmt(p => ({ ...p, [key]: !p[key] }));
+    else                   setSubFmt(p   => ({ ...p, [key]: !p[key] }));
+  };
+
+  const TextFormatBar = ({ which, fmt }) => (
+    <View style={adms.fmtBar}>
+      {[['bold','B'],['italic','I'],['underline','U']].map(([k,lbl]) => (
+        <TouchableOpacity key={k} style={[adms.fmtBtn, fmt[k] && adms.fmtBtnActive]} onPress={() => toggleFmt(which, k)}>
+          <Text style={[adms.fmtBtnTxt, k==='italic'&&{fontStyle:'italic'}, k==='bold'&&{fontWeight:'800'}, k==='underline'&&{textDecorationLine:'underline'}, fmt[k]&&{color:'#fff'}]}>{lbl}</Text>
+        </TouchableOpacity>
+      ))}
+      <TouchableOpacity style={[adms.fmtBtn,{flex:1}]} onPress={() => which==='title' ? setShowFontPickerTitle(v=>!v) : setShowFontPickerSub(v=>!v)}>
+        <Text style={adms.fmtFontTxt} numberOfLines={1}>{AD_FONT_OPTIONS.find(f=>f.value===fmt.font)?.label || 'Font'} ▾</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const FontDropdown = ({ which, fmt, visible: dropVisible, onClose: dropClose }) => {
+    if (!dropVisible) return null;
+    return (
+      <View style={adms.fontDrop}>
+        {AD_FONT_OPTIONS.map(opt => (
+          <TouchableOpacity key={opt.value} style={[adms.fontDropItem, fmt.font===opt.value && adms.fontDropItemActive]}
+            onPress={() => { if (which==='title') setTitleFmt(p=>({...p,font:opt.value})); else setSubFmt(p=>({...p,font:opt.value})); dropClose(); }}>
+            <Text style={[adms.fontDropTxt, fmt.font===opt.value&&{color:'#1a3a6b',fontWeight:'700'}]}>{opt.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
+  const handleSave = () => {
+    onSave({
+      ...form, titleFmt, subFmt,
+      bg:       form.bg       || ['#1a3a6b','#2e5fa3'],
+      imageUrl: bgMode==='image' ? (form.imageUrl||'') : '',
+      image:    bgMode==='image' ? (form.image||null)  : null,
+      target:   form.target   || 'both',
+      url:      form.url      || '',
+    });
   };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={ms.overlay}>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} activeOpacity={1} />
-        <View style={[ms.modalCard, { maxWidth: 420, alignSelf: 'center', width: '90%' }]}>
-          <Text style={ms.modalTitle}>{(ad&&ad.isNew) ? 'Add New Ad' : 'Edit Ad Banner'}</Text>
-          <TouchableOpacity style={[ms.imgPicker, { width: '100%', height: 80, borderRadius: 12 }]} onPress={pickImage}>
-            {(form.image || form.imageUrl)
-              ? <Image source={{ uri: form.image || form.imageUrl }} style={{ width: '100%', height: 80, borderRadius: 12 }} resizeMode="cover" />
-              : <View style={{ alignItems: 'center', gap: 3 }}><Text style={{ fontSize: 28 }}>{form.emoji || '📢'}</Text><Text style={ms.imgHint}>Tap to upload banner image</Text></View>
-            }
-          </TouchableOpacity>
-          <View style={ms.fieldRow}><Text style={ms.fieldLabel}>Or paste image URL</Text><TextInput style={ms.input} value={form.imageUrl || ''} onChangeText={v => setForm(f => ({ ...f, imageUrl: v, image: null }))} placeholder="https://..." autoCapitalize="none" /></View>
-          <View style={ms.fieldRow}><Text style={ms.fieldLabel}>Title</Text><TextInput style={ms.input} value={form.title || ''} onChangeText={v => setForm(f => ({ ...f, title: v }))} placeholder="Ad title" /></View>
-          <View style={ms.fieldRow}><Text style={ms.fieldLabel}>Subtitle</Text><TextInput style={ms.input} value={form.sub || ''} onChangeText={v => setForm(f => ({ ...f, sub: v }))} placeholder="Ad subtitle" /></View>
-          <View style={ms.modalActions}>
+        <View style={[ms.modalCard, { maxWidth: 480, alignSelf: 'center', width: '92%', maxHeight: '92%', padding: 0, overflow: 'hidden' }]}>
+          {/* Modal Header */}
+          <LinearGradient colors={['#1a3a6b','#2e5fa3']} start={{x:0,y:0}} end={{x:1,y:0}}
+            style={{ paddingVertical:14, paddingHorizontal:18, borderTopLeftRadius:20, borderTopRightRadius:20 }}>
+            <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:15, color:'#fff', textAlign:'center' }}>
+              {(ad&&ad.isNew) ? '✦ Add New Ad Banner' : '✦ Edit Ad Banner'}
+            </Text>
+          </LinearGradient>
+
+          <ScrollView style={{ flex:1 }} contentContainerStyle={{ padding:16, gap:14 }} showsVerticalScrollIndicator={false}>
+            {/* ── BACKGROUND ── */}
+            <View style={adms.section}>
+              <Text style={adms.sectionTitle}>📸  BACKGROUND</Text>
+              <View style={adms.modeToggle}>
+                <TouchableOpacity style={[adms.modeBtn, bgMode==='image' && adms.modeBtnActive]} onPress={()=>setBgMode('image')}>
+                  <MaterialIcons name="image" size={14} color={bgMode==='image'?'#fff':'rgba(1,31,75,0.55)'} />
+                  <Text style={[adms.modeBtnTxt, bgMode==='image' && adms.modeBtnTxtActive]}>Upload Image</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[adms.modeBtn, bgMode==='gradient' && adms.modeBtnActive]} onPress={()=>setBgMode('gradient')}>
+                  <MaterialIcons name="gradient" size={14} color={bgMode==='gradient'?'#fff':'rgba(1,31,75,0.55)'} />
+                  <Text style={[adms.modeBtnTxt, bgMode==='gradient' && adms.modeBtnTxtActive]}>Gradient / Color</Text>
+                </TouchableOpacity>
+              </View>
+              {bgMode === 'image' ? (
+                <View style={{ gap:8 }}>
+                  <TouchableOpacity style={adms.imgUploadBox} onPress={pickImage} activeOpacity={0.80}>
+                    {cropLoading ? (
+                      <View style={{alignItems:'center',gap:4}}><Text style={{fontSize:22}}>⏳</Text><Text style={adms.imgHintTxt}>Cropping to 16:9…</Text></View>
+                    ) : (form.imageUrl || form.image) ? (
+                      <View style={{width:'100%',height:'100%'}}>
+                        <Image source={{uri: form.imageUrl||form.image}} style={{width:'100%',height:'100%',borderRadius:10}} resizeMode="cover"/>
+                        <View style={adms.imgOverlayBtn}><MaterialIcons name="edit" size={14} color="#fff"/><Text style={adms.imgOverlayTxt}>Change</Text></View>
+                      </View>
+                    ) : (
+                      <View style={{alignItems:'center',gap:6}}>
+                        <MaterialIcons name="add-photo-alternate" size={32} color="rgba(1,31,75,0.35)"/>
+                        <Text style={adms.imgHintTxt}>Tap to upload · Auto-crops to 16:9</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  {(form.imageUrl||form.image) && (
+                    <TouchableOpacity onPress={()=>setForm(f=>({...f,imageUrl:'',image:null}))} style={{alignSelf:'center'}}>
+                      <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:10,color:'#e74c3c'}}>✕ Remove Image</Text>
+                    </TouchableOpacity>
+                  )}
+                  <View style={ms.fieldRow}>
+                    <Text style={ms.fieldLabel}>Or paste image URL</Text>
+                    <TextInput style={ms.input} value={form.imageUrl||''} onChangeText={v=>setForm(f=>({...f,imageUrl:v,image:null}))} placeholder="https://..." autoCapitalize="none"/>
+                  </View>
+                </View>
+              ) : (
+                <View style={{ gap:10 }}>
+                  <Text style={adms.subLabel}>Gradient Presets</Text>
+                  <View style={adms.gradientGrid}>
+                    {AD_GRADIENT_PRESETS.map(preset => {
+                      const isActive = form.bg && form.bg[0]===preset.colors[0] && form.bg[1]===preset.colors[1];
+                      return (
+                        <TouchableOpacity key={preset.label} style={[adms.gradientChip, isActive && adms.gradientChipActive]}
+                          onPress={() => setForm(f=>({...f, bg: preset.colors}))}>
+                          <LinearGradient colors={preset.colors} start={{x:0,y:0}} end={{x:1,y:1}} style={adms.gradientSwatch}/>
+                          <Text style={adms.gradientChipTxt}>{preset.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <Text style={adms.subLabel}>Custom Colors</Text>
+                  <View style={adms.colorPickerRow}>
+                    <View style={{flex:1,gap:4}}>
+                      <Text style={adms.colorPickerLabel}>Color 1 (Start)</Text>
+                      <View style={adms.colorInputRow}>
+                        <View style={[adms.colorSwatch,{backgroundColor:customColor1}]}/>
+                        {Platform.OS==='web'?(<input type="color" value={customColor1} onChange={e=>setCustomColor1(e.target.value)} style={{width:36,height:32,border:'none',borderRadius:6,cursor:'pointer',padding:0,background:'transparent'}}/>):null}
+                        <TextInput style={[ms.input,{flex:1,fontSize:11}]} value={customColor1} onChangeText={setCustomColor1} placeholder="#1a3a6b" autoCapitalize="none"/>
+                      </View>
+                    </View>
+                    <View style={{flex:1,gap:4}}>
+                      <Text style={adms.colorPickerLabel}>Color 2 (End)</Text>
+                      <View style={adms.colorInputRow}>
+                        <View style={[adms.colorSwatch,{backgroundColor:customColor2}]}/>
+                        {Platform.OS==='web'?(<input type="color" value={customColor2} onChange={e=>setCustomColor2(e.target.value)} style={{width:36,height:32,border:'none',borderRadius:6,cursor:'pointer',padding:0,background:'transparent'}}/>):null}
+                        <TextInput style={[ms.input,{flex:1,fontSize:11}]} value={customColor2} onChangeText={setCustomColor2} placeholder="#2e5fa3" autoCapitalize="none"/>
+                      </View>
+                    </View>
+                  </View>
+                  <TouchableOpacity style={adms.applyGradientBtn} onPress={applyCustomGradient}>
+                    <LinearGradient colors={[customColor1||'#1a3a6b',customColor2||'#2e5fa3']} start={{x:0,y:0}} end={{x:1,y:0}} style={adms.applyGradientInner}>
+                      <Text style={adms.applyGradientTxt}>Apply Custom Gradient</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  {form.bg && (
+                    <View style={{gap:4}}>
+                      <Text style={adms.subLabel}>Preview</Text>
+                      <LinearGradient colors={form.bg} start={{x:0,y:0}} end={{x:1,y:1}} style={adms.previewSwatch}>
+                        <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:11,color:'#fff',opacity:0.80}}>Ad Banner Preview</Text>
+                      </LinearGradient>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* ── TITLE ── */}
+            <View style={adms.section}>
+              <Text style={adms.sectionTitle}>✏️  TITLE</Text>
+              <TextFormatBar which="title" fmt={titleFmt}/>
+              <FontDropdown which="title" fmt={titleFmt} visible={showFontPickerTitle} onClose={()=>setShowFontPickerTitle(false)}/>
+              <TextInput style={[ms.input,{fontFamily:titleFmt.font,fontStyle:titleFmt.italic?'italic':'normal',fontWeight:titleFmt.bold?'700':'400',textDecorationLine:titleFmt.underline?'underline':'none',marginTop:6}]}
+                value={form.title||''} onChangeText={v=>setForm(f=>({...f,title:v}))} placeholder="Ad title"/>
+            </View>
+
+            {/* ── SUBTITLE ── */}
+            <View style={adms.section}>
+              <Text style={adms.sectionTitle}>📝  SUBTITLE</Text>
+              <TextFormatBar which="sub" fmt={subFmt}/>
+              <FontDropdown which="sub" fmt={subFmt} visible={showFontPickerSub} onClose={()=>setShowFontPickerSub(false)}/>
+              <TextInput style={[ms.input,{fontFamily:subFmt.font,fontStyle:subFmt.italic?'italic':'normal',fontWeight:subFmt.bold?'700':'400',textDecorationLine:subFmt.underline?'underline':'none',marginTop:6}]}
+                value={form.sub||''} onChangeText={v=>setForm(f=>({...f,sub:v}))} placeholder="Ad subtitle"/>
+            </View>
+
+            {/* ── URL ── */}
+            <View style={adms.section}>
+              <Text style={adms.sectionTitle}>🔗  LINK URL</Text>
+              <Text style={adms.subLabel}>Clicking this ad will open the URL below</Text>
+              <TextInput style={ms.input} value={form.url||''} onChangeText={v=>setForm(f=>({...f,url:v}))}
+                placeholder="https://example.com" autoCapitalize="none" keyboardType="url"/>
+            </View>
+
+            {/* ── TARGET ── */}
+            <View style={adms.section}>
+              <Text style={adms.sectionTitle}>👥  SHOW AD TO</Text>
+              <View style={{ flexDirection:'row', gap:8 }}>
+                {[
+                  {value:'both',   label:'👥 Members & Visitors', color:'#1a3a6b'},
+                  {value:'member', label:'🎓 Members Only',        color:'#27ae60'},
+                  {value:'visitor',label:'🌐 Visitors Only',       color:'#e67e22'},
+                ].map(opt => {
+                  const active = (form.target||'both') === opt.value;
+                  return (
+                    <TouchableOpacity key={opt.value} style={[adms.targetBtn, active && {backgroundColor:opt.color,borderColor:opt.color}]}
+                      onPress={() => setForm(f=>({...f,target:opt.value}))}>
+                      <Text style={[adms.targetBtnTxt, active && {color:'#fff'}]}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Action Buttons */}
+          <View style={[ms.modalActions,{padding:16,paddingTop:0}]}>
             <TouchableOpacity style={ms.cancelBtn} onPress={onClose}><Text style={ms.cancelTxt}>Cancel</Text></TouchableOpacity>
             {!(ad&&ad.isNew) && onDelete && (
-              <TouchableOpacity style={[ms.cancelBtn, { backgroundColor: 'rgba(231,76,60,0.10)', borderWidth: 1, borderColor: 'rgba(231,76,60,0.25)' }]} onPress={() => { onClose(); onDelete(ad.id); }}>
-                <Text style={[ms.cancelTxt, { color: '#e74c3c' }]}>Delete</Text>
+              <TouchableOpacity style={[ms.cancelBtn,{backgroundColor:'rgba(231,76,60,0.10)',borderWidth:1,borderColor:'rgba(231,76,60,0.25)'}]}
+                onPress={() => { onClose(); onDelete(ad.id); }}>
+                <Text style={[ms.cancelTxt,{color:'#e74c3c'}]}>Delete</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={{ flex: 2, borderRadius: 10, overflow: 'hidden' }} onPress={() => onSave(form)} disabled={uploading}>
-              <LinearGradient colors={['#1a3a6b', '#2e5fa3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 11, alignItems: 'center' }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>{uploading ? 'Saving...' : 'Save Ad'}</Text>
+            <TouchableOpacity style={{flex:2,borderRadius:10,overflow:'hidden'}} onPress={handleSave}>
+              <LinearGradient colors={['#1a3a6b','#2e5fa3']} start={{x:0,y:0}} end={{x:1,y:0}} style={{paddingVertical:11,alignItems:'center'}}>
+                <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:13,color:'#fff'}}>Save Ad</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -601,6 +862,46 @@ const AdEditModal = ({ visible, ad, onSave, onClose, onDelete }) => {
     </Modal>
   );
 };
+
+// ─── AD MODAL STYLES ──────────────────────────────────────────────────────────
+const adms = StyleSheet.create({
+  section: { backgroundColor:'rgba(1,31,75,0.04)', borderRadius:12, padding:12, gap:8, borderWidth:1, borderColor:'rgba(1,31,75,0.08)' },
+  sectionTitle: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.55)', letterSpacing:1.2, textTransform:'uppercase' },
+  subLabel: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(1,31,75,0.40)', letterSpacing:0.8, textTransform:'uppercase' },
+  modeToggle: { flexDirection:'row', gap:6 },
+  modeBtn: { flex:1, flexDirection:'row', alignItems:'center', justifyContent:'center', gap:5, paddingVertical:8, borderRadius:10, backgroundColor:'rgba(1,31,75,0.06)', borderWidth:1, borderColor:'rgba(1,31,75,0.12)' },
+  modeBtnActive: { backgroundColor:'#1a3a6b', borderColor:'#1a3a6b' },
+  modeBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)' },
+  modeBtnTxtActive: { color:'#fff' },
+  imgUploadBox: { width:'100%', height:120, borderRadius:10, borderWidth:2, borderStyle:'dashed', borderColor:'rgba(1,31,75,0.18)', backgroundColor:'rgba(1,31,75,0.04)', justifyContent:'center', alignItems:'center', overflow:'hidden' },
+  imgOverlayBtn: { position:'absolute', bottom:6, right:6, flexDirection:'row', alignItems:'center', gap:4, backgroundColor:'rgba(0,0,0,0.50)', borderRadius:7, paddingHorizontal:8, paddingVertical:4 },
+  imgOverlayTxt: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'#fff' },
+  imgHintTxt: { fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.40)', textAlign:'center' },
+  gradientGrid: { flexDirection:'row', flexWrap:'wrap', gap:6 },
+  gradientChip: { flexDirection:'row', alignItems:'center', gap:6, paddingHorizontal:8, paddingVertical:6, borderRadius:10, backgroundColor:'rgba(255,255,255,0.70)', borderWidth:1.5, borderColor:'rgba(1,31,75,0.10)' },
+  gradientChipActive: { borderColor:'#1a3a6b', backgroundColor:'rgba(26,58,107,0.10)' },
+  gradientSwatch: { width:24, height:16, borderRadius:4 },
+  gradientChipTxt: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.70)' },
+  colorPickerRow: { flexDirection:'row', gap:8 },
+  colorPickerLabel: { fontFamily:'GoogleSans_700Bold', fontSize:9, color:'rgba(1,31,75,0.45)', letterSpacing:0.5, textTransform:'uppercase' },
+  colorInputRow: { flexDirection:'row', alignItems:'center', gap:5 },
+  colorSwatch: { width:26, height:26, borderRadius:5, borderWidth:1, borderColor:'rgba(1,31,75,0.15)' },
+  applyGradientBtn: { borderRadius:10, overflow:'hidden' },
+  applyGradientInner: { paddingVertical:9, alignItems:'center' },
+  applyGradientTxt: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#fff' },
+  previewSwatch: { width:'100%', height:50, borderRadius:10, justifyContent:'center', alignItems:'center' },
+  fmtBar: { flexDirection:'row', gap:5, alignItems:'center', flexWrap:'wrap' },
+  fmtBtn: { paddingHorizontal:10, paddingVertical:6, borderRadius:8, backgroundColor:'rgba(1,31,75,0.06)', borderWidth:1, borderColor:'rgba(1,31,75,0.12)', minWidth:32, alignItems:'center' },
+  fmtBtnActive: { backgroundColor:'#1a3a6b', borderColor:'#1a3a6b' },
+  fmtBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'rgba(1,31,75,0.65)' },
+  fmtFontTxt: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.65)' },
+  fontDrop: { backgroundColor:'#fff', borderRadius:10, borderWidth:1, borderColor:'rgba(1,31,75,0.15)', shadowColor:'#000', shadowOpacity:0.15, shadowRadius:8, elevation:8, overflow:'hidden' },
+  fontDropItem: { paddingVertical:9, paddingHorizontal:14 },
+  fontDropItemActive: { backgroundColor:'rgba(26,58,107,0.08)' },
+  fontDropTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'#011f4b' },
+  targetBtn: { flex:1, paddingVertical:8, paddingHorizontal:6, borderRadius:10, borderWidth:1.5, borderColor:'rgba(1,31,75,0.15)', alignItems:'center', backgroundColor:'rgba(1,31,75,0.04)' },
+  targetBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.60)', textAlign:'center' },
+});
 
 const ms = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(1,20,50,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -3016,30 +3317,22 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
   };
 
   const handleSaveAd = async (updated) => {
+    const base = {
+      title:     updated.title    || '',
+      sub:       updated.sub      || '',
+      emoji:     updated.emoji    || '📢',
+      image:     updated.image    || null,
+      imageUrl:  updated.imageUrl || '',
+      bg:        updated.bg       || ['#1a3a6b','#2e5fa3'],
+      titleFmt:  updated.titleFmt || { bold:true,  italic:false, underline:false, font:'GoogleSans_700Bold'    },
+      subFmt:    updated.subFmt   || { bold:false, italic:false, underline:false, font:'GoogleSans_400Regular'  },
+      url:       updated.url      || '',
+      target:    updated.target   || 'both',
+    };
     if (updated.isNew) {
-      // New ad — save to Firestore so both web and mobile see it in real-time
-      const newAd = {
-        id: Date.now().toString(),
-        title: updated.title || '',
-        sub: updated.sub || '',
-        emoji: updated.emoji || '📢',
-        image: updated.image || null,
-        imageUrl: updated.imageUrl || '',
-        bg: updated.bg || ['#1a3a6b', '#2e5fa3'],
-      };
-      await saveAd(newAd);
+      await saveAd({ id: Date.now().toString(), ...base });
     } else {
-      // Existing ad — clean and save to Firestore
-      const cleanAd = {
-        id: updated.id,
-        title: updated.title || '',
-        sub: updated.sub || '',
-        emoji: updated.emoji || '📢',
-        image: updated.image || null,
-        imageUrl: updated.imageUrl || '',
-        bg: updated.bg || ['#1a3a6b', '#2e5fa3'],
-      };
-      await saveAd(cleanAd);
+      await saveAd({ id: updated.id, ...base });
     }
     setEditAdModal(false);
   };
@@ -3147,14 +3440,38 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
               style={{ width: '100%' }} contentContainerStyle={{ width: bannerW * (ads.length + 1) }}>
               {ads.map(ad => {
                 const imgSrc = ad.image ? { uri: ad.image } : (ad.imageUrl ? { uri: ad.imageUrl } : null);
+                const titleStyle = {
+                  fontFamily: ad.titleFmt?.font || 'GoogleSans_700Bold',
+                  fontStyle:  ad.titleFmt?.italic    ? 'italic' : 'normal',
+                  fontWeight: ad.titleFmt?.bold      ? '700'    : '400',
+                  textDecorationLine: ad.titleFmt?.underline ? 'underline' : 'none',
+                };
+                const subStyle = {
+                  fontFamily: ad.subFmt?.font || 'GoogleSans_400Regular',
+                  fontStyle:  ad.subFmt?.italic    ? 'italic' : 'normal',
+                  fontWeight: ad.subFmt?.bold      ? '700'    : '400',
+                  textDecorationLine: ad.subFmt?.underline ? 'underline' : 'none',
+                };
+                const handleAdPress = () => {
+                  if (ad.url) {
+                    if (Platform.OS === 'web') { window.open(ad.url, '_blank'); }
+                    else { import('react-native').then(({ Linking }) => Linking.openURL(ad.url)); }
+                  }
+                };
                 return (
                   <LinearGradient key={ad.id} colors={ad.bg || ['#1a3a6b', '#2e5fa3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.adSlide, { width: bannerW }]}>
                     {imgSrc ? <Image source={imgSrc} style={styles.adBgImg} resizeMode="cover" /> : <Text style={[styles.adEmoji, isSmall && { fontSize: 28 }]}>{ad.emoji}</Text>}
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={[styles.adTitle, isSmall && { fontSize: 13 }]} numberOfLines={1}>{ad.title}</Text>
-                      <Text style={[styles.adSub, isSmall && { fontSize: 10 }]} numberOfLines={1}>{ad.sub}</Text>
-                    </View>
+                    <TouchableOpacity style={{ flex: 1, minWidth: 0 }} onPress={handleAdPress} activeOpacity={ad.url ? 0.80 : 1}>
+                      <Text style={[styles.adTitle, isSmall && { fontSize: 13 }, titleStyle]} numberOfLines={1}>{ad.title}</Text>
+                      <Text style={[styles.adSub, isSmall && { fontSize: 10 }, subStyle]} numberOfLines={1}>{ad.sub}</Text>
+                      {ad.url ? <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(255,255,255,0.70)', marginTop:2 }}>🔗 Tap to open link</Text> : null}
+                    </TouchableOpacity>
                     <View style={styles.adBadge}><Text style={styles.adBadgeTxt}>AD</Text></View>
+                    {ad.target && ad.target !== 'both' && (
+                      <View style={[styles.adBadge, { right:38, backgroundColor: ad.target==='member'?'rgba(39,174,96,0.55)':'rgba(230,126,34,0.55)' }]}>
+                        <Text style={styles.adBadgeTxt}>{ad.target==='member'?'MEMBER':'VISITOR'}</Text>
+                      </View>
+                    )}
                     <TouchableOpacity style={styles.adEditBtn} onPress={() => { setEditAd({ ...ad }); setEditAdModal(true); }}>
                       <MaterialIcons name="edit" size={12} color="#fff" />
                     </TouchableOpacity>

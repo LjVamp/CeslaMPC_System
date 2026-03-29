@@ -601,12 +601,18 @@ const AdBanner = ({ isWide, adAnim }) => {
   const scrollRef = useRef(null);
   const { width } = useWindowDimensions();
 
-  const ADS = [
-    { id: 1, bg: ['#1a3a6b', '#2e5fa3'], emoji: '📦', title: 'CESLA Merchandise', sub: 'Quality products available now!' },
-    { id: 2, bg: ['#7b3f00', '#c9a84c'], emoji: '🎁', title: 'Member Exclusive',   sub: 'Order with your member account!' },
-  ];
+  // Pull live ads from Firestore via context; filter out visitor-only ads
+  // Uses `target` field: 'both' | 'member' | 'visitor'
+  const { ads: contextAds } = useMerchandise();
+  const ADS = (contextAds && contextAds.length > 0)
+    ? contextAds.filter(ad => (ad.target || 'both') !== 'visitor')
+    : [
+        { id: 1, bg: ['#1a3a6b', '#2e5fa3'], emoji: '📦', title: 'CESLA Merchandise', sub: 'Quality products available now!' },
+        { id: 2, bg: ['#7b3f00', '#c9a84c'], emoji: '🎁', title: 'Member Exclusive',   sub: 'Order with your member account!' },
+      ];
 
   useEffect(() => {
+    if (ADS.length === 0) return;
     const timer = setInterval(() => {
       setCurrent(prev => {
         const next = (prev + 1) % ADS.length;
@@ -615,9 +621,19 @@ const AdBanner = ({ isWide, adAnim }) => {
       });
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [ADS.length]);
+
+  // Reset current index if it's out of range after filtering
+  useEffect(() => {
+    if (ADS.length > 0 && current >= ADS.length) {
+      setCurrent(0);
+      scrollRef.current?.scrollTo({ x: 0, animated: false });
+    }
+  }, [ADS.length]);
 
   const bannerW = isWide ? Math.min(width * 0.55, 700) : width - 48;
+
+  if (ADS.length === 0) return null;
 
   return (
     <Animated.View style={[{ alignSelf: 'stretch' }]}>
@@ -628,24 +644,49 @@ const AdBanner = ({ isWide, adAnim }) => {
         style={{ width: bannerW, alignSelf: 'center' }}
         contentContainerStyle={{ width: bannerW * ADS.length }}
       >
-        {ADS.map(ad => (
-          <LinearGradient key={ad.id} colors={ad.bg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={[adStyles.slide, { width: bannerW }]}>
-            <Text style={adStyles.adEmoji}>{ad.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={adStyles.adTitle}>{ad.title}</Text>
-              <Text style={adStyles.adSub}>{ad.sub}</Text>
-            </View>
-            <View style={adStyles.adBadge}><Text style={adStyles.adBadgeTxt}>AD</Text></View>
-            <View style={adStyles.dotsInner}>
-              {ADS.map((_, i) => (
-                <TouchableOpacity key={i} onPress={() => { scrollRef.current?.scrollTo({ x: i * bannerW, animated: true }); setCurrent(i); }}>
-                  <View style={[adStyles.dot, current === i && adStyles.dotActive]} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </LinearGradient>
-        ))}
+        {ADS.map(ad => {
+          const titleStyle = {
+            fontFamily: ad.titleFmt?.font  || 'GoogleSans_700Bold',
+            fontStyle:  ad.titleFmt?.italic    ? 'italic'    : 'normal',
+            fontWeight: ad.titleFmt?.bold      ? '700'       : '400',
+            textDecorationLine: ad.titleFmt?.underline ? 'underline' : 'none',
+          };
+          const subStyle = {
+            fontFamily: ad.subFmt?.font  || 'GoogleSans_400Regular',
+            fontStyle:  ad.subFmt?.italic    ? 'italic'    : 'normal',
+            fontWeight: ad.subFmt?.bold      ? '700'       : '400',
+            textDecorationLine: ad.subFmt?.underline ? 'underline' : 'none',
+          };
+          const handleAdPress = () => {
+            if (ad.url) {
+              if (Platform.OS === 'web') { window.open(ad.url, '_blank'); }
+              else { import('react-native').then(({ Linking }) => Linking.openURL(ad.url)); }
+            }
+          };
+          const imgSrc = ad.image ? { uri: ad.image } : (ad.imageUrl ? { uri: ad.imageUrl } : null);
+          return (
+            <LinearGradient key={ad.id} colors={ad.bg || ['#1a3a6b', '#2e5fa3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={[adStyles.slide, { width: bannerW }]}>
+              {imgSrc ? (
+                <Image source={imgSrc} style={{ position:'absolute', top:0, left:0, right:0, bottom:0, borderRadius:16 }} resizeMode="cover" />
+              ) : null}
+              {!imgSrc ? <Text style={adStyles.adEmoji}>{ad.emoji || '📦'}</Text> : null}
+              <TouchableOpacity style={{ flex: 1 }} onPress={handleAdPress} activeOpacity={ad.url ? 0.80 : 1}>
+                <Text style={[adStyles.adTitle, titleStyle]}>{ad.title}</Text>
+                <Text style={[adStyles.adSub, subStyle]}>{ad.sub}</Text>
+                {ad.url ? <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(255,255,255,0.70)', marginTop:2 }}>🔗 Tap to open</Text> : null}
+              </TouchableOpacity>
+              <View style={adStyles.adBadge}><Text style={adStyles.adBadgeTxt}>AD</Text></View>
+              <View style={adStyles.dotsInner}>
+                {ADS.map((_, i) => (
+                  <TouchableOpacity key={i} onPress={() => { scrollRef.current?.scrollTo({ x: i * bannerW, animated: true }); setCurrent(i); }}>
+                    <View style={[adStyles.dot, current === i && adStyles.dotActive]} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </LinearGradient>
+          );
+        })}
       </ScrollView>
     </Animated.View>
   );
