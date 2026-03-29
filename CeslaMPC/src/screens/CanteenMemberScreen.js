@@ -1045,6 +1045,7 @@ export default function CanteenMemberScreen({ navigation }) {
   const bodyFade    = useRef(new Animated.Value(0)).current;
   const adAnim      = useRef(new Animated.Value(1)).current;
   const lastScrollY = useRef(0);
+  const adAnimTarget = useRef(1);
   const receiptViewRef = useRef(null);
 
   useEffect(() => {
@@ -1384,7 +1385,7 @@ export default function CanteenMemberScreen({ navigation }) {
                     onPress={() => { setMenuOpen(false); handleLogout(); }}
                     activeOpacity={0.75}
                   >
-                    <Text style={styles.dropdownItemText}>🚪  Logout</Text>
+                    <Text style={styles.dropdownItemText}>  Logout</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1551,10 +1552,18 @@ export default function CanteenMemberScreen({ navigation }) {
                 const goingDown = y > lastScrollY.current;
                 lastScrollY.current = y;
                 const target = goingDown && y > 10 ? 0 : 1;
-                Animated.timing(adAnim, { toValue: target, duration:150, useNativeDriver:false }).start();
+                if (target !== adAnimTarget.current) {
+                  adAnimTarget.current = target;
+                  adAnim.stopAnimation();
+                  Animated.timing(adAnim, {
+                    toValue: target,
+                    duration: 120,
+                    useNativeDriver: false,
+                  }).start();
+                }
               } : undefined}
               style={{ flex:1, minHeight:0 }}
-              contentContainerStyle={[styles.menuGrid, { gap: Platform.OS==='web' ? 10 : 5, paddingBottom:20 }]}
+              contentContainerStyle={[styles.menuGrid, { gap: Platform.OS==='web' ? 10 : 5, paddingBottom: Platform.OS !== 'web' ? 90 : 20 }]}
             >
               {filtered.length === 0 ? (
                 <Text style={styles.emptyText}>No items found.</Text>

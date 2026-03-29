@@ -267,84 +267,431 @@ const SizePickerModal = ({ visible, item, onConfirm, onClose }) => {
   );
 };
 
-// ─── IMAGE ZOOM MODAL ─────────────────────────────────────────────────────────
-const ImageZoomModal = ({ visible, item, onClose }) => {
+// ─── ITEM DETAIL MODAL ────────────────────────────────────────────────────────
+// Full-screen animated popup: swipeable images (one at a time), item info,
+// tap image → FullImageViewer (pinch-to-zoom + swipe), colors, sizes
+const ItemDetailModal = ({ visible, item, onClose, onAdd }) => {
   const fadeAnim  = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const scaleAnim = useRef(new Animated.Value(0.88)).current;
+  const slideAnim = useRef(new Animated.Value(40)).current;
+  const [imgIdx, setImgIdx]   = useState(0);
+  const [fullViewOpen, setFullViewOpen] = useState(false);
+  const scrollRef = useRef(null);
+  const { width: SW } = useWindowDimensions();
+
+  // Modal card width — same formula used below in the Animated.View
+  const MODAL_W = Math.min(320, SW * 0.90);
+
   useEffect(() => {
     if (visible) {
+      setImgIdx(0);
+      setFullViewOpen(false);
       Animated.parallel([
-        Animated.timing(fadeAnim,  { toValue: 1, duration: 220, useNativeDriver: true }),
-        Animated.spring(scaleAnim, { toValue: 1, tension: 70, friction: 11, useNativeDriver: true }),
+        Animated.timing(fadeAnim,  { toValue: 1, duration: 240, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, tension: 68, friction: 11, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 240, useNativeDriver: true }),
       ]).start();
-    } else { fadeAnim.setValue(0); scaleAnim.setValue(0.85); }
+    } else {
+      fadeAnim.setValue(0); scaleAnim.setValue(0.88); slideAnim.setValue(40);
+    }
   }, [visible]);
+
   if (!item) return null;
+
+  const imgs = Array.isArray(item.images) && item.images.length > 0 ? item.images : (item.image ? [item.image] : []);
+  const hasColors = Array.isArray(item.colors) && item.colors.length > 0;
+  const hasSizes  = Array.isArray(item.sizes)  && item.sizes.length  > 0;
+
   return (
-    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
-      <Animated.View style={{ flex: 1, backgroundColor: 'rgba(1,15,40,0.80)', justifyContent: 'center', alignItems: 'center', opacity: fadeAnim }}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={{ alignItems: 'center', gap: 16, transform: [{ scale: scaleAnim }] }}>
-          <View style={{ width: 220, height: 220, borderRadius: 110, overflow: 'hidden', backgroundColor: 'rgba(240,246,252,0.95)', borderWidth: 3, borderColor: 'rgba(255,255,255,0.90)', justifyContent: 'center', alignItems: 'center' }}>
-            {item.image ? <Image source={{ uri: item.image }} style={{ width: '100%', height: '100%' }} resizeMode="cover" /> : <Text style={{ fontSize: 90 }}>{item.emoji}</Text>}
-          </View>
-          <View style={{ alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 18, color: '#fff', textAlign: 'center', paddingHorizontal: 20 }}>{item.name}</Text>
-            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 22, color: '#c9a84c' }}>₱{item.price}.00</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(255,255,255,0.60)' }}>Stock: {item.stock}</Text>
-          </View>
-          <TouchableOpacity onPress={onClose} style={{ paddingHorizontal: 28, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>✕  Close</Text>
-          </TouchableOpacity>
+    <>
+      <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+        <Animated.View style={{ flex: 1, backgroundColor: 'rgba(1,15,40,0.82)', justifyContent: 'center', alignItems: 'center', opacity: fadeAnim }}>
+          {/* Tap outside to close */}
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+
+          <Animated.View style={{
+            width: MODAL_W, borderRadius: 24,
+            backgroundColor: '#f0f5f9',
+            shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 24, elevation: 20,
+            overflow: 'hidden',
+            transform: [{ scale: scaleAnim }, { translateY: slideAnim }],
+          }}>
+            {/* Image carousel — one image at a time, tap to fullscreen */}
+            <View style={{ width: '100%', height: 220, backgroundColor: 'rgba(200,218,235,0.60)', position: 'relative' }}>
+              {imgs.length > 0 ? (
+                <>
+                  <ScrollView
+                    ref={scrollRef}
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    onMomentumScrollEnd={e => setImgIdx(Math.round(e.nativeEvent.contentOffset.x / MODAL_W))}
+                    style={{ width: MODAL_W, height: 220 }}
+                    contentContainerStyle={{ width: MODAL_W * imgs.length, height: 220 }}>
+                    {imgs.map((uri, i) => (
+                      <TouchableOpacity
+                        key={i}
+                        activeOpacity={0.90}
+                        onPress={() => setFullViewOpen(true)}
+                        style={{ width: MODAL_W, height: 220 }}>
+                        <Image
+                          source={{ uri }}
+                          style={{ width: MODAL_W, height: 220 }}
+                          resizeMode="cover"
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  {/* Tap-to-zoom hint */}
+                  <View style={{ position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.38)', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 }}>
+                    <Text style={{ color: '#fff', fontSize: 9, fontFamily: 'GoogleSans_400Regular' }}>🔍 Tap to view</Text>
+                  </View>
+
+                  {imgs.length > 1 && (
+                    <View style={{ position: 'absolute', bottom: 10, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+                      {imgs.map((_, i) => (
+                        <TouchableOpacity key={i} onPress={() => {
+                          scrollRef.current?.scrollTo({ x: i * MODAL_W, animated: true });
+                          setImgIdx(i);
+                        }}>
+                          <View style={{ width: imgIdx === i ? 18 : 7, height: 7, borderRadius: 4, backgroundColor: imgIdx === i ? '#fff' : 'rgba(255,255,255,0.50)' }} />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              ) : (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 80 }}>{item.emoji}</Text>
+                </View>
+              )}
+              {/* Close button */}
+              <TouchableOpacity onPress={onClose}
+                style={{ position: 'absolute', top: 10, right: 10, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(1,20,50,0.55)', justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 16 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Item details */}
+            <View style={{ padding: 20, gap: 8 }}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 18, color: '#011f4b', lineHeight: 24 }}>{item.name}</Text>
+              <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 26, color: '#c9a84c', lineHeight: 30 }}>₱{item.price}.00</Text>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(1,31,75,0.55)' }}>Stock: {item.stock}</Text>
+
+              {/* Color swatches */}
+              {hasColors && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(1,31,75,0.45)', letterSpacing: 1, textTransform: 'uppercase' }}>Colors:</Text>
+                  {item.colors.map(c => (
+                    <View key={c} style={{ alignItems: 'center', gap: 2 }}>
+                      <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: resolveColorHex(c), borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.18)' }} />
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.50)' }}>{c}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Available sizes */}
+              {hasSizes && (
+                <View style={{ gap: 4 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(1,31,75,0.45)', letterSpacing: 1, textTransform: 'uppercase' }}>Sizes:</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                    {item.sizes.map(sz => (
+                      <View key={sz} style={{ backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 6, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(26,58,107,0.18)' }}>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#1a3a6b' }}>{sz}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Add to cart */}
+              <TouchableOpacity
+                onPress={() => { onAdd(); onClose(); }}
+                disabled={item.stock === 0}
+                style={{ marginTop: 4, borderRadius: 14, overflow: 'hidden', opacity: item.stock === 0 ? 0.45 : 1 }}>
+                <LinearGradient colors={['#1a3a6b', '#2e5fa3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={{ paddingVertical: 14, alignItems: 'center' }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff' }}>
+                    {item.stock === 0 ? 'Out of Stock' : '🛒  Add To Cart'}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
         </Animated.View>
-      </Animated.View>
+      </Modal>
+
+      {/* Full-screen image viewer */}
+      {visible && (
+        <FullImageViewer
+          visible={fullViewOpen}
+          images={imgs}
+          startIndex={imgIdx}
+          onClose={() => setFullViewOpen(false)}
+        />
+      )}
+    </>
+  );
+};
+
+// Color reference for detail modal (mirrors ManageMerchandiseScreen COLOR_OPTIONS)
+const COLOR_OPTIONS_REF = {
+  Mugs:   [{ label: 'Gray', hex: '#9e9e9e' }, { label: 'Pink', hex: '#f48fb1' }],
+  Shirts: [{ label: 'White', hex: '#f5f5f5' }, { label: 'Navy Blue', hex: '#1a3a6b' }, { label: 'Royal Blue', hex: '#2979ff' }, { label: 'Khaki', hex: '#c8b560' }],
+  Caps:   [{ label: 'White', hex: '#f5f5f5' }, { label: 'Navy Blue', hex: '#1a3a6b' }, { label: 'Royal Blue', hex: '#2979ff' }, { label: 'Khaki', hex: '#c8b560' }],
+};
+
+// Helper: resolve color hex from label
+const resolveColorHex = (label) => {
+  for (const group of Object.values(COLOR_OPTIONS_REF)) {
+    const found = group.find(x => x.label === label);
+    if (found) return found.hex;
+  }
+  return '#999';
+};
+
+// ─── FULL-SCREEN IMAGE VIEWER ─────────────────────────────────────────────────
+// Tap an image in the modal → full-screen viewer with swipe + pinch zoom
+const FullImageViewer = ({ visible, images, startIndex, onClose }) => {
+  const [curIdx, setCurIdx] = useState(startIndex || 0);
+  const scrollRef = useRef(null);
+  const { width: SW, height: SH } = useWindowDimensions();
+
+  // Pinch-zoom state (web uses wheel; native uses gesture approximation via two-touch tracking)
+  const [scale, setScale] = useState(1);
+  const lastScale = useRef(1);
+  const lastDist  = useRef(null);
+
+  useEffect(() => {
+    if (visible) {
+      setCurIdx(startIndex || 0);
+      setScale(1);
+      lastScale.current = 1;
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ x: (startIndex || 0) * SW, animated: false });
+      }, 50);
+    }
+  }, [visible, startIndex]);
+
+  const handleScroll = (e) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / SW);
+    if (idx !== curIdx) { setCurIdx(idx); setScale(1); lastScale.current = 1; }
+  };
+
+  // Native two-finger pinch approximation
+  const handleTouchMove = (e) => {
+    if (e.nativeEvent.touches.length === 2) {
+      const [t1, t2] = e.nativeEvent.touches;
+      const dist = Math.hypot(t1.pageX - t2.pageX, t1.pageY - t2.pageY);
+      if (lastDist.current !== null) {
+        const delta = dist / lastDist.current;
+        const next = Math.min(4, Math.max(1, lastScale.current * delta));
+        setScale(next);
+      }
+      lastDist.current = dist;
+    }
+  };
+  const handleTouchEnd = (e) => {
+    if (e.nativeEvent.touches.length < 2) {
+      lastScale.current = scale;
+      lastDist.current = null;
+      if (scale < 1.05) { setScale(1); lastScale.current = 1; }
+    }
+  };
+
+  if (!visible || !images || images.length === 0) return null;
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.96)', justifyContent: 'center', alignItems: 'center' }}>
+        {/* Close */}
+        <TouchableOpacity
+          onPress={onClose}
+          style={{ position: 'absolute', top: Platform.OS === 'web' ? 16 : 48, right: 16, zIndex: 10, width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.18)', justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>✕</Text>
+        </TouchableOpacity>
+
+        {/* Image counter */}
+        {images.length > 1 && (
+          <View style={{ position: 'absolute', top: Platform.OS === 'web' ? 20 : 54, alignSelf: 'center', zIndex: 10, backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Text style={{ color: '#fff', fontSize: 12, fontFamily: 'GoogleSans_700Bold' }}>{curIdx + 1} / {images.length}</Text>
+          </View>
+        )}
+
+        {/* Swipeable images */}
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={handleScroll}
+          style={{ width: SW, height: SH }}
+          contentContainerStyle={{ width: SW * images.length, height: SH }}
+          scrollEnabled={scale <= 1}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}>
+          {images.map((uri, i) => (
+            <View key={i} style={{ width: SW, height: SH, justifyContent: 'center', alignItems: 'center' }}>
+              <Image
+                source={{ uri }}
+                style={{ width: SW, height: SH * 0.85, transform: [{ scale }] }}
+                resizeMode="contain"
+              />
+            </View>
+          ))}
+        </ScrollView>
+
+        {/* Dot indicators */}
+        {images.length > 1 && (
+          <View style={{ position: 'absolute', bottom: 40, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 7 }}>
+            {images.map((_, i) => (
+              <TouchableOpacity key={i} onPress={() => { scrollRef.current?.scrollTo({ x: i * SW, animated: true }); setCurIdx(i); }}>
+                <View style={{ width: curIdx === i ? 20 : 7, height: 7, borderRadius: 4, backgroundColor: curIdx === i ? '#fff' : 'rgba(255,255,255,0.45)' }} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Zoom hint */}
+        {scale <= 1 && images.length > 0 && (
+          <View style={{ position: 'absolute', bottom: Platform.OS === 'web' ? 16 : 16, alignSelf: 'center' }}>
+            <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 10, fontFamily: 'GoogleSans_400Regular' }}>
+              {Platform.OS === 'web' ? 'Use two fingers or scroll to zoom' : 'Pinch to zoom'}
+            </Text>
+          </View>
+        )}
+      </View>
     </Modal>
   );
 };
 
 // ─── ITEM CARD ────────────────────────────────────────────────────────────────
 const ItemCard = ({ item, onAdd }) => {
-  const [zoomed, setZoomed] = useState(false);
-  const hasSizes = Array.isArray(item.sizes) && item.sizes.length > 0;
+  const [detailVisible, setDetailVisible] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const imgs = Array.isArray(item.images) && item.images.length > 0
+    ? item.images
+    : (item.image ? [item.image] : []);
+
+  // Use a fixed, known image size so the carousel math is always correct
+  const CARD_IMG_SIZE = Platform.OS === 'web' ? 86 : 62;
+
+  const [imgIdx, setImgIdx] = useState(0);
+  const imgScrollRef = useRef(null);
+
+  const handlePressIn  = () => Animated.spring(scaleAnim, { toValue: 0.96, useNativeDriver: true }).start();
+  const handlePressOut = () => Animated.spring(scaleAnim, { toValue: 1,    useNativeDriver: true }).start();
+
+  const hasColors = Array.isArray(item.colors) && item.colors.length > 0;
+  const hasSizes  = Array.isArray(item.sizes)  && item.sizes.length  > 0;
+
   return (
-    <View style={styles.foodCard}>
-      {Platform.OS === 'web' ? (
-        <LinearGradient colors={['rgba(220,232,242,0.80)', 'rgba(200,218,235,0.60)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.foodCardInner}>
-          <TouchableOpacity style={styles.emojiCircle} onPress={() => setZoomed(true)} activeOpacity={0.80}>
-            {item.image ? <Image source={{ uri: item.image }} style={{ width: '100%', height: '100%', borderRadius: 99 }} resizeMode="cover" /> : <Text style={styles.emojiText}>{item.emoji}</Text>}
-          </TouchableOpacity>
-          <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
-          <Text style={styles.itemPrice}>₱{item.price}.00</Text>
-          <Text style={styles.itemStock}>Stock: {item.stock}</Text>
-          {hasSizes && (
-            <View style={{ backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, marginBottom: 2 }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: Platform.OS === 'web' ? 7 : 6, color: '#1a3a6b', textAlign: 'center' }}>👕 Tap to pick size</Text>
-            </View>
-          )}
-          <TouchableOpacity style={styles.addBtn} onPress={onAdd}>
-            <Text style={styles.addBtnText}>{hasSizes ? 'Select Size & Add' : 'Add To Cart'}</Text>
-          </TouchableOpacity>
-        </LinearGradient>
-      ) : (
-        <View style={[styles.foodCardInner, { backgroundColor: 'rgba(225,238,248,0.85)' }]}>
-          <TouchableOpacity style={styles.emojiCircle} onPress={() => setZoomed(true)} activeOpacity={0.80}>
-            {item.image ? <Image source={{ uri: item.image }} style={{ width: '100%', height: '100%', borderRadius: 99 }} resizeMode="cover" /> : <Text style={styles.emojiText}>{item.emoji}</Text>}
-          </TouchableOpacity>
-          <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
-          <Text style={styles.itemPrice}>₱{item.price}.00</Text>
-          <Text style={styles.itemStock}>Stock: {item.stock}</Text>
-          {hasSizes && (
-            <View style={{ backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, marginBottom: 2 }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 6, color: '#1a3a6b', textAlign: 'center' }}>👕 Tap to pick size</Text>
-            </View>
-          )}
-          <TouchableOpacity style={styles.addBtn} onPress={onAdd}>
-            <Text style={styles.addBtnText}>{hasSizes ? 'Select Size & Add' : 'Add To Cart'}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      <ImageZoomModal visible={zoomed} item={item} onClose={() => setZoomed(false)} />
-    </View>
+    <>
+      <Animated.View style={[styles.foodCard, { transform: [{ scale: scaleAnim }] }]}>
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setDetailVisible(true)}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          style={{ flex: 1 }}>
+          <LinearGradient
+            colors={['rgba(220,232,242,0.90)', 'rgba(200,218,235,0.70)']}
+            start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
+            style={styles.foodCardInner}>
+
+            {/* Image carousel — one image visible at a time */}
+            {imgs.length > 0 ? (
+              <View style={[styles.cardImgWrap, { width: CARD_IMG_SIZE, height: CARD_IMG_SIZE }]}>
+                <ScrollView
+                  ref={imgScrollRef}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  onMomentumScrollEnd={e => setImgIdx(Math.round(e.nativeEvent.contentOffset.x / CARD_IMG_SIZE))}
+                  style={{ width: CARD_IMG_SIZE, height: CARD_IMG_SIZE }}
+                  contentContainerStyle={{ width: CARD_IMG_SIZE * imgs.length, height: CARD_IMG_SIZE }}>
+                  {imgs.map((uri, i) => (
+                    <Image
+                      key={i}
+                      source={{ uri }}
+                      style={{ width: CARD_IMG_SIZE, height: CARD_IMG_SIZE }}
+                      resizeMode="cover"
+                    />
+                  ))}
+                </ScrollView>
+                {imgs.length > 1 && (
+                  <View style={{ position: 'absolute', bottom: 3, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 3 }}>
+                    {imgs.map((_, i) => (
+                      <TouchableOpacity key={i} onPress={e => {
+                        e.stopPropagation && e.stopPropagation();
+                        imgScrollRef.current?.scrollTo({ x: i * CARD_IMG_SIZE, animated: true });
+                        setImgIdx(i);
+                      }}>
+                        <View style={{ width: imgIdx === i ? 10 : 4, height: 4, borderRadius: 2, backgroundColor: imgIdx === i ? '#1a3a6b' : 'rgba(1,31,75,0.30)' }} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : (
+              <View style={styles.emojiCircle}>
+                <Text style={styles.emojiText}>{item.emoji}</Text>
+              </View>
+            )}
+
+            {/* Details */}
+            <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+            <Text style={styles.itemPrice}>₱{item.price}.00</Text>
+            <Text style={styles.itemStock}>Stock: {item.stock}</Text>
+
+            {/* Color dots */}
+            {hasColors && (
+              <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 3, marginTop: 1 }}>
+                {item.colors.slice(0, 5).map(c => (
+                  <View key={c} style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: resolveColorHex(c), borderWidth: 1, borderColor: 'rgba(0,0,0,0.18)' }} />
+                ))}
+              </View>
+            )}
+
+            {/* Size chips (first 3 + count) */}
+            {hasSizes && (
+              <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 2, marginTop: 1 }}>
+                {item.sizes.slice(0, 3).map(sz => (
+                  <View key={sz} style={{ backgroundColor: 'rgba(26,58,107,0.12)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 7, color: '#1a3a6b' }}>{sz}</Text>
+                  </View>
+                ))}
+                {item.sizes.length > 3 && (
+                  <View style={{ borderRadius: 4, paddingHorizontal: 3, paddingVertical: 1, backgroundColor: 'rgba(26,58,107,0.07)' }}>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 7, color: 'rgba(26,58,107,0.55)' }}>+{item.sizes.length - 3}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Add to Cart button */}
+            <TouchableOpacity
+              style={[styles.addBtn, item.stock === 0 && { opacity: 0.45 }]}
+              onPress={e => { e.stopPropagation && e.stopPropagation(); onAdd(); }}
+              disabled={item.stock === 0}
+              activeOpacity={0.80}>
+              <Text style={styles.addBtnText}>{item.stock === 0 ? 'Out of Stock' : 'Add To Cart'}</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+
+      <ItemDetailModal
+        visible={detailVisible}
+        item={item}
+        onClose={() => setDetailVisible(false)}
+        onAdd={onAdd}
+      />
+    </>
   );
 };
 
@@ -635,8 +982,16 @@ const AdBanner = ({ isWide, adAnim, navigation }) => {
 
   if (ADS.length === 0) return null;
 
+  // Mobile: animate show/hide via adAnim (1=visible, 0=hidden)
+  const mobileAnimStyle = (!isWide && adAnim) ? {
+    overflow: 'hidden',
+    height: adAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 128] }),
+    opacity: adAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
+    marginBottom: adAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }),
+  } : {};
+
   return (
-    <Animated.View style={[{ alignSelf: 'stretch' }]}>
+    <Animated.View style={[{ alignSelf: 'stretch' }, mobileAnimStyle]}>
       <ScrollView
         ref={scrollRef}
         horizontal pagingEnabled showsHorizontalScrollIndicator={false}
@@ -744,6 +1099,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
   const bodyFade = useRef(new Animated.Value(0)).current;
   const adAnim   = useRef(new Animated.Value(1)).current;
   const lastScrollY  = useRef(0);
+  const adAnimTarget = useRef(1);
   const receiptViewRef = useRef(null);
 
   useEffect(() => {
@@ -795,13 +1151,12 @@ export default function MerchandiseMemberScreen({ navigation }) {
   }, [loggedIn, member?.uid]);
 
   const addToCart = (item, size) => {
-    if (needsSize(item) && !size) { setSizePickerItem(item); return; }
-    const key = needsSize(item) ? (item.id + '-' + size) : item.id;
+    const key = item.id;
     setCart(prev => ({ ...prev, [key]: { item, qty: (prev[key] ? prev[key].qty : 0) + 1, size: size || null } }));
   };
 
   const removeFromCart = (item, size) => {
-    const key = needsSize(item) ? (item.id + '-' + size) : item.id;
+    const key = item.id;
     setCart(prev => {
       const qty = (prev[key] ? prev[key].qty : 0) - 1;
       if (qty <= 0) { const n = { ...prev }; delete n[key]; return n; }
@@ -1281,8 +1636,24 @@ export default function MerchandiseMemberScreen({ navigation }) {
                 <ScrollView
                   showsVerticalScrollIndicator={true}
                   nestedScrollEnabled={true}
+                  scrollEventThrottle={16}
+                  onScroll={Platform.OS !== 'web' ? (e) => {
+                    const y = e.nativeEvent.contentOffset.y;
+                    const goingDown = y > lastScrollY.current;
+                    lastScrollY.current = y;
+                    const target = goingDown && y > 10 ? 0 : 1;
+                    if (target !== adAnimTarget.current) {
+                      adAnimTarget.current = target;
+                      adAnim.stopAnimation();
+                      Animated.timing(adAnim, {
+                        toValue: target,
+                        duration: 120,
+                        useNativeDriver: false,
+                      }).start();
+                    }
+                  } : undefined}
                   style={Platform.OS === 'web' ? { height: height - 310 } : { flex: 1 }}
-                  contentContainerStyle={[styles.menuGrid, { gap: Platform.OS === 'web' ? 10 : 5, paddingBottom: 20 }]}
+                  contentContainerStyle={[styles.menuGrid, { gap: Platform.OS === 'web' ? 10 : 5, paddingBottom: Platform.OS !== 'web' ? 90 : 20 }]}
                 >
                   {filtered.length === 0 ? (
                     <Text style={styles.emptyText}>No items found.</Text>
@@ -1500,14 +1871,23 @@ const styles = StyleSheet.create({
 
   foodCard: {
     borderRadius: 14, overflow: 'hidden',
-    shadowColor: '#011f4b', shadowOpacity: 0.10, shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 }, elevation: 3, flex: 1,
+    shadowColor: '#011f4b', shadowOpacity: 0.12, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 }, elevation: 4, flex: 1,
   },
   foodCardInner: {
-    borderRadius: 14, padding: Platform.OS === 'web' ? 14 : 8,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.75)',
-    alignItems: 'center', gap: Platform.OS === 'web' ? 4 : 3,
+    borderRadius: 14, padding: Platform.OS === 'web' ? 10 : 8,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)',
+    alignItems: 'center', gap: Platform.OS === 'web' ? 5 : 3,
     flex: 1, justifyContent: 'space-between',
+  },
+  // Image carousel wrapper inside card
+  cardImgWrap: {
+    width: Platform.OS === 'web' ? 86 : 62,
+    height: Platform.OS === 'web' ? 86 : 62,
+    borderRadius: 10, overflow: 'hidden',
+    alignSelf: 'center',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)',
+    marginBottom: Platform.OS === 'web' ? 4 : 2,
   },
   emojiCircle: {
     width: Platform.OS === 'web' ? 72 : 52, height: Platform.OS === 'web' ? 72 : 52,

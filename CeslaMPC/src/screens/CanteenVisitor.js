@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useCanteen } from '../context/CanteenContext';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Animated, StatusBar, Image,
@@ -14,6 +15,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts } from 'expo-font';
 import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/noto-serif';
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
+
+// ─── PERSISTENCE KEY ──────────────────────────────────────────────────────────
+const VISITOR_HISTORY_KEY = 'canteen_visitor_order_history';
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 
@@ -735,6 +739,7 @@ export default function CanteenVisitor({ navigation }) {
   const bodyFade    = useRef(new Animated.Value(0)).current;
   const adAnim      = useRef(new Animated.Value(1)).current;
   const lastScrollY = useRef(0);
+  const adAnimTarget = useRef(1);
   const receiptViewRef = useRef(null);
 
   useEffect(() => {
@@ -749,6 +754,42 @@ export default function CanteenVisitor({ navigation }) {
   useEffect(() => {
     reloadFromStorage();
   }, []);
+
+  // ── Load persisted order history from AsyncStorage on mount ───────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(VISITOR_HISTORY_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setOrderHistory(parsed);
+          }
+        }
+      } catch (e) {
+        // silently ignore parse/storage errors
+      }
+    })();
+  }, []);
+
+  // ── Re-load history when screen regains focus (e.g. after back navigation) ─
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          const raw = await AsyncStorage.getItem(VISITOR_HISTORY_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setOrderHistory(parsed);
+            }
+          }
+        } catch (e) {
+          // silently ignore
+        }
+      })();
+    }, [])
+  );
 
   // Firestore onSnapshot on canteen_orders fires automatically when status changes
   // No polling needed — the useEffect below watches `orders` array in real time
@@ -833,8 +874,13 @@ export default function CanteenVisitor({ navigation }) {
     setCartOpen(false);
     clearCart();
 
-    // Push to session order history
-    setOrderHistory(prev => [{ ...fullOrder, docId: trackedId, createdAt: now }, ...prev]);
+    // Push to session order history + persist to AsyncStorage
+    const newEntry = { ...fullOrder, docId: trackedId, createdAt: now.toISOString() };
+    setOrderHistory(prev => {
+      const updated = [newEntry, ...prev];
+      AsyncStorage.setItem(VISITOR_HISTORY_KEY, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
 
     // Start tracking with the real Firestore ID
     setTrackedOrderId(trackedId);
@@ -1209,14 +1255,18 @@ export default function CanteenVisitor({ navigation }) {
                 const goingDown = y > lastScrollY.current;
                 lastScrollY.current = y;
                 const target = goingDown && y > 10 ? 0 : 1;
-                Animated.timing(adAnim, {
-                  toValue: target,
-                  duration: 150,
-                  useNativeDriver: false,
-                }).start();
+                if (target !== adAnimTarget.current) {
+                  adAnimTarget.current = target;
+                  adAnim.stopAnimation();
+                  Animated.timing(adAnim, {
+                    toValue: target,
+                    duration: 120,
+                    useNativeDriver: false,
+                  }).start();
+                }
               } : undefined}
               style={{ flex:1, minHeight:0 }}
-              contentContainerStyle={[styles.menuGrid, { gap: Platform.OS==='web' ? 10 : 5, paddingBottom:20 }]}
+              contentContainerStyle={[styles.menuGrid, { gap: Platform.OS==='web' ? 10 : 5, paddingBottom: Platform.OS !== 'web' ? 90 : 20 }]}
             >
               {filtered.length === 0 ? (
                 <Text style={styles.emptyText}>No items found.</Text>

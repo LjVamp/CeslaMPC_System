@@ -234,7 +234,7 @@ const ORDER_STATUSES = {
 
 const emptyItem = () => ({
   id: Date.now().toString(), name: '', cat: 'Shirts',
-  price: '', stock: '', emoji: '📦', image: null,
+  price: '', stock: '', emoji: '📦', image: null, images: [],
   sizes: defaultSizesForCat('Shirts'), // Shirts is default → auto-fill all sizes
   colors: [], // color choices (Shirts/Mugs etc.)
 });
@@ -267,12 +267,34 @@ const autoEmoji = (name) => {
 };
 
 
+// ─── DEFAULT CHARACTERS ───────────────────────────────────────────────────────
+const DEFAULT_CHARACTERS = ['Mordi', 'Lino', 'Climbs'];
+
+// ─── COLLAPSIBLE SECTION HEADER ───────────────────────────────────────────────
+const CollapsibleSection = ({ title, badge, open, onToggle, children, accentColor = '#1a3a6b' }) => (
+  <View style={ms.sizeSection}>
+    <TouchableOpacity
+      onPress={onToggle}
+      activeOpacity={0.80}
+      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: open ? 10 : 0 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+        <Text style={[ms.sizeSectionTitle, { color: accentColor }]}>{title}</Text>
+        {badge > 0 && (
+          <View style={{ backgroundColor: accentColor, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, minWidth: 20, alignItems: 'center' }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>{badge}</Text>
+          </View>
+        )}
+      </View>
+      <Text style={{ fontSize: 13, color: 'rgba(1,31,75,0.45)', fontWeight: '700' }}>{open ? '▲' : '▼'}</Text>
+    </TouchableOpacity>
+    {open && children}
+  </View>
+);
+
 const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
   const [form, setForm] = useState(item || emptyItem());
 
-  // FIX BUG 1: Only reset form when modal opens with a NEW item (different id),
-  // NOT on every re-render. Previously [item] fired after pickImage triggered a
-  // parent re-render, causing setForm to reset and wipe the just-picked image.
+  // Only reset when a different item opens
   const prevIdRef = useRef(null);
   useEffect(() => {
     if (!visible) { prevIdRef.current = null; return; }
@@ -281,16 +303,10 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
       prevIdRef.current = incomingId;
       if (item) {
         const base = { ...item, price: String(item.price), stock: String(item.stock) };
-        // Backfill sizes for apparel items saved before sizes feature
-        if (isApparelCategory(base.cat) && (!Array.isArray(base.sizes) || base.sizes.length === 0)) {
-          base.sizes = defaultSizesForCat(base.cat);
-        } else if (!Array.isArray(base.sizes)) {
-          base.sizes = [];
-        }
-        // Backfill colors array
-        if (!Array.isArray(base.colors)) {
-          base.colors = [];
-        }
+        if (!Array.isArray(base.images)) base.images = base.image ? [base.image] : [];
+        if (!Array.isArray(base.sizes))  base.sizes  = [];
+        if (!Array.isArray(base.colors)) base.colors = [];
+        if (!Array.isArray(base.characters)) base.characters = [];
         setForm(base);
       } else {
         setForm(emptyItem());
@@ -298,243 +314,555 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
     }
   }, [visible, item?.id]);
 
+  // ── Collapse state ────────────────────────────────────────────────────────
+  const [openSizes,      setOpenSizes]      = useState(false);
+  const [openColors,     setOpenColors]     = useState(false);
+  const [openChars,      setOpenChars]      = useState(false);
+  const [openCategory,   setOpenCategory]   = useState(false);
+
+  // ── Image handling ────────────────────────────────────────────────────────
+  const MAX_IMAGES = 5;
+  const [cropRatio, setCropRatio] = useState('1:1');
+  const getAspect = (r) => r === '3:4' ? [3, 4] : r === '4:3' ? [4, 3] : [1, 1];
+
+  const processImageUri = (uri, ratio) =>
+    new Promise((resolve, reject) => {
+      if (Platform.OS !== 'web') { resolve(uri); return; }
+      const [aw, ah] = getAspect(ratio);
+      const target = aw / ah;
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight;
+        if (sw / sh > target) { sw = Math.round(sh * target); sx = Math.round((img.naturalWidth - sw) / 2); }
+        else { sh = Math.round(sw / target); sy = Math.round((img.naturalHeight - sh) / 2); }
+        const MAX = 900; const scale = Math.min(MAX / sw, MAX / sh, 1);
+        const cw = Math.round(sw * scale); const ch = Math.round(sh * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = cw; canvas.height = ch;
+        canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, cw, ch);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = reject;
+      img.src = uri;
+    });
+
   const pickImage = async () => {
     if (Platform.OS !== 'web') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your photo library in Settings.');
-        return;
-      }
+      if (status !== 'granted') { Alert.alert('Permission Required', 'Please allow access to your photo library.'); return; }
     }
+    const currentImages = Array.isArray(form.images) ? form.images : (form.image ? [form.image] : []);
+    if (currentImages.length >= MAX_IMAGES) { Alert.alert('Limit Reached', `Max ${MAX_IMAGES} images.`); return; }
+    const [aw, ah] = getAspect(cropRatio);
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: false,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_IMAGES - currentImages.length,
+      allowsEditing: currentImages.length === 0,
+      aspect: [aw, ah], quality: 0.72, base64: false,
     });
-    if (!res.canceled) {
-      const asset = res.assets[0];
+    if (!res.canceled && res.assets.length > 0) {
       try {
-        const resized = await resizeImageToBase64(asset.uri);
-        setForm(f => ({ ...f, image: resized }));
-      } catch (e) {
-        Alert.alert('Error', 'Could not process image. Please try a different photo.');
-      }
+        const processed = await Promise.all(res.assets.map(a => processImageUri(a.uri, cropRatio)));
+        setForm(f => {
+          const prev = Array.isArray(f.images) ? f.images : (f.image ? [f.image] : []);
+          const merged = [...prev, ...processed].slice(0, MAX_IMAGES);
+          return { ...f, images: merged, image: merged[0] || null };
+        });
+      } catch (e) { Alert.alert('Error', 'Could not process image.'); }
     }
   };
 
-  const handleNameChange = (v) => {
-    setForm(f => ({ ...f, name: v, emoji: f.image ? f.emoji : autoEmoji(v) }));
+  const removeImage = (idx) => {
+    setForm(f => {
+      const prev = Array.isArray(f.images) ? f.images : (f.image ? [f.image] : []);
+      const next = prev.filter((_, i) => i !== idx);
+      return { ...f, images: next, image: next[0] || null };
+    });
+  };
+
+  const handleNameChange = (v) => setForm(f => ({ ...f, name: v, emoji: f.image ? f.emoji : autoEmoji(v) }));
+
+  // ── Category helpers ──────────────────────────────────────────────────────
+  const [newCatInput, setNewCatInput] = useState('');
+  const [localCats, setLocalCats]     = useState([]);
+
+  useEffect(() => {
+    if (visible) setLocalCats(categories.filter(c => c !== 'All'));
+  }, [visible, categories]);
+
+  const addCustomCategory = () => {
+    const v = newCatInput.trim();
+    if (!v) return;
+    if (!localCats.map(c => c.toLowerCase()).includes(v.toLowerCase())) {
+      setLocalCats(prev => [...prev, v]);
+    }
+    setForm(f => ({ ...f, cat: v }));
+    setNewCatInput('');
   };
 
   // ── Color helpers ─────────────────────────────────────────────────────────
-  const showColors  = hasColors(form.cat);
-  const showSizes   = isApparelCategory(form.cat);
+  // All colors are now stored on the form itself (custom per-item), not category-keyed
+  // form.colorOptions: [{ label, hex }]  — the palette for THIS item
+  // form.colors: string[]               — selected labels
+
+  const colorOptions = Array.isArray(form.colorOptions) ? form.colorOptions : [];
   const selectedColors = Array.isArray(form.colors) ? form.colors : [];
 
-  const toggleColor = (colorLabel) => {
+  const [newColorName, setNewColorName] = useState('');
+  const [newColorHex,  setNewColorHex]  = useState('#c9a84c');
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
+  // Preset palette for quick picks
+  const COLOR_PRESETS = [
+    { label: 'White',      hex: '#f5f5f5' },
+    { label: 'Black',      hex: '#1a1a1a' },
+    { label: 'Gray',       hex: '#9e9e9e' },
+    { label: 'Red',        hex: '#e53935' },
+    { label: 'Pink',       hex: '#f48fb1' },
+    { label: 'Navy Blue',  hex: '#1a3a6b' },
+    { label: 'Royal Blue', hex: '#2979ff' },
+    { label: 'Sky Blue',   hex: '#29b6f6' },
+    { label: 'Green',      hex: '#27ae60' },
+    { label: 'Olive',      hex: '#7d8c2e' },
+    { label: 'Yellow',     hex: '#f9ca24' },
+    { label: 'Orange',     hex: '#e67e22' },
+    { label: 'Khaki',      hex: '#c8b560' },
+    { label: 'Brown',      hex: '#795548' },
+    { label: 'Purple',     hex: '#8e44ad' },
+    { label: 'Maroon',     hex: '#7b1e1e' },
+  ];
+
+  const addColorOption = (label, hex) => {
+    const l = label.trim();
+    if (!l) return;
+    if (colorOptions.find(c => c.label.toLowerCase() === l.toLowerCase())) return;
+    setForm(f => ({
+      ...f,
+      colorOptions: [...(Array.isArray(f.colorOptions) ? f.colorOptions : []), { label: l, hex }],
+      colors: [...(Array.isArray(f.colors) ? f.colors : []), l], // auto-select when added
+    }));
+    setNewColorName('');
+  };
+
+  const removeColorOption = (label) => {
+    setForm(f => ({
+      ...f,
+      colorOptions: (Array.isArray(f.colorOptions) ? f.colorOptions : []).filter(c => c.label !== label),
+      colors: (Array.isArray(f.colors) ? f.colors : []).filter(c => c !== label),
+    }));
+  };
+
+  const toggleColor = (label) => {
     setForm(f => {
       const prev = Array.isArray(f.colors) ? f.colors : [];
-      const next = prev.includes(colorLabel) ? prev.filter(c => c !== colorLabel) : [...prev, colorLabel];
+      const next = prev.includes(label) ? prev.filter(c => c !== label) : [...prev, label];
       return { ...f, colors: next };
     });
   };
 
-  const selectAllColors = () => {
-    const opts = COLOR_OPTIONS[form.cat] || [];
-    setForm(f => ({ ...f, colors: opts.map(c => c.label) }));
-  };
+  const selectAllColors = () => setForm(f => ({ ...f, colors: colorOptions.map(c => c.label) }));
+  const clearColors     = () => setForm(f => ({ ...f, colors: [] }));
 
-  const clearColors = () => setForm(f => ({ ...f, colors: [] }));
-
-  // ── Size helpers ──────────────────────────────────────────────────────────
+  // ── Size helpers (for ALL items) ──────────────────────────────────────────
   const selectedSizes = Array.isArray(form.sizes) ? form.sizes : [];
+  const [newSizeInput, setNewSizeInput] = useState('');
 
   const toggleSize = (size) => {
     setForm(f => {
       const prev = Array.isArray(f.sizes) ? f.sizes : [];
-      const next = prev.includes(size) ? prev.filter(s => s !== size) : [...prev, size];
-      return { ...f, sizes: next };
+      return { ...f, sizes: prev.includes(size) ? prev.filter(s => s !== size) : [...prev, size] };
     });
   };
 
-  // When category changes: auto-fill sizes/colors based on new category
-  const handleCatChange = (cat) => {
+  const addCustomSize = () => {
+    const v = newSizeInput.trim().toUpperCase();
+    if (!v) return;
     setForm(f => {
-      const currentSizes = Array.isArray(f.sizes) ? f.sizes : [];
-      const newColors    = hasColors(cat) ? (Array.isArray(f.colors) ? f.colors : []) : [];
-      // Switching TO apparel and no sizes yet → auto-fill defaults
-      if (isApparelCategory(cat) && currentSizes.length === 0) {
-        return { ...f, cat, sizes: defaultSizesForCat(cat), colors: newColors };
-      }
-      // Switching AWAY from apparel → clear sizes
-      if (!isApparelCategory(cat)) {
-        return { ...f, cat, sizes: [], colors: newColors };
-      }
-      // Already apparel → keep existing, update colors
-      return { ...f, cat, colors: newColors };
+      const prev = Array.isArray(f.sizes) ? f.sizes : [];
+      if (prev.includes(v)) return f;
+      return { ...f, sizes: [...prev, v] };
     });
+    setNewSizeInput('');
   };
 
-  // Select all / clear helpers
-  const selectAllAdult = () => {
-    setForm(f => {
-      const prev = Array.isArray(f.sizes) ? f.sizes : [];
-      const kids  = prev.filter(s => KIDS_SIZES.includes(s));
-      return { ...f, sizes: [...kids, ...ADULT_SIZES] };
-    });
+  const removeCustomSize = (size) => {
+    setForm(f => ({
+      ...f,
+      sizes: (Array.isArray(f.sizes) ? f.sizes : []).filter(s => s !== size),
+    }));
   };
-  const selectAllKids = () => {
-    setForm(f => {
-      const prev = Array.isArray(f.sizes) ? f.sizes : [];
-      const adults = prev.filter(s => ADULT_SIZES.includes(s));
-      return { ...f, sizes: [...adults, ...KIDS_SIZES] };
-    });
-  };
+
+  const selectAllAdult = () => setForm(f => {
+    const prev = Array.isArray(f.sizes) ? f.sizes : [];
+    const kids = prev.filter(s => KIDS_SIZES.includes(s));
+    const customs = prev.filter(s => !ADULT_SIZES.includes(s) && !KIDS_SIZES.includes(s));
+    return { ...f, sizes: [...new Set([...customs, ...kids, ...ADULT_SIZES])] };
+  });
+
+  const selectAllKids = () => setForm(f => {
+    const prev = Array.isArray(f.sizes) ? f.sizes : [];
+    const adults = prev.filter(s => ADULT_SIZES.includes(s));
+    const customs = prev.filter(s => !ADULT_SIZES.includes(s) && !KIDS_SIZES.includes(s));
+    return { ...f, sizes: [...new Set([...customs, ...adults, ...KIDS_SIZES])] };
+  });
+
   const clearSizes = () => setForm(f => ({ ...f, sizes: [] }));
 
+  // ── Character helpers ─────────────────────────────────────────────────────
+  const selectedChars = Array.isArray(form.characters) ? form.characters : [];
+  const [customCharInput, setCustomCharInput] = useState('');
+  const [allChars, setAllChars] = useState(DEFAULT_CHARACTERS);
+
+  useEffect(() => {
+    if (visible) {
+      const extra = selectedChars.filter(c => !DEFAULT_CHARACTERS.includes(c));
+      setAllChars([...DEFAULT_CHARACTERS, ...extra]);
+    }
+  }, [visible]);
+
+  const toggleChar = (ch) => {
+    setForm(f => {
+      const prev = Array.isArray(f.characters) ? f.characters : [];
+      return { ...f, characters: prev.includes(ch) ? prev.filter(c => c !== ch) : [...prev, ch] };
+    });
+  };
+
+  const addCustomChar = () => {
+    const v = customCharInput.trim();
+    if (!v) return;
+    if (!allChars.map(c => c.toLowerCase()).includes(v.toLowerCase())) {
+      setAllChars(prev => [...prev, v]);
+    }
+    setForm(f => {
+      const prev = Array.isArray(f.characters) ? f.characters : [];
+      return { ...f, characters: prev.includes(v) ? prev : [...prev, v] };
+    });
+    setCustomCharInput('');
+  };
+
+  // ── Save ──────────────────────────────────────────────────────────────────
   const save = () => {
     if (!form.name.trim()) { Alert.alert('Error', 'Item name is required.'); return; }
     if (!form.price)       { Alert.alert('Error', 'Price is required.'); return; }
     if (form.stock === '')  { Alert.alert('Error', 'Stock is required.'); return; }
-    onSave({ ...form, price: parseFloat(form.price) || 0, stock: parseInt(form.stock) || 0 });
+    const imgs = Array.isArray(form.images) ? form.images : (form.image ? [form.image] : []);
+    onSave({
+      ...form,
+      images: imgs, image: imgs[0] || null,
+      price: parseFloat(form.price) || 0,
+      stock: parseInt(form.stock) || 0,
+      sizes: Array.isArray(form.sizes) ? form.sizes : [],
+      colors: Array.isArray(form.colors) ? form.colors : [],
+      colorOptions: Array.isArray(form.colorOptions) ? form.colorOptions : [],
+      characters: Array.isArray(form.characters) ? form.characters : [],
+    });
   };
+
+  const imgs = Array.isArray(form.images) ? form.images : (form.image ? [form.image] : []);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={ms.overlay}>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} activeOpacity={1} />
         <View style={ms.modalWrapper}>
-          <View style={[ms.modalCard, showSizes && { maxHeight: '90%' }]}>
-            <Text style={ms.modalTitle}>{(item&&item.name) ? 'Edit Item' : 'Add New Item'}</Text>
+          <View style={[ms.modalCard, { maxHeight: '94%' }]}>
+            <Text style={ms.modalTitle}>{item?.name ? 'Edit Item' : 'Add New Item'}</Text>
+
             <ScrollView showsVerticalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 12 }}>
+
+              {/* ── Top row: images + basic fields ── */}
               <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
-                <View style={{ alignItems: 'center', gap: 4 }}>
-                  <TouchableOpacity style={ms.imgPicker} onPress={pickImage}>
-                    {form.image
-                      ? <Image source={{ uri: form.image }} style={ms.imgPreview} />
-                      : <View style={{ alignItems: 'center', gap: 2 }}><Text style={{ fontSize: 32 }}>{form.emoji}</Text><Text style={ms.imgHint}>Upload</Text></View>
-                    }
-                    <View style={ms.imgBadge}><MaterialIcons name="photo-camera" size={12} color="#fff" /></View>
-                  </TouchableOpacity>
-                  {form.image && <TouchableOpacity onPress={() => setForm(f => ({ ...f, image: null }))}><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: '#e74c3c' }}>✕ Remove</Text></TouchableOpacity>}
-                  {!form.image && (
+
+                {/* Image panel */}
+                <View style={{ gap: 6 }}>
+                  <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={[ms.fieldLabel, { marginRight: 2 }]}>Crop:</Text>
+                    {['1:1', '3:4', '4:3'].map(r => (
+                      <TouchableOpacity key={r}
+                        style={[ms.chip, cropRatio === r && ms.chipActive, { paddingHorizontal: 9, paddingVertical: 4 }]}
+                        onPress={() => setCropRatio(r)}>
+                        <Text style={[ms.chipTxt, cropRatio === r && ms.chipTxtActive]}>{r}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 6, paddingHorizontal: 2 }}>
+                    {imgs.map((uri, idx) => (
+                      <View key={idx} style={{ alignItems: 'center', gap: 2 }}>
+                        <View style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', borderWidth: 2, borderColor: idx === 0 ? '#c9a84c' : 'rgba(1,31,75,0.20)', backgroundColor: 'rgba(240,246,252,0.90)' }}>
+                          <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                          {idx === 0 && (
+                            <View style={{ position: 'absolute', bottom: 2, left: 0, right: 0, alignItems: 'center' }}>
+                              <View style={{ backgroundColor: '#c9a84c', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
+                                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 7, color: '#fff' }}>MAIN</Text>
+                              </View>
+                            </View>
+                          )}
+                        </View>
+                        <TouchableOpacity onPress={() => removeImage(idx)}>
+                          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#e74c3c' }}>✕ Remove</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                    {imgs.length < MAX_IMAGES && (
+                      <TouchableOpacity style={ms.imgPicker} onPress={pickImage}>
+                        <View style={{ alignItems: 'center', gap: 2 }}>
+                          <Text style={{ fontSize: imgs.length === 0 ? 28 : 22 }}>{imgs.length === 0 ? form.emoji : '+'}</Text>
+                          <Text style={ms.imgHint}>{imgs.length === 0 ? 'Upload' : 'Add'}</Text>
+                        </View>
+                        <View style={ms.imgBadge}><MaterialIcons name="photo-camera" size={12} color="#fff" /></View>
+                      </TouchableOpacity>
+                    )}
+                  </ScrollView>
+
+                  {imgs.length === 0 && (
                     <View style={{ alignItems: 'center', gap: 2 }}>
                       <Text style={[ms.fieldLabel, { textAlign: 'center' }]}>Emoji</Text>
-                      <TextInput style={[ms.input, { textAlign: 'center', fontSize: 20, width: 56, paddingVertical: 6 }]} value={form.emoji} onChangeText={v => setForm(f => ({ ...f, emoji: v }))} placeholder="📦" />
+                      <TextInput style={[ms.input, { textAlign: 'center', fontSize: 20, width: 64, paddingVertical: 6 }]} value={form.emoji} onChangeText={v => setForm(f => ({ ...f, emoji: v }))} placeholder="📦" />
                     </View>
                   )}
+                  <Text style={[ms.fieldLabel, { textAlign: 'center', marginTop: 2 }]}>{imgs.length}/{MAX_IMAGES} images</Text>
                 </View>
+
+                {/* Name / Price / Stock */}
                 <View style={{ flex: 1, gap: 8 }}>
                   <View style={ms.fieldRow}>
                     <Text style={ms.fieldLabel}>Item Name *</Text>
                     <TextInput style={ms.input} value={form.name} onChangeText={handleNameChange} placeholder="e.g. CESLA T-Shirt" />
                   </View>
-                  <View style={ms.fieldRow}>
-                    <Text style={ms.fieldLabel}>Category</Text>
-                    {Platform.OS === 'web' ? (
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
-                        {categories.filter(c => c !== 'All').map(cat => (
-                          <TouchableOpacity key={cat} style={[ms.chip, form.cat === cat && ms.chipActive]} onPress={() => handleCatChange(cat)}>
-                            <Text style={[ms.chipTxt, form.cat === cat && ms.chipTxtActive]}>{cat}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ) : (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={true} style={{ marginTop: 4 }}>
-                        <View style={{ flexDirection: 'row', gap: 5 }}>
-                          {categories.filter(c => c !== 'All').map(cat => (
-                            <TouchableOpacity key={cat} style={[ms.chip, form.cat === cat && ms.chipActive]} onPress={() => handleCatChange(cat)}>
-                              <Text style={[ms.chipTxt, form.cat === cat && ms.chipTxtActive]}>{cat}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </ScrollView>
-                    )}
-                  </View>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={[ms.fieldRow, { flex: 1 }]}><Text style={ms.fieldLabel}>Price (₱) *</Text><TextInput style={ms.input} value={form.price} onChangeText={v => setForm(f => ({ ...f, price: v }))} keyboardType="numeric" placeholder="0.00" /></View>
-                    <View style={[ms.fieldRow, { flex: 1 }]}><Text style={ms.fieldLabel}>Stock *</Text><TextInput style={ms.input} value={form.stock} onChangeText={v => setForm(f => ({ ...f, stock: v }))} keyboardType="numeric" placeholder="0" /></View>
+                    <View style={[ms.fieldRow, { flex: 1 }]}>
+                      <Text style={ms.fieldLabel}>Price (₱) *</Text>
+                      <TextInput style={ms.input} value={form.price} onChangeText={v => setForm(f => ({ ...f, price: v }))} keyboardType="numeric" placeholder="0.00" />
+                    </View>
+                    <View style={[ms.fieldRow, { flex: 1 }]}>
+                      <Text style={ms.fieldLabel}>Stock *</Text>
+                      <TextInput style={ms.input} value={form.stock} onChangeText={v => setForm(f => ({ ...f, stock: v }))} keyboardType="numeric" placeholder="0" />
+                    </View>
                   </View>
                 </View>
               </View>
 
-              {/* ── COLOR SELECTION ── */}
-              {showColors && (
-                <View style={ms.sizeSection}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <Text style={ms.sizeSectionTitle}>🎨  AVAILABLE COLORS</Text>
-                    <View style={{ flexDirection: 'row', gap: 5 }}>
-                      <TouchableOpacity style={ms.sizeQuickBtn} onPress={selectAllColors}>
-                        <Text style={ms.sizeQuickBtnTxt}>All</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={ms.sizeQuickBtn} onPress={clearColors}>
-                        <Text style={ms.sizeQuickBtnTxt}>✕ Clear</Text>
-                      </TouchableOpacity>
+              {/* ── CATEGORY (collapsible) ── */}
+              <CollapsibleSection
+                title="🏷️  CATEGORY"
+                badge={0}
+                open={openCategory}
+                onToggle={() => setOpenCategory(o => !o)}
+                accentColor="#5c3a6b">
+                <View style={{ gap: 8 }}>
+                  {/* Current category display */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={ms.fieldLabel}>Selected:</Text>
+                    <View style={{ backgroundColor: '#5c3a6b', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff' }}>{form.cat}</Text>
                     </View>
                   </View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {(COLOR_OPTIONS[form.cat] || []).map(color => {
-                      const active = selectedColors.includes(color.label);
-                      const isDark = ['#1a3a6b','#2979ff'].includes(color.hex);
-                      return (
-                        <TouchableOpacity
-                          key={color.label}
-                          onPress={() => toggleColor(color.label)}
-                          style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 7,
-                            paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
-                            backgroundColor: active ? color.hex : 'rgba(1,31,75,0.06)',
-                            borderWidth: active ? 2 : 1.5,
-                            borderColor: active ? color.hex : 'rgba(1,31,75,0.15)',
-                          }}
-                        >
-                          <View style={{
-                            width: 16, height: 16, borderRadius: 8,
-                            backgroundColor: color.hex,
-                            borderWidth: 1.5,
-                            borderColor: color.label === 'White' ? 'rgba(0,0,0,0.15)' : color.hex,
-                          }} />
-                          <Text style={{
-                            fontFamily: 'GoogleSans_700Bold', fontSize: 12,
-                            color: active ? (isDark || color.label === 'White' ? (isDark ? '#fff' : '#333') : '#fff') : 'rgba(1,31,75,0.65)',
-                          }}>{color.label}</Text>
-                          {active && <Text style={{ fontSize: 10, color: isDark ? '#fff' : '#333' }}>✓</Text>}
-                        </TouchableOpacity>
-                      );
-                    })}
+                  {/* Existing category chips */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                    {localCats.map(cat => (
+                      <TouchableOpacity key={cat}
+                        style={[ms.chip, form.cat === cat && ms.chipActive]}
+                        onPress={() => setForm(f => ({ ...f, cat }))}>
+                        <Text style={[ms.chipTxt, form.cat === cat && ms.chipTxtActive]}>{cat}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
+                  {/* Add custom category */}
+                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                    <TextInput
+                      style={[ms.input, { flex: 1, paddingVertical: 7 }]}
+                      value={newCatInput}
+                      onChangeText={setNewCatInput}
+                      placeholder="Add custom category..."
+                      onSubmitEditing={addCustomCategory}
+                      returnKeyType="done"
+                    />
+                    <TouchableOpacity
+                      onPress={addCustomCategory}
+                      style={{ backgroundColor: '#5c3a6b', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff' }}>+ Add</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </CollapsibleSection>
+
+              {/* ── COLORS (collapsible, for ALL items) ── */}
+              <CollapsibleSection
+                title="🎨  COLORS"
+                badge={selectedColors.length}
+                open={openColors}
+                onToggle={() => setOpenColors(o => !o)}
+                accentColor="#c9a84c">
+                <View style={{ gap: 10 }}>
+
+                  {/* All / Clear buttons */}
+                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {colorOptions.length > 0 && (
+                      <>
+                        <TouchableOpacity style={ms.sizeQuickBtn} onPress={selectAllColors}>
+                          <Text style={ms.sizeQuickBtnTxt}>Select All</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={ms.sizeQuickBtn} onPress={clearColors}>
+                          <Text style={ms.sizeQuickBtnTxt}>✕ Clear</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+
+                  {/* Existing color options */}
+                  {colorOptions.length > 0 ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                      {colorOptions.map(color => {
+                        const active = selectedColors.includes(color.label);
+                        const isLight = ['#f5f5f5', '#f9ca24'].includes(color.hex);
+                        return (
+                          <View key={color.label} style={{ alignItems: 'center', gap: 3 }}>
+                            <TouchableOpacity
+                              onPress={() => toggleColor(color.label)}
+                              style={{
+                                width: 38, height: 38, borderRadius: 19,
+                                backgroundColor: color.hex,
+                                borderWidth: active ? 3 : 1.5,
+                                borderColor: active ? '#1a3a6b' : 'rgba(0,0,0,0.18)',
+                                justifyContent: 'center', alignItems: 'center',
+                              }}>
+                              {active && <Text style={{ fontSize: 14, color: isLight ? '#333' : '#fff' }}>✓</Text>}
+                            </TouchableOpacity>
+                            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.60)', textAlign: 'center', maxWidth: 44 }} numberOfLines={1}>{color.label}</Text>
+                            <TouchableOpacity onPress={() => removeColorOption(color.label)}>
+                              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 7, color: '#e74c3c' }}>✕</Text>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.45)', fontStyle: 'italic' }}>
+                      No colors added yet. Pick from presets below or add a custom color.
+                    </Text>
+                  )}
+
+                  {/* Preset palette */}
+                  <View style={{ gap: 4 }}>
+                    <Text style={ms.sizeGroupLabel}>QUICK PRESETS</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {COLOR_PRESETS.filter(p => !colorOptions.find(c => c.label === p.label)).map(preset => (
+                        <TouchableOpacity
+                          key={preset.label}
+                          onPress={() => addColorOption(preset.label, preset.hex)}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 5,
+                            paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8,
+                            backgroundColor: 'rgba(1,31,75,0.05)',
+                            borderWidth: 1, borderColor: 'rgba(1,31,75,0.12)',
+                          }}>
+                          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: preset.hex, borderWidth: 1, borderColor: 'rgba(0,0,0,0.18)' }} />
+                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.70)' }}>{preset.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Custom color add */}
+                  <View style={{ gap: 5 }}>
+                    <Text style={ms.sizeGroupLabel}>ADD CUSTOM COLOR</Text>
+                    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                      {/* Color swatch / picker toggle */}
+                      <TouchableOpacity
+                        onPress={() => setShowColorPicker(p => !p)}
+                        style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: newColorHex, borderWidth: 2, borderColor: 'rgba(0,0,0,0.20)', justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 10 }}>🖊</Text>
+                      </TouchableOpacity>
+                      <TextInput
+                        style={[ms.input, { flex: 1, paddingVertical: 7 }]}
+                        value={newColorName}
+                        onChangeText={setNewColorName}
+                        placeholder="Color name (e.g. Rose Gold)"
+                        onSubmitEditing={() => addColorOption(newColorName, newColorHex)}
+                        returnKeyType="done"
+                      />
+                      <TouchableOpacity
+                        onPress={() => addColorOption(newColorName, newColorHex)}
+                        style={{ backgroundColor: '#c9a84c', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#fff' }}>+ Add</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {/* Hex input (shown when picker toggled) */}
+                    {showColorPicker && (
+                      <View style={{ gap: 6 }}>
+                        <TextInput
+                          style={[ms.input, { paddingVertical: 7, letterSpacing: 1 }]}
+                          value={newColorHex}
+                          onChangeText={v => setNewColorHex(v.startsWith('#') ? v : '#' + v)}
+                          placeholder="#hex color e.g. #ff5733"
+                          autoCapitalize="none"
+                          maxLength={7}
+                        />
+                        {/* Color swatches for quick hex pick */}
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {[
+                            '#e53935','#e91e63','#9c27b0','#673ab7','#3f51b5','#2196f3',
+                            '#03a9f4','#00bcd4','#009688','#4caf50','#8bc34a','#cddc39',
+                            '#ffeb3b','#ffc107','#ff9800','#ff5722','#795548','#607d8b',
+                            '#ffffff','#9e9e9e','#424242','#000000',
+                          ].map(hex => (
+                            <TouchableOpacity
+                              key={hex}
+                              onPress={() => setNewColorHex(hex)}
+                              style={{
+                                width: 24, height: 24, borderRadius: 12,
+                                backgroundColor: hex,
+                                borderWidth: newColorHex === hex ? 3 : 1,
+                                borderColor: newColorHex === hex ? '#1a3a6b' : 'rgba(0,0,0,0.20)',
+                              }}
+                            />
+                          ))}
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: newColorHex, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.20)' }} />
+                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.55)' }}>Preview: {newColorHex}</Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Summary */}
                   {selectedColors.length > 0 && (
                     <View style={ms.sizeSummary}>
-                      <Text style={ms.sizeSummaryTxt}>
-                        ✓  {selectedColors.length} color{selectedColors.length !== 1 ? 's' : ''} selected:  {selectedColors.join('  ·  ')}
-                      </Text>
+                      <Text style={ms.sizeSummaryTxt}>✓ {selectedColors.length} selected: {selectedColors.join(' · ')}</Text>
                     </View>
                   )}
                 </View>
-              )}
+              </CollapsibleSection>
 
-              {/* ── SIZE SELECTION (Apparel only) ── */}
-              {showSizes && (
-                <View style={ms.sizeSection}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <Text style={ms.sizeSectionTitle}>👕  AVAILABLE SIZES</Text>
-                    <View style={{ flexDirection: 'row', gap: 5 }}>
-                      <TouchableOpacity style={ms.sizeQuickBtn} onPress={clearSizes}>
-                        <Text style={ms.sizeQuickBtnTxt}>✕ Clear</Text>
-                      </TouchableOpacity>
-                    </View>
+              {/* ── SIZES (collapsible, for ALL items) ── */}
+              <CollapsibleSection
+                title="📐  SIZES"
+                badge={selectedSizes.length}
+                open={openSizes}
+                onToggle={() => setOpenSizes(o => !o)}
+                accentColor="#1a3a6b">
+                <View style={{ gap: 8 }}>
+
+                  {/* Quick actions */}
+                  <View style={{ flexDirection: 'row', gap: 5, flexWrap: 'wrap' }}>
+                    <TouchableOpacity style={ms.sizeQuickBtn} onPress={selectAllAdult}>
+                      <Text style={ms.sizeQuickBtnTxt}>All Adult</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={ms.sizeQuickBtn} onPress={selectAllKids}>
+                      <Text style={ms.sizeQuickBtnTxt}>All Kids</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={ms.sizeQuickBtn} onPress={clearSizes}>
+                      <Text style={ms.sizeQuickBtnTxt}>✕ Clear All</Text>
+                    </TouchableOpacity>
                   </View>
 
-                  {/* Adult Sizes */}
-                  <View style={{ marginBottom: 8 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                      <Text style={ms.sizeGroupLabel}>ADULT</Text>
-                      <TouchableOpacity style={ms.sizeQuickBtn} onPress={selectAllAdult}>
-                        <Text style={ms.sizeQuickBtnTxt}>All Adult</Text>
-                      </TouchableOpacity>
-                    </View>
+                  {/* Adult sizes */}
+                  <View>
+                    <Text style={[ms.sizeGroupLabel, { marginBottom: 5 }]}>ADULT</Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                       {ADULT_SIZES.map(size => {
                         const active = selectedSizes.includes(size);
@@ -547,14 +875,9 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
                     </View>
                   </View>
 
-                  {/* Kids Sizes */}
+                  {/* Kids sizes */}
                   <View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                      <Text style={ms.sizeGroupLabel}>KIDS</Text>
-                      <TouchableOpacity style={ms.sizeQuickBtn} onPress={selectAllKids}>
-                        <Text style={ms.sizeQuickBtnTxt}>All Kids</Text>
-                      </TouchableOpacity>
-                    </View>
+                    <Text style={[ms.sizeGroupLabel, { marginBottom: 5, color: 'rgba(26,107,69,0.65)' }]}>KIDS</Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                       {KIDS_SIZES.map(size => {
                         const active = selectedSizes.includes(size);
@@ -567,15 +890,109 @@ const ItemEditModal = ({ visible, item, categories, onSave, onClose }) => {
                     </View>
                   </View>
 
+                  {/* Custom sizes */}
+                  {(() => {
+                    const customSizes = selectedSizes.filter(s => !ADULT_SIZES.includes(s) && !KIDS_SIZES.includes(s));
+                    return customSizes.length > 0 ? (
+                      <View>
+                        <Text style={[ms.sizeGroupLabel, { marginBottom: 5 }]}>CUSTOM</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {customSizes.map(size => (
+                            <View key={size} style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingLeft: 10, paddingRight: 6, paddingVertical: 6, borderRadius: 8, backgroundColor: '#1a3a6b', borderWidth: 1.5, borderColor: '#1a3a6b' }}>
+                              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff' }}>{size}</Text>
+                              <TouchableOpacity onPress={() => removeCustomSize(size)}>
+                                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(255,255,255,0.70)' }}>✕</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    ) : null;
+                  })()}
+
+                  {/* Add custom size */}
+                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                    <TextInput
+                      style={[ms.input, { flex: 1, paddingVertical: 7 }]}
+                      value={newSizeInput}
+                      onChangeText={setNewSizeInput}
+                      placeholder="Add size (e.g. XXXXL, 16, Free size)"
+                      autoCapitalize="characters"
+                      onSubmitEditing={addCustomSize}
+                      returnKeyType="done"
+                    />
+                    <TouchableOpacity
+                      onPress={addCustomSize}
+                      style={{ backgroundColor: '#1a3a6b', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff' }}>+ Add</Text>
+                    </TouchableOpacity>
+                  </View>
+
                   {selectedSizes.length > 0 && (
                     <View style={ms.sizeSummary}>
-                      <Text style={ms.sizeSummaryTxt}>
-                        ✓  {selectedSizes.length} size{selectedSizes.length !== 1 ? 's' : ''} selected:  {selectedSizes.join('  ·  ')}
-                      </Text>
+                      <Text style={ms.sizeSummaryTxt}>✓ {selectedSizes.length} size{selectedSizes.length !== 1 ? 's' : ''}: {selectedSizes.join(' · ')}</Text>
                     </View>
                   )}
                 </View>
-              )}
+              </CollapsibleSection>
+
+              {/* ── CHARACTERS (collapsible) ── */}
+              <CollapsibleSection
+                title="🐾  CHARACTERS"
+                badge={selectedChars.length}
+                open={openChars}
+                onToggle={() => setOpenChars(o => !o)}
+                accentColor="#27ae60">
+                <View style={{ gap: 8 }}>
+                  {/* Character chips */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                    {allChars.map(ch => {
+                      const active = selectedChars.includes(ch);
+                      const emoji = ch === 'Mordi' ? '🐧' : ch === 'Lino' ? '🐺' : ch === 'Climbs' ? '💛' : '🐾';
+                      return (
+                        <TouchableOpacity
+                          key={ch}
+                          onPress={() => toggleChar(ch)}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 6,
+                            paddingHorizontal: 13, paddingVertical: 9, borderRadius: 10,
+                            backgroundColor: active ? '#27ae60' : 'rgba(1,31,75,0.06)',
+                            borderWidth: active ? 2 : 1.5,
+                            borderColor: active ? '#27ae60' : 'rgba(1,31,75,0.15)',
+                          }}>
+                          <Text style={{ fontSize: 16 }}>{emoji}</Text>
+                          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: active ? '#fff' : 'rgba(1,31,75,0.65)' }}>{ch}</Text>
+                          {active && <Text style={{ fontSize: 10, color: '#fff' }}>✓</Text>}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Add custom character */}
+                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                    <TextInput
+                      style={[ms.input, { flex: 1, paddingVertical: 7 }]}
+                      value={customCharInput}
+                      onChangeText={setCustomCharInput}
+                      placeholder="Add character (e.g. Bingo)"
+                      onSubmitEditing={addCustomChar}
+                      returnKeyType="done"
+                    />
+                    <TouchableOpacity
+                      onPress={addCustomChar}
+                      style={{ backgroundColor: '#27ae60', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff' }}>+ Add</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {selectedChars.length > 0 && (
+                    <View style={ms.sizeSummary}>
+                      <Text style={ms.sizeSummaryTxt}>✓ {selectedChars.length} character{selectedChars.length !== 1 ? 's' : ''}: {selectedChars.join(' · ')}</Text>
+                    </View>
+                  )}
+                </View>
+              </CollapsibleSection>
+
             </ScrollView>
 
             <View style={[ms.modalActions, { marginTop: 8 }]}>
@@ -1490,6 +1907,67 @@ const cs = StyleSheet.create({
   receiptSubVal: { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: 'rgba(1,31,75,0.70)' },
 });
 
+// ─── ADMIN ITEM CARD (Manage Items tab) ──────────────────────────────────────
+// Shows swipeable image carousel + item details. Tap card → admin actions.
+const AdminItemCard = ({ item, imgs, onEdit, onDelete }) => {
+  const [imgIdx, setImgIdx] = useState(0);
+  const scrollRef = useRef(null);
+  const CARD_IMG_W = 80;
+
+  return (
+    <View style={mm.foodCard}>
+      <View style={[mm.foodCardInner, { backgroundColor: 'rgba(225,238,248,0.85)' }]}>
+        {/* Admin action buttons */}
+        <View style={mm.adminBtns}>
+          <TouchableOpacity style={mm.editBtn} onPress={onEdit}><MaterialIcons name="edit" size={11} color="#1a3a6b" /></TouchableOpacity>
+          <TouchableOpacity style={mm.delBtn} onPress={onDelete}><MaterialIcons name="delete" size={11} color="#e74c3c" /></TouchableOpacity>
+        </View>
+
+        {/* Image carousel or emoji */}
+        {imgs.length > 0 ? (
+          <View style={{ width: CARD_IMG_W, height: CARD_IMG_W, borderRadius: 10, overflow: 'hidden', alignSelf: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)' }}>
+            <ScrollView
+              ref={scrollRef}
+              horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={e => setImgIdx(Math.round(e.nativeEvent.contentOffset.x / CARD_IMG_W))}
+              style={{ width: CARD_IMG_W, height: CARD_IMG_W }}
+              contentContainerStyle={{ width: CARD_IMG_W * imgs.length }}>
+              {imgs.map((uri, i) => (
+                <Image key={i} source={{ uri }} style={{ width: CARD_IMG_W, height: CARD_IMG_W }} resizeMode="cover" />
+              ))}
+            </ScrollView>
+            {imgs.length > 1 && (
+              <View style={{ position: 'absolute', bottom: 3, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 3 }}>
+                {imgs.map((_, i) => (
+                  <TouchableOpacity key={i} onPress={() => { scrollRef.current?.scrollTo({ x: i * CARD_IMG_W, animated: true }); setImgIdx(i); }}>
+                    <View style={{ width: imgIdx === i ? 10 : 5, height: 5, borderRadius: 3, backgroundColor: imgIdx === i ? '#fff' : 'rgba(255,255,255,0.50)' }} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : (
+          <View style={mm.emojiCircle}><Text style={mm.emojiTxt}>{item.emoji}</Text></View>
+        )}
+
+        <Text style={mm.itemName} numberOfLines={2}>{item.name}</Text>
+        <Text style={mm.itemStock}>Stock: {item.stock}</Text>
+        <Text style={mm.itemPrice}>₱{item.price}.00</Text>
+        {Array.isArray(item.colors) && item.colors.length > 0 && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3, justifyContent: 'center', marginTop: 2 }}>
+            {(COLOR_OPTIONS[item.cat] || []).filter(c => item.colors.includes(c.label)).map(c => (
+              <View key={c.label} style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.hex, borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)' }} />
+            ))}
+          </View>
+        )}
+        <TouchableOpacity style={mm.editItemBtn} onPress={onEdit}>
+          <Text style={mm.editItemBtnTxt}>Edit Item</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
 // ─── MANAGE ITEMS SCREEN ──────────────────────────────────────────────────────
 const ManageItemsScreen = ({ items, categories, filtered, search, activeCategory, onSearch, onCategoryChange, onAddItem, onEditItem, onDeleteItem, isWide }) => {
   // FIX: 6 columns on wide, 3 on mobile
@@ -1537,42 +2015,19 @@ const ManageItemsScreen = ({ items, categories, filtered, search, activeCategory
           </TouchableOpacity>
         </View>
         <View style={{ height: 1, backgroundColor: 'rgba(1,31,75,0.10)', marginBottom: 8, marginHorizontal: 8 }} />
-        {/* FIX: padding 10/12, gap 8 */}
         <WebScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10, paddingHorizontal: 12, gap: 8, paddingBottom: 20 }}>
           {filtered.length === 0
             ? <Text style={mm.emptyTxt}>No items found.</Text>
             : Array.from({ length: Math.ceil(filtered.length / COLS) }, (_, rowIdx) => (
-              // FIX: gap 8, alignItems stretch
               <View key={rowIdx} style={{ flexDirection: 'row', gap: 8, alignItems: 'stretch' }}>
-                {filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).map(item => (
-                  // FIX: alignSelf stretch so all cards same height
-                  <View key={item.id} style={{ flex: 1, minWidth: 0, alignSelf: 'stretch' }}>
-                    <View style={mm.foodCard}>
-                      <View style={[mm.foodCardInner, { backgroundColor: 'rgba(225,238,248,0.85)' }]}>
-                        <View style={mm.adminBtns}>
-                          <TouchableOpacity style={mm.editBtn} onPress={() => onEditItem(item)}><MaterialIcons name="edit" size={11} color="#1a3a6b" /></TouchableOpacity>
-                          <TouchableOpacity style={mm.delBtn} onPress={() => onDeleteItem(item.id)}><MaterialIcons name="delete" size={11} color="#e74c3c" /></TouchableOpacity>
-                        </View>
-                        <View style={mm.emojiCircle}>
-                          {item.image ? <Image source={{ uri: item.image }} style={{ width: '100%', height: '100%', borderRadius: 99 }} resizeMode="cover" /> : <Text style={mm.emojiTxt}>{item.emoji}</Text>}
-                        </View>
-                        <Text style={mm.itemName} numberOfLines={2}>{item.name}</Text>
-                        <Text style={mm.itemStock}>Stock: {item.stock}</Text>
-                        <Text style={mm.itemPrice}>₱{item.price}.00</Text>
-                        {Array.isArray(item.colors) && item.colors.length > 0 && (
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3, justifyContent: 'center', marginTop: 2 }}>
-                            {(COLOR_OPTIONS[item.cat] || []).filter(c => item.colors.includes(c.label)).map(c => (
-                              <View key={c.label} style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.hex, borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)' }} />
-                            ))}
-                          </View>
-                        )}
-                        <TouchableOpacity style={mm.editItemBtn} onPress={() => onEditItem(item)}>
-                          <Text style={mm.editItemBtnTxt}>Edit Item</Text>
-                        </TouchableOpacity>
-                      </View>
+                {filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).map(item => {
+                  const imgs = Array.isArray(item.images) && item.images.length > 0 ? item.images : (item.image ? [item.image] : []);
+                  return (
+                    <View key={item.id} style={{ flex: 1, minWidth: 0, alignSelf: 'stretch' }}>
+                      <AdminItemCard item={item} imgs={imgs} onEdit={() => onEditItem(item)} onDelete={() => onDeleteItem(item.id)} />
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
                 {Array.from({ length: COLS - filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).length }).map((_, i) => (<View key={'e-' + i} style={{ flex: 1 }} />))}
               </View>
             ))
@@ -2460,10 +2915,11 @@ const SalesReportScreen = ({ orders, items }) => {
     monthOrders.forEach(o => {
       const d = getDate(o); if (!d) return;
       const k = fmtDateKey(d);
-      if (!map[k]) map[k] = { key: k, total: 0, count: 0, cashier: 0, visitor: 0 };
+      if (!map[k]) map[k] = { key: k, total: 0, count: 0, cashier: 0, visitor: 0, member: 0 };
       map[k].total += Number(o.total || 0);
       map[k].count += 1;
       if (o.source === 'visitor') map[k].visitor += Number(o.total || 0);
+      else if (o.source === 'member') map[k].member += Number(o.total || 0);
       else map[k].cashier += Number(o.total || 0);
     });
     return Object.values(map).sort((a,b) => a.key.localeCompare(b.key));
@@ -2477,8 +2933,9 @@ const SalesReportScreen = ({ orders, items }) => {
         month: m, monthFull: MONTHS_FULL[i], idx: i,
         total: mo.reduce((s,o) => s + Number(o.total||0), 0),
         count: mo.length,
-        cashier: mo.filter(o => o.source !== 'visitor').reduce((s,o) => s+Number(o.total||0), 0),
+        cashier: mo.filter(o => o.source !== 'visitor' && o.source !== 'member').reduce((s,o) => s+Number(o.total||0), 0),
         visitor: mo.filter(o => o.source === 'visitor').reduce((s,o) => s+Number(o.total||0), 0),
+        member:  mo.filter(o => o.source === 'member').reduce((s,o) => s+Number(o.total||0), 0),
       };
     });
   }, [yearOrders, year]);
@@ -2489,10 +2946,11 @@ const SalesReportScreen = ({ orders, items }) => {
     orders.forEach(o => {
       const d = getDate(o); if (!d) return;
       const y = d.getFullYear();
-      if (!map[y]) map[y] = { year: y, total: 0, count: 0, cashier: 0, visitor: 0 };
+      if (!map[y]) map[y] = { year: y, total: 0, count: 0, cashier: 0, visitor: 0, member: 0 };
       map[y].total += Number(o.total||0);
       map[y].count += 1;
       if (o.source === 'visitor') map[y].visitor += Number(o.total||0);
+      else if (o.source === 'member') map[y].member += Number(o.total||0);
       else map[y].cashier += Number(o.total||0);
     });
     return Object.values(map).sort((a,b) => b.year - a.year);
@@ -2599,8 +3057,9 @@ const SalesReportScreen = ({ orders, items }) => {
 
   // ── Grand totals for selected month ─────────────────────────────────────────
   const monthTotal   = monthOrders.reduce((s,o) => s+Number(o.total||0), 0);
-  const monthCashier = monthOrders.filter(o=>o.source!=='visitor').reduce((s,o)=>s+Number(o.total||0),0);
+  const monthCashier = monthOrders.filter(o=>o.source!=='visitor'&&o.source!=='member').reduce((s,o)=>s+Number(o.total||0),0);
   const monthVisitor = monthOrders.filter(o=>o.source==='visitor').reduce((s,o)=>s+Number(o.total||0),0);
+  const monthMember  = monthOrders.filter(o=>o.source==='member').reduce((s,o)=>s+Number(o.total||0),0);
 
   // ── Folder tabs config ────────────────────────────────────────────────────
   const FOLDERS = [
@@ -2653,13 +3112,17 @@ const SalesReportScreen = ({ orders, items }) => {
                 <Text style={rpt2.summaryVal}>₱{monthTotal.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</Text>
                 <Text style={rpt2.summaryLbl}>{MONTHS_FULL[activeMonth]} {year} Total</Text>
               </View>
-              <View style={[rpt2.summaryCard,{backgroundColor:'rgba(41,121,255,0.12)'}]}>
-                <Text style={[rpt2.summaryVal,{color:'#2979ff'}]}>₱{monthCashier.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</Text>
-                <Text style={rpt2.summaryLbl}>🖥️ Cashier</Text>
+              <View style={[rpt2.summaryCard,{backgroundColor:'rgba(155,89,182,0.12)'}]}>
+                <Text style={[rpt2.summaryVal,{color:'#7b2fa0'}]}>₱{monthMember.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</Text>
+                <Text style={rpt2.summaryLbl}>👤 Member</Text>
               </View>
               <View style={[rpt2.summaryCard,{backgroundColor:'rgba(39,174,96,0.12)'}]}>
                 <Text style={[rpt2.summaryVal,{color:'#1a7a45'}]}>₱{monthVisitor.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</Text>
                 <Text style={rpt2.summaryLbl}>🌐 Visitor</Text>
+              </View>
+              <View style={[rpt2.summaryCard,{backgroundColor:'rgba(41,121,255,0.12)'}]}>
+                <Text style={[rpt2.summaryVal,{color:'#2979ff'}]}>₱{monthCashier.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</Text>
+                <Text style={rpt2.summaryLbl}>🖥️ Cashier</Text>
               </View>
             </View>
           )}
@@ -2673,9 +3136,10 @@ const SalesReportScreen = ({ orders, items }) => {
                 <View style={rpt2.thead}>
                   <Text style={[rpt2.th,{flex:1.2,textAlign:'left',paddingLeft:10}]}>DATE</Text>
                   <Text style={[rpt2.th,{flex:0.8}]}>ORDERS</Text>
-                  <Text style={[rpt2.th,{flex:1.2}]}>🖥️ CASHIER</Text>
-                  <Text style={[rpt2.th,{flex:1.2}]}>🌐 VISITOR</Text>
-                  <Text style={[rpt2.th,{flex:1.2}]}>TOTAL</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>👤 MEMBER</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>🌐 VISITOR</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>🖥️ CASHIER</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>TOTAL</Text>
                 </View>
                 {dailyData.length === 0 ? (
                   <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No sales for {MONTHS_FULL[activeMonth]} {year}</Text></View>
@@ -2683,9 +3147,10 @@ const SalesReportScreen = ({ orders, items }) => {
                   <View key={g.key} style={[rpt2.trow, idx%2===0&&rpt2.trowAlt]}>
                     <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.key}</Text>
                     <Text style={[rpt2.td,{flex:0.8}]}>{g.count}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,color:'#2979ff',fontFamily:'GoogleSans_700Bold'}]}>₱{g.cashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,color:'#1a7a45',fontFamily:'GoogleSans_700Bold'}]}>₱{g.visitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{g.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#7b2fa0',fontFamily:'GoogleSans_700Bold'}]}>₱{(g.member||0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#1a7a45',fontFamily:'GoogleSans_700Bold'}]}>₱{g.visitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#2979ff',fontFamily:'GoogleSans_700Bold'}]}>₱{g.cashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{g.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
                   </View>
                 ))}
                 {/* Totals footer */}
@@ -2693,9 +3158,10 @@ const SalesReportScreen = ({ orders, items }) => {
                   <View style={rpt2.tfooter}>
                     <Text style={[rpt2.tfootLbl,{flex:1.2,paddingLeft:10}]}>TOTAL</Text>
                     <Text style={[rpt2.tfootVal,{flex:0.8}]}>{monthOrders.length}</Text>
-                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#2979ff'}]}>₱{monthCashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#1a7a45'}]}>₱{monthVisitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#c9a84c'}]}>₱{monthTotal.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.1,color:'#7b2fa0'}]}>₱{monthMember.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.1,color:'#1a7a45'}]}>₱{monthVisitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.1,color:'#2979ff'}]}>₱{monthCashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.1,color:'#c9a84c'}]}>₱{monthTotal.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
                   </View>
                 )}
               </View>
@@ -2707,26 +3173,29 @@ const SalesReportScreen = ({ orders, items }) => {
                 <View style={rpt2.thead}>
                   <Text style={[rpt2.th,{flex:1.2,textAlign:'left',paddingLeft:10}]}>MONTH</Text>
                   <Text style={[rpt2.th,{flex:0.8}]}>ORDERS</Text>
-                  <Text style={[rpt2.th,{flex:1.2}]}>🖥️ CASHIER</Text>
-                  <Text style={[rpt2.th,{flex:1.2}]}>🌐 VISITOR</Text>
-                  <Text style={[rpt2.th,{flex:1.2}]}>TOTAL</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>👤 MEMBER</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>🌐 VISITOR</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>🖥️ CASHIER</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>TOTAL</Text>
                 </View>
                 {monthlyData.map((g,idx)=>(
                   <View key={g.month} style={[rpt2.trow, idx%2===0&&rpt2.trowAlt]}>
                     <Text style={[rpt2.td,{flex:1.2,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.monthFull}</Text>
                     <Text style={[rpt2.td,{flex:0.8}]}>{g.count}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,color:'#2979ff',fontFamily:g.cashier>0?'GoogleSans_700Bold':'GoogleSans_400Regular'}]}>₱{g.cashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,color:'#1a7a45',fontFamily:g.visitor>0?'GoogleSans_700Bold':'GoogleSans_400Regular'}]}>₱{g.visitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,color:'#c9a84c',fontFamily:g.total>0?'GoogleSans_700Bold':'GoogleSans_400Regular'}]}>₱{g.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#7b2fa0',fontFamily:(g.member||0)>0?'GoogleSans_700Bold':'GoogleSans_400Regular'}]}>₱{(g.member||0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#1a7a45',fontFamily:g.visitor>0?'GoogleSans_700Bold':'GoogleSans_400Regular'}]}>₱{g.visitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#2979ff',fontFamily:g.cashier>0?'GoogleSans_700Bold':'GoogleSans_400Regular'}]}>₱{g.cashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#c9a84c',fontFamily:g.total>0?'GoogleSans_700Bold':'GoogleSans_400Regular'}]}>₱{g.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
                   </View>
                 ))}
                 {/* Yearly total footer */}
                 <View style={rpt2.tfooter}>
                   <Text style={[rpt2.tfootLbl,{flex:1.2,paddingLeft:10}]}>{year} TOTAL</Text>
                   <Text style={[rpt2.tfootVal,{flex:0.8}]}>{yearOrders.length}</Text>
-                  <Text style={[rpt2.tfootVal,{flex:1.2,color:'#2979ff'}]}>₱{yearOrders.filter(o=>o.source!=='visitor').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                  <Text style={[rpt2.tfootVal,{flex:1.2,color:'#1a7a45'}]}>₱{yearOrders.filter(o=>o.source==='visitor').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                  <Text style={[rpt2.tfootVal,{flex:1.2,color:'#c9a84c'}]}>₱{yearOrders.reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  <Text style={[rpt2.tfootVal,{flex:1.1,color:'#7b2fa0'}]}>₱{yearOrders.filter(o=>o.source==='member').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  <Text style={[rpt2.tfootVal,{flex:1.1,color:'#1a7a45'}]}>₱{yearOrders.filter(o=>o.source==='visitor').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  <Text style={[rpt2.tfootVal,{flex:1.1,color:'#2979ff'}]}>₱{yearOrders.filter(o=>o.source!=='visitor'&&o.source!=='member').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                  <Text style={[rpt2.tfootVal,{flex:1.1,color:'#c9a84c'}]}>₱{yearOrders.reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
                 </View>
               </View>
             )}
@@ -2737,9 +3206,10 @@ const SalesReportScreen = ({ orders, items }) => {
                 <View style={rpt2.thead}>
                   <Text style={[rpt2.th,{flex:1,textAlign:'left',paddingLeft:10}]}>YEAR</Text>
                   <Text style={[rpt2.th,{flex:0.8}]}>ORDERS</Text>
-                  <Text style={[rpt2.th,{flex:1.2}]}>🖥️ CASHIER</Text>
-                  <Text style={[rpt2.th,{flex:1.2}]}>🌐 VISITOR</Text>
-                  <Text style={[rpt2.th,{flex:1.2}]}>TOTAL</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>👤 MEMBER</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>🌐 VISITOR</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>🖥️ CASHIER</Text>
+                  <Text style={[rpt2.th,{flex:1.1}]}>TOTAL</Text>
                 </View>
                 {yearlyData.length === 0 ? (
                   <View style={rpt2.emptyRow}><Text style={rpt2.emptyTxt}>No yearly data available</Text></View>
@@ -2747,18 +3217,20 @@ const SalesReportScreen = ({ orders, items }) => {
                   <View key={g.year} style={[rpt2.trow, idx%2===0&&rpt2.trowAlt]}>
                     <Text style={[rpt2.td,{flex:1,fontFamily:'GoogleSans_700Bold',color:'#1a3a6b',textAlign:'left',paddingLeft:10}]}>{g.year}</Text>
                     <Text style={[rpt2.td,{flex:0.8}]}>{g.count}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,color:'#2979ff',fontFamily:'GoogleSans_700Bold'}]}>₱{g.cashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,color:'#1a7a45',fontFamily:'GoogleSans_700Bold'}]}>₱{g.visitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                    <Text style={[rpt2.td,{flex:1.2,color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{g.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#7b2fa0',fontFamily:'GoogleSans_700Bold'}]}>₱{(g.member||0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#1a7a45',fontFamily:'GoogleSans_700Bold'}]}>₱{g.visitor.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#2979ff',fontFamily:'GoogleSans_700Bold'}]}>₱{g.cashier.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.td,{flex:1.1,color:'#c9a84c',fontFamily:'GoogleSans_700Bold'}]}>₱{g.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
                   </View>
                 ))}
                 {yearlyData.length > 0 && (
                   <View style={rpt2.tfooter}>
                     <Text style={[rpt2.tfootLbl,{flex:1,paddingLeft:10}]}>ALL TIME</Text>
                     <Text style={[rpt2.tfootVal,{flex:0.8}]}>{orders.length}</Text>
-                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#2979ff'}]}>₱{orders.filter(o=>o.source!=='visitor').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#1a7a45'}]}>₱{orders.filter(o=>o.source==='visitor').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
-                    <Text style={[rpt2.tfootVal,{flex:1.2,color:'#c9a84c'}]}>₱{orders.reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.1,color:'#7b2fa0'}]}>₱{orders.filter(o=>o.source==='member').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.1,color:'#1a7a45'}]}>₱{orders.filter(o=>o.source==='visitor').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.1,color:'#2979ff'}]}>₱{orders.filter(o=>o.source!=='visitor'&&o.source!=='member').reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
+                    <Text style={[rpt2.tfootVal,{flex:1.1,color:'#c9a84c'}]}>₱{orders.reduce((s,o)=>s+Number(o.total||0),0).toLocaleString('en-PH',{minimumFractionDigits:2})}</Text>
                   </View>
                 )}
               </View>
@@ -2855,7 +3327,7 @@ const SalesReportScreen = ({ orders, items }) => {
                             </View>
                             {g.orders.map((o,i)=>{
                               const itms=(o.items||[]).map(it=>((it.item&&it.item.name)||it.name||'Item')+' x'+it.qty).join(', ');
-                              const src=o.source==='visitor'?'🌐 Visitor':'🖥️ Cashier';
+                              const src=o.source==='visitor'?'🌐 Visitor':o.source==='member'?'👤 Member':'🖥️ Cashier';
                               return(
                                 <View key={o.id} style={[rpt2.expandRow,i%2===0&&{backgroundColor:'rgba(255,255,255,0.30)'}]}>
                                   <Text style={[rpt2.expandTd,{flex:0.4}]}>{i+1}</Text>
