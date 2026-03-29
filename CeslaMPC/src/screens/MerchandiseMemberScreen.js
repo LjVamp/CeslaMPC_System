@@ -808,11 +808,21 @@ export default function MerchandiseMemberScreen({ navigation }) {
   const clearCart = () => setCart({});
 
   const handlePlaceOrder = async (orderData) => {
+    const normalizedPayment = orderData.paymentMode === 'credits' ? 'credit' : orderData.paymentMode;
+    const normalizedOrder = { ...orderData, paymentMode: normalizedPayment, payment: normalizedPayment };
+
     try {
-      await addOrder({ ...orderData, status: 'done', source: 'member', memberId: member?.uid, memberName: member?.fullName || member?.name });
+      await addOrder({
+        ...normalizedOrder,
+        status: 'done',
+        source: 'member',
+        memberId:     member?.uid    || null,
+        memberName:   member?.name   || (member?.firstName && member?.lastName ? `${member.lastName}, ${member.firstName}` : null) || member?.firstName || null,
+        memberUserId: member?.userId || null,
+      });
       await deductStock(orderData.items);
     } catch (e) { console.warn('handlePlaceOrder error:', e); }
-    setLastOrder(orderData);
+    setLastOrder(normalizedOrder);
     setCartOpen(false);
     clearCart();
     setTimeout(() => setReceiptVisible(true), 300);
@@ -880,22 +890,15 @@ export default function MerchandiseMemberScreen({ navigation }) {
       {/* HEADER */}
       <Animated.View style={{ opacity: hdrFade, transform: [{ translateY: hdrTrans }], marginTop: Platform.OS === 'web' ? 16 : 36, marginHorizontal: isSmall ? 8 : 10, zIndex: 100 }}>
         <View style={[styles.header, { paddingHorizontal: isWide ? 40 : 12, paddingVertical: isWide ? 16 : 7 }]}>
-          {/* Left: back button (login view) or spacer (logged in) */}
-          {!loggedIn ? (
-            <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.80}>
-              <Text style={styles.backIcon}>←</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={{ width: 40 }} />
-          )}
+          {/* Left: back button always shown */}
+          <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.80}>
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
 
           <View style={styles.headerCenter}>
             <Text style={[styles.headerH1, { fontSize: isWide ? 22 : isSmall ? 14 : 16 }]} numberOfLines={1} adjustsFontSizeToFit>
               <Text style={styles.headerGold}>CESLA </Text>Merchandise — Member
             </Text>
-            <View style={styles.visitorTag}>
-              <Text style={styles.visitorTagText}>📦  MEMBER MERCHANDISE</Text>
-            </View>
           </View>
 
           {/* Right: avatar + firstName + menu icon (logged in only), else spacer */}
@@ -954,7 +957,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
                 activeOpacity={0.75}
               >
                 <Text style={[styles.dropdownItemText, { fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)' }]}>
-                  🚪{'  '}Logout
+                  Logout
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1020,8 +1023,9 @@ export default function MerchandiseMemberScreen({ navigation }) {
                         const orderItems  = order.items || [];
                         const total       = order.total || 0;
                         const pm          = order.payment || order.paymentMode || 'cash';
-                        const pmLabel     = pm === 'gcash' ? 'GCash' : pm === 'credit' ? 'Credit' : 'Cash';
-                        const pmColor     = pm === 'credit' ? '#c9a84c' : pm === 'gcash' ? '#3498db' : '#27ae60';
+                        const pmNorm      = pm === 'credits' ? 'credit' : pm;
+                        const pmLabel     = pmNorm === 'gcash' ? 'GCash' : pmNorm === 'credit' ? 'Credit' : 'Cash';
+                        const pmColor     = pmNorm === 'credit' ? '#c9a84c' : pmNorm === 'gcash' ? '#3498db' : '#27ae60';
                         const statusColor = order.status === 'done' ? '#27ae60' : order.status === 'ready' ? '#2980b9' : order.status === 'preparing' ? '#e67e22' : '#95a5a6';
                         const statusLabel = order.status === 'done' ? 'Completed' : order.status === 'ready' ? 'Ready' : order.status === 'preparing' ? 'Preparing' : 'Pending';
                         const isEven = idx % 2 === 0;
@@ -1032,10 +1036,14 @@ export default function MerchandiseMemberScreen({ navigation }) {
                               <Text style={mTbl.ordDate}>{fmtDateTime(order.createdAt)}</Text>
                             </View>
                             <View style={[mTbl.cell, { flex:1 }]}>
-                              {orderItems.slice(0,2).map((it, j) => {
-                                const item = it.item || it;
+                              {orderItems.length === 0 ? (
+                                <Text style={[mTbl.itemLine, { color:'rgba(1,31,75,0.38)' }]}>—</Text>
+                              ) : orderItems.slice(0,2).map((it, j) => {
+                                // Support both { item: {...}, qty } and flat { name, qty } structures
+                                const itemName = it?.item?.name || it?.name || '—';
                                 const qty  = it.qty || it.quantity || 1;
-                                return <Text key={j} style={mTbl.itemLine} numberOfLines={1}>{item.name} ×{qty}</Text>;
+                                const sz   = it.size ? ` (${it.size})` : '';
+                                return <Text key={j} style={mTbl.itemLine} numberOfLines={1}>{itemName}{sz} ×{qty}</Text>;
                               })}
                               {orderItems.length > 2 && <Text style={[mTbl.itemLine, { color:'rgba(1,31,75,0.38)', fontSize:10 }]}>+{orderItems.length - 2} more</Text>}
                             </View>
@@ -1074,8 +1082,10 @@ export default function MerchandiseMemberScreen({ navigation }) {
               } catch { return '—'; }
             };
 
-            const creditOrders  = orderHistory.filter(o =>
-              (o.payment || o.paymentMode || '').toLowerCase() === 'credit'
+            const creditOrders  = orderHistory.filter(o => {
+              const pm = (o.payment || o.paymentMode || '').toLowerCase();
+              return pm === 'credit' || pm === 'credits';
+            }
             );
             const unpaidOrders  = creditOrders.filter(o => o.settled !== true);
             const paidOrders    = creditOrders.filter(o => o.settled === true);

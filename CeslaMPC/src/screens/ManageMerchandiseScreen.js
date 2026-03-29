@@ -19,8 +19,55 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
 import { useMerchandise } from '../context/MerchandiseContext';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, deleteDoc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
+
+// ─── ORDER NOTIFICATION SOUND ─────────────────────────────────────────────────
+// Restaurant-style loud ding-dong chime via AudioContext (no extra package needed).
+const playOrderSound = async () => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.AudioContext) {
+    try {
+      const ctx = new window.AudioContext();
+      const playTone = (freq, start, duration, gain = 0.8, type = 'sine') => {
+        const osc  = ctx.createOscillator();
+        const g    = ctx.createGain();
+        const wave = ctx.createWaveShaper();
+        const curve = new Float32Array(256);
+        for (let i = 0; i < 256; i++) {
+          const x = (i * 2) / 256 - 1;
+          curve[i] = (Math.PI + 300) * x / (Math.PI + 300 * Math.abs(x));
+        }
+        wave.curve = curve;
+        osc.connect(wave); wave.connect(g); g.connect(ctx.destination);
+        osc.frequency.value = freq;
+        osc.type = type;
+        g.gain.setValueAtTime(0, ctx.currentTime + start);
+        g.gain.linearRampToValueAtTime(gain, ctx.currentTime + start + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + duration + 0.05);
+      };
+      // Restaurant DING-DONG: two loud bell strikes
+      playTone(1046, 0.00, 1.2, 0.9); // C6
+      playTone(1318, 0.00, 1.0, 0.5); // E6 harmonic
+      playTone(784,  0.45, 1.4, 0.9); // G5
+      playTone(988,  0.45, 1.2, 0.5); // B5 harmonic
+      // Repeat once more for extra attention
+      playTone(1046, 1.10, 1.2, 0.7);
+      playTone(784,  1.55, 1.4, 0.7);
+    } catch (e) { /* silent fail */ }
+  } else {
+    try {
+      const { Audio } = require('expo-av');
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg' },
+        { shouldPlay: true, volume: 1.0 }
+      );
+      sound.setOnPlaybackStatusUpdate(s => { if (s.didJustFinish) sound.unloadAsync(); });
+    } catch (e) { /* silent fail */ }
+  }
+};
 
 // ─── WEB SCROLLBAR STYLING ────────────────────────────────────────────────────
 if (Platform.OS === 'web') {
@@ -2021,13 +2068,212 @@ const OrderHistoryScreen = ({ orders, onUpdateStatus }) => {
 };
 
 // ─── EMPLOYEE CREDITS ─────────────────────────────────────────────────────────
-const EmployeeCreditsScreen = () => (
-  <View style={[sub.root,{justifyContent:'center',alignItems:'center',gap:14}]}>
-    <MaterialIcons name="account-balance" size={64} color="rgba(1,31,75,0.15)"/>
-    <Text style={{fontFamily:'GoogleSans_700Bold',fontSize:20,color:'rgba(1,31,75,0.30)'}}>Coming Soon</Text>
-    <Text style={sub.emptyTxt}>Employee credit tracking will be{'\n'}available in a future update.</Text>
-  </View>
-);
+const EmployeeCreditsScreen = () => {
+  const [creditOrders, setCreditOrders] = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [search,       setSearch]       = useState('');
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [activeModalTab,  setActiveModalTab]  = useState('unpaid');
+  const [settlingId,   setSettlingId]   = useState(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'merchandise_orders'),
+      snap => {
+        const all = snap.docs.map(d => ({ docId: d.id, ...d.data() }));
+        const credits = all.filter(o => {
+          const pm = (o.payment || o.paymentMode || '').toLowerCase();
+          return pm === 'credit' || pm === 'credits';
+        });
+        credits.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setCreditOrders(credits);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return unsub;
+  }, []);
+
+  const grouped = React.useMemo(() => {
+    const map = {};
+    creditOrders.forEach(o => {
+      const resolvedName = o.memberName
+        || (o.firstName && o.lastName ? `${o.lastName}, ${o.firstName}` : null)
+        || o.firstName || o.lastName
+        || o.memberUserId || o.memberId
+        || 'Unknown Member';
+      const key = o.memberId || o.memberUserId || resolvedName;
+      if (!map[key]) map[key] = { memberId: o.memberId || '', memberUserId: o.memberUserId || '', memberName: resolvedName, orders: [] };
+      map[key].orders.push(o);
+    });
+    return Object.values(map).sort((a, b) => a.memberName.localeCompare(b.memberName));
+  }, [creditOrders]);
+
+  const filtered = grouped.filter(g =>
+    g.memberName.toLowerCase().includes(search.toLowerCase()) ||
+    g.memberUserId.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const fmtDateTime = (ts) => {
+    try {
+      if (!ts) return '—';
+      const d = ts?.toDate?.() || new Date(typeof ts === 'number' ? ts : ts);
+      if (isNaN(d.getTime())) return '—';
+      return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+        + '\n' + d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch { return '—'; }
+  };
+
+  const markSettled = async (docId) => {
+    setSettlingId(docId);
+    try {
+      await updateDoc(doc(db, 'merchandise_orders', docId), { settled: true, settledAt: serverTimestamp() });
+    } catch (e) {
+      Alert.alert('Error', 'Failed to mark as settled.\n' + (e?.message || ''));
+    } finally { setSettlingId(null); }
+  };
+
+  const modalGroup  = selectedMember ? grouped.find(g => (g.memberId || g.memberName) === selectedMember) : null;
+  const unpaidOrders = modalGroup ? modalGroup.orders.filter(o => o.settled !== true) : [];
+  const paidOrders   = modalGroup ? modalGroup.orders.filter(o => o.settled === true)  : [];
+  const totalUnpaid  = unpaidOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+  const totalPaid    = paidOrders.reduce((s, o)   => s + Number(o.total || 0), 0);
+
+  if (loading) return (
+    <View style={[sub.root, { justifyContent: 'center', alignItems: 'center' }]}>
+      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(1,31,75,0.50)' }}>Loading credit orders...</Text>
+    </View>
+  );
+
+  return (
+    <View style={sub.root}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: 'rgba(1,31,75,0.70)', letterSpacing: 1.5, textTransform: 'uppercase' }}>📦 Merchandise Credit Orders</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.45)', marginTop: 2 }}>{grouped.length} member{grouped.length !== 1 ? 's' : ''} with credit orders</Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.90)', marginBottom: 10, gap: 6 }}>
+        <MaterialIcons name="search" size={16} color="rgba(1,31,75,0.45)" />
+        <TextInput
+          style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: '#011f4b', paddingVertical: 0, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) }}
+          placeholder="Search member name or ID..."
+          placeholderTextColor="rgba(1,31,75,0.35)"
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && <TouchableOpacity onPress={() => setSearch('')}><MaterialIcons name="close" size={16} color="rgba(1,31,75,0.40)" /></TouchableOpacity>}
+      </View>
+
+      {filtered.length === 0 ? (
+        <View style={sub.emptyBox}>
+          <MaterialIcons name="account-balance" size={48} color="rgba(1,31,75,0.15)" />
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: 'rgba(1,31,75,0.35)', textAlign: 'center', marginTop: 8 }}>{search ? 'No members match your search.' : 'No credit orders yet.'}</Text>
+          <Text style={sub.emptyTxt}>Credit orders from members will appear here.</Text>
+        </View>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+          {filtered.map(group => {
+            const unpaid = group.orders.filter(o => o.settled !== true);
+            const paid   = group.orders.filter(o => o.settled === true);
+            const totalU = unpaid.reduce((s, o) => s + Number(o.total || 0), 0);
+            return (
+              <TouchableOpacity key={group.memberId || group.memberName} onPress={() => { setSelectedMember(group.memberId || group.memberName); setActiveModalTab('unpaid'); }} activeOpacity={0.78}
+                style={{ backgroundColor: 'rgba(255,255,255,0.60)', borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.80)', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#1a3a6b', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#c9a84c' }}>{(group.memberName || '?').split(' ').map(w => w[0]).slice(0, 2).join('')}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#0f1e35' }}>{group.memberName}</Text>
+                  {group.memberUserId ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.45)', marginTop: 1 }}>{group.memberUserId}</Text> : null}
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 5 }}>
+                    {unpaid.length > 0 && <View style={{ backgroundColor: 'rgba(231,76,60,0.12)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(231,76,60,0.25)' }}><Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#e74c3c' }}>Unpaid ₱{totalU.toFixed(2)} ({unpaid.length})</Text></View>}
+                    {paid.length > 0 && <View style={{ backgroundColor: 'rgba(39,174,96,0.10)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(39,174,96,0.25)' }}><Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#27ae60' }}>Settled ({paid.length})</Text></View>}
+                  </View>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="rgba(1,31,75,0.30)" />
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      <Modal visible={!!selectedMember} transparent animationType="slide" onRequestClose={() => setSelectedMember(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(1,20,50,0.55)', justifyContent: 'flex-end' }}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setSelectedMember(null)} />
+          <View style={{ backgroundColor: '#f0f5f9', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '88%', paddingBottom: 32 }}>
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(1,31,75,0.20)', alignSelf: 'center', marginTop: 10, marginBottom: 10 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, borderColor: 'rgba(1,31,75,0.10)' }}>
+              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#1a3a6b', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#c9a84c' }}>{(modalGroup?.memberName || '?').split(' ').map(w => w[0]).slice(0, 2).join('')}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 15, color: '#0f1e35' }}>{modalGroup?.memberName || '—'}</Text>
+                {modalGroup?.memberUserId ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.45)' }}>{modalGroup.memberUserId}</Text> : null}
+              </View>
+              <TouchableOpacity onPress={() => setSelectedMember(null)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(1,31,75,0.08)', justifyContent: 'center', alignItems: 'center' }}>
+                <MaterialIcons name="close" size={18} color="rgba(1,31,75,0.55)" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6 }}>
+              {[{ label: 'Unpaid', value: `₱${totalUnpaid.toFixed(2)}`, count: unpaidOrders.length, color: '#e74c3c', bg: 'rgba(231,76,60,0.10)' },
+                { label: 'Settled', value: `₱${totalPaid.toFixed(2)}`, count: paidOrders.length, color: '#27ae60', bg: 'rgba(39,174,96,0.10)' }].map(s => (
+                <View key={s.label} style={{ flex: 1, backgroundColor: s.bg, borderRadius: 12, padding: 12, alignItems: 'center' }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 16, color: s.color }}>{s.value}</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.50)', marginTop: 2 }}>{s.count} order{s.count !== 1 ? 's' : ''} {s.label.toLowerCase()}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={{ flexDirection: 'row', marginHorizontal: 20, marginBottom: 10, backgroundColor: 'rgba(1,31,75,0.07)', borderRadius: 10, padding: 3 }}>
+              {['unpaid', 'paid'].map(tab => (
+                <TouchableOpacity key={tab} onPress={() => setActiveModalTab(tab)} style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: activeModalTab === tab ? '#fff' : 'transparent', alignItems: 'center' }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: activeModalTab === tab ? '#1a3a6b' : 'rgba(1,31,75,0.45)', textTransform: 'capitalize' }}>{tab}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <ScrollView style={{ flex: 1, paddingHorizontal: 20 }} showsVerticalScrollIndicator={false}>
+              {(activeModalTab === 'unpaid' ? unpaidOrders : paidOrders).length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: 'rgba(1,31,75,0.35)' }}>{activeModalTab === 'unpaid' ? 'No unpaid orders!' : 'No paid orders yet.'}</Text>
+                </View>
+              ) : (
+                (activeModalTab === 'unpaid' ? unpaidOrders : paidOrders).map((order, idx) => {
+                  const orderItems = order.items || [];
+                  const itemSummary = orderItems.slice(0, 2).map(it => `${it?.item?.name || it?.name || 'Item'} ×${it.qty || it.quantity || 1}`).join(', ') + (orderItems.length > 2 ? ` +${orderItems.length - 2} more` : '');
+                  return (
+                    <View key={order.docId || idx} style={{ backgroundColor: 'rgba(255,255,255,0.70)', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#1a3a6b', flex: 1 }}>Order #{order.orderNo || '—'}</Text>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#c9a84c' }}>₱{Number(order.total || 0).toFixed(2)}</Text>
+                      </View>
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.60)', marginBottom: 4 }} numberOfLines={2}>{itemSummary || '—'}</Text>
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.40)' }}>{fmtDateTime(order.createdAt)}</Text>
+                      {order.settled ? (
+                        <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <MaterialIcons name="check-circle" size={14} color="#27ae60" />
+                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: '#27ae60' }}>Settled {order.settledAt ? fmtDateTime(order.settledAt) : ''}</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity onPress={() => markSettled(order.docId)} disabled={settlingId === order.docId}
+                          style={{ marginTop: 8, backgroundColor: '#1a3a6b', borderRadius: 8, paddingVertical: 8, alignItems: 'center', opacity: settlingId === order.docId ? 0.6 : 1 }}>
+                          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c9a84c' }}>{settlingId === order.docId ? 'Marking...' : '✓ Mark as Settled'}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
 
 
 const sub = StyleSheet.create({
@@ -3257,7 +3503,45 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
   const [editAdModal,    setEditAdModal]    = useState(false);
   const [adCurrent,      setAdCurrent]      = useState(0);
   const [invMaxQty,      setInvMaxQty]      = useState({});
-  const [salesCollapsed, setSalesCollapsed] = useState(true); // collapsed by default on mobile
+  const [salesCollapsed, setSalesCollapsed] = useState(true);
+
+  // ── New order notification ────────────────────────────────────────────────
+  const [notifBanner,    setNotifBanner]    = useState(null);
+  const notifAnim       = useRef(new Animated.Value(-80)).current;
+  const prevOrderIdsRef = useRef(null); // null = first load (skip sound)
+
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+    const currentIds = new Set(orders.map(o => o.id));
+
+    if (prevOrderIdsRef.current === null) {
+      prevOrderIdsRef.current = currentIds;
+      return;
+    }
+
+    const newOrders = orders.filter(
+      o => !prevOrderIdsRef.current.has(o.id)
+        && (o.status === 'pending' || !o.status)
+        && o.source !== 'cashier'
+    );
+
+    if (newOrders.length > 0) {
+      const latest = newOrders[0];
+      playOrderSound();
+      setNotifBanner({
+        orderNo: latest.orderNo || latest.id,
+        source: latest.source || 'customer',
+        total: latest.total || 0,
+      });
+      Animated.sequence([
+        Animated.spring(notifAnim, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+        Animated.delay(4000),
+        Animated.timing(notifAnim, { toValue: -80, duration: 300, useNativeDriver: true }),
+      ]).start(() => setNotifBanner(null));
+    }
+
+    prevOrderIdsRef.current = currentIds;
+  }, [orders]);
 
   const hdrFade    = useRef(new Animated.Value(0)).current;
   const hdrTrans   = useRef(new Animated.Value(-16)).current;
@@ -3366,6 +3650,38 @@ export default function ManageMerchandiseScreen({ navigation, route }) {
       <LinearGradient colors={['rgba(198,220,235,0.85)', 'rgba(152,186,213,0.40)', 'rgba(80,110,150,0.0)']} locations={[0, 0.45, 1]} start={{ x: 0.5, y: 0.1 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFillObject} />
       <LinearGradient colors={['rgba(50,80,120,0.45)', 'rgba(50,80,120,0.0)', 'rgba(50,80,120,0.45)']} locations={[0, 0.5, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
       <LinearGradient colors={['rgba(50,80,120,0.0)', 'rgba(60,90,130,0.35)']} locations={[0.4, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFillObject} />
+
+      {/* ── NEW ORDER NOTIFICATION BANNER ── */}
+      {notifBanner && (
+        <Animated.View style={{
+          position: 'absolute',
+          top: Platform.OS === 'web' ? 12 : 44,
+          left: 16, right: 16, zIndex: 999,
+          transform: [{ translateY: notifAnim }],
+        }}>
+          <LinearGradient
+            colors={['#1a3a6b', '#2c5282']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={{
+              borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12,
+              flexDirection: 'row', alignItems: 'center', gap: 12,
+              shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 12,
+              shadowOffset: { width: 0, height: 4 }, elevation: 16,
+              borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)',
+            }}
+          >
+            <Text style={{ fontSize: 24 }}>🔔</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff', letterSpacing: 0.3 }}>
+                New Merchandise Order #{notifBanner.orderNo}
+              </Text>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1 }}>
+                From: {notifBanner.source}  ·  ₱{Number(notifBanner.total).toFixed(2)}
+              </Text>
+            </View>
+          </LinearGradient>
+        </Animated.View>
+      )}
 
       {/* HEADER */}
       <Animated.View style={{ opacity: hdrFade, transform: [{ translateY: hdrTrans }], marginTop: Platform.OS === 'web' ? 16 : (isSmall ? 32 : 36), marginHorizontal: isSmall ? 8 : 10, zIndex: 30, flexShrink: 0 }}>

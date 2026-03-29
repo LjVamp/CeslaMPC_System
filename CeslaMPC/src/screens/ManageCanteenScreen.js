@@ -22,6 +22,56 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
+// ─── ORDER NOTIFICATION SOUND ─────────────────────────────────────────────────
+// Restaurant-style loud ding-dong chime via AudioContext (no extra package needed).
+const playOrderSound = async () => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.AudioContext) {
+    try {
+      const ctx = new window.AudioContext();
+      const playTone = (freq, start, duration, gain = 0.8, type = 'sine') => {
+        const osc  = ctx.createOscillator();
+        const g    = ctx.createGain();
+        // Add slight distortion for a richer bell tone
+        const wave = ctx.createWaveShaper();
+        const curve = new Float32Array(256);
+        for (let i = 0; i < 256; i++) {
+          const x = (i * 2) / 256 - 1;
+          curve[i] = (Math.PI + 300) * x / (Math.PI + 300 * Math.abs(x));
+        }
+        wave.curve = curve;
+        osc.connect(wave); wave.connect(g); g.connect(ctx.destination);
+        osc.frequency.value = freq;
+        osc.type = type;
+        g.gain.setValueAtTime(0, ctx.currentTime + start);
+        g.gain.linearRampToValueAtTime(gain, ctx.currentTime + start + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + duration + 0.05);
+      };
+      // Restaurant DING-DONG: two loud bell strikes
+      // First DING — high bell
+      playTone(1046, 0.00, 1.2, 0.9); // C6
+      playTone(1318, 0.00, 1.0, 0.5); // E6 harmonic
+      // Second DONG — lower bell
+      playTone(784,  0.45, 1.4, 0.9); // G5
+      playTone(988,  0.45, 1.2, 0.5); // B5 harmonic
+      // Repeat once more for extra attention
+      playTone(1046, 1.10, 1.2, 0.7);
+      playTone(784,  1.55, 1.4, 0.7);
+    } catch (e) { /* silent fail */ }
+  } else {
+    try {
+      const { Audio } = require('expo-av');
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg' },
+        { shouldPlay: true, volume: 1.0 }
+      );
+      sound.setOnPlaybackStatusUpdate(s => { if (s.didJustFinish) sound.unloadAsync(); });
+    } catch (e) { /* silent fail */ }
+  }
+};
+
 // ─── WEB SCROLL VIEW ──────────────────────────────────────────────────────────
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const styleEl = document.createElement('style');
@@ -1416,16 +1466,25 @@ const EmployeeCreditsScreen = () => {
   const [settlingId, setSettlingId]     = useState(null);
 
   // ── Live feed from Firestore ─────────────────────────────────────────────
+  // We listen to ALL canteen_orders then filter client-side so we catch
+  // orders saved with either `payment` OR `paymentMode` field set to 'credit'.
   useEffect(() => {
-    const q = query(
+    const unsub = onSnapshot(
       collection(db, 'canteen_orders'),
-      where('payment', '==', 'credit'),
-      orderBy('createdAt', 'desc')
+      snap => {
+        const all = snap.docs.map(d => ({ docId: d.id, ...d.data() }));
+        // Normalize: treat paymentMode as fallback for payment
+        const credits = all.filter(o => {
+          const pm = (o.payment || o.paymentMode || '').toLowerCase();
+          return pm === 'credit' || pm === 'credits';
+        });
+        // Sort newest first
+        credits.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setCreditOrders(credits);
+        setLoading(false);
+      },
+      () => setLoading(false)
     );
-    const unsub = onSnapshot(q, snap => {
-      setCreditOrders(snap.docs.map(d => ({ docId: d.id, ...d.data() })));
-      setLoading(false);
-    }, () => setLoading(false));
     return unsub;
   }, []);
 
@@ -1433,11 +1492,20 @@ const EmployeeCreditsScreen = () => {
   const grouped = React.useMemo(() => {
     const map = {};
     creditOrders.forEach(o => {
-      const key = o.memberId || o.memberUserId || o.memberName || 'Unknown';
+      // Normalize payment field for consistency
+      const pm = (o.payment || o.paymentMode || '').toLowerCase();
+      if (pm !== 'credit' && pm !== 'credits') return;
+      // Resolve display name — support all possible field combinations
+      const resolvedName = o.memberName
+        || (o.firstName && o.lastName ? `${o.lastName}, ${o.firstName}` : null)
+        || o.firstName || o.lastName
+        || o.memberUserId || o.memberId
+        || 'Unknown Member';
+      const key = o.memberId || o.memberUserId || resolvedName;
       if (!map[key]) map[key] = {
         memberId:     o.memberId     || '',
         memberUserId: o.memberUserId || '',
-        memberName:   o.memberName   || 'Unknown Member',
+        memberName:   resolvedName,
         orders: [],
       };
       map[key].orders.push(o);
@@ -1845,7 +1913,7 @@ const SalesReportScreen = ({ orders, items }) => {
         <View style={[rpt.section,{marginTop:16}]}>
           <TouchableOpacity style={rpt.sectionTitleRow} onPress={()=>setShowCredits(p=>!p)} activeOpacity={0.80}><Text style={rpt.sectionTitle}>Credits Reports</Text><Text style={rpt.sectionToggle}>{showCredits?'▲':'▼'}</Text></TouchableOpacity>
           {showCredits&&(()=>{
-            const creditOrders=orders.filter(o=>(o.payment||'').toLowerCase()==='credit');
+            const creditOrders=orders.filter(o=>{const pm=(o.payment||o.paymentMode||'').toLowerCase();return pm==='credit'||pm==='credits';});
             const unsettled=creditOrders.filter(o=>o.settled!==true);
             const settled=creditOrders.filter(o=>o.settled===true);
             const totalUnsettled=unsettled.reduce((s,o)=>s+Number(o.total||0),0);
@@ -2110,7 +2178,48 @@ export default function ManageCanteenScreen({ navigation }) {
   const [editAdModal,    setEditAdModal]    = useState(false);
   const [invMaxQty,      setInvMaxQty]      = useState({});
   const [adCurrent,      setAdCurrent]      = useState(0);
-  const [salesCollapsed, setSalesCollapsed] = useState(true); // collapsed by default on mobile
+  const [salesCollapsed, setSalesCollapsed] = useState(true);
+
+  // ── New order notification ────────────────────────────────────────────────
+  const [notifBanner,    setNotifBanner]    = useState(null); // { orderNo, source, total }
+  const notifAnim       = useRef(new Animated.Value(-80)).current;
+  const prevOrderIdsRef = useRef(null); // null = first load (skip sound)
+
+  // Watch for new incoming orders and play sound
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+    const currentIds = new Set(orders.map(o => o.id));
+
+    // Skip on first load — just record existing IDs
+    if (prevOrderIdsRef.current === null) {
+      prevOrderIdsRef.current = currentIds;
+      return;
+    }
+
+    // Find orders that are new AND pending (from customer/member side)
+    const newOrders = orders.filter(
+      o => !prevOrderIdsRef.current.has(o.id) && (o.status === 'pending' || !o.status)
+        && o.source !== 'cashier' // don't notify for cashier's own orders
+    );
+
+    if (newOrders.length > 0) {
+      const latest = newOrders[0];
+      playOrderSound();
+      // Show banner
+      setNotifBanner({
+        orderNo: latest.orderNo || latest.id,
+        source: latest.source || 'customer',
+        total: latest.total || 0,
+      });
+      Animated.sequence([
+        Animated.spring(notifAnim, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+        Animated.delay(4000),
+        Animated.timing(notifAnim, { toValue: -80, duration: 300, useNativeDriver: true }),
+      ]).start(() => setNotifBanner(null));
+    }
+
+    prevOrderIdsRef.current = currentIds;
+  }, [orders]);
 
   const hdrFade    = useRef(new Animated.Value(0)).current;
   const hdrTrans   = useRef(new Animated.Value(-16)).current;
@@ -2222,6 +2331,37 @@ export default function ManageCanteenScreen({ navigation }) {
       <LinearGradient colors={['rgba(198,220,235,0.85)','rgba(152,186,213,0.40)','rgba(80,110,150,0.0)']} locations={[0,0.45,1]} start={{x:0.5,y:0.1}} end={{x:0.5,y:1}} style={StyleSheet.absoluteFillObject}/>
       <LinearGradient colors={['rgba(50,80,120,0.45)','rgba(50,80,120,0.0)','rgba(50,80,120,0.45)']} locations={[0,0.5,1]} start={{x:0,y:0}} end={{x:1,y:1}} style={StyleSheet.absoluteFillObject}/>
       <LinearGradient colors={['rgba(50,80,120,0.0)','rgba(60,90,130,0.35)']} locations={[0.4,1]} start={{x:0.5,y:0}} end={{x:0.5,y:1}} style={StyleSheet.absoluteFillObject}/>
+
+      {/* ── NEW ORDER NOTIFICATION BANNER ── */}
+      {notifBanner && (
+        <Animated.View style={{
+          position:'absolute', top: Platform.OS==='web' ? 12 : 44,
+          left:16, right:16, zIndex:999,
+          transform:[{ translateY: notifAnim }],
+        }}>
+          <LinearGradient
+            colors={['#1a3a6b','#2c5282']}
+            start={{x:0,y:0}} end={{x:1,y:0}}
+            style={{
+              borderRadius:14, paddingHorizontal:16, paddingVertical:12,
+              flexDirection:'row', alignItems:'center', gap:12,
+              shadowColor:'#000', shadowOpacity:0.35, shadowRadius:12,
+              shadowOffset:{width:0,height:4}, elevation:16,
+              borderWidth:1, borderColor:'rgba(201,168,76,0.40)',
+            }}
+          >
+            <Text style={{fontSize:24}}>🔔</Text>
+            <View style={{flex:1}}>
+              <Text style={{fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff', letterSpacing:0.3}}>
+                New Order #{notifBanner.orderNo}
+              </Text>
+              <Text style={{fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(255,255,255,0.75)', marginTop:1}}>
+                From: {notifBanner.source}  ·  ₱{Number(notifBanner.total).toFixed(2)}
+              </Text>
+            </View>
+          </LinearGradient>
+        </Animated.View>
+      )}
 
       <Animated.View style={{opacity:hdrFade,transform:[{translateY:hdrTrans}],marginTop:Platform.OS==='web'?16:36,marginHorizontal:isSmall?8:10,zIndex:30,flexShrink:0}}>
         <View style={[styles.header,{paddingHorizontal:20,paddingVertical:10}]}>

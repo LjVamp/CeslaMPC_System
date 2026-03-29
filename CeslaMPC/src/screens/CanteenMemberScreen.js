@@ -1116,15 +1116,17 @@ export default function CanteenMemberScreen({ navigation }) {
     const time = now.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
       + '  ' + now.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit' });
 
+    const normalizedPayment = (orderData.paymentMode || 'cash') === 'credits' ? 'credit' : (orderData.paymentMode || 'cash');
     const fullOrder = {
       ...orderData,
       orderNo,
       time,
       status: 'pending',
-      payment: orderData.paymentMode || 'cash',
+      payment:      normalizedPayment,
+      paymentMode:  normalizedPayment,
       source: 'member',
-      memberId:     member?.uid || null,
-      memberName:   member?.name || null,
+      memberId:     member?.uid    || null,
+      memberName:   member?.name   || (member?.firstName && member?.lastName ? `${member.lastName}, ${member.firstName}` : null) || null,
       memberUserId: member?.userId || null,
     };
 
