@@ -2,13 +2,14 @@
 // CESLA MPC — Merchandise Ordering System
 // 3-panel layout: Left Categories | Center Items+Search | Right Cart
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Animated, StatusBar, Image,
   useWindowDimensions, Platform, TextInput, Modal, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/noto-serif';
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
@@ -275,8 +276,10 @@ const ItemDetailModal = ({ visible, item, onClose, onAdd }) => {
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.88)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
-  const [imgIdx, setImgIdx] = useState(0);
+  const [imgIdx, setImgIdx]         = useState(0);
   const [fullViewOpen, setFullViewOpen] = useState(false);
+  const [selColor, setSelColor]     = useState(null);
+  const [selSize,  setSelSize]      = useState(null);
   const scrollRef = useRef(null);
   const { width: SW } = useWindowDimensions();
   const MODAL_W = Math.min(320, SW * 0.90);
@@ -285,6 +288,8 @@ const ItemDetailModal = ({ visible, item, onClose, onAdd }) => {
     if (visible) {
       setImgIdx(0);
       setFullViewOpen(false);
+      setSelColor(null);
+      setSelSize(null);
       Animated.parallel([
         Animated.timing(fadeAnim,  { toValue: 1, duration: 240, useNativeDriver: true }),
         Animated.spring(scaleAnim, { toValue: 1, tension: 68, friction: 11, useNativeDriver: true }),
@@ -300,6 +305,19 @@ const ItemDetailModal = ({ visible, item, onClose, onAdd }) => {
   const hasColors = Array.isArray(item.colors) && item.colors.length > 0;
   const hasSizes  = Array.isArray(item.sizes)  && item.sizes.length  > 0;
 
+  const colorReady = !hasColors || selColor !== null;
+  const sizeReady  = !hasSizes  || selSize  !== null;
+  const canAdd     = item.stock > 0 && colorReady && sizeReady;
+
+  const missingLabel = () => {
+    if (item.stock === 0) return 'Out of Stock';
+    const parts = [];
+    if (hasColors && !selColor) parts.push('color');
+    if (hasSizes  && !selSize)  parts.push('size');
+    if (parts.length > 0) return 'Pick a ' + parts.join(' & ');
+    return '🛒  Add To Cart';
+  };
+
   return (
     <>
       <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
@@ -312,7 +330,7 @@ const ItemDetailModal = ({ visible, item, onClose, onAdd }) => {
             overflow: 'hidden',
             transform: [{ scale: scaleAnim }, { translateY: slideAnim }],
           }}>
-            {/* Image carousel — one image at a time, tap to open fullscreen */}
+            {/* Image carousel */}
             <View style={{ width: MODAL_W, height: 220, backgroundColor: 'rgba(200,218,235,0.60)', position: 'relative' }}>
               {imgs.length > 0 ? (
                 <>
@@ -323,11 +341,7 @@ const ItemDetailModal = ({ visible, item, onClose, onAdd }) => {
                     style={{ width: MODAL_W, height: 220 }}
                     contentContainerStyle={{ width: MODAL_W * imgs.length, height: 220 }}>
                     {imgs.map((uri, i) => (
-                      <TouchableOpacity
-                        key={i}
-                        activeOpacity={0.90}
-                        onPress={() => setFullViewOpen(true)}
-                        style={{ width: MODAL_W, height: 220 }}>
+                      <TouchableOpacity key={i} activeOpacity={0.90} onPress={() => setFullViewOpen(true)} style={{ width: MODAL_W, height: 220 }}>
                         <Image source={{ uri }} style={{ width: MODAL_W, height: 220 }} resizeMode="cover" />
                       </TouchableOpacity>
                     ))}
@@ -362,44 +376,88 @@ const ItemDetailModal = ({ visible, item, onClose, onAdd }) => {
               <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 26, color: '#c9a84c', lineHeight: 30 }}>₱{item.price}.00</Text>
               <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(1,31,75,0.55)' }}>Stock: {item.stock}</Text>
 
-              {/* Colors */}
+              {/* ── Selectable Colors ── */}
               {hasColors && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(1,31,75,0.45)', letterSpacing: 1, textTransform: 'uppercase' }}>Colors:</Text>
-                  {item.colors.map(c => {
-                    const hex = Object.values(COLOR_OPTIONS_REF).flat().find(x => x.label === c)?.hex || '#999';
-                    return (
-                      <View key={c} style={{ alignItems: 'center', gap: 2 }}>
-                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: hex, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.18)' }} />
-                        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.50)' }}>{c}</Text>
-                      </View>
-                    );
-                  })}
+                <View style={{ gap: 5 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(1,31,75,0.45)', letterSpacing: 1, textTransform: 'uppercase' }}>COLORS:</Text>
+                    {selColor
+                      ? <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#1a3a6b' }}>{selColor}</Text>
+                      : <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: '#e74c3c' }}>— pick one</Text>
+                    }
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {item.colors.map(c => {
+                      const hex = Object.values(COLOR_OPTIONS_REF).flat().find(x => x.label === c)?.hex || '#999';
+                      const isSelected = selColor === c;
+                      return (
+                        <TouchableOpacity key={c} onPress={() => setSelColor(c)} style={{ alignItems: 'center', gap: 3 }} activeOpacity={0.75}>
+                          <View style={{
+                            width: 30, height: 30, borderRadius: 15,
+                            backgroundColor: hex,
+                            borderWidth: isSelected ? 3 : 1.5,
+                            borderColor: isSelected ? '#1a3a6b' : 'rgba(0,0,0,0.18)',
+                          }} />
+                          {isSelected && (
+                            <View style={{ position: 'absolute', top: 7, left: 0, right: 0, alignItems: 'center' }}>
+                              <Text style={{ fontSize: 14, color: '#fff', textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 3, textShadowOffset: { width: 0, height: 1 } }}>✓</Text>
+                            </View>
+                          )}
+                          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: isSelected ? '#1a3a6b' : 'rgba(1,31,75,0.50)' }}>{c}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
               )}
 
-              {/* Sizes */}
+              {/* ── Selectable Sizes ── */}
               {hasSizes && (
-                <View style={{ gap: 4 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(1,31,75,0.45)', letterSpacing: 1, textTransform: 'uppercase' }}>Sizes:</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
-                    {item.sizes.map(sz => (
-                      <View key={sz} style={{ backgroundColor: 'rgba(26,58,107,0.10)', borderRadius: 6, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(26,58,107,0.18)' }}>
-                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#1a3a6b' }}>{sz}</Text>
-                      </View>
-                    ))}
+                <View style={{ gap: 5 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(1,31,75,0.45)', letterSpacing: 1, textTransform: 'uppercase' }}>SIZES:</Text>
+                    {selSize
+                      ? <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#1a3a6b' }}>{selSize}</Text>
+                      : <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: '#e74c3c' }}>— pick one</Text>
+                    }
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {item.sizes.map(sz => {
+                      const isSelected = selSize === sz;
+                      return (
+                        <TouchableOpacity
+                          key={sz}
+                          onPress={() => setSelSize(sz)}
+                          style={{
+                            paddingHorizontal: 13, paddingVertical: 7, borderRadius: 8,
+                            backgroundColor: isSelected ? '#1a3a6b' : 'rgba(26,58,107,0.08)',
+                            borderWidth: isSelected ? 2 : 1,
+                            borderColor: isSelected ? '#1a3a6b' : 'rgba(26,58,107,0.20)',
+                          }}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: isSelected ? '#fff' : '#1a3a6b' }}>{sz}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
               )}
 
               <TouchableOpacity
-                onPress={() => { onAdd(); onClose(); }}
-                disabled={item.stock === 0}
-                style={{ marginTop: 4, borderRadius: 14, overflow: 'hidden', opacity: item.stock === 0 ? 0.45 : 1 }}>
-                <LinearGradient colors={['#1a3a6b', '#2e5fa3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                onPress={() => {
+                  if (!canAdd) return;
+                  onAdd(selColor, selSize);
+                  onClose();
+                }}
+                disabled={!canAdd}
+                style={{ marginTop: 4, borderRadius: 14, overflow: 'hidden', opacity: canAdd ? 1 : 0.50 }}>
+                <LinearGradient
+                  colors={canAdd ? ['#1a3a6b', '#2e5fa3'] : ['#9e9e9e', '#bdbdbd']}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                   style={{ paddingVertical: 14, alignItems: 'center' }}>
                   <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff' }}>
-                    {item.stock === 0 ? 'Out of Stock' : '🛒  Add To Cart'}
+                    {missingLabel()}
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -518,7 +576,14 @@ const ItemCard = ({ item, onAdd }) => {
 
             <TouchableOpacity
               style={[styles.addBtn, item.stock === 0 && { opacity: 0.45 }]}
-              onPress={e => { e.stopPropagation && e.stopPropagation(); onAdd(); }}
+              onPress={e => {
+                e.stopPropagation && e.stopPropagation();
+                if ((hasColors || hasSizes) && item.stock > 0) {
+                  setDetailVisible(true);
+                } else {
+                  onAdd(null, null);
+                }
+              }}
               disabled={item.stock === 0}
               activeOpacity={0.80}>
               <Text style={styles.addBtnText}>{item.stock === 0 ? 'Out of Stock' : 'Add To Cart'}</Text>
@@ -531,7 +596,7 @@ const ItemCard = ({ item, onAdd }) => {
         visible={detailVisible}
         item={item}
         onClose={() => setDetailVisible(false)}
-        onAdd={onAdd}
+        onAdd={(color, size) => onAdd(color, size)}
       />
     </>
   );
@@ -593,17 +658,21 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
                 <Text style={[styles.receiptItemHCol, { width:64, textAlign:'right' }]}>AMOUNT</Text>
               </View>
               <View style={styles.receiptDividerSolid} />
-              {items.map(({ item, qty, size }) => (
-                <View key={size ? (item.id + '-' + size) : item.id} style={styles.receiptItemRow}>
+              {items.map(({ item, qty, color, size }) => {
+                const variantLabel = [color, size].filter(Boolean).join(' / ');
+                const rowKey = item.id + (color ? '-' + color : '') + (size ? '-' + size : '');
+                return (
+                <View key={rowKey} style={styles.receiptItemRow}>
                   <Text style={[styles.receiptItemText, { flex:1 }]} numberOfLines={1}>
-                    {item.emoji} {item.name}{size ? (' [' + size + ']') : ''}
+                    {item.emoji} {item.name}{variantLabel ? (' [' + variantLabel + ']') : ''}
                   </Text>
                   <Text style={[styles.receiptItemText, { width:32, textAlign:'center' }]}>{qty}</Text>
                   <Text style={[styles.receiptItemText, { width:64, textAlign:'right' }]}>
                     ₱{(item.price * qty).toFixed(2)}
                   </Text>
                 </View>
-              ))}
+                );
+              })}
               <View style={styles.receiptDividerSolid} />
 
               {/* Totals */}
@@ -667,18 +736,18 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
   useEffect(() => {
     setChecked(prev => {
       const updated = { ...prev };
-      cartItems.forEach(({ item, size }) => {
-        const k = size ? (item.id + '-' + size) : item.id;
+      cartItems.forEach(({ item, color, size }) => {
+        const k = item.id + (color ? '-' + color : '') + (size ? '-' + size : '');
         if (updated[k] === undefined) updated[k] = true;
       });
       return updated;
     });
-  }, [JSON.stringify(cartItems.map(i => i.item.id + (i.size || '')))]);
+  }, [JSON.stringify(cartItems.map(i => i.item.id + (i.color || '') + (i.size || '')))]);
 
   const toggleCheck = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
 
-  const checkedItems = cartItems.filter(({ item, size }) => {
-    const k = size ? (item.id + '-' + size) : item.id;
+  const checkedItems = cartItems.filter(({ item, color, size }) => {
+    const k = item.id + (color ? '-' + color : '') + (size ? '-' + size : '');
     return checked[k];
   });
   const total = checkedItems.reduce((s, { item, qty }) => s + item.price * qty, 0);
@@ -702,8 +771,9 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
             <Text style={styles.cartEmpty}>Cart is empty.</Text>
           ) : (
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 200 }}>
-              {cartItems.map(({ item, qty, size }) => {
-                const cartKey = size ? (item.id + '-' + size) : item.id;
+              {cartItems.map(({ item, qty, color, size }) => {
+                const cartKey = item.id + (color ? '-' + color : '') + (size ? '-' + size : '');
+                const variantLabel = [color, size].filter(Boolean).join(' / ');
                 return (
                 <View key={cartKey} style={styles.cartRow}>
                   {/* Checkbox */}
@@ -715,14 +785,16 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
                   </TouchableOpacity>
                   <Text style={styles.cartRowEmoji}>{item.emoji}</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.cartRowName} numberOfLines={1}>{item.name}{size ? (' [' + size + ']') : ''}</Text>
-                    <Text style={styles.cartRowSub}>x{qty}  ₱{item.price * qty}</Text>
+                    <Text style={styles.cartRowName} numberOfLines={1}>{item.name}</Text>
+                    {variantLabel
+                      ? <Text style={styles.cartRowSub}>{variantLabel}  ·  x{qty}  ₱{item.price * qty}</Text>
+                      : <Text style={styles.cartRowSub}>x{qty}  ₱{item.price * qty}</Text>}
                   </View>
                   <View style={styles.cartRowQty}>
-                    <TouchableOpacity style={styles.cartQBtn} onPress={() => onRemove(item, size)}>
+                    <TouchableOpacity style={styles.cartQBtn} onPress={() => onRemove(item, color, size)}>
                       <Text style={styles.cartQBtnText}>−</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.cartQBtn, styles.cartQBtnAdd]} onPress={() => onAdd(item, size)}>
+                    <TouchableOpacity style={[styles.cartQBtn, styles.cartQBtnAdd]} onPress={() => onAdd(item, color, size)}>
                       <Text style={[styles.cartQBtnText, {color:'#fff'}]}>+</Text>
                     </TouchableOpacity>
                   </View>
@@ -838,6 +910,630 @@ const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onP
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 // ─── AD BANNER — dots inside card, hide/show on mobile scroll ────────────────
+
+// ─── HISTORY TAB CONTENT (shared by Member + Visitor screens) ─────────────────
+const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow }) => {
+  const [sortBy,       setSortBy]       = useState(null);   // null | 'payment' | 'status'
+  const [sortDropOpen, setSortDropOpen] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [yearDropOpen, setYearDropOpen] = useState(false);
+  const [reportPeriod, setReportPeriod] = useState('daily'); // 'daily' | 'monthly' | 'yearly'
+  const [selectedMonth,setSelectedMonth]= useState(new Date().getMonth()); // 0–11
+
+  const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const MONTH_FULL  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  const toDate = (ts) => {
+    try {
+      if (!ts) return null;
+      if (ts?.toDate) return ts.toDate();
+      if (typeof ts === 'number') return new Date(ts);
+      const d = new Date(ts);
+      return isNaN(d.getTime()) ? null : d;
+    } catch { return null; }
+  };
+
+  const fmtDate = (ts) => {
+    const d = toDate(ts);
+    if (!d) return '—';
+    return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const fmtTime = (ts) => {
+    const d = toDate(ts);
+    if (!d) return '';
+    return d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
+  };
+
+  const pmInfo = (pm) => {
+    const n = (pm === 'credits' ? 'credit' : (pm || 'cash')).toLowerCase();
+    if (n === 'gcash')  return { label: 'GCash',  color: '#3498db' };
+    if (n === 'credit') return { label: 'Credit', color: '#c9a84c' };
+    return { label: 'Cash', color: '#27ae60' };
+  };
+
+  const stInfo = (status) => {
+    switch (status) {
+      case 'done':      return { label: 'Completed', color: '#27ae60' };
+      case 'ready':     return { label: 'Ready',     color: '#2980b9' };
+      case 'preparing': return { label: 'Preparing', color: '#e67e22' };
+      default:          return { label: 'Pending',   color: '#95a5a6' };
+    }
+  };
+
+  // Available years: always 2025–2070
+  const availableYears = React.useMemo(() => {
+    const years = [];
+    for (let y = 2070; y >= 2025; y--) years.push(y);
+    return years;
+  }, []);
+
+  // Sorted orders
+  const sortedOrders = React.useMemo(() => {
+    const arr = [...orderHistory];
+    if (sortBy === 'payment') {
+      arr.sort((a, b) => {
+        const pa = (a.payment || a.paymentMode || 'cash').toLowerCase();
+        const pb = (b.payment || b.paymentMode || 'cash').toLowerCase();
+        return pa.localeCompare(pb);
+      });
+    } else if (sortBy === 'status') {
+      const ORD = { pending: 0, preparing: 1, ready: 2, done: 3 };
+      arr.sort((a, b) => (ORD[a.status] ?? 99) - (ORD[b.status] ?? 99));
+    } else {
+      arr.sort((a, b) => {
+        const ta = toDate(a.createdAt)?.getTime() || 0;
+        const tb = toDate(b.createdAt)?.getTime() || 0;
+        return tb - ta;
+      });
+    }
+    return arr;
+  }, [orderHistory, sortBy]);
+
+  // Flat rows (one per item per order)
+  const tableRows = React.useMemo(() => {
+    const rows = [];
+    sortedOrders.forEach(order => {
+      const items = order.items || [];
+      const pm = pmInfo(order.payment || order.paymentMode);
+      const st = stInfo(order.status);
+      if (items.length === 0) {
+        rows.push({ order, item: null, itemIdx: 0, totalItems: 0, pm, st });
+      } else {
+        items.forEach((it, idx) => {
+          rows.push({ order, item: it, itemIdx: idx, totalItems: items.length, pm, st });
+        });
+      }
+    });
+    return rows;
+  }, [sortedOrders]);
+
+  // Report data
+  const reportData = React.useMemo(() => {
+    if (reportPeriod === 'yearly') {
+      const map = {};
+      orderHistory.forEach(o => {
+        const d = toDate(o.createdAt);
+        if (!d) return;
+        const yr = d.getFullYear();
+        if (!map[yr]) map[yr] = { label: String(yr), count: 0, total: 0 };
+        map[yr].count++;
+        map[yr].total += Number(o.total || 0);
+      });
+      return Object.values(map).sort((a, b) => b.label - a.label);
+    }
+    const yearOrders = orderHistory.filter(o => {
+      const d = toDate(o.createdAt);
+      return d && d.getFullYear() === selectedYear;
+    });
+    if (reportPeriod === 'monthly') {
+      const map = {};
+      for (let m = 0; m < 12; m++) map[m] = { label: MONTHS[m], count: 0, total: 0 };
+      yearOrders.forEach(o => {
+        const d = toDate(o.createdAt);
+        if (!d) return;
+        const m = d.getMonth();
+        map[m].count++;
+        map[m].total += Number(o.total || 0);
+      });
+      return Object.values(map);
+    }
+    // Daily
+    const map = {};
+    yearOrders.filter(o => {
+      const d = toDate(o.createdAt);
+      return d && d.getMonth() === selectedMonth;
+    }).forEach(o => {
+      const d = toDate(o.createdAt);
+      const day = d.getDate();
+      if (!map[day]) map[day] = { label: String(day).padStart(2,'0'), count: 0, total: 0 };
+      map[day].count++;
+      map[day].total += Number(o.total || 0);
+    });
+    return Object.values(map).sort((a, b) => Number(a.label) - Number(b.label));
+  }, [orderHistory, reportPeriod, selectedYear, selectedMonth]);
+
+  const totalRevenue = reportData.reduce((s, r) => s + r.total, 0);
+  const totalCount   = reportData.reduce((s, r) => s + r.count, 0);
+
+  const closeDrop = () => { setSortDropOpen(false); setYearDropOpen(false); };
+
+  return (
+    <TouchableOpacity activeOpacity={1} onPress={closeDrop} style={{ flex: 1 }}>
+      <View style={{
+        flex: 1,
+        flexDirection: isWide ? 'row' : 'column',
+        gap: 10,
+        paddingHorizontal: isWide ? 16 : 8,
+        paddingTop: isWide ? 8 : 6,
+        paddingBottom: isWide ? 16 : 8,
+        minHeight: 0,
+      }}>
+
+        {/* ══════════════ LEFT — MY ORDER HISTORY ══════════════ */}
+        <View style={[histStyles.panel, { flex: isWide ? 2 : 1 }]}>
+
+          {/* Panel header row */}
+          <View style={histStyles.panelHeaderRow}>
+            <Text style={histStyles.panelTitle}>📋 MY ORDER HISTORY</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              {/* Order count badge */}
+              <View style={histStyles.countBadge}>
+                <Text style={histStyles.countBadgeText}>
+                  {orderHistory.length} ORDER{orderHistory.length !== 1 ? 'S' : ''}
+                </Text>
+              </View>
+
+              {/* Sort By dropdown trigger */}
+              <View style={{ position: 'relative', zIndex: 9999 }}>
+                <TouchableOpacity
+                  style={histStyles.sortBtn}
+                  onPress={() => { setSortDropOpen(v => !v); setYearDropOpen(false); }}
+                  activeOpacity={0.80}
+                >
+                  <MaterialIcons name="sort" size={12} color="rgba(1,31,75,0.65)" />
+                  <Text style={histStyles.sortBtnText}>
+                    Sort by{sortBy ? ': ' + (sortBy === 'payment' ? 'Payment' : 'Status') : ''}
+                  </Text>
+                  <MaterialIcons
+                    name={sortDropOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                    size={13}
+                    color="rgba(1,31,75,0.55)"
+                  />
+                </TouchableOpacity>
+                {sortDropOpen && (
+                  <View style={histStyles.sortDropdown}>
+                    {[
+                      { key: 'payment', label: '💳  Payment' },
+                      { key: 'status',  label: '📌  Status'  },
+                      { key: null,      label: '🕐  Date (default)' },
+                    ].map(opt => (
+                      <TouchableOpacity
+                        key={String(opt.key)}
+                        style={[histStyles.sortDropItem, sortBy === opt.key && histStyles.sortDropItemActive]}
+                        onPress={() => { setSortBy(opt.key); setSortDropOpen(false); }}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={[histStyles.sortDropItemText, sortBy === opt.key && { color: '#1a3a6b', fontFamily: 'GoogleSans_700Bold' }]}>
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+
+          {/* Table or empty state */}
+          {orderHistory.length === 0 ? (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+              <Text style={{ fontSize: 40, marginBottom: 10 }}>📋</Text>
+              <Text style={histStyles.emptyTitle}>No orders yet</Text>
+              <Text style={histStyles.emptySubtitle}>Your merchandise orders will appear here.</Text>
+              {onShopNow && (
+                <TouchableOpacity onPress={onShopNow} style={histStyles.shopNowBtn}>
+                  <Text style={histStyles.shopNowText}>Shop Now →</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <View style={{ flex: 1, minHeight: 0, overflow: 'hidden', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(200,218,235,0.80)' }}>
+              {/* Single horizontal ScrollView wrapping both thead and tbody for proper sync */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'column' }}>
+                  {/* Thead */}
+                  <View style={{ backgroundColor: 'rgba(220,232,242,0.95)', borderBottomWidth: 1.5, borderBottomColor: 'rgba(180,205,225,0.90)' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+                      <View style={[histStyles.thCell, { width: 70 }]}><Text style={histStyles.thTxt}>DATE</Text></View>
+                      <View style={histStyles.thDiv}/>
+                      <View style={[histStyles.thCell, { width: 54 }]}><Text style={histStyles.thTxt}>ORDER #</Text></View>
+                      <View style={histStyles.thDiv}/>
+                      <View style={[histStyles.thCell, { width: 110 }]}><Text style={histStyles.thTxt}>ITEM NAME</Text></View>
+                      <View style={histStyles.thDiv}/>
+                      <View style={[histStyles.thCell, { width: 24 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>QTY</Text></View>
+                      <View style={histStyles.thDiv}/>
+                      <View style={[histStyles.thCell, { width: 34 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>SIZE</Text></View>
+                      <View style={histStyles.thDiv}/>
+                      <View style={[histStyles.thCell, { width: 44 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>COLOR</Text></View>
+                      <View style={histStyles.thDiv}/>
+                      <View style={[histStyles.thCell, { width: 56 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>CHAR</Text></View>
+                      <View style={histStyles.thDiv}/>
+                      <View style={[histStyles.thCell, { width: 48 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]} numberOfLines={1}>PMT</Text></View>
+                      <View style={histStyles.thDiv}/>
+                      <View style={[histStyles.thCell, { width: 62 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>TOTAL</Text></View>
+                      {showStatus && (
+                        <><View style={histStyles.thDiv}/><View style={[histStyles.thCell, { width: 56 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>STATUS</Text></View></>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Body rows */}
+                  <ScrollView showsVerticalScrollIndicator nestedScrollEnabled>
+                    <View>
+                    {tableRows.map((row, idx) => {
+                      const { order, item, itemIdx, totalItems, pm, st } = row;
+                      const isFirst = itemIdx === 0;
+                      const isLastOfOrder = itemIdx === totalItems - 1 || totalItems === 0;
+                      const isEvenOrder   = sortedOrders.indexOf(order) % 2 === 0;
+
+                      const itemObj   = item?.item || item || null;
+                      const itemName  = itemObj?.name  || item?.name  || '—';
+                      const qty       = item?.qty       || item?.quantity    || (totalItems === 0 ? '—' : 1);
+                      const size      = item?.size      || itemObj?.size      || null;
+                      const color     = item?.color     || itemObj?.color     || null;
+                      const character = item?.character || itemObj?.character || null;
+
+                      return (
+                        <View
+                          key={`${order.docId || idx}-${itemIdx}`}
+                          style={[
+                            histStyles.tdRow,
+                            isEvenOrder && histStyles.tdRowEven,
+                            isLastOfOrder && { borderBottomWidth: 1.5, borderBottomColor: 'rgba(180,205,225,0.70)' },
+                          ]}
+                        >
+                          {/* DATE */}
+                          <View style={[histStyles.tdCell, { width: 70 }]}>
+                            {isFirst && <Text style={histStyles.tdDate}>{fmtDate(order.createdAt)}</Text>}
+                            {isFirst && <Text style={histStyles.tdTime}>{fmtTime(order.createdAt)}</Text>}
+                          </View>
+                          {/* ORDER # */}
+                          <View style={[histStyles.tdCell, { width: 54 }]}>
+                            {isFirst && <Text style={histStyles.tdOrderNo}>#{order.orderNo || '—'}</Text>}
+                          </View>
+                          {/* ITEM NAME */}
+                          <View style={[histStyles.tdCell, { width: 110 }]}>
+                            <Text style={histStyles.tdItem} numberOfLines={2}>{itemName}</Text>
+                          </View>
+                          {/* QTY */}
+                          <View style={[histStyles.tdCell, { width: 24, alignItems: 'center' }]}>
+                            <Text style={histStyles.tdQty}>{qty}</Text>
+                          </View>
+                          {/* SIZE */}
+                          <View style={[histStyles.tdCell, { width: 34, alignItems: 'center' }]}>
+                            <Text style={[histStyles.tdVariant, !size && histStyles.tdNone]}>{size || 'None'}</Text>
+                          </View>
+                          {/* COLOR */}
+                          <View style={[histStyles.tdCell, { width: 44, alignItems: 'center' }]}>
+                            <Text style={[histStyles.tdVariant, !color && histStyles.tdNone]}>{color || 'None'}</Text>
+                          </View>
+                          {/* CHARACTER */}
+                          <View style={[histStyles.tdCell, { width: 56, alignItems: 'center' }]}>
+                            <Text style={[histStyles.tdVariant, !character && histStyles.tdNone]}>{character || 'None'}</Text>
+                          </View>
+                          {/* PAYMENT */}
+                          <View style={[histStyles.tdCell, { width: 48, alignItems: 'center' }]}>
+                            {isFirst && <Text style={[histStyles.tdPm, { color: pm.color }]}>{pm.label}</Text>}
+                          </View>
+                          {/* TOTAL */}
+                          <View style={[histStyles.tdCell, { width: 62, alignItems: 'center' }]}>
+                            {isFirst && <Text style={histStyles.tdTotal}>₱{Number(order.total || 0).toFixed(2)}</Text>}
+                          </View>
+                          {/* STATUS */}
+                          {showStatus && (
+                            <View style={[histStyles.tdCell, { width: 56, alignItems: 'center' }]}>
+                              {isFirst && <Text style={[histStyles.tdStatus, { color: st.color }]}>{st.label}</Text>}
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                  </ScrollView>
+                </View>
+              </ScrollView>
+            </View>
+          )}
+        </View>
+
+        {/* ══════════════ RIGHT — ANNUAL HISTORY REPORTS ══════════════ */}
+        <View style={[histStyles.panel, { zIndex: 100, flex: 1 }]}>
+
+          {/* Panel header */}
+          <Text style={[histStyles.panelTitle, { marginBottom: 10 }]}>📊 ANNUAL HISTORY REPORTS</Text>
+
+          {/* Year selector */}
+          <View style={{ position: 'relative', zIndex: 9999, marginBottom: 10, alignSelf: 'flex-start' }}>
+            <TouchableOpacity
+              style={histStyles.yearBtn}
+              onPress={() => { setYearDropOpen(v => !v); setSortDropOpen(false); }}
+              activeOpacity={0.80}
+            >
+              <Text style={histStyles.yearBtnText}>YEAR {selectedYear}</Text>
+              <MaterialIcons
+                name={yearDropOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                size={16}
+                color="#0f1e35"
+              />
+            </TouchableOpacity>
+            {yearDropOpen && (
+              <View style={histStyles.yearDropdown}>
+                {availableYears.map(yr => (
+                  <TouchableOpacity
+                    key={yr}
+                    style={[histStyles.yearDropItem, yr === selectedYear && histStyles.yearDropItemActive]}
+                    onPress={() => { setSelectedYear(yr); setYearDropOpen(false); }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[histStyles.yearDropItemText, yr === selectedYear && { color: '#fff', fontFamily: 'GoogleSans_700Bold' }]}>
+                      {yr}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Period tabs: Daily | Monthly | Yearly */}
+          <View style={histStyles.periodRow}>
+            {['daily','monthly','yearly'].map(p => (
+              <TouchableOpacity
+                key={p}
+                style={[histStyles.periodTab, reportPeriod === p && histStyles.periodTabActive]}
+                onPress={() => setReportPeriod(p)}
+                activeOpacity={0.80}
+              >
+                <Text style={[histStyles.periodTabTxt, reportPeriod === p && histStyles.periodTabTxtActive]}>
+                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Month pills (Daily only) */}
+          {reportPeriod === 'daily' && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginTop: 6, flexShrink: 0 }}
+              contentContainerStyle={{ gap: 5, paddingHorizontal: 2, alignItems: 'center' }}
+            >
+              {MONTHS.map((m, i) => (
+                <TouchableOpacity
+                  key={m}
+                  style={[histStyles.monthPill, selectedMonth === i && histStyles.monthPillActive]}
+                  onPress={() => setSelectedMonth(i)}
+                  activeOpacity={0.80}
+                >
+                  <Text style={[histStyles.monthPillTxt, selectedMonth === i && histStyles.monthPillTxtActive]}>
+                    {m}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Summary cards */}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            <View style={histStyles.sumCard}>
+              <Text style={histStyles.sumCardLabel}>Total Orders</Text>
+              <Text style={histStyles.sumCardValue}>{totalCount}</Text>
+            </View>
+            <View style={histStyles.sumCard}>
+              <Text style={histStyles.sumCardLabel}>Total Revenue</Text>
+              <Text style={[histStyles.sumCardValue, { fontSize: 14 }]}>₱{totalRevenue.toFixed(2)}</Text>
+            </View>
+          </View>
+
+          {/* Report table */}
+          <ScrollView showsVerticalScrollIndicator style={{ flex: 1, marginTop: 10 }} nestedScrollEnabled>
+            {reportData.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+                <Text style={{ fontSize: 30, marginBottom: 8 }}>📊</Text>
+                <Text style={histStyles.emptyTitle}>No data for this period</Text>
+              </View>
+            ) : (
+              <View style={{ backgroundColor: 'rgba(255,255,255,0.50)', borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(200,218,235,0.70)' }}>
+                {/* Report header */}
+                <View style={{ flexDirection: 'row', backgroundColor: 'rgba(220,232,242,0.95)', paddingVertical: 8, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(180,205,225,0.70)' }}>
+                  <Text style={[histStyles.thTxt, { flex: 1 }]}>
+                    {reportPeriod === 'daily' ? `${MONTHS[selectedMonth].toUpperCase()} — DAY` : reportPeriod === 'monthly' ? 'MONTH' : 'YEAR'}
+                  </Text>
+                  <Text style={[histStyles.thTxt, { width: 58, textAlign: 'center' }]}>ORDERS</Text>
+                  <Text style={[histStyles.thTxt, { width: 90, textAlign: 'right' }]}>REVENUE</Text>
+                </View>
+                {reportData.map((row, idx) => {
+                  const isEven = idx % 2 === 0;
+                  return (
+                    <View key={idx} style={{ flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 12, backgroundColor: isEven ? 'rgba(255,255,255,0.30)' : 'rgba(210,228,242,0.30)', borderBottomWidth: 1, borderBottomColor: 'rgba(200,218,235,0.40)' }}>
+                      <Text style={[histStyles.tdItem, { flex: 1 }]}>{row.label}</Text>
+                      <Text style={[histStyles.tdQty, { width: 58, textAlign: 'center' }]}>{row.count}</Text>
+                      <Text style={[histStyles.tdTotal, { width: 90, textAlign: 'right' }]}>₱{row.total.toFixed(2)}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </ScrollView>
+        </View>
+
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// ─── HISTORY STYLES ────────────────────────────────────────────────────────────
+const histStyles = StyleSheet.create({
+  panel: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+    padding: 12,
+    overflow: 'hidden',
+    minHeight: 0,
+    minWidth: 0,
+  },
+  panelHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    flexWrap: 'wrap',
+    gap: 6,
+    zIndex: 9999,
+  },
+  panelTitle: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 11,
+    color: 'rgba(1,31,75,0.65)',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  countBadge: {
+    backgroundColor: 'rgba(1,31,75,0.09)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(1,31,75,0.12)',
+  },
+  countBadgeText: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 9,
+    color: 'rgba(1,31,75,0.55)',
+    letterSpacing: 0.8,
+  },
+  sortBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(200,218,235,0.90)',
+  },
+  sortBtnText: {
+    fontFamily: 'GoogleSans_500Medium',
+    fontSize: 10,
+    color: 'rgba(1,31,75,0.65)',
+  },
+  sortDropdown: {
+    position: 'absolute',
+    bottom: '100%',
+    right: 0,
+    marginBottom: 4,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(200,218,235,0.80)',
+    shadowColor: '#011f4b',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 9999,
+    zIndex: 9999,
+    minWidth: 168,
+    overflow: 'hidden',
+  },
+  sortDropItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(200,218,235,0.50)',
+  },
+  sortDropItemActive: { backgroundColor: 'rgba(26,58,107,0.07)' },
+  sortDropItemText: {
+    fontFamily: 'GoogleSans_400Regular',
+    fontSize: 12,
+    color: 'rgba(1,31,75,0.70)',
+  },
+  // Table
+  thCell: { paddingHorizontal: 5 },
+  thTxt: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 7,
+    color: 'rgba(1,31,75,0.55)',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  thDiv: { width: 1, alignSelf: 'stretch', backgroundColor: 'rgba(180,205,225,0.70)' },
+  tdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.30)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(200,218,235,0.40)',
+    paddingVertical: 7,
+  },
+  tdRowEven: { backgroundColor: 'rgba(210,228,242,0.35)' },
+  tdCell: { paddingHorizontal: 5 },
+  tdDate: { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#0f1e35' },
+  tdTime: { fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.45)', marginTop: 1 },
+  tdOrderNo: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#1a3a6b' },
+  tdItem: { fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.72)', lineHeight: 14 },
+  tdQty: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#0f1e35', textAlign: 'center' },
+  tdVariant: { fontFamily: 'GoogleSans_500Medium', fontSize: 9, color: 'rgba(1,31,75,0.65)', textAlign: 'center' },
+  tdNone: { color: 'rgba(1,31,75,0.28)', fontFamily: 'GoogleSans_400Regular', fontStyle: 'italic' },
+  tdPm: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, textAlign: 'center' },
+  tdTotal: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#27ae60', textAlign: 'center' },
+  tdStatus: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, textAlign: 'center' },
+  // Empty
+  emptyTitle: { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: 'rgba(1,31,75,0.55)', textAlign: 'center' },
+  emptySubtitle: { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.40)', textAlign: 'center', marginTop: 4 },
+  shopNowBtn: { marginTop: 16, backgroundColor: '#1a2d4e', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 10 },
+  shopNowText: { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#c9a84c' },
+  // Year
+  yearBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(26,58,107,0.12)', borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1.5, borderColor: 'rgba(26,58,107,0.25)',
+  },
+  yearBtnText: { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#0f1e35', letterSpacing: 0.5 },
+  yearDropdown: {
+    position: 'absolute', top: '100%', left: 0, marginTop: 4,
+    backgroundColor: '#fff', borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(200,218,235,0.80)',
+    shadowColor: '#011f4b', shadowOpacity: 0.15, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 }, elevation: 9999,
+    zIndex: 9999, minWidth: 100, overflow: 'hidden',
+  },
+  yearDropItem: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(200,218,235,0.50)' },
+  yearDropItemActive: { backgroundColor: '#1a3a6b' },
+  yearDropItemText: { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(1,31,75,0.70)', textAlign: 'center' },
+  // Period
+  periodRow: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.35)', borderRadius: 22, padding: 3, gap: 2 },
+  periodTab: { flex: 1, paddingVertical: 7, borderRadius: 18, alignItems: 'center' },
+  periodTabActive: { backgroundColor: '#1a2d4e', shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 4, elevation: 2 },
+  periodTabTxt: { fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: 'rgba(1,31,75,0.60)' },
+  periodTabTxtActive: { fontFamily: 'GoogleSans_700Bold', color: '#fff' },
+  // Month pills
+  monthPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(26,58,107,0.10)', borderWidth: 1, borderColor: 'rgba(26,58,107,0.15)' },
+  monthPillActive: { backgroundColor: '#1a2d4e', borderColor: '#1a2d4e' },
+  monthPillTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(1,31,75,0.60)' },
+  monthPillTxtActive: { color: '#fff' },
+  // Summary cards
+  sumCard: { flex: 1, backgroundColor: 'rgba(255,255,255,0.50)', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: 'rgba(200,218,235,0.70)', alignItems: 'center' },
+  sumCardLabel: { fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(1,31,75,0.50)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+  sumCardValue: { fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: '#0f1e35' },
+});
+
+
 const AdBanner = ({ isWide, adAnim, navigation }) => {
   const [current, setCurrent] = useState(0);
   const scrollRef = useRef(null);
@@ -1050,17 +1746,17 @@ export default function MerchandiseScreen({ navigation, route }) {
   const [menuOpen,     setMenuOpen]     = useState(false);
   const [mainTab,      setMainTab]      = useState('order'); // 'order' | 'history'
 
-  const addToCart = (item, size) => {
-    const key = item.id;
-    setCart(prev => ({ ...prev, [key]: { item, qty: (prev[key] ? prev[key].qty : 0) + 1, size: size || null } }));
+  const addToCart = (item, color, size) => {
+    const key = item.id + (color ? '-' + color : '') + (size ? '-' + size : '');
+    setCart(prev => ({ ...prev, [key]: { item, qty: (prev[key] ? prev[key].qty : 0) + 1, color: color || null, size: size || null } }));
   };
 
-  const removeFromCart = (item, size) => {
-    const key = item.id;
+  const removeFromCart = (item, color, size) => {
+    const key = item.id + (color ? '-' + color : '') + (size ? '-' + size : '');
     setCart(prev => {
       const qty = (prev[key] ? prev[key].qty : 0) - 1;
       if (qty <= 0) { const n = {...prev}; delete n[key]; return n; }
-      return { ...prev, [key]: { item, qty, size: size || null } };
+      return { ...prev, [key]: { item, qty, color: color || null, size: size || null } };
     });
   };
 
@@ -1270,87 +1966,14 @@ export default function MerchandiseScreen({ navigation, route }) {
       <Animated.View style={[styles.body, { opacity: bodyFade }]}>
 
       {/* ── HISTORY TAB ── */}
-      {mainTab === 'history' && (() => {
-        const fmtDateTime = (ts) => {
-          try {
-            let d;
-            if (!ts) return '—';
-            if (ts?.toDate) d = ts.toDate();
-            else if (typeof ts === 'number') d = new Date(ts);
-            else d = new Date(ts);
-            if (isNaN(d.getTime())) return '—';
-            return d.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
-              + ' · ' + d.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit', hour12:true });
-          } catch { return '—'; }
-        };
-        return (
-          <View style={{ flex:1, minHeight:0, alignItems:'stretch', paddingBottom: isWide ? 16 : 8 }}>
-          <View style={{ flex:1, width:'100%', maxWidth: isWide ? 1100 : '100%', alignSelf:'center', paddingHorizontal: isWide ? 24 : 10, paddingTop:4, minHeight:0 }}>
-            <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.55)', letterSpacing:1.8, textTransform:'uppercase' }}>📋 Order History</Text>
-              <View style={{ backgroundColor:'rgba(1,31,75,0.08)', borderRadius:6, paddingHorizontal:8, paddingVertical:3 }}>
-                <Text style={{ fontFamily:'GoogleSans_500Medium', fontSize:10, color:'rgba(1,31,75,0.50)' }}>{orderHistory.length} order{orderHistory.length !== 1 ? 's' : ''}</Text>
-              </View>
-            </View>
-            {orderHistory.length === 0 ? (
-              <View style={{ alignItems:'center', paddingVertical:60 }}>
-                <Text style={{ fontSize:48, marginBottom:12 }}>📋</Text>
-                <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:15, color:'rgba(1,31,75,0.55)', textAlign:'center' }}>No orders yet</Text>
-                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.40)', textAlign:'center', marginTop:6 }}>Your completed orders will appear here.</Text>
-                <TouchableOpacity onPress={() => setMainTab('order')} style={{ marginTop:18, backgroundColor:'#1a2d4e', borderRadius:12, paddingHorizontal:24, paddingVertical:10 }}>
-                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#c9a84c' }}>Shop Now →</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={msHistTbl.tableWrap}>
-                <View style={msHistTbl.thead}>
-                  <Text style={[msHistTbl.hCell, { width:110 }]}>DATE / ORDER</Text>
-                  <View style={msHistTbl.hDivider}/>
-                  <Text style={[msHistTbl.hCell, { flex:1 }]}>ITEMS</Text>
-                  <View style={msHistTbl.hDivider}/>
-                  <Text style={[msHistTbl.hCell, { width:90, textAlign:'center' }]}>PAYMENT</Text>
-                  <View style={msHistTbl.hDivider}/>
-                  <Text style={[msHistTbl.hCell, { width:100, textAlign:'center' }]}>TOTAL</Text>
-                </View>
-                <ScrollView showsVerticalScrollIndicator={true} style={{ flex:1 }}>
-                  {orderHistory.map((order, idx) => {
-                    const orderItems = order.items || [];
-                    const total      = order.total || 0;
-                    const pm         = order.payment || order.paymentMode || 'cash';
-                    const pmLabel    = pm === 'gcash' ? 'GCash' : pm === 'credit' ? 'Credit' : 'Cash';
-                    const pmColor    = pm === 'gcash' ? '#3498db' : '#27ae60';
-                    const isEven     = idx % 2 === 0;
-                    return (
-                      <View key={order.docId || idx} style={[msHistTbl.row, isEven && msHistTbl.rowEven, idx === orderHistory.length - 1 && { borderBottomWidth:0 }]}>
-                        <View style={[msHistTbl.cell, { width:110 }]}>
-                          <Text style={msHistTbl.ordNo}>#{order.orderNo || '—'}</Text>
-                          <Text style={msHistTbl.ordDate}>{fmtDateTime(order.createdAt)}</Text>
-                        </View>
-                        <View style={[msHistTbl.cell, { flex:1 }]}>
-                          {orderItems.slice(0,2).map((it, j) => {
-                            const item = it.item || it;
-                            const qty  = it.qty || it.quantity || 1;
-                            const sz   = it.size ? ` (${it.size})` : '';
-                            return <Text key={j} style={msHistTbl.itemLine} numberOfLines={1}>{item.name}{sz} ×{qty}</Text>;
-                          })}
-                          {orderItems.length > 2 && <Text style={[msHistTbl.itemLine, { color:'rgba(1,31,75,0.38)', fontSize:10 }]}>+{orderItems.length - 2} more</Text>}
-                        </View>
-                        <View style={[msHistTbl.cell, { width:90, alignItems:'center' }]}>
-                          <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:11, color: pmColor }}>{pmLabel}</Text>
-                        </View>
-                        <View style={[msHistTbl.cell, { width:100, alignItems:'center' }]}>
-                          <Text style={msHistTbl.total}>₱{Number(total).toFixed(2)}</Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            )}
-          </View>
-          </View>
-        );
-      })()}
+      {mainTab === 'history' && (
+        <HistoryTabContent
+          orderHistory={orderHistory}
+          isWide={isWide}
+          showStatus={true}
+          onShopNow={() => setMainTab('order')}
+        />
+      )}
 
       {/* ── ORDERING TAB ── */}
       {mainTab === 'order' && (
@@ -1457,7 +2080,7 @@ export default function MerchandiseScreen({ navigation, route }) {
                       <View key={item.id} style={{ flex:1 }}>
                         <ItemCard
                           item={item}
-                          onAdd={() => addToCart(item)}
+                          onAdd={(color, size) => addToCart(item, color, size)}
                         />
                       </View>
                     ))}
