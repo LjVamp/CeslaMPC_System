@@ -19,6 +19,7 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import emailjs from '@emailjs/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
@@ -1101,10 +1102,21 @@ export default function HomeScreen({ navigation }) {
                         ? feedbackFiles.map(f => f.name).join(', ')
                         : 'None';
 
+                      // ─────────────────────────────────────────────────────────
+                      // ⚠️  REPLACE these three values with your real EmailJS credentials:
+                      //   1. Go to https://www.emailjs.com and log in
+                      //   2. Service ID   → Email Services → your service ID
+                      //   3. Template ID  → Email Templates → your template ID
+                      //   4. Public Key   → Account → API Keys → Public Key
+                      // ─────────────────────────────────────────────────────────
+                      const EMAILJS_SERVICE_ID  = 'service_ceslampc';   
+                      const EMAILJS_TEMPLATE_ID = 'template_feedback';  
+                      const EMAILJS_PUBLIC_KEY  = 'yNW-knzcWspVbuQrr';   
+
                       const payload = {
-                        service_id:  'service_ceslampc',
-                        template_id: 'template_feedback',
-                        user_id:     'yNW-knzcWspVbuQrr',
+                        service_id:  EMAILJS_SERVICE_ID,
+                        template_id: EMAILJS_TEMPLATE_ID,
+                        user_id:     EMAILJS_PUBLIC_KEY,
                         template_params: {
                           feedback_type:    feedbackType,
                           from_name:        feedbackName.trim() || 'Anonymous User',
@@ -1117,27 +1129,49 @@ export default function HomeScreen({ navigation }) {
                         },
                       };
 
-                      const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload),
-                      });
-
-                      if (res.status === 200) {
-                        setFeedbackSent(true);
-                        setFeedbackName(''); setFeedbackEmail('');
-                        setFeedbackSubject(''); setFeedbackText('');
-                        setFeedbackFiles([]); setFeedbackType('General');
-                        setFeedbackSubject(FEEDBACK_SUBJECTS['General']);
-                        setTimeout(() => {
-                          setFeedbackOpen(false);
-                          setFeedbackSent(false);
-                        }, 3000);
+                      if (Platform.OS === 'web') {
+                        // Web: raw fetch works fine
+                        const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(payload),
+                        });
+                        if (res.status !== 200) {
+                          let errMsg = `Send failed (status ${res.status}).`;
+                          try { const b = await res.text(); if (b) errMsg += ' ' + b; } catch (_) {}
+                          if (res.status === 400) errMsg = 'Invalid request. Check your EmailJS credentials.';
+                          if (res.status === 401 || res.status === 403) errMsg = 'Authentication failed. Check your EmailJS Public Key.';
+                          if (res.status === 404) errMsg = 'Service or Template not found. Check your IDs.';
+                          if (res.status === 429) errMsg = 'Too many requests. Please wait and try again.';
+                          setFeedbackError(errMsg);
+                          return;
+                        }
                       } else {
-                        setFeedbackError('Failed to send. Please try again. (' + res.status + ')');
+                        // Mobile (iOS/Android): use @emailjs/react-native SDK — avoids mobile network/CORS issues
+                        await emailjs.send(
+                          EMAILJS_SERVICE_ID,
+                          EMAILJS_TEMPLATE_ID,
+                          payload.template_params,
+                          { publicKey: EMAILJS_PUBLIC_KEY },
+                        );
                       }
+
+                      // ── Success ──
+                      setFeedbackSent(true);
+                      setFeedbackName(''); setFeedbackEmail('');
+                      setFeedbackText(''); setFeedbackFiles([]);
+                      setFeedbackType('General');
+                      setFeedbackSubject(FEEDBACK_SUBJECTS['General']);
+                      setTimeout(() => {
+                        setFeedbackOpen(false);
+                        setFeedbackSent(false);
+                      }, 3000);
                     } catch (e) {
-                      setFeedbackError('Network error. Check your connection and try again.');
+                      if (e && e.message && e.message.toLowerCase().includes('network')) {
+                        setFeedbackError('Network error. Please check your internet connection and try again.');
+                      } else {
+                        setFeedbackError('Something went wrong. Please try again. (' + (e?.message || 'unknown error') + ')');
+                      }
                     } finally {
                       setFeedbackSending(false);
                     }
