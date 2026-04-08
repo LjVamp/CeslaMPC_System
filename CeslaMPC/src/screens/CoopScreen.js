@@ -2881,7 +2881,7 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       Alert.alert(
         'Logout',
-        'Gusto ba nimo mag-logout sa imong account?',
+        'Are you sure you want to log-out your account?',
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Logout', style: 'destructive', onPress: onLogout },
@@ -3160,7 +3160,7 @@ export default function CoopScreen({ navigation, route }) {
     const handleDashboardLogout = () => {
       Alert.alert(
         'Logout',
-        'Gusto ba nimo mag-logout sa imong account?',
+        'Are you sure you want to log-out your account?',
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Logout', style: 'destructive', onPress: handleLogout },
