@@ -9,7 +9,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Animated, StatusBar, useWindowDimensions, Platform,
-  TextInput, ActivityIndicator, KeyboardAvoidingView, Image,
+  TextInput, ActivityIndicator, KeyboardAvoidingView, Image, Alert, BackHandler,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -2654,12 +2654,17 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
     }
   }, [chatType, member.uid]);
 
-  // Load active members for DM list
+  // Load active members for DM list — fetch all, filter client-side (avoids composite index issues)
   useEffect(() => {
     if (chatType !== 'members') return;
-    const q = query(collection(db, 'members'), where('status', '==', 'Active'), orderBy('name', 'asc'));
+    const q = query(collection(db, 'members'));
     const unsub = onSnapshot(q, snap => {
-      setMembers(snap.docs.map(d => ({ id: d.id, uid: d.id, ...d.data() })).filter(m => m.id !== member.uid));
+      setMembers(
+        snap.docs
+          .map(d => ({ id: d.id, uid: d.id, ...d.data() }))
+          .filter(m => m.id !== member.uid && m.status === 'Active')
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      );
     });
     return unsub;
   }, [chatType]);
@@ -2780,7 +2785,14 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
 
   // Member List (for co-member chat)
   if (chatType === 'members' && screen === 'list') {
-    const filtered = members.filter(m => (m.name || '').toLowerCase().includes(search.toLowerCase()) || (m.userId || '').includes(search));
+    const q = search.trim().toLowerCase();
+    const filtered = members.filter(m =>
+      !q ||
+      (m.name || '').toLowerCase().includes(q) ||
+      (m.userId || '').toLowerCase().includes(q) ||
+      (m.firstName || '').toLowerCase().includes(q) ||
+      (m.lastName || '').toLowerCase().includes(q)
+    );
     return (
       <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
         <Text style={s.pageTitle}>👥 Co-member Chat</Text>
@@ -2846,7 +2858,8 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
 // ─── MEMBER DASHBOARD ─────────────────────────────────────────────────────────
 const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   const { height, isMobile } = useRwd();
-  const topbarHeight = Platform.OS === 'web' ? 62 : isSmall ? 58 : 62;
+  // Rounded header: marginTop (web=16, mobile=44) + header height (~62) + gap (~8)
+  const topbarHeight = Platform.OS === 'web' ? 86 : isSmall ? 114 : 114;
   const contentHeight = height - topbarHeight;
 
   const [nav,        setNav]        = useState('overview');
@@ -2861,6 +2874,24 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(doc(db, 'members', memberInit.uid), snap => { if (snap.exists()) setMember({ uid: snap.id, ...snap.data() }); }); }, [memberInit?.uid]);
   // Unread count
   useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(query(collection(db, 'members', memberInit.uid, 'notifications'), where('read', '==', false)), snap => setUnread(snap.size)); }, [memberInit?.uid]);
+
+  // Android hardware back button — show logout confirmation
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      Alert.alert(
+        'Logout',
+        'Gusto ba nimo mag-logout sa imong account?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Logout', style: 'destructive', onPress: onLogout },
+        ],
+        { cancelable: true }
+      );
+      return true; // prevent default back behavior
+    });
+    return () => sub.remove();
+  }, [onLogout]);
 
   const switchNav = key => {
     Animated.parallel([Animated.timing(fadeAnim, { toValue: 0, duration: 130, useNativeDriver: true }), Animated.timing(slideAnim, { toValue: 10, duration: 130, useNativeDriver: true })]).start(() => {
@@ -2904,46 +2935,91 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
     }
   };
 
+  // Header margin + padding — used for sidebar top offset
+  const headerMarginTop = Platform.OS === 'web' ? 16 : 44;
+  const headerVertPad   = isWide ? 14 : 8;
+  // Approx header height: avatar 34 + 2*vertPad + 2px border ≈ 34+28+2 = 64 wide, 34+16+2 = 52 narrow
+  const headerHeight    = 34 + headerVertPad * 2 + 2;
+  // Sidebar top = marginTop + headerHeight + 8 gap (to sit flush below header)
+  const sidebarTop      = headerMarginTop + headerHeight + 8;
+
   return (
     <View style={{ flex: 1 }}>
-      {/* Top bar */}
-      <View style={[s.dashTopbar, { paddingTop: Platform.OS === 'web' ? 0 : 44 }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-          {!isWide && <TouchableOpacity style={s.menuBtn} onPress={() => setDrawer(v => !v)}><Text style={{ color: '#fff', fontSize: 18 }}>☰</Text></TouchableOpacity>}
-          <View style={s.dashLogo}><Text style={s.dashLogoTxt}>CS</Text></View>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.dashTitle, { fontSize: isSmall ? 12 : 14 }]} numberOfLines={1}>Member Dashboard</Text>
-            {!isSmall && <Text style={s.dashSub}>CESLA MPC · CLIMBS Employee Cooperative</Text>}
+      {/* Top bar — CanteenVisitor-style rounded header */}
+      <View style={{ marginTop: headerMarginTop, marginHorizontal: isSmall ? 8 : 10, zIndex: 20 }}>
+        <View style={[s.dashTopbar, { paddingHorizontal: isWide ? 28 : 12, paddingVertical: headerVertPad }]}>
+
+          {/* LEFT — menu icon (always visible, toggles sidebar) */}
+          <TouchableOpacity style={[s.dashRoundBtn, drawer && { backgroundColor: 'rgba(201,168,76,0.30)', borderColor: 'rgba(201,168,76,0.60)' }]} onPress={() => setDrawer(v => !v)}>
+            <MaterialIcons name={drawer ? 'close' : 'menu'} size={22} color="#fff" />
+          </TouchableOpacity>
+
+          {/* CENTER — title */}
+          <View style={s.dashHeaderCenter}>
+            <Text style={[s.dashTitle, { fontSize: isWide ? 16 : isSmall ? 13 : 15 }]} numberOfLines={1}>
+              Member Dashboard
+            </Text>
+            {!isSmall && (
+              <View style={s.dashSubTag}>
+                <Text style={s.dashSubTagTxt}>CESLA MPC · CLIMBS Employee Cooperative</Text>
+              </View>
+            )}
           </View>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TouchableOpacity style={s.bellBtn} onPress={() => switchNav('notifs')}>
-            <Text style={{ fontSize: 16 }}>🔔</Text>
-            {unread > 0 && <View style={s.bellBadge}><Text style={s.bellBadgeTxt}>{unread > 9 ? '9+' : unread}</Text></View>}
-          </TouchableOpacity>
-          {/* Profile avatar — tappable → goes to My Profile */}
-          <TouchableOpacity onPress={() => switchNav('profile')} activeOpacity={0.8}>
-            <MemberAvatar member={member} size={32} />
-          </TouchableOpacity>
-          {isWide && <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.85)', maxWidth: 120 }} numberOfLines={1}>{member.name}</Text>}
+
+          {/* RIGHT — notification bell + profile */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {/* Notification bell */}
+            <TouchableOpacity style={s.dashRoundBtn} onPress={() => switchNav('notifs')}>
+              <Text style={{ fontSize: 16, textAlign: 'center', lineHeight: 22, includeFontPadding: false }}>🔔</Text>
+              {unread > 0 && <View style={s.bellBadge}><Text style={s.bellBadgeTxt}>{unread > 9 ? '9+' : unread}</Text></View>}
+            </TouchableOpacity>
+            {/* Profile pic circle + name */}
+            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }} onPress={() => switchNav('profile')} activeOpacity={0.8}>
+              <MemberAvatar member={member} size={34} />
+              {isWide && (
+                <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.90)', maxWidth: 130 }} numberOfLines={1}>
+                  {member.name}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
         </View>
       </View>
-      {/* Body */}
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        {isWide && <MemberSidebar active={nav} onNav={switchNav} unread={unread} onLogout={onLogout} onBack={goBack} canGoBack={navHistory.length > 1} />}
+
+      {/* Body — full width, no persistent sidebar */}
+      <View style={{ flex: 1 }}>
         <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
           {renderContent()}
         </Animated.View>
       </View>
-      {/* Mobile drawer — starts BELOW topbar so it doesn't cover it */}
-      {!isWide && drawer && (
-        <View style={{ position: 'absolute', top: topbarHeight, left: 0, right: 0, bottom: 0, zIndex: 999 }}>
+
+      {/* Drawer — slides in from RIGHT, positioned below header, aligned to right edge */}
+      {drawer && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}>
           {/* Backdrop */}
           <TouchableOpacity
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.50)' }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' }}
             activeOpacity={1} onPress={() => setDrawer(false)} />
-          {/* Sidebar panel — full height below topbar */}
-          <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 220, flexDirection: 'column' }}>
+          {/* Sidebar panel — floating, rounded, right-aligned, starts below header */}
+          <View style={{
+            position: 'absolute',
+            top: sidebarTop,
+            left: isSmall ? 8 : 10,
+            bottom: isSmall ? 8 : 14,
+            width: 220,
+            backgroundColor: '#1a2d4e',
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: 'rgba(201,168,76,0.25)',
+            shadowColor: '#011f4b',
+            shadowOpacity: 0.30,
+            shadowRadius: 24,
+            shadowOffset: { width: -4, height: 6 },
+            elevation: 14,
+            overflow: 'hidden',
+            flexDirection: 'column',
+          }}>
             <MemberSidebar active={nav} onNav={switchNav} onClose={() => setDrawer(false)} unread={unread}
               onLogout={() => { setDrawer(false); onLogout(); }}
               onBack={() => { goBack(); setDrawer(false); }}
@@ -2951,6 +3027,7 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
           </View>
         </View>
       )}
+
       {/* Floating Chat System */}
       <ChatSystem currentMember={member} />
     </View>
@@ -3080,11 +3157,22 @@ export default function CoopScreen({ navigation, route }) {
 
   // ── DASHBOARD — full screen, no header ──────────────────────────────────
   if (view === 'dashboard' && member) {
+    const handleDashboardLogout = () => {
+      Alert.alert(
+        'Logout',
+        'Gusto ba nimo mag-logout sa imong account?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Logout', style: 'destructive', onPress: handleLogout },
+        ],
+        { cancelable: true }
+      );
+    };
     return (
       <View style={{ flex: 1 }}>
         <AppBg />
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-        <MemberDashboard memberInit={member} onLogout={handleLogout} isWide={isWide} isSmall={isSmall} />
+        <MemberDashboard memberInit={member} onLogout={handleDashboardLogout} isWide={isWide} isSmall={isSmall} />
       </View>
     );
   }
@@ -3304,23 +3392,20 @@ const s = StyleSheet.create({
   pendingTxt:    { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.80)', lineHeight: 17, flex: 1 },
   pendingBold:   { fontFamily: 'GoogleSans_700Bold', color: '#011f4b' },
 
-  // Dashboard top bar
-  dashTopbar:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1a2d4e', paddingHorizontal: 14, paddingBottom: 12, borderBottomWidth: 2, borderColor: '#c9a84c', gap: 8 },
-  dashLogo:      { width: 32, height: 32, borderRadius: 8, backgroundColor: '#c9a84c', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  dashLogoTxt:   { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#0f1e35' },
-  dashTitle:     { fontFamily: 'GoogleSans_700Bold', color: '#fff' },
-  dashSub:       { fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#c9a84c' },
-  menuBtn:       { width: 38, height: 38, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', justifyContent: 'center', alignItems: 'center' },
-  bellBtn:       { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', justifyContent: 'center', alignItems: 'center' },
-  bellBadge:     { position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: '#c0392b', justifyContent: 'center', alignItems: 'center' },
-  bellBadgeTxt:  { fontFamily: 'GoogleSans_700Bold', fontSize: 8, color: '#fff' },
-  memAvatar:     { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(201,168,76,0.28)', borderWidth: 1.5, borderColor: '#c9a84c', justifyContent: 'center', alignItems: 'center' },
-  memAvatarTxt:  { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#c9a84c' },
-  logoutBtn:     { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.50)' },
-  logoutTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c9a84c' },
+  // Dashboard top bar — CanteenVisitor-style rounded header
+  dashTopbar:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#304674', borderRadius: 14, borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.25)', shadowColor: '#011f4b', shadowOpacity: 0.20, shadowRadius: 20, shadowOffset: { width: 0, height: 4 }, elevation: 8, gap: 8 },
+  dashHeaderCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
+  dashTitle:        { fontFamily: 'NotoSerif_700Bold', fontWeight: '700', color: '#ffffff', textAlign: 'center', letterSpacing: 0.3 },
+  dashSubTag:       { marginTop: 2, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.60)', alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
+  dashSubTagTxt:    { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#c9a84c', letterSpacing: 1.2, textTransform: 'uppercase', textAlign: 'center', lineHeight: 13, includeFontPadding: false },
+  dashRoundBtn:     { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)', justifyContent: 'center', alignItems: 'center', flexShrink: 0, position: 'relative' },
+  bellBadge:        { position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: '#c0392b', justifyContent: 'center', alignItems: 'center' },
+  bellBadgeTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 8, color: '#fff' },
+  logoutBtn:        { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.50)' },
+  logoutTxt:        { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c9a84c' },
 
   // Sidebar
-  sidebar:        { width: 160, maxWidth: 160, flexShrink: 0, flexGrow: 0, backgroundColor: '#1a2d4e', borderRightWidth: 1, borderColor: 'rgba(201,168,76,0.20)', flexDirection: 'column' },
+  sidebar:        { flex: 1, flexShrink: 0, flexGrow: 1, backgroundColor: 'transparent', flexDirection: 'column' },
   sidebarBrand:   { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 10, paddingTop: 14 },
   sidebarLogo:    { width: 26, height: 26, borderRadius: 6, backgroundColor: '#c9a84c', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
   sidebarLogoTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#0f1e35' },
