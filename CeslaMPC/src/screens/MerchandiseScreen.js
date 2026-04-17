@@ -1138,39 +1138,51 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
               )}
             </View>
           ) : (
-            <View style={{ flex: 1, minHeight: 0, overflow: 'hidden', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(200,218,235,0.80)' }}>
-              {/* Single horizontal ScrollView wrapping both thead and tbody for proper sync */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'column' }}>
-                  {/* Thead */}
-                  <View style={{ backgroundColor: 'rgba(220,232,242,0.95)', borderBottomWidth: 1.5, borderBottomColor: 'rgba(180,205,225,0.90)' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
-                      <View style={[histStyles.thCell, { width: 70 }]}><Text style={histStyles.thTxt}>DATE</Text></View>
-                      <View style={histStyles.thDiv}/>
-                      <View style={[histStyles.thCell, { width: 54 }]}><Text style={histStyles.thTxt}>ORDER #</Text></View>
-                      <View style={histStyles.thDiv}/>
-                      <View style={[histStyles.thCell, { width: 110 }]}><Text style={histStyles.thTxt}>ITEM NAME</Text></View>
-                      <View style={histStyles.thDiv}/>
-                      <View style={[histStyles.thCell, { width: 24 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>QTY</Text></View>
-                      <View style={histStyles.thDiv}/>
-                      <View style={[histStyles.thCell, { width: 34 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>SIZE</Text></View>
-                      <View style={histStyles.thDiv}/>
-                      <View style={[histStyles.thCell, { width: 44 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>COLOR</Text></View>
-                      <View style={histStyles.thDiv}/>
-                      <View style={[histStyles.thCell, { width: 56 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>CHAR</Text></View>
-                      <View style={histStyles.thDiv}/>
-                      <View style={[histStyles.thCell, { width: 48 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]} numberOfLines={1}>PMT</Text></View>
-                      <View style={histStyles.thDiv}/>
-                      <View style={[histStyles.thCell, { width: 62 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>TOTAL</Text></View>
-                      {showStatus && (
-                        <><View style={histStyles.thDiv}/><View style={[histStyles.thCell, { width: 56 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>STATUS</Text></View></>
-                      )}
+            <View style={{ flex: 1, minHeight: 0, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(200,218,235,0.80)', overflow: 'hidden' }}>
+              {/* Outer scroll: vertical for rows */}
+              <ScrollView
+                style={{ flex: 1 }}
+                showsVerticalScrollIndicator
+                nestedScrollEnabled
+                {...(Platform.OS === 'web' ? { style: { flex: 1, overflowY: 'auto', overflowX: 'hidden' } } : {})}
+              >
+                {/* Inner: horizontal for all columns — thead + tbody together so they scroll in sync */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={Platform.OS !== 'web'}
+                  scrollEnabled={Platform.OS !== 'web'}
+                  nestedScrollEnabled={false}
+                  {...(Platform.OS === 'web' ? { style: { overflow: 'hidden' } } : {})}
+                >
+                  <View style={{ flexDirection: 'column', ...(Platform.OS === 'web' ? { width: '100%' } : { minWidth: showStatus ? 564 : 508 }) }}>
+                    {/* Thead — sticky on web */}
+                    <View style={{ backgroundColor: 'rgba(220,232,242,0.97)', borderBottomWidth: 1.5, borderBottomColor: 'rgba(180,205,225,0.90)',
+                      ...(Platform.OS === 'web' ? { position: 'sticky', top: 0, zIndex: 10 } : {}) }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+                        <View style={[histStyles.thCell, { width: 80 }]}><Text style={histStyles.thTxt}>DATE</Text></View>
+                        <View style={histStyles.thDiv}/>
+                        <View style={[histStyles.thCell, { width: 56 }]}><Text style={histStyles.thTxt}>ORDER #</Text></View>
+                        <View style={histStyles.thDiv}/>
+                        <View style={[histStyles.thCell, Platform.OS === 'web' ? { flex: 1 } : { width: 120 }]}><Text style={histStyles.thTxt}>ITEM NAME</Text></View>
+                        <View style={histStyles.thDiv}/>
+                        <View style={[histStyles.thCell, { width: 28 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>QTY</Text></View>
+                        <View style={histStyles.thDiv}/>
+                        <View style={[histStyles.thCell, { width: 36 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>SIZE</Text></View>
+                        <View style={histStyles.thDiv}/>
+                        <View style={[histStyles.thCell, { width: 50 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>COLOR</Text></View>
+                        <View style={histStyles.thDiv}/>
+                        <View style={[histStyles.thCell, { width: 56 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>CHAR</Text></View>
+                        <View style={histStyles.thDiv}/>
+                        <View style={[histStyles.thCell, { width: 50 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>PMT</Text></View>
+                        <View style={histStyles.thDiv}/>
+                        <View style={[histStyles.thCell, { width: 66 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>TOTAL</Text></View>
+                        {showStatus && (
+                          <><View style={histStyles.thDiv}/><View style={[histStyles.thCell, { width: 66 }]}><Text style={[histStyles.thTxt,{textAlign:'center'}]}>STATUS</Text></View></>
+                        )}
+                      </View>
                     </View>
-                  </View>
 
-                  {/* Body rows */}
-                  <ScrollView showsVerticalScrollIndicator nestedScrollEnabled>
-                    <View>
+                    {/* Body rows */}
                     {tableRows.map((row, idx) => {
                       const { order, item, itemIdx, totalItems, pm, st } = row;
                       const isFirst = itemIdx === 0;
@@ -1194,28 +1206,28 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
                           ]}
                         >
                           {/* DATE */}
-                          <View style={[histStyles.tdCell, { width: 70 }]}>
+                          <View style={[histStyles.tdCell, { width: 80 }]}>
                             {isFirst && <Text style={histStyles.tdDate}>{fmtDate(order.createdAt)}</Text>}
                             {isFirst && <Text style={histStyles.tdTime}>{fmtTime(order.createdAt)}</Text>}
                           </View>
                           {/* ORDER # */}
-                          <View style={[histStyles.tdCell, { width: 54 }]}>
+                          <View style={[histStyles.tdCell, { width: 56 }]}>
                             {isFirst && <Text style={histStyles.tdOrderNo}>#{order.orderNo || '—'}</Text>}
                           </View>
                           {/* ITEM NAME */}
-                          <View style={[histStyles.tdCell, { width: 110 }]}>
+                          <View style={[histStyles.tdCell, Platform.OS === 'web' ? { flex: 1 } : { width: 120 }]}>
                             <Text style={histStyles.tdItem} numberOfLines={2}>{itemName}</Text>
                           </View>
                           {/* QTY */}
-                          <View style={[histStyles.tdCell, { width: 24, alignItems: 'center' }]}>
+                          <View style={[histStyles.tdCell, { width: 28, alignItems: 'center' }]}>
                             <Text style={histStyles.tdQty}>{qty}</Text>
                           </View>
                           {/* SIZE */}
-                          <View style={[histStyles.tdCell, { width: 34, alignItems: 'center' }]}>
+                          <View style={[histStyles.tdCell, { width: 36, alignItems: 'center' }]}>
                             <Text style={[histStyles.tdVariant, !size && histStyles.tdNone]}>{size || 'None'}</Text>
                           </View>
                           {/* COLOR */}
-                          <View style={[histStyles.tdCell, { width: 44, alignItems: 'center' }]}>
+                          <View style={[histStyles.tdCell, { width: 50, alignItems: 'center' }]}>
                             <Text style={[histStyles.tdVariant, !color && histStyles.tdNone]}>{color || 'None'}</Text>
                           </View>
                           {/* CHARACTER */}
@@ -1223,16 +1235,16 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
                             <Text style={[histStyles.tdVariant, !character && histStyles.tdNone]}>{character || 'None'}</Text>
                           </View>
                           {/* PAYMENT */}
-                          <View style={[histStyles.tdCell, { width: 48, alignItems: 'center' }]}>
+                          <View style={[histStyles.tdCell, { width: 50, alignItems: 'center' }]}>
                             {isFirst && <Text style={[histStyles.tdPm, { color: pm.color }]}>{pm.label}</Text>}
                           </View>
                           {/* TOTAL */}
-                          <View style={[histStyles.tdCell, { width: 62, alignItems: 'center' }]}>
+                          <View style={[histStyles.tdCell, { width: 66, alignItems: 'center' }]}>
                             {isFirst && <Text style={histStyles.tdTotal}>₱{Number(order.total || 0).toFixed(2)}</Text>}
                           </View>
                           {/* STATUS */}
                           {showStatus && (
-                            <View style={[histStyles.tdCell, { width: 56, alignItems: 'center' }]}>
+                            <View style={[histStyles.tdCell, { width: 66, alignItems: 'center' }]}>
                               {isFirst && <Text style={[histStyles.tdStatus, { color: st.color }]}>{st.label}</Text>}
                             </View>
                           )}
@@ -1240,8 +1252,7 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
                       );
                     })}
                   </View>
-                  </ScrollView>
-                </View>
+                </ScrollView>
               </ScrollView>
             </View>
           )}
@@ -1306,7 +1317,7 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={{ marginTop: 6, flexShrink: 0 }}
+              style={{ marginTop: 2, flexShrink: 0 }}
               contentContainerStyle={{ gap: 5, paddingHorizontal: 2, alignItems: 'center' }}
             >
               {MONTHS.map((m, i) => (
@@ -1434,9 +1445,9 @@ const histStyles = StyleSheet.create({
   },
   sortDropdown: {
     position: 'absolute',
-    bottom: '100%',
+    top: '100%',
     right: 0,
-    marginBottom: 4,
+    marginTop: 4,
     backgroundColor: '#fff',
     borderRadius: 10,
     borderWidth: 1,
@@ -1444,7 +1455,7 @@ const histStyles = StyleSheet.create({
     shadowColor: '#011f4b',
     shadowOpacity: 0.18,
     shadowRadius: 10,
-    shadowOffset: { width: 0, height: -4 },
+    shadowOffset: { width: 0, height: 4 },
     elevation: 9999,
     zIndex: 9999,
     minWidth: 168,

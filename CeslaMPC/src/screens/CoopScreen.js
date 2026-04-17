@@ -5,7 +5,7 @@
 // After login, member stays in this screen — no navigation needed
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Animated, StatusBar, useWindowDimensions, Platform,
@@ -2631,12 +2631,25 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
   const [roomId, setRoomId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [members, setMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(true);
   const [selectedMember, setSelectedMember] = useState(null);
   const [search, setSearch] = useState('');
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [screen, setScreen] = useState(chatType === 'admin' ? 'room' : 'list');
   const scrollRef = useRef(null);
+
+  // Filtered members — recomputed reactively whenever search or members changes
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter(m =>
+      (m.name || '').toLowerCase().includes(q) ||
+      (m.userId || '').toLowerCase().includes(q) ||
+      (m.firstName || '').toLowerCase().includes(q) ||
+      (m.lastName || '').toLowerCase().includes(q)
+    );
+  }, [search, members]);
 
   // Setup room
   useEffect(() => {
@@ -2665,6 +2678,7 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
           .filter(m => m.id !== member.uid && m.status === 'Active')
           .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
       );
+      setMembersLoading(false);
     });
     return unsub;
   }, [chatType]);
@@ -2785,14 +2799,6 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
 
   // Member List (for co-member chat)
   if (chatType === 'members' && screen === 'list') {
-    const q = search.trim().toLowerCase();
-    const filtered = members.filter(m =>
-      !q ||
-      (m.name || '').toLowerCase().includes(q) ||
-      (m.userId || '').toLowerCase().includes(q) ||
-      (m.firstName || '').toLowerCase().includes(q) ||
-      (m.lastName || '').toLowerCase().includes(q)
-    );
     return (
       <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
         <Text style={s.pageTitle}>👥 Co-member Chat</Text>
@@ -2833,7 +2839,19 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
             </GCard>
           </TouchableOpacity>
         ))}
-        {filtered.length === 0 && <GCard style={{ alignItems: 'center', padding: 32 }}><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted }}>No members found.</Text></GCard>}
+        {membersLoading && (
+          <GCard style={{ alignItems: 'center', padding: 32 }}>
+            <ActivityIndicator color={C.gold} />
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, marginTop: 10 }}>Loading members...</Text>
+          </GCard>
+        )}
+        {!membersLoading && filtered.length === 0 && (
+          <GCard style={{ alignItems: 'center', padding: 32 }}>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted }}>
+              {search.trim() ? `No members found for "${search.trim()}".` : 'No active members found.'}
+            </Text>
+          </GCard>
+        )}
       </ScrollView>
     );
   }
@@ -3158,15 +3176,20 @@ export default function CoopScreen({ navigation, route }) {
   // ── DASHBOARD — full screen, no header ──────────────────────────────────
   if (view === 'dashboard' && member) {
     const handleDashboardLogout = () => {
-      Alert.alert(
-        'Logout',
-        'Are you sure you want to log-out your account?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Logout', style: 'destructive', onPress: handleLogout },
-        ],
-        { cancelable: true }
-      );
+      if (Platform.OS === 'web') {
+        const confirmed = window.confirm('Are you sure you want to log-out your account?');
+        if (confirmed) handleLogout();
+      } else {
+        Alert.alert(
+          'Logout',
+          'Are you sure you want to log-out your account?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Logout', style: 'destructive', onPress: handleLogout },
+          ],
+          { cancelable: true }
+        );
+      }
     };
     return (
       <View style={{ flex: 1 }}>

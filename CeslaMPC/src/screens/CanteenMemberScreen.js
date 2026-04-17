@@ -955,28 +955,46 @@ export default function CanteenMemberScreen({ navigation }) {
 
   // ── Reset ALL per-session state on logout ────────────────────────────────
   const handleLogout = () => {
-    setMember(null);
-    setLoginView(true);
-    setLoginUserId('');
-    setLoginPw('');
-    setLoginError('');
-    setLoginShowPw(false);
-    // Clear all session-specific state so the next user starts fresh
-    setCart({});
-    setCartOpen(false);
-    setMainTab('order');
-    setLastOrder(null);
-    setReceiptVisible(false);
-    setSearch('');
-    setActiveCategory('All');
-    setOrderHistory([]);
-    setMenuOpen(false);
-    setQueueVisible(false);
-    setQueueMinimized(false);
-    setTrackedOrderId(null);
-    setLiveStatus('pending');
-    prevStatusRef.current = null;
-    setCreditTab('unpaid');
+    const doLogout = () => {
+      setMember(null);
+      setLoginView(true);
+      setLoginUserId('');
+      setLoginPw('');
+      setLoginError('');
+      setLoginShowPw(false);
+      // Clear all session-specific state so the next user starts fresh
+      setCart({});
+      setCartOpen(false);
+      setMainTab('order');
+      setLastOrder(null);
+      setReceiptVisible(false);
+      setSearch('');
+      setActiveCategory('All');
+      setOrderHistory([]);
+      setMenuOpen(false);
+      setQueueVisible(false);
+      setQueueMinimized(false);
+      setTrackedOrderId(null);
+      setLiveStatus('pending');
+      prevStatusRef.current = null;
+      setCreditTab('unpaid');
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to log out?')) {
+        doLogout();
+      }
+    } else {
+      Alert.alert(
+        'Log Out',
+        'Are you sure you want to log out?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Log Out', style: 'destructive', onPress: doLogout },
+        ],
+        { cancelable: true }
+      );
+    }
   };
 
   // ── Order history from Firestore ─────────────────────────────────────────
