@@ -1,9 +1,9 @@
 // src/screens/CanteenVisitor.js
-// CLIMBS Canteen — Visitor Food Ordering Screen
+// CESLA Grocery — Visitor Food Ordering Screen
 // 3-panel layout: Left Categories | Center Menu+Search | Right Cart
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useCanteen } from '../context/CanteenContext';
+import { useGrocery } from '../context/GroceryContext';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -17,7 +17,7 @@ import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
 
 // ─── PERSISTENCE KEY ──────────────────────────────────────────────────────────
-const VISITOR_HISTORY_KEY = 'canteen_visitor_order_history';
+const VISITOR_HISTORY_KEY = 'grocery_visitor_order_history';
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 
@@ -146,8 +146,8 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
             {/* Header */}
             <View style={styles.receiptHeader}>
-              <Text style={styles.receiptShopName}>🍽️  CLIMBS CANTEEN</Text>
-              <Text style={styles.receiptShopSub}>Canteen Ordering System</Text>
+              <Text style={styles.receiptShopName}>🛒  CESLA GROCERY</Text>
+              <Text style={styles.receiptShopSub}>Grocery Ordering System</Text>
               <View style={styles.receiptDividerDashed} />
               <Text style={styles.receiptMeta}>Order No.: #{orderNo}</Text>
               <Text style={styles.receiptMeta}>{time}</Text>
@@ -194,7 +194,7 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
 
               <View style={styles.receiptDividerDashed} />
               <Text style={styles.receiptThankYou}>Thank you for your order! 🙏</Text>
-              <Text style={styles.receiptFooter}>— CLIMBS Canteen © 2025 —</Text>
+              <Text style={styles.receiptFooter}>— CESLA Grocery © 2026 —</Text>
             </View>
           </ScrollView>
 
@@ -365,9 +365,9 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
 // Can be minimised to a floating pill; re-expands when status changes.
 const QUEUE_STEPS = [
   { key: 'pending',   icon: '🕐', label: 'Order Placed',       sub: 'Your order has been received!'         },
-  { key: 'preparing', icon: '🔥', label: 'Preparing Your Order', sub: 'The canteen is cooking your food.'   },
-  { key: 'ready',     icon: '✅', label: 'Ready to Pick Up',    sub: 'Your order is ready! Please proceed to the canteen.' },
-  { key: 'done',      icon: '🎉', label: 'Order Complete',      sub: 'Thank you for ordering!'               },
+  { key: 'preparing', icon: '🔥', label: 'Preparing Your Order', sub: 'The staff is preparing your items.'   },
+  { key: 'ready',     icon: '✅', label: 'Ready to Pick Up',    sub: 'Your order is ready! Please proceed to the counter.' },
+  { key: 'done',      icon: '🎉', label: 'Order Complete',      sub: 'Thank you for your purchase!'               },
 ];
 
 const QueueStatusModal = ({ visible, orderId, orderNo, currentStatus, onClose, onMinimize, minimized }) => {
@@ -586,8 +586,8 @@ const AdBanner = ({ isWide, adAnim, ads, navigation }) => {
     : [];
 
   const ADS = filteredAds.length > 0 ? filteredAds : [
-    { id:1, bg:['#1a3a6b','#2e5fa3'], emoji:'🍽️', title:"Today's Special", sub:'Fresh meals served daily!' },
-    { id:2, bg:['#7b3f00','#c9a84c'], emoji:'☕',  title:'Merienda Promo',   sub:'Snacks & drinks available!' },
+    { id:1, bg:['#1a6b3a','#2e8253'], emoji:'🛒', title:"Today's Deals", sub:'Fresh groceries available!' },
+    { id:2, bg:['#7b3f00','#c9a84c'], emoji:'🥦',  title:'Weekly Sale',      sub:'Great prices on essentials!' },
   ];
 
   // Reset current index when ADS list changes to avoid out-of-bounds
@@ -706,8 +706,8 @@ const adStyles = StyleSheet.create({
 });
 
 
-export default function CanteenVisitor({ navigation }) {
-  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock, orders, reloadFromStorage } = useCanteen();
+export default function GroceryVisitorScreen({ navigation }) {
+  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock, orders, reloadFromStorage } = useGrocery();
   const { width, height } = useWindowDimensions();
   const isWide  = width >= 768;
   const isSmall = width < 400;
@@ -812,10 +812,10 @@ export default function CanteenVisitor({ navigation }) {
             ? '✅ Your order is ready to pick up!'
             : '🔥 The canteen is now preparing your order!';
           if (Notification.permission === 'granted') {
-            new Notification('CLIMBS Canteen', { body: msg, icon: '🍽️' });
+            new Notification('CESLA Grocery', { body: msg, icon: '🛒' });
           } else if (Notification.permission !== 'denied') {
             Notification.requestPermission().then(p => {
-              if (p === 'granted') new Notification('CLIMBS Canteen', { body: msg });
+              if (p === 'granted') new Notification('CESLA Grocery', { body: msg });
             });
           }
         }
@@ -1038,7 +1038,7 @@ export default function CanteenVisitor({ navigation }) {
           <View style={styles.headerCenter}>
             <Text style={[styles.headerH1, { fontSize: isWide ? 22 : isSmall ? 14:16 }]} numberOfLines={1} adjustsFontSizeToFit>
               <Text style={styles.headerGold}>CLIMBS </Text>
-              Canteen Ordering System
+              Grocery Ordering System
             </Text>
             <View style={styles.visitorTag}>
               <Text style={styles.visitorTagText}>VISITOR / WALK-IN</Text>

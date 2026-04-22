@@ -42,7 +42,7 @@ const ADMIN_ACCOUNTS = [
     role: 'Canteen & Merch Admin',
     avatar: 'CM',
     accent: '#f5a623',
-    access: ['ManageCanteen', 'ManageMerchandise'],
+    access: ['ManageCanteen', 'ManageMerchandise', 'ManageGrocery'],
   },
   {
     id: 'CESLA-ADM-004',
@@ -61,6 +61,15 @@ const ADMIN_ACCOUNTS = [
     avatar: 'BA',
     accent: '#b47aff',
     access: ['ManageBilling'],
+  },
+  {
+    id: 'CESLA-ADM-006',
+    password: 'Grocery@Admin6',
+    name: 'Grocery Administrator',
+    role: 'Grocery Admin',
+    avatar: 'GA',
+    accent: '#27ae60',
+    access: ['ManageGrocery'],
   },
 ];
 
@@ -81,6 +90,14 @@ const SYSTEMS = [
     icon: '🍽️',
     accent: '#f5a623',
     screen: 'ManageCanteenScreen',
+  },
+  {
+    key: 'ManageGrocery',
+    title: 'Grocery Ordering\nand Inventory System',
+    description: 'Grocery items, orders, stock inventory & daily sales records',
+    icon: '🛒',
+    accent: '#27ae60',
+    screen: 'ManageGroceryScreen',
   },
   {
     key: 'ManageMerchandise',
@@ -174,7 +191,6 @@ const SystemLoginModal = ({ visible, system, onClose, onSuccess }) => {
 
   if (!system) return null;
 
-  // List of account IDs that can access this system
   const authorizedIds = ADMIN_ACCOUNTS
     .filter(a => accountHasAccess(a, system.key))
     .map(a => a.id);
@@ -185,10 +201,8 @@ const SystemLoginModal = ({ visible, system, onClose, onSuccess }) => {
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={handleClose} />
         <Animated.View style={[styles.loginCard, { transform: [{ translateY: slideAnim }] }]}>
 
-          {/* Colored top accent bar */}
           <View style={[styles.accentBar, { backgroundColor: system.accent }]} />
 
-          {/* Header row */}
           <View style={styles.lcHeader}>
             <View style={[styles.lcIconWrap, { backgroundColor: system.accent + '22', borderColor: system.accent + '55' }]}>
               <Text style={{ fontSize: 22 }}>{system.icon}</Text>
@@ -204,7 +218,6 @@ const SystemLoginModal = ({ visible, system, onClose, onSuccess }) => {
 
           <View style={styles.lcDivider} />
 
-          {/* Authorized accounts hint */}
           <View style={[styles.hintBox, { borderColor: system.accent + '40', backgroundColor: system.accent + '14' }]}>
             <MaterialIcons name="info-outline" size={13} color={system.accent} style={{ marginTop: 1 }} />
             <View style={{ flex: 1 }}>
@@ -213,9 +226,7 @@ const SystemLoginModal = ({ visible, system, onClose, onSuccess }) => {
             </View>
           </View>
 
-          {/* Form */}
           <View style={styles.lcForm}>
-            {/* Admin ID */}
             <View>
               <Text style={styles.fieldLabel}>ADMIN ID</Text>
               <View style={[styles.fieldRow, error && !loading && styles.fieldRowError]}>
@@ -233,7 +244,6 @@ const SystemLoginModal = ({ visible, system, onClose, onSuccess }) => {
               </View>
             </View>
 
-            {/* Password */}
             <View>
               <Text style={styles.fieldLabel}>PASSWORD</Text>
               <View style={[styles.fieldRow, error && !loading && styles.fieldRowError]}>
@@ -260,7 +270,6 @@ const SystemLoginModal = ({ visible, system, onClose, onSuccess }) => {
               </View>
             </View>
 
-            {/* Error */}
             {error ? (
               <View style={styles.errorBox}>
                 <MaterialIcons name={locked ? 'block' : 'error-outline'} size={13} color={locked ? '#c0392b' : '#e74c3c'} />
@@ -268,7 +277,6 @@ const SystemLoginModal = ({ visible, system, onClose, onSuccess }) => {
               </View>
             ) : null}
 
-            {/* Attempt dots */}
             {attempts > 0 && !locked && (
               <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>
                 {[1,2,3,4,5].map(i => (
@@ -277,7 +285,6 @@ const SystemLoginModal = ({ visible, system, onClose, onSuccess }) => {
               </View>
             )}
 
-            {/* Login button */}
             <TouchableOpacity
               style={[styles.loginBtn, (locked || loading) && { opacity: 0.55 }]}
               disabled={locked || loading}
@@ -440,11 +447,11 @@ export default function AdminScreen({ navigation, route }) {
   const [selectedSystem, setSelectedSystem] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
 
+  // ── Grid layout: 3 cards per row on wide, 2 on narrow ────────────────────
   const PAD = isWide ? 32 : 14;
   const GAP = isWide ? 16 : 8;
-  const cardWidth = isWide
-    ? (Math.min(width, 1280) - PAD * 2 - GAP * 3) / 4
-    : (width - PAD * 2 - GAP) / 2;
+  const COLS = isWide ? 3 : 2;
+  const cardWidth = (Math.min(width, 1280) - PAD * 2 - GAP * (COLS - 1)) / COLS;
 
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
@@ -463,17 +470,14 @@ export default function AdminScreen({ navigation, route }) {
   }, []);
 
   const handleCardPress = (sys) => {
-    // Super Admin (access: 'all') — skip login modal, navigate directly
     if (admin.access === 'all') {
       if (navigation) navigation.navigate(sys.screen, { admin });
       return;
     }
-    // Other admins — check if they have access to this system
     if (Array.isArray(admin.access) && admin.access.includes(sys.key)) {
       if (navigation) navigation.navigate(sys.screen, { admin });
       return;
     }
-    // No access — show login modal so they can use a different account
     setSelectedSystem(sys);
     setLoginModalOpen(true);
   };
@@ -584,13 +588,13 @@ export default function AdminScreen({ navigation, route }) {
           <Text style={[styles.sectionSub, { fontSize: isWide ? 14 : 13 }]}>Select a system to manage its data and settings</Text>
         </Animated.View>
 
-        {/* 4 cards — one row on web */}
+        {/* ── 5 cards — wraps automatically ── */}
         <View style={[styles.grid, {
           paddingHorizontal: PAD,
           flexDirection: 'row',
-          flexWrap: isWide ? 'nowrap' : 'wrap',
+          flexWrap: 'wrap',
           alignItems: 'stretch',
-          justifyContent: 'center',
+          justifyContent: isWide ? 'flex-start' : 'center',
           gap: GAP,
         }]}>
           {SYSTEMS.map((sys, i) => (
@@ -598,7 +602,7 @@ export default function AdminScreen({ navigation, route }) {
               key={sys.key}
               sys={sys}
               onPress={handleCardPress}
-              delay={[150, 250, 350, 450][i]}
+              delay={[150, 250, 350, 450, 550][i] || 550}
               cardWidth={cardWidth}
               isWide={isWide}
             />

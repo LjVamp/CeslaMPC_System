@@ -1,11 +1,11 @@
 // src/screens/CanteenMemberScreen.js
-// CESLA MPC — Canteen Member Portal
+// CESLA MPC — Grocery Member Portal
 // Based 100% on CanteenVisitor.js — same design, same UI, same layout
 // Differences: Firebase login (CoopScreen credentials) + member chip + order history
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useCanteen } from '../context/CanteenContext';
+import { useGrocery } from '../context/GroceryContext';
 
 // ── Firebase (CoopScreen login method) ──────────────────────────────────────
 import {
@@ -174,8 +174,8 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
             {/* Header */}
             <View style={styles.receiptHeader}>
-              <Text style={styles.receiptShopName}>🍽️  CLIMBS CANTEEN</Text>
-              <Text style={styles.receiptShopSub}>Canteen Ordering System</Text>
+              <Text style={styles.receiptShopName}>🛒  CESLA GROCERY</Text>
+              <Text style={styles.receiptShopSub}>Grocery Ordering System</Text>
               <View style={styles.receiptDividerDashed} />
               <Text style={styles.receiptMeta}>Order No.: #{orderNo}</Text>
               <Text style={styles.receiptMeta}>{time}</Text>
@@ -222,7 +222,7 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
 
               <View style={styles.receiptDividerDashed} />
               <Text style={styles.receiptThankYou}>Thank you for your order! 🙏</Text>
-              <Text style={styles.receiptFooter}>— CLIMBS Canteen © 2025 —</Text>
+              <Text style={styles.receiptFooter}>— CESLA Grocery © 2026 —</Text>
             </View>
           </ScrollView>
 
@@ -407,9 +407,9 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
 // Can be minimised to a floating pill; re-expands when status changes.
 const QUEUE_STEPS = [
   { key: 'pending',   icon: '🕐', label: 'Order Placed',       sub: 'Your order has been received!'         },
-  { key: 'preparing', icon: '🔥', label: 'Preparing Your Order', sub: 'The canteen is cooking your food.'   },
-  { key: 'ready',     icon: '✅', label: 'Ready to Pick Up',    sub: 'Your order is ready! Please proceed to the canteen.' },
-  { key: 'done',      icon: '🎉', label: 'Order Complete',      sub: 'Thank you for ordering!'               },
+  { key: 'preparing', icon: '🔥', label: 'Preparing Your Order', sub: 'The staff is preparing your items.'   },
+  { key: 'ready',     icon: '✅', label: 'Ready to Pick Up',    sub: 'Your order is ready! Please proceed to the counter.' },
+  { key: 'done',      icon: '🎉', label: 'Order Complete',      sub: 'Thank you for your purchase!'               },
 ];
 
 const QueueStatusModal = ({ visible, orderId, orderNo, currentStatus, onClose, onMinimize, minimized }) => {
@@ -680,12 +680,12 @@ const AdBanner = ({ isWide, adAnim, ads, navigation }) => {
 
   // ── Filter: show only ads targeted to 'member' or 'both' ───────────────────
   const filteredAds = ads && ads.length > 0
-    ? ads.filter(ad => !ad.target || ad.target === 'both' || ad.target === 'member')
+    ? ads.filter(ad => !ad.target || ad.target === 'both' || ad.target === 'grocery_member')
     : [];
 
   const ADS = filteredAds.length > 0 ? filteredAds : [
-    { id:1, bg:['#1a3a6b','#2e5fa3'], emoji:'🍽️', title:"Today's Special", sub:'Fresh meals served daily!' },
-    { id:2, bg:['#7b3f00','#c9a84c'], emoji:'☕',  title:'Merienda Promo',   sub:'Snacks & drinks available!' },
+    { id:1, bg:['#1a6b3a','#2e8253'], emoji:'🛒', title:"Today's Deals", sub:'Fresh groceries available!' },
+    { id:2, bg:['#7b3f00','#c9a84c'], emoji:'🥦',  title:'Weekly Sale',      sub:'Great prices on essentials!' },
   ];
 
   // Reset current index when ADS list changes to avoid out-of-bounds
@@ -893,8 +893,8 @@ const CreditOrderCard = ({ order }) => {
   );
 };
 
-export default function CanteenMemberScreen({ navigation }) {
-  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock, orders, reloadFromStorage } = useCanteen();
+export default function GroceryMemberScreen({ navigation }) {
+  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock, orders, reloadFromStorage } = useGrocery();
   const { width, height } = useWindowDimensions();
   const isWide  = width >= 768;
   const isSmall = width < 400;
@@ -1004,7 +1004,7 @@ export default function CanteenMemberScreen({ navigation }) {
     setOrderHistory([]);
     if (!member?.uid) return;
     const q = query(
-      collection(db, 'canteen_orders'),
+      collection(db, 'grocery_orders'),
       where('memberId', '==', member.uid)
     );
     const unsub = onSnapshot(q, snap => {
@@ -1105,10 +1105,10 @@ export default function CanteenMemberScreen({ navigation }) {
             ? '✅ Your order is ready to pick up!'
             : '🔥 The canteen is now preparing your order!';
           if (Notification.permission === 'granted') {
-            new Notification('CLIMBS Canteen', { body: msg, icon: '🍽️' });
+            new Notification('CESLA Grocery', { body: msg, icon: '🛒' });
           } else if (Notification.permission !== 'denied') {
             Notification.requestPermission().then(p => {
-              if (p === 'granted') new Notification('CLIMBS Canteen', { body: msg });
+              if (p === 'granted') new Notification('CESLA Grocery', { body: msg });
             });
           }
         }
@@ -1156,7 +1156,7 @@ export default function CanteenMemberScreen({ navigation }) {
       status: 'pending',
       payment:      normalizedPayment,
       paymentMode:  normalizedPayment,
-      source: 'member',
+      source: 'grocery_member',
       memberId:     member?.uid    || null,
       memberName:   member?.name   || (member?.firstName && member?.lastName ? `${member.lastName}, ${member.firstName}` : null) || null,
       memberUserId: member?.userId || null,
@@ -1340,7 +1340,7 @@ export default function CanteenMemberScreen({ navigation }) {
           <View style={styles.headerCenter}>
             <Text style={[styles.headerH1, { fontSize: isWide ? 22 : isSmall ? 14:16 }]} numberOfLines={1} adjustsFontSizeToFit>
               <Text style={styles.headerGold}>CLIMBS </Text>
-              Canteen Ordering System
+              Grocery Ordering System
             </Text>
             <View style={styles.visitorTag}>
               <Text style={styles.visitorTagText}>
@@ -1422,7 +1422,7 @@ export default function CanteenMemberScreen({ navigation }) {
             <LinearGradient colors={['#1a2d4e','#304674']} style={{ width:76, height:76, borderRadius:38, justifyContent:'center', alignItems:'center', borderWidth:2.5, borderColor:'#c9a84c', marginBottom:16 }}>
               <Text style={{ fontSize:32 }}>🍽️</Text>
             </LinearGradient>
-            <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20, color:'#0f1e35', textAlign:'center', marginBottom:4 }}>Canteen Member Portal</Text>
+            <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20, color:'#0f1e35', textAlign:'center', marginBottom:4 }}>Grocery Member Portal</Text>
             <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(15,30,53,0.60)', textAlign:'center', marginBottom:14, lineHeight:18 }}>CLIMBS Cooperative — Member Login</Text>
             {/* Hint */}
             <View style={{ width:'100%', backgroundColor:'rgba(201,168,76,0.14)', borderRadius:9, borderWidth:1, borderColor:'rgba(201,168,76,0.38)', padding:10, marginBottom:14 }}>
@@ -1698,7 +1698,7 @@ export default function CanteenMemberScreen({ navigation }) {
                 <View style={{ flexDirection:'row', alignItems:'flex-start', gap:8, padding:9, borderRadius:9, marginBottom:10, backgroundColor:'rgba(201,168,76,0.10)', borderWidth:1, borderColor:'rgba(201,168,76,0.28)' }}>
                   <Text style={{ fontSize:12 }}>⚠️</Text>
                   <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.68)', lineHeight:17, flex:1 }}>
-                    Ang mga orders nga <Text style={{ fontFamily:'GoogleSans_700Bold', color:'rgba(1,31,75,0.82)' }}>Credit</Text> ang payment kay ilusot sa imong sweldo o dividend sa payday. Kontaka ang canteen admin para sa settlement.
+                    Ang mga orders nga <Text style={{ fontFamily:'GoogleSans_700Bold', color:'rgba(1,31,75,0.82)' }}>Credit</Text> ang payment kay ilusot sa imong sweldo o dividend sa payday. Kontaka ang grocery admin para sa settlement.
                   </Text>
                 </View>
               )}

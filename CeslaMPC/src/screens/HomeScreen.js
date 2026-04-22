@@ -117,15 +117,23 @@ const MODULES = [
     title: 'Merchandise\nOrdering System',
     description: 'Place, track & manage merchandise orders with real-time status',
     icon: '📦',
-    isNew: false,  // ← removed NEW badge
+    isNew: false,
     screen: 'MerchandisePortalScreen',
     accent: '#c9a84c',
+  },
+  {
+    id: 'grocery',
+    title: 'Grocery\nOrdering System',
+    description: 'Browse and order grocery items with real-time stock and pickup tracking',
+    icon: '🛒',
+    isNew: true,
+    screen: 'GroceryPortalScreen',
+    accent: '#2ecc71',
   },
 ];
 
 // ── MODULE CARD ───────────────────────────────────────────────────────────────
 const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
-  // layout = 'wide-col' | 'mobile-full' | 'mobile-half'
   const fadeY     = useRef(new Animated.Value(0)).current;
   const transY    = useRef(new Animated.Value(30)).current;
   const cardScale = useRef(new Animated.Value(1)).current;
@@ -161,7 +169,6 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
     ]).start();
   };
 
-  // ── Sizes based on layout ──
   const isMobileHalf = layout === 'mobile-half';
   const ICON_SIZE = isWide ? 72 : isMobileHalf ? 44 : 52;
   const RING_SIZE = ICON_SIZE + 14;
@@ -195,7 +202,7 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
     </View>
   );
 
-  // ── MOBILE FULL (Row 1 — Coop): horizontal layout ──
+  // ── MOBILE FULL (Coop, Grocery): horizontal layout ──
   const mobileFull = (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }}>
       {iconNode}
@@ -203,6 +210,11 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
         <Text style={[styles.cardTitle, { fontSize: 14 }]} numberOfLines={2}>
           {mod.title.replace('\n', ' ')}
         </Text>
+        {mod.isNew && (
+          <View style={styles.newBadge}>
+            <Text style={styles.newBadgeText}>NEW</Text>
+          </View>
+        )}
         <Text style={[styles.cardDesc, { fontSize: 12 }]} numberOfLines={2}>
           {mod.description}
         </Text>
@@ -214,7 +226,7 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
     </View>
   );
 
-  // ── MOBILE HALF (Row 2 — Canteen & Merch): vertical/compact layout ──
+  // ── MOBILE HALF (Canteen, Merch): vertical/compact layout ──
   const mobileHalf = (
     <>
       {iconNode}
@@ -241,6 +253,11 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
   const wideInner = (
     <>
       {iconNode}
+      {mod.isNew && (
+        <View style={[styles.newBadge, { alignSelf: 'center' }]}>
+          <Text style={styles.newBadgeText}>NEW</Text>
+        </View>
+      )}
       <View style={[styles.textBlock, { alignItems: 'center' }]}>
         <Text style={[styles.cardTitle, { fontSize: 15, textAlign: 'center' }]}>{mod.title}</Text>
         <Text style={[styles.cardDesc, { fontSize: 12, textAlign: 'center' }]}>{mod.description}</Text>
@@ -355,9 +372,6 @@ export default function HomeScreen({ navigation }) {
 
   const handlePress = (screen) => { if (navigation) navigation.navigate(screen); };
 
-  // ── Card widths ──
-  const wideCardWidth = (Math.min(width, 1020) - PAD * 2 - GAP * 2) / 3;
-
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
@@ -439,34 +453,47 @@ export default function HomeScreen({ navigation }) {
 
         {/* ── CARDS GRID ── */}
         {isWide ? (
-          // ── WIDE/TABLET: 3 equal columns, horizontal ──
-          <View style={[styles.grid, {
-            paddingHorizontal: PAD,
-            flexDirection: 'row',
-            alignItems: 'stretch',
-            justifyContent: 'center',
-            gap: GAP,
-          }]}>
-            {MODULES.map((mod, i) => (
-              <View key={mod.id} style={{ width: wideCardWidth }}>
-                <ModuleCard
-                  mod={mod}
-                  onPress={handlePress}
-                  delay={[150, 280, 410][i]}
-                  isWide={true}
-                  layout="wide-col"
-                />
-              </View>
-            ))}
-          </View>
-        ) : (
-          // ── MOBILE: Row 1 = Coop full-width | Row 2 = Canteen + Merch side-by-side ──
+          // ── WIDE/TABLET: 2×2 grid ──
           <View style={[styles.grid, {
             paddingHorizontal: PAD,
             flexDirection: 'column',
             gap: GAP,
           }]}>
-            {/* Row 1 — Coop: full width, horizontal layout */}
+            {/* Row 1 — Coop + Canteen */}
+            <View style={{ flexDirection: 'row', gap: GAP }}>
+              {MODULES.slice(0, 2).map((mod, i) => (
+                <ModuleCard
+                  key={mod.id}
+                  mod={mod}
+                  onPress={handlePress}
+                  delay={[150, 280][i]}
+                  isWide={true}
+                  layout="wide-col"
+                />
+              ))}
+            </View>
+            {/* Row 2 — Merch + Grocery */}
+            <View style={{ flexDirection: 'row', gap: GAP }}>
+              {MODULES.slice(2, 4).map((mod, i) => (
+                <ModuleCard
+                  key={mod.id}
+                  mod={mod}
+                  onPress={handlePress}
+                  delay={[410, 540][i]}
+                  isWide={true}
+                  layout="wide-col"
+                />
+              ))}
+            </View>
+          </View>
+        ) : (
+          // ── MOBILE: Row1 Coop full | Row2 Canteen+Merch half | Row3 Grocery full ──
+          <View style={[styles.grid, {
+            paddingHorizontal: PAD,
+            flexDirection: 'column',
+            gap: GAP,
+          }]}>
+            {/* Row 1 — Coop: full width */}
             <ModuleCard
               mod={MODULES[0]}
               onPress={handlePress}
@@ -474,7 +501,6 @@ export default function HomeScreen({ navigation }) {
               isWide={false}
               layout="mobile-full"
             />
-
             {/* Row 2 — Canteen + Merchandise: side by side */}
             <View style={{ flexDirection: 'row', gap: GAP }}>
               <ModuleCard
@@ -492,6 +518,14 @@ export default function HomeScreen({ navigation }) {
                 layout="mobile-half"
               />
             </View>
+            {/* Row 3 — Grocery: full width */}
+            <ModuleCard
+              mod={MODULES[3]}
+              onPress={handlePress}
+              delay={540}
+              isWide={false}
+              layout="mobile-full"
+            />
           </View>
         )}
 
@@ -504,7 +538,6 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.footerText}>
             Choose the service you would like to access  •  CESLA MPC © 2026
           </Text>
-
           <TouchableOpacity
             style={styles.settingsBtn}
             onPress={() => setSettingsOpen(true)}
@@ -517,39 +550,18 @@ export default function HomeScreen({ navigation }) {
       </ScrollView>
 
       {/* ══ SETTINGS MODAL ══ */}
-      <Modal
-        transparent
-        visible={settingsOpen}
-        animationType="fade"
-        onRequestClose={() => setSettingsOpen(false)}
-      >
+      <Modal transparent visible={settingsOpen} animationType="fade" onRequestClose={() => setSettingsOpen(false)}>
         <View style={styles.modalOverlay}>
-          <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
-            activeOpacity={1}
-            onPress={() => setSettingsOpen(false)}
-          />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setSettingsOpen(false)} />
           <View style={styles.settingsCard}>
             <View style={styles.settingsCardHeader}>
               <Text style={styles.settingsCardTitle}>⚙️  Settings</Text>
-              <TouchableOpacity
-                style={styles.modalCloseBtn}
-                onPress={() => setSettingsOpen(false)}
-              >
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSettingsOpen(false)}>
                 <Text style={styles.modalCloseTxt}>✕</Text>
               </TouchableOpacity>
             </View>
-
             <View style={styles.settingsDivider} />
-
-            <TouchableOpacity
-              style={styles.settingsOption}
-              activeOpacity={0.80}
-              onPress={() => {
-                setSettingsOpen(false);
-                setTimeout(() => setAdminWarnOpen(true), 200);
-              }}
-            >
+            <TouchableOpacity style={styles.settingsOption} activeOpacity={0.80} onPress={() => { setSettingsOpen(false); setTimeout(() => setAdminWarnOpen(true), 200); }}>
               <View style={[styles.settingsOptionIcon, { backgroundColor: 'rgba(201,168,76,0.15)', borderColor: 'rgba(201,168,76,0.40)' }]}>
                 <Text style={{ fontSize: 18 }}>🔒</Text>
               </View>
@@ -559,15 +571,7 @@ export default function HomeScreen({ navigation }) {
               </View>
               <Text style={styles.settingsOptionArrow}>›</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.settingsOption}
-              activeOpacity={0.80}
-              onPress={() => {
-                setSettingsOpen(false);
-                setTimeout(() => setFeedbackOpen(true), 200);
-              }}
-            >
+            <TouchableOpacity style={styles.settingsOption} activeOpacity={0.80} onPress={() => { setSettingsOpen(false); setTimeout(() => setFeedbackOpen(true), 200); }}>
               <View style={[styles.settingsOptionIcon, { backgroundColor: 'rgba(111,163,247,0.15)', borderColor: 'rgba(111,163,247,0.40)' }]}>
                 <Text style={{ fontSize: 18 }}>💬</Text>
               </View>
@@ -577,7 +581,6 @@ export default function HomeScreen({ navigation }) {
               </View>
               <Text style={styles.settingsOptionArrow}>›</Text>
             </TouchableOpacity>
-
             <View style={styles.settingsDivider} />
             <Text style={styles.settingsVersion}>CESLA MPC System  •  v1.0.0</Text>
           </View>
@@ -585,52 +588,22 @@ export default function HomeScreen({ navigation }) {
       </Modal>
 
       {/* ══ ADMIN WARNING MODAL ══ */}
-      <Modal
-        transparent
-        visible={adminWarnOpen}
-        animationType="fade"
-        onRequestClose={() => setAdminWarnOpen(false)}
-      >
+      <Modal transparent visible={adminWarnOpen} animationType="fade" onRequestClose={() => setAdminWarnOpen(false)}>
         <View style={styles.modalOverlay}>
-          <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
-            activeOpacity={1}
-            onPress={() => setAdminWarnOpen(false)}
-          />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setAdminWarnOpen(false)} />
           <View style={styles.warnCard}>
-            <View style={styles.warnIconWrap}>
-              <Text style={{ fontSize: 36 }}>⚠️</Text>
-            </View>
+            <View style={styles.warnIconWrap}><Text style={{ fontSize: 36 }}>⚠️</Text></View>
             <Text style={styles.warnTitle}>Restricted Access</Text>
             <Text style={styles.warnBody}>
-              {'The '}
-              <Text style={styles.warnBold}>Administrator Portal</Text>
-              {' is strictly reserved for authorized CESLA cooperative administrators only.\n\nUnauthorized access attempts are logged and may result in disciplinary action.'}
+              {'The '}<Text style={styles.warnBold}>Administrator Portal</Text>{' is strictly reserved for authorized CESLA cooperative administrators only.\n\nUnauthorized access attempts are logged and may result in disciplinary action.'}
             </Text>
-
-            <View style={styles.warnBadge}>
-              <Text style={styles.warnBadgeTxt}>🔐  FOR AUTHORIZED ADMINS ONLY</Text>
-            </View>
-
+            <View style={styles.warnBadge}><Text style={styles.warnBadgeTxt}>🔐  FOR AUTHORIZED ADMINS ONLY</Text></View>
             <View style={styles.warnBtnRow}>
-              <TouchableOpacity
-                style={styles.warnBtnCancel}
-                onPress={() => setAdminWarnOpen(false)}
-              >
+              <TouchableOpacity style={styles.warnBtnCancel} onPress={() => setAdminWarnOpen(false)}>
                 <Text style={styles.warnBtnCancelTxt}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.warnBtnProceed}
-                onPress={() => {
-                  setAdminWarnOpen(false);
-                  setTimeout(() => setAdminLoginOpen(true), 200);
-                }}
-              >
-                <LinearGradient
-                  colors={['#c9a84c', '#e8c87a']}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={styles.warnBtnProceedGrad}
-                >
+              <TouchableOpacity style={styles.warnBtnProceed} onPress={() => { setAdminWarnOpen(false); setTimeout(() => setAdminLoginOpen(true), 200); }}>
+                <LinearGradient colors={['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.warnBtnProceedGrad}>
                   <Text style={styles.warnBtnProceedTxt}>I am an Admin →</Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -640,118 +613,55 @@ export default function HomeScreen({ navigation }) {
       </Modal>
 
       {/* ══ ADMIN LOGIN MODAL ══ */}
-      <Modal
-        transparent
-        visible={adminLoginOpen}
-        animationType="fade"
-        onRequestClose={() => {
-          if (!adminLoading) {
-            setAdminLoginOpen(false);
-            setAdminId(''); setAdminPw('');
-            setAdminError(''); setAdminShowPw(false);
-          }
-        }}
-      >
+      <Modal transparent visible={adminLoginOpen} animationType="fade" onRequestClose={() => { if (!adminLoading) { setAdminLoginOpen(false); setAdminId(''); setAdminPw(''); setAdminError(''); setAdminShowPw(false); } }}>
         <View style={styles.modalOverlay}>
-          <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
-            activeOpacity={1}
-            onPress={() => {
-              if (!adminLoading) {
-                setAdminLoginOpen(false);
-                setAdminId(''); setAdminPw('');
-                setAdminError(''); setAdminShowPw(false);
-              }
-            }}
-          />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => { if (!adminLoading) { setAdminLoginOpen(false); setAdminId(''); setAdminPw(''); setAdminError(''); setAdminShowPw(false); } }} />
           <View style={styles.adminLoginCard}>
-
             <View style={styles.settingsCardHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <MaterialIcons name="admin-panel-settings" size={20} color="#c9a84c" />
                 <Text style={styles.settingsCardTitle}>Admin Login</Text>
               </View>
-              <TouchableOpacity
-                style={styles.modalCloseBtn}
-                onPress={() => {
-                  if (!adminLoading) {
-                    setAdminLoginOpen(false);
-                    setAdminId(''); setAdminPw('');
-                    setAdminError(''); setAdminShowPw(false);
-                  }
-                }}
-              >
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => { if (!adminLoading) { setAdminLoginOpen(false); setAdminId(''); setAdminPw(''); setAdminError(''); setAdminShowPw(false); } }}>
                 <Text style={styles.modalCloseTxt}>✕</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.settingsDivider} />
-
             <View style={{ padding: 18, gap: 14 }}>
-
               <View style={styles.adminWarnBadge}>
                 <MaterialIcons name="lock" size={11} color="#7a5c10" />
                 <Text style={styles.adminWarnBadgeTxt}>AUTHORIZED PERSONNEL ONLY</Text>
               </View>
-
               <View>
                 <Text style={styles.adminFieldLabel}>ADMIN ID</Text>
                 <View style={[styles.adminFieldRow, adminError && styles.adminFieldRowError]}>
                   <MaterialIcons name="badge" size={17} color="rgba(1,31,75,0.38)" style={{ marginRight: 8 }} />
-                  <TextInput
-                    style={styles.adminFieldInput}
-                    value={adminId}
-                    onChangeText={v => { setAdminId(v); setAdminError(''); }}
-                    placeholder="e.g. CESLA-ADM-001"
-                    placeholderTextColor="rgba(1,31,75,0.32)"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!adminLocked && !adminLoading}
-                  />
+                  <TextInput style={styles.adminFieldInput} value={adminId} onChangeText={v => { setAdminId(v); setAdminError(''); }} placeholder="e.g. CESLA-ADM-001" placeholderTextColor="rgba(1,31,75,0.32)" autoCapitalize="none" autoCorrect={false} editable={!adminLocked && !adminLoading} />
                 </View>
               </View>
-
               <View>
                 <Text style={styles.adminFieldLabel}>PASSWORD</Text>
                 <View style={[styles.adminFieldRow, adminError && styles.adminFieldRowError]}>
                   <MaterialIcons name="lock-outline" size={17} color="rgba(1,31,75,0.38)" style={{ marginRight: 8 }} />
-                  <TextInput
-                    style={styles.adminFieldInput}
-                    value={adminPw}
-                    onChangeText={v => { setAdminPw(v); setAdminError(''); }}
-                    placeholder="Enter your password"
-                    placeholderTextColor="rgba(1,31,75,0.32)"
-                    secureTextEntry={!adminShowPw}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!adminLocked && !adminLoading}
-                  />
+                  <TextInput style={styles.adminFieldInput} value={adminPw} onChangeText={v => { setAdminPw(v); setAdminError(''); }} placeholder="Enter your password" placeholderTextColor="rgba(1,31,75,0.32)" secureTextEntry={!adminShowPw} autoCapitalize="none" autoCorrect={false} editable={!adminLocked && !adminLoading} />
                   <TouchableOpacity onPress={() => setAdminShowPw(p => !p)} style={{ padding: 4 }}>
-                    <MaterialIcons
-                      name={adminShowPw ? 'visibility-off' : 'visibility'}
-                      size={17} color="rgba(1,31,75,0.38)"
-                    />
+                    <MaterialIcons name={adminShowPw ? 'visibility-off' : 'visibility'} size={17} color="rgba(1,31,75,0.38)" />
                   </TouchableOpacity>
                 </View>
               </View>
-
               {adminError ? (
                 <View style={styles.adminErrorBox}>
                   <MaterialIcons name={adminLocked ? 'block' : 'error-outline'} size={14} color={adminLocked ? '#c0392b' : '#e74c3c'} />
                   <Text style={[styles.adminErrorTxt, adminLocked && { color: '#c0392b' }]}>{adminError}</Text>
                 </View>
               ) : null}
-
               {adminAttempts > 0 && !adminLocked && (
                 <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>
                   {[1,2,3,4,5].map(i => (
-                    <View key={i} style={[
-                      styles.adminAttemptDot,
-                      { backgroundColor: i <= adminAttempts ? '#e74c3c' : 'rgba(1,31,75,0.12)' },
-                    ]} />
+                    <View key={i} style={[styles.adminAttemptDot, { backgroundColor: i <= adminAttempts ? '#e74c3c' : 'rgba(1,31,75,0.12)' }]} />
                   ))}
                 </View>
               )}
-
               <TouchableOpacity
                 style={[styles.adminLoginBtn, (adminLocked || adminLoading) && { opacity: 0.55 }]}
                 disabled={adminLocked || adminLoading}
@@ -760,35 +670,19 @@ export default function HomeScreen({ navigation }) {
                   if (adminLocked || adminLoading) return;
                   if (!adminId.trim()) { setAdminError('Please enter your Admin ID.'); return; }
                   if (!adminPw.trim()) { setAdminError('Please enter your password.'); return; }
-
-                  setAdminLoading(true);
-                  setAdminError('');
-
+                  setAdminLoading(true); setAdminError('');
                   setTimeout(() => {
-                    const found = ADMIN_ACCOUNTS.find(
-                      a => a.id === adminId.trim() && a.password === adminPw
-                    );
-
+                    const found = ADMIN_ACCOUNTS.find(a => a.id === adminId.trim() && a.password === adminPw);
                     if (found) {
-                      setAdminLoading(false);
-                      setAdminAttempts(0);
-                      setAdminLoginOpen(false);
-                      setAdminId(''); setAdminPw('');
-                      setAdminError(''); setAdminShowPw(false);
-                      setTimeout(() => {
-                        if (navigation) navigation.navigate('AdminScreen', { admin: found });
-                      }, 150);
+                      setAdminLoading(false); setAdminAttempts(0); setAdminLoginOpen(false);
+                      setAdminId(''); setAdminPw(''); setAdminError(''); setAdminShowPw(false);
+                      setTimeout(() => { if (navigation) navigation.navigate('AdminScreen', { admin: found }); }, 150);
                     } else {
-                      const newAttempts = adminAttempts + 1;
-                      setAdminAttempts(newAttempts);
+                      const newAttempts = adminAttempts + 1; setAdminAttempts(newAttempts);
                       if (newAttempts >= 5) {
                         setAdminLocked(true);
                         setAdminError('Too many failed attempts. Access locked for 30 seconds.');
-                        setTimeout(() => {
-                          setAdminLocked(false);
-                          setAdminAttempts(0);
-                          setAdminError('');
-                        }, 30000);
+                        setTimeout(() => { setAdminLocked(false); setAdminAttempts(0); setAdminError(''); }, 30000);
                       } else {
                         const rem = 5 - newAttempts;
                         setAdminError(`Invalid Admin ID or Password. ${rem} attempt${rem === 1 ? '' : 's'} remaining.`);
@@ -798,400 +692,97 @@ export default function HomeScreen({ navigation }) {
                   }, 700);
                 }}
               >
-                <LinearGradient
-                  colors={['#c9a84c', '#e8c87a']}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={styles.adminLoginBtnGrad}
-                >
+                <LinearGradient colors={['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.adminLoginBtnGrad}>
                   {adminLoading
                     ? <ActivityIndicator color="#0d1b3e" />
-                    : <>
-                        <MaterialIcons name="login" size={16} color="#0d1b3e" />
-                        <Text style={styles.adminLoginBtnTxt}>Sign In as Admin</Text>
-                      </>
+                    : <><MaterialIcons name="login" size={16} color="#0d1b3e" /><Text style={styles.adminLoginBtnTxt}>Sign In as Admin</Text></>
                   }
                 </LinearGradient>
               </TouchableOpacity>
-
             </View>
           </View>
         </View>
       </Modal>
 
       {/* ══ FEEDBACK MODAL ══ */}
-      <Modal
-        transparent
-        visible={feedbackOpen}
-        animationType="slide"
-        onRequestClose={() => {
-          if (!feedbackSending) {
-            setFeedbackOpen(false); setFeedbackSent(false);
-            setFeedbackName(''); setFeedbackEmail('');
-            setFeedbackSubject(FEEDBACK_SUBJECTS['General']); setFeedbackText('');
-            setFeedbackFiles([]); setFeedbackError('');
-            setFeedbackType('General');
-          }
-        }}
-      >
+      <Modal transparent visible={feedbackOpen} animationType="slide" onRequestClose={() => { if (!feedbackSending) { setFeedbackOpen(false); setFeedbackSent(false); setFeedbackName(''); setFeedbackEmail(''); setFeedbackSubject(FEEDBACK_SUBJECTS['General']); setFeedbackText(''); setFeedbackFiles([]); setFeedbackError(''); setFeedbackType('General'); } }}>
         <View style={styles.modalOverlay}>
-          <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
-            activeOpacity={1}
-            onPress={() => {
-              if (!feedbackSending) {
-                setFeedbackOpen(false); setFeedbackSent(false);
-                setFeedbackName(''); setFeedbackEmail('');
-                setFeedbackSubject(FEEDBACK_SUBJECTS['General']); setFeedbackText('');
-                setFeedbackFiles([]); setFeedbackError('');
-                setFeedbackType('General');
-              }
-            }}
-          />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => { if (!feedbackSending) { setFeedbackOpen(false); setFeedbackSent(false); setFeedbackName(''); setFeedbackEmail(''); setFeedbackSubject(FEEDBACK_SUBJECTS['General']); setFeedbackText(''); setFeedbackFiles([]); setFeedbackError(''); setFeedbackType('General'); } }} />
           <View style={styles.feedbackCard}>
             <View style={styles.settingsCardHeader}>
               <Text style={styles.settingsCardTitle}>💬  Send Feedback</Text>
-              <TouchableOpacity
-                style={styles.modalCloseBtn}
-                onPress={() => {
-                  if (!feedbackSending) {
-                    setFeedbackOpen(false); setFeedbackSent(false);
-                    setFeedbackName(''); setFeedbackEmail('');
-                    setFeedbackSubject(''); setFeedbackText('');
-                    setFeedbackFiles([]); setFeedbackError('');
-                    setFeedbackType('General');
-                  }
-                }}
-              >
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => { if (!feedbackSending) { setFeedbackOpen(false); setFeedbackSent(false); setFeedbackName(''); setFeedbackEmail(''); setFeedbackSubject(''); setFeedbackText(''); setFeedbackFiles([]); setFeedbackError(''); setFeedbackType('General'); } }}>
                 <Text style={styles.modalCloseTxt}>✕</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.settingsDivider} />
-
             {feedbackSent ? (
               <View style={styles.feedbackSentWrap}>
                 <Text style={{ fontSize: 48, marginBottom: 12 }}>✅</Text>
                 <Text style={styles.feedbackSentTitle}>Feedback Sent!</Text>
-                <Text style={styles.feedbackSentSub}>
-                  {'Your message has been sent to\nbandiola.ledyjoy@gmail.com'}
-                </Text>
+                <Text style={styles.feedbackSentSub}>{'Your message has been sent to\nbandiola.ledyjoy@gmail.com'}</Text>
               </View>
             ) : (
-              <ScrollView
-                style={{ maxHeight: 520 }}
-                contentContainerStyle={{ padding: 18, paddingTop: 10, gap: 12 }}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
+              <ScrollView style={{ maxHeight: 520 }} contentContainerStyle={{ padding: 18, paddingTop: 10, gap: 12 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <View>
                   <Text style={styles.feedbackLabel}>FEEDBACK TYPE</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
                     {['General', 'Bug Report', 'Suggestion', 'Complaint', 'Other'].map(type => (
-                      <TouchableOpacity
-                        key={type}
-                        style={[styles.feedbackTypePill,
-                          feedbackType === type && styles.feedbackTypePillActive]}
-                        onPress={() => {
-                          setFeedbackType(type);
-                          setFeedbackSubject(FEEDBACK_SUBJECTS[type] || '');
-                        }}
-                      >
-                        <Text style={[styles.feedbackTypePillTxt,
-                          feedbackType === type && styles.feedbackTypePillTxtActive]}>
-                          {type}
-                        </Text>
+                      <TouchableOpacity key={type} style={[styles.feedbackTypePill, feedbackType === type && styles.feedbackTypePillActive]} onPress={() => { setFeedbackType(type); setFeedbackSubject(FEEDBACK_SUBJECTS[type] || ''); }}>
+                        <Text style={[styles.feedbackTypePillTxt, feedbackType === type && styles.feedbackTypePillTxtActive]}>{type}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
                 </View>
-
                 <View>
                   <Text style={styles.feedbackLabel}>YOUR NAME</Text>
-                  <TextInput
-                    style={styles.feedbackField}
-                    value={feedbackName}
-                    onChangeText={setFeedbackName}
-                    placeholder="Enter your name"
-                    placeholderTextColor="rgba(1,31,75,0.35)"
-                  />
+                  <TextInput style={styles.feedbackField} value={feedbackName} onChangeText={setFeedbackName} placeholder="Enter your name" placeholderTextColor="rgba(1,31,75,0.35)" />
                 </View>
-
                 <View>
                   <Text style={styles.feedbackLabel}>YOUR EMAIL (optional)</Text>
-                  <TextInput
-                    style={styles.feedbackField}
-                    value={feedbackEmail}
-                    onChangeText={setFeedbackEmail}
-                    placeholder="your@email.com"
-                    placeholderTextColor="rgba(1,31,75,0.35)"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
+                  <TextInput style={styles.feedbackField} value={feedbackEmail} onChangeText={setFeedbackEmail} placeholder="your@email.com" placeholderTextColor="rgba(1,31,75,0.35)" keyboardType="email-address" autoCapitalize="none" />
                 </View>
-
                 <View>
                   <Text style={styles.feedbackLabel}>SUBJECT <Text style={{ color: '#e74c3c' }}>*</Text></Text>
-                  <TextInput
-                    style={styles.feedbackField}
-                    value={feedbackSubject}
-                    onChangeText={setFeedbackSubject}
-                    placeholder="Auto-filled based on feedback type"
-                    placeholderTextColor="rgba(1,31,75,0.35)"
-                  />
+                  <TextInput style={styles.feedbackField} value={feedbackSubject} onChangeText={setFeedbackSubject} placeholder="Auto-filled based on feedback type" placeholderTextColor="rgba(1,31,75,0.35)" />
                 </View>
-
                 <View>
                   <Text style={styles.feedbackLabel}>MESSAGE <Text style={{ color: '#e74c3c' }}>*</Text></Text>
-                  <TextInput
-                    style={styles.feedbackInput}
-                    value={feedbackText}
-                    onChangeText={setFeedbackText}
-                    placeholder="Describe your issue, suggestion, or feedback in detail..."
-                    placeholderTextColor="rgba(1,31,75,0.35)"
-                    multiline
-                    numberOfLines={4}
-                    textAlignVertical="top"
-                  />
+                  <TextInput style={styles.feedbackInput} value={feedbackText} onChangeText={setFeedbackText} placeholder="Describe your issue, suggestion, or feedback in detail..." placeholderTextColor="rgba(1,31,75,0.35)" multiline numberOfLines={4} textAlignVertical="top" />
                 </View>
-
-                <View>
-                  <Text style={styles.feedbackLabel}>ATTACHMENTS (optional)</Text>
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                    {Platform.OS === 'web' ? (
-                      <View style={styles.attachBtn}>
-                        <MaterialIcons name="attach-file" size={18} color="#2a5ba8" />
-                        <Text style={styles.attachBtnTxt}>Add Attachment</Text>
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
-                          style={{
-                            position: 'absolute', top: 0, left: 0,
-                            width: '100%', height: '100%',
-                            opacity: 0, cursor: 'pointer',
-                          }}
-                          onChange={(e) => {
-                            const files = Array.from(e.target.files || []);
-                            if (files.length === 0) return;
-                            const newFiles = files.map(f => ({
-                              uri: URL.createObjectURL(f),
-                              name: f.name,
-                              type: f.type,
-                              isImage: f.type.startsWith('image/'),
-                              webFile: f,
-                            }));
-                            setFeedbackFiles(prev => [...prev, ...newFiles].slice(0, 5));
-                            e.target.value = '';
-                          }}
-                        />
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.attachBtn}
-                        onPress={() => {
-                          Alert.alert(
-                            'Add Attachment',
-                            'Choose the type of file to attach.',
-                            [
-                              {
-                                text: 'Photo / Image',
-                                onPress: async () => {
-                                  try {
-                                    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                                    if (status !== 'granted') {
-                                      Alert.alert('Permission needed', 'Please allow access to your photo library.');
-                                      return;
-                                    }
-                                    const result = await ImagePicker.launchImageLibraryAsync({
-                                      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                                      allowsMultipleSelection: true,
-                                      quality: 0.7,
-                                      base64: true,
-                                    });
-                                    if (!result.canceled) {
-                                      const newFiles = result.assets.map(a => ({
-                                        uri: a.uri,
-                                        name: a.fileName || 'image.jpg',
-                                        type: a.type || 'image/jpeg',
-                                        base64: a.base64,
-                                        isImage: true,
-                                      }));
-                                      setFeedbackFiles(prev => [...prev, ...newFiles].slice(0, 5));
-                                    }
-                                  } catch (e) {
-                                    Alert.alert('Error', 'Could not open image picker.');
-                                  }
-                                },
-                              },
-                              {
-                                text: 'Document / File',
-                                onPress: async () => {
-                                  try {
-                                    const result = await DocumentPicker.getDocumentAsync({
-                                      type: '*/*',
-                                      multiple: true,
-                                      copyToCacheDirectory: true,
-                                    });
-                                    if (!result.canceled) {
-                                      const newFiles = result.assets.map(a => ({
-                                        uri: a.uri,
-                                        name: a.name,
-                                        type: a.mimeType || 'application/octet-stream',
-                                        isImage: false,
-                                      }));
-                                      setFeedbackFiles(prev => [...prev, ...newFiles].slice(0, 5));
-                                    }
-                                  } catch (e) {
-                                    Alert.alert('Error', 'Could not open document picker.');
-                                  }
-                                },
-                              },
-                              { text: 'Cancel', style: 'cancel' },
-                            ]
-                          );
-                        }}
-                      >
-                        <MaterialIcons name="attach-file" size={18} color="#2a5ba8" />
-                        <Text style={styles.attachBtnTxt}>Add Attachment</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {feedbackFiles.length > 0 && (
-                      <TouchableOpacity
-                        style={styles.attachClearBtn}
-                        onPress={() => setFeedbackFiles([])}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                          <MaterialIcons name="delete-outline" size={15} color="#c0392b" />
-                          <Text style={styles.attachClearTxt}>Clear All</Text>
-                        </View>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  {feedbackFiles.length > 0 && (
-                    <View style={styles.attachedList}>
-                      {feedbackFiles.map((f, i) => (
-                        <View key={i} style={styles.attachedItem}>
-                          <MaterialIcons name={f.isImage ? 'image' : 'insert-drive-file'} size={16} color="#2a5ba8" />
-                          <Text style={styles.attachedName} numberOfLines={1}>{f.name}</Text>
-                          <TouchableOpacity onPress={() => setFeedbackFiles(prev => prev.filter((_, j) => j !== i))}>
-                            <MaterialIcons name="close" size={14} color="#c0392b" />
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                      <Text style={styles.attachHint}>Max 5 files. Large files may be skipped by email service.</Text>
-                    </View>
-                  )}
-                </View>
-
-                {feedbackError ? (
-                  <Text style={styles.feedbackErrorTxt}>{feedbackError}</Text>
-                ) : null}
-
+                {feedbackError ? <Text style={styles.feedbackErrorTxt}>{feedbackError}</Text> : null}
                 <TouchableOpacity
-                  style={[styles.feedbackSendBtn,
-                    (!feedbackSubject.trim() || !feedbackText.trim()) && { opacity: 0.45 }]}
+                  style={[styles.feedbackSendBtn, (!feedbackSubject.trim() || !feedbackText.trim()) && { opacity: 0.45 }]}
                   disabled={!feedbackSubject.trim() || !feedbackText.trim() || feedbackSending}
                   onPress={async () => {
                     if (!feedbackSubject.trim() || !feedbackText.trim()) return;
-                    setFeedbackSending(true);
-                    setFeedbackError('');
+                    setFeedbackSending(true); setFeedbackError('');
                     try {
-                      const attachNames = feedbackFiles.length > 0
-                        ? feedbackFiles.map(f => f.name).join(', ')
-                        : 'None';
-
-                      // ─────────────────────────────────────────────────────────
-                      // ⚠️  REPLACE these three values with your real EmailJS credentials:
-                      //   1. Go to https://www.emailjs.com and log in
-                      //   2. Service ID   → Email Services → your service ID
-                      //   3. Template ID  → Email Templates → your template ID
-                      //   4. Public Key   → Account → API Keys → Public Key
-                      // ─────────────────────────────────────────────────────────
-                      const EMAILJS_SERVICE_ID  = 'service_ceslampc';   
-                      const EMAILJS_TEMPLATE_ID = 'template_feedback';  
-                      const EMAILJS_PUBLIC_KEY  = 'yNW-knzcWspVbuQrr';   
-
+                      const EMAILJS_SERVICE_ID  = 'service_ceslampc';
+                      const EMAILJS_TEMPLATE_ID = 'template_feedback';
+                      const EMAILJS_PUBLIC_KEY  = 'yNW-knzcWspVbuQrr';
                       const payload = {
-                        service_id:  EMAILJS_SERVICE_ID,
-                        template_id: EMAILJS_TEMPLATE_ID,
-                        user_id:     EMAILJS_PUBLIC_KEY,
-                        template_params: {
-                          feedback_type:    feedbackType,
-                          from_name:        feedbackName.trim() || 'Anonymous User',
-                          from_email:       feedbackEmail.trim() || 'no-reply@ceslampc.app',
-                          subject:          `[CESLA MPC Feedback – ${feedbackType}] ${feedbackSubject.trim()}`,
-                          message:          feedbackText.trim(),
-                          attachments_note: attachNames,
-                          app_version:      'CESLA MPC v1.0.0',
-                          sent_at:          new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
-                        },
+                        service_id: EMAILJS_SERVICE_ID, template_id: EMAILJS_TEMPLATE_ID, user_id: EMAILJS_PUBLIC_KEY,
+                        template_params: { feedback_type: feedbackType, from_name: feedbackName.trim() || 'Anonymous User', from_email: feedbackEmail.trim() || 'no-reply@ceslampc.app', subject: `[CESLA MPC Feedback – ${feedbackType}] ${feedbackSubject.trim()}`, message: feedbackText.trim(), attachments_note: 'None', app_version: 'CESLA MPC v1.0.0', sent_at: new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) },
                       };
-
                       if (Platform.OS === 'web') {
-                        // Web: raw fetch works fine
-                        const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(payload),
-                        });
-                        if (res.status !== 200) {
-                          let errMsg = `Send failed (status ${res.status}).`;
-                          try { const b = await res.text(); if (b) errMsg += ' ' + b; } catch (_) {}
-                          if (res.status === 400) errMsg = 'Invalid request. Check your EmailJS credentials.';
-                          if (res.status === 401 || res.status === 403) errMsg = 'Authentication failed. Check your EmailJS Public Key.';
-                          if (res.status === 404) errMsg = 'Service or Template not found. Check your IDs.';
-                          if (res.status === 429) errMsg = 'Too many requests. Please wait and try again.';
-                          setFeedbackError(errMsg);
-                          return;
-                        }
+                        const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                        if (res.status !== 200) { setFeedbackError(`Send failed (status ${res.status}).`); return; }
                       } else {
-                        // Mobile (iOS/Android): use @emailjs/react-native SDK — avoids mobile network/CORS issues
-                        await emailjs.send(
-                          EMAILJS_SERVICE_ID,
-                          EMAILJS_TEMPLATE_ID,
-                          payload.template_params,
-                          { publicKey: EMAILJS_PUBLIC_KEY },
-                        );
+                        await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, payload.template_params, { publicKey: EMAILJS_PUBLIC_KEY });
                       }
-
-                      // ── Success ──
-                      setFeedbackSent(true);
-                      setFeedbackName(''); setFeedbackEmail('');
-                      setFeedbackText(''); setFeedbackFiles([]);
-                      setFeedbackType('General');
-                      setFeedbackSubject(FEEDBACK_SUBJECTS['General']);
-                      setTimeout(() => {
-                        setFeedbackOpen(false);
-                        setFeedbackSent(false);
-                      }, 3000);
+                      setFeedbackSent(true); setFeedbackName(''); setFeedbackEmail(''); setFeedbackText(''); setFeedbackFiles([]); setFeedbackType('General'); setFeedbackSubject(FEEDBACK_SUBJECTS['General']);
+                      setTimeout(() => { setFeedbackOpen(false); setFeedbackSent(false); }, 3000);
                     } catch (e) {
-                      if (e && e.message && e.message.toLowerCase().includes('network')) {
-                        setFeedbackError('Network error. Please check your internet connection and try again.');
-                      } else {
-                        setFeedbackError('Something went wrong. Please try again. (' + (e?.message || 'unknown error') + ')');
-                      }
-                    } finally {
-                      setFeedbackSending(false);
-                    }
+                      setFeedbackError('Something went wrong. Please try again. (' + (e?.message || 'unknown error') + ')');
+                    } finally { setFeedbackSending(false); }
                   }}
                 >
-                  <LinearGradient
-                    colors={['#6fa3f7', '#4a85e8']}
-                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                    style={styles.feedbackSendGrad}
-                  >
-                    {feedbackSending
-                      ? <ActivityIndicator color="#fff" />
-                      : <Text style={styles.feedbackSendTxt}>Send Feedback  →</Text>
-                    }
+                  <LinearGradient colors={['#6fa3f7', '#4a85e8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.feedbackSendGrad}>
+                    {feedbackSending ? <ActivityIndicator color="#fff" /> : <Text style={styles.feedbackSendTxt}>Send Feedback  →</Text>}
                   </LinearGradient>
                 </TouchableOpacity>
-
-                <Text style={styles.feedbackFooterNote}>
-                  CESLA MPC System Developers
-                </Text>
+                <Text style={styles.feedbackFooterNote}>CESLA MPC System Developers</Text>
               </ScrollView>
             )}
           </View>
@@ -1206,24 +797,11 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingBottom: 60 },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 10,
-    zIndex: 100,
-    backgroundColor: 'transparent',
-  },
+  header: { flexDirection: 'row', alignItems: 'center', paddingBottom: 10, zIndex: 100, backgroundColor: 'transparent' },
   titleBlock: { alignItems: 'center', paddingHorizontal: 10, flexShrink: 1 },
   titleH1: { fontFamily: 'NotoSerif_700Bold', fontWeight: '700', color: '#011f4b', letterSpacing: 0.5, textAlign: 'center' },
   titleBold: { fontFamily: 'NotoSerif_700Bold_Italic', color: '#fff', fontWeight: '700', fontStyle: 'italic' },
-  titleSub: {
-    fontFamily: 'GoogleSans_400Regular',
-    color: 'rgba(3,57,108,0.65)',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    marginTop: 4,
-    textAlign: 'center',
-  },
+  titleSub: { fontFamily: 'GoogleSans_400Regular', color: 'rgba(3,57,108,0.65)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4, textAlign: 'center' },
 
   sectionLabel: { alignItems: 'center', marginTop: 24, marginBottom: 16, paddingHorizontal: 20 },
   sectionTitle: { fontFamily: 'GoogleSans_700Bold', fontWeight: '700', letterSpacing: 6, textTransform: 'uppercase', color: '#011f4b', marginBottom: 8 },
@@ -1231,35 +809,18 @@ const styles = StyleSheet.create({
 
   grid: { alignSelf: 'center', width: '100%', maxWidth: 1020 },
 
-  card: {
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.55)',
-    overflow: 'hidden',
-    shadowColor: '#001f4b',
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  cardMobile: {
-    backgroundColor: 'rgba(178,203,222,0.50)',
-    borderColor: 'rgba(255,255,255,0.55)',
-    shadowColor: 'transparent',
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 0,
-  },
+  card: { borderRadius: 20, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)', overflow: 'hidden', shadowColor: '#001f4b', shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  cardMobile: { backgroundColor: 'rgba(178,203,222,0.50)', borderColor: 'rgba(255,255,255,0.55)', shadowColor: 'transparent', shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
 
-  iconCircle: {
-    backgroundColor: 'rgba(255,255,255,0.28)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.60)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
+  iconCircle: { backgroundColor: 'rgba(255,255,255,0.28)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.60)', justifyContent: 'center', alignItems: 'center', position: 'relative' },
+
+  newBadge: {
+    backgroundColor: 'rgba(46,204,113,0.20)', borderRadius: 4,
+    paddingHorizontal: 7, paddingVertical: 2,
+    borderWidth: 1, borderColor: 'rgba(46,204,113,0.50)',
+    alignSelf: 'flex-start', marginBottom: 2,
   },
+  newBadgeText: { fontFamily: 'GoogleSans_700Bold', fontSize: 8, color: '#1a7a4a', letterSpacing: 1.2 },
 
   textBlock: { gap: 6, flex: 1, justifyContent: 'flex-start' },
   cardTitle: { fontFamily: 'GoogleSans_700Bold', fontWeight: '700', color: '#011f4b', letterSpacing: 0.4, lineHeight: 18, fontSize: 13 },
@@ -1271,331 +832,67 @@ const styles = StyleSheet.create({
   footerLine: { color: 'rgba(235,239,242,0.5)', fontSize: 11, letterSpacing: 1 },
   footerText: { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(235,239,242,0.5)', letterSpacing: 0.5, textAlign: 'center' },
 
-  settingsBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginTop: 10, paddingHorizontal: 16, paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
-  },
+  settingsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)' },
   settingsIcon: { fontSize: 14 },
-  settingsBtnText: {
-    fontFamily: 'GoogleSans_500Medium', fontSize: 12,
-    color: 'rgba(235,239,242,0.75)', letterSpacing: 0.5,
-  },
+  settingsBtnText: { fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: 'rgba(235,239,242,0.75)', letterSpacing: 0.5 },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(1,20,50,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(1,20,50,0.55)', justifyContent: 'center', alignItems: 'center', padding: 24 },
 
-  settingsCard: {
-    width: '100%', maxWidth: 380,
-    backgroundColor: 'rgba(220,232,242,0.97)',
-    borderRadius: 22,
-    paddingBottom: 20,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)',
-    shadowColor: '#011f4b', shadowOpacity: 0.25,
-    shadowRadius: 24, shadowOffset: { width: 0, height: 6 },
-    elevation: 12,
-    overflow: 'hidden',
-  },
-  settingsCardHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14,
-  },
-  settingsCardTitle: {
-    fontFamily: 'NotoSerif_700Bold', fontSize: 17,
-    color: '#011f4b',
-  },
-  modalCloseBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: 'rgba(1,31,75,0.09)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  modalCloseTxt: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 12,
-    color: 'rgba(1,31,75,0.55)',
-  },
-  settingsDivider: {
-    height: 1, backgroundColor: 'rgba(1,31,75,0.08)',
-    marginHorizontal: 0, marginBottom: 8,
-  },
-  settingsOption: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    paddingHorizontal: 20, paddingVertical: 14,
-  },
-  settingsOptionIcon: {
-    width: 44, height: 44, borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: 'center', alignItems: 'center',
-    flexShrink: 0,
-  },
-  settingsOptionLabel: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 14,
-    color: '#011f4b', marginBottom: 2,
-  },
-  settingsOptionSub: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 11,
-    color: 'rgba(1,31,75,0.55)',
-  },
-  settingsOptionArrow: {
-    fontSize: 22, color: 'rgba(1,31,75,0.30)',
-    fontWeight: '300',
-  },
-  settingsVersion: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 10,
-    color: 'rgba(1,31,75,0.35)', textAlign: 'center',
-    letterSpacing: 0.5, marginTop: 6,
-  },
+  settingsCard: { width: '100%', maxWidth: 380, backgroundColor: 'rgba(220,232,242,0.97)', borderRadius: 22, paddingBottom: 20, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)', shadowColor: '#011f4b', shadowOpacity: 0.25, shadowRadius: 24, shadowOffset: { width: 0, height: 6 }, elevation: 12, overflow: 'hidden' },
+  settingsCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14 },
+  settingsCardTitle: { fontFamily: 'NotoSerif_700Bold', fontSize: 17, color: '#011f4b' },
+  modalCloseBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(1,31,75,0.09)', justifyContent: 'center', alignItems: 'center' },
+  modalCloseTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: 'rgba(1,31,75,0.55)' },
+  settingsDivider: { height: 1, backgroundColor: 'rgba(1,31,75,0.08)', marginHorizontal: 0, marginBottom: 8 },
+  settingsOption: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 14 },
+  settingsOptionIcon: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  settingsOptionLabel: { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#011f4b', marginBottom: 2 },
+  settingsOptionSub: { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.55)' },
+  settingsOptionArrow: { fontSize: 22, color: 'rgba(1,31,75,0.30)', fontWeight: '300' },
+  settingsVersion: { fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.35)', textAlign: 'center', letterSpacing: 0.5, marginTop: 6 },
 
-  warnCard: {
-    width: '100%', maxWidth: 380,
-    backgroundColor: 'rgba(220,232,242,0.97)',
-    borderRadius: 22, padding: 24,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)',
-    shadowColor: '#011f4b', shadowOpacity: 0.25,
-    shadowRadius: 24, shadowOffset: { width: 0, height: 6 },
-    elevation: 12, alignItems: 'center',
-  },
-  warnIconWrap: {
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: 'rgba(231,76,60,0.12)',
-    borderWidth: 2, borderColor: 'rgba(231,76,60,0.30)',
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: 16,
-  },
-  warnTitle: {
-    fontFamily: 'NotoSerif_700Bold', fontSize: 20,
-    color: '#c0392b', marginBottom: 12, textAlign: 'center',
-  },
-  warnBody: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 13,
-    color: 'rgba(1,31,75,0.70)', textAlign: 'center',
-    lineHeight: 20, marginBottom: 16,
-  },
-  warnBold: {
-    fontFamily: 'GoogleSans_700Bold', color: '#011f4b',
-  },
-  warnBadge: {
-    backgroundColor: 'rgba(201,168,76,0.15)',
-    borderRadius: 10, borderWidth: 1,
-    borderColor: 'rgba(201,168,76,0.40)',
-    paddingHorizontal: 14, paddingVertical: 9,
-    marginBottom: 20, width: '100%', alignItems: 'center',
-  },
-  warnBadgeTxt: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 11,
-    color: '#7a5c10', letterSpacing: 1.5,
-  },
-  warnBtnRow: {
-    flexDirection: 'row', gap: 10, width: '100%',
-  },
-  warnBtnCancel: {
-    flex: 1, paddingVertical: 13, borderRadius: 12,
-    backgroundColor: 'rgba(1,31,75,0.08)',
-    borderWidth: 1, borderColor: 'rgba(1,31,75,0.15)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  warnBtnCancelTxt: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 13,
-    color: 'rgba(1,31,75,0.55)',
-  },
-  warnBtnProceed: {
-    flex: 2, borderRadius: 12, overflow: 'hidden',
-    shadowColor: '#c9a84c', shadowOpacity: 0.35,
-    shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  warnBtnProceedGrad: {
-    paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
-  },
-  warnBtnProceedTxt: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 13,
-    color: '#0d1b3e',
-  },
+  warnCard: { width: '100%', maxWidth: 380, backgroundColor: 'rgba(220,232,242,0.97)', borderRadius: 22, padding: 24, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)', shadowColor: '#011f4b', shadowOpacity: 0.25, shadowRadius: 24, shadowOffset: { width: 0, height: 6 }, elevation: 12, alignItems: 'center' },
+  warnIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(231,76,60,0.12)', borderWidth: 2, borderColor: 'rgba(231,76,60,0.30)', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  warnTitle: { fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: '#c0392b', marginBottom: 12, textAlign: 'center' },
+  warnBody: { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(1,31,75,0.70)', textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+  warnBold: { fontFamily: 'GoogleSans_700Bold', color: '#011f4b' },
+  warnBadge: { backgroundColor: 'rgba(201,168,76,0.15)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', paddingHorizontal: 14, paddingVertical: 9, marginBottom: 20, width: '100%', alignItems: 'center' },
+  warnBadgeTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#7a5c10', letterSpacing: 1.5 },
+  warnBtnRow: { flexDirection: 'row', gap: 10, width: '100%' },
+  warnBtnCancel: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(1,31,75,0.08)', borderWidth: 1, borderColor: 'rgba(1,31,75,0.15)', alignItems: 'center', justifyContent: 'center' },
+  warnBtnCancelTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: 'rgba(1,31,75,0.55)' },
+  warnBtnProceed: { flex: 2, borderRadius: 12, overflow: 'hidden', shadowColor: '#c9a84c', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+  warnBtnProceedGrad: { paddingVertical: 13, alignItems: 'center', justifyContent: 'center' },
+  warnBtnProceedTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#0d1b3e' },
 
-  feedbackCard: {
-    width: '100%', maxWidth: 420,
-    backgroundColor: 'rgba(220,232,242,0.97)',
-    borderRadius: 22,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)',
-    shadowColor: '#011f4b', shadowOpacity: 0.25,
-    shadowRadius: 24, shadowOffset: { width: 0, height: 6 },
-    elevation: 12, overflow: 'hidden',
-  },
-  feedbackLabel: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 10,
-    color: 'rgba(1,31,75,0.55)', letterSpacing: 1.5,
-    textTransform: 'uppercase', marginBottom: 6,
-  },
-  feedbackField: {
-    backgroundColor: 'rgba(255,255,255,0.75)',
-    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
-    fontFamily: 'GoogleSans_400Regular', fontSize: 13,
-    color: '#011f4b',
-    borderWidth: 1.5, borderColor: 'rgba(200,215,230,0.80)',
-  },
-  feedbackInput: {
-    backgroundColor: 'rgba(255,255,255,0.75)',
-    borderRadius: 10, padding: 14,
-    fontFamily: 'GoogleSans_400Regular', fontSize: 13,
-    color: '#011f4b', minHeight: 95,
-    borderWidth: 1.5, borderColor: 'rgba(200,215,230,0.80)',
-  },
-  feedbackTypePill: {
-    paddingHorizontal: 14, paddingVertical: 7,
-    borderRadius: 20, borderWidth: 1,
-    backgroundColor: 'rgba(255,255,255,0.55)',
-    borderColor: 'rgba(255,255,255,0.70)',
-  },
-  feedbackTypePillActive: {
-    backgroundColor: '#304674', borderColor: '#c9a84c',
-  },
-  feedbackTypePillTxt: {
-    fontFamily: 'GoogleSans_500Medium', fontSize: 12,
-    color: 'rgba(1,31,75,0.65)',
-  },
-  feedbackTypePillTxtActive: {
-    fontFamily: 'GoogleSans_700Bold', color: '#fff',
-  },
-  attachBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 16, paddingVertical: 10,
-    borderRadius: 10, borderWidth: 1.5,
-    backgroundColor: 'rgba(255,255,255,0.60)',
-    borderColor: 'rgba(111,163,247,0.45)',
-    position: 'relative', overflow: 'hidden',
-  },
-  attachBtnTxt: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 13,
-    color: '#2a5ba8',
-  },
-  attachClearBtn: {
-    paddingHorizontal: 12, paddingVertical: 10,
-    borderRadius: 10, borderWidth: 1.5,
-    backgroundColor: 'rgba(231,76,60,0.08)',
-    borderColor: 'rgba(231,76,60,0.35)',
-  },
-  attachClearTxt: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 12,
-    color: '#c0392b',
-  },
-  attachedList: {
-    marginTop: 8, backgroundColor: 'rgba(255,255,255,0.50)',
-    borderRadius: 10, padding: 10, gap: 6,
-    borderWidth: 1, borderColor: 'rgba(200,215,230,0.60)',
-  },
-  attachedItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingVertical: 4,
-  },
-  attachedName: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 11,
-    color: '#011f4b', flex: 1,
-  },
-  attachHint: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 10,
-    color: 'rgba(1,31,75,0.45)', marginTop: 4,
-  },
-  feedbackErrorTxt: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 12,
-    color: '#c0392b', textAlign: 'center',
-    backgroundColor: 'rgba(231,76,60,0.10)',
-    borderRadius: 8, padding: 10,
-    borderWidth: 1, borderColor: 'rgba(231,76,60,0.25)',
-  },
-  feedbackSendBtn: {
-    borderRadius: 12, overflow: 'hidden',
-    shadowColor: '#6fa3f7', shadowOpacity: 0.30,
-    shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  feedbackSendGrad: {
-    paddingVertical: 14, alignItems: 'center', justifyContent: 'center', minHeight: 48,
-  },
-  feedbackSendTxt: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff',
-  },
-  feedbackFooterNote: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 10,
-    color: 'rgba(1,31,75,0.40)', textAlign: 'center',
-  },
-  feedbackSentWrap: {
-    alignItems: 'center', paddingVertical: 36, paddingHorizontal: 20,
-  },
-  feedbackSentTitle: {
-    fontFamily: 'NotoSerif_700Bold', fontSize: 22,
-    color: '#1a7a4a', marginBottom: 8,
-  },
-  feedbackSentSub: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 13,
-    color: 'rgba(1,31,75,0.60)', textAlign: 'center', lineHeight: 20,
-  },
+  feedbackCard: { width: '100%', maxWidth: 420, backgroundColor: 'rgba(220,232,242,0.97)', borderRadius: 22, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)', shadowColor: '#011f4b', shadowOpacity: 0.25, shadowRadius: 24, shadowOffset: { width: 0, height: 6 }, elevation: 12, overflow: 'hidden' },
+  feedbackLabel: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(1,31,75,0.55)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 },
+  feedbackField: { backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: '#011f4b', borderWidth: 1.5, borderColor: 'rgba(200,215,230,0.80)' },
+  feedbackInput: { backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 10, padding: 14, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: '#011f4b', minHeight: 95, borderWidth: 1.5, borderColor: 'rgba(200,215,230,0.80)' },
+  feedbackTypePill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1, backgroundColor: 'rgba(255,255,255,0.55)', borderColor: 'rgba(255,255,255,0.70)' },
+  feedbackTypePillActive: { backgroundColor: '#304674', borderColor: '#c9a84c' },
+  feedbackTypePillTxt: { fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: 'rgba(1,31,75,0.65)' },
+  feedbackTypePillTxtActive: { fontFamily: 'GoogleSans_700Bold', color: '#fff' },
+  feedbackErrorTxt: { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#c0392b', textAlign: 'center', backgroundColor: 'rgba(231,76,60,0.10)', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: 'rgba(231,76,60,0.25)' },
+  feedbackSendBtn: { borderRadius: 12, overflow: 'hidden', shadowColor: '#6fa3f7', shadowOpacity: 0.30, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+  feedbackSendGrad: { paddingVertical: 14, alignItems: 'center', justifyContent: 'center', minHeight: 48 },
+  feedbackSendTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff' },
+  feedbackFooterNote: { fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.40)', textAlign: 'center' },
+  feedbackSentWrap: { alignItems: 'center', paddingVertical: 36, paddingHorizontal: 20 },
+  feedbackSentTitle: { fontFamily: 'NotoSerif_700Bold', fontSize: 22, color: '#1a7a4a', marginBottom: 8 },
+  feedbackSentSub: { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(1,31,75,0.60)', textAlign: 'center', lineHeight: 20 },
 
-  adminLoginCard: {
-    width: '100%', maxWidth: 390,
-    backgroundColor: 'rgba(220,232,242,0.97)',
-    borderRadius: 22,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)',
-    shadowColor: '#011f4b', shadowOpacity: 0.25,
-    shadowRadius: 24, shadowOffset: { width: 0, height: 6 },
-    elevation: 12, overflow: 'hidden',
-  },
-  adminWarnBadge: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: 'rgba(201,168,76,0.15)',
-    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)',
-    paddingHorizontal: 14, paddingVertical: 8,
-  },
-  adminWarnBadgeTxt: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 10,
-    color: '#7a5c10', letterSpacing: 1.5,
-  },
-  adminFieldLabel: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 10,
-    color: 'rgba(1,31,75,0.55)', letterSpacing: 1.5,
-    textTransform: 'uppercase', marginBottom: 6,
-  },
-  adminFieldRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.75)',
-    borderRadius: 11, paddingHorizontal: 13, paddingVertical: 12,
-    borderWidth: 1.5, borderColor: 'rgba(200,215,230,0.80)',
-  },
+  adminLoginCard: { width: '100%', maxWidth: 390, backgroundColor: 'rgba(220,232,242,0.97)', borderRadius: 22, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.80)', shadowColor: '#011f4b', shadowOpacity: 0.25, shadowRadius: 24, shadowOffset: { width: 0, height: 6 }, elevation: 12, overflow: 'hidden' },
+  adminWarnBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(201,168,76,0.15)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', paddingHorizontal: 14, paddingVertical: 8 },
+  adminWarnBadgeTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#7a5c10', letterSpacing: 1.5 },
+  adminFieldLabel: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(1,31,75,0.55)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 },
+  adminFieldRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 11, paddingHorizontal: 13, paddingVertical: 12, borderWidth: 1.5, borderColor: 'rgba(200,215,230,0.80)' },
   adminFieldRowError: { borderColor: '#e74c3c' },
-  adminFieldInput: {
-    flex: 1, fontFamily: 'GoogleSans_400Regular',
-    fontSize: 13, color: '#011f4b',
-  },
-  adminErrorBox: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 7,
-    backgroundColor: 'rgba(231,76,60,0.10)',
-    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(231,76,60,0.28)',
-    padding: 11,
-  },
-  adminErrorTxt: {
-    fontFamily: 'GoogleSans_400Regular', fontSize: 12,
-    color: '#e74c3c', flex: 1, lineHeight: 17,
-  },
-  adminAttemptDot: {
-    width: 10, height: 10, borderRadius: 5,
-  },
-  adminLoginBtn: {
-    borderRadius: 12, overflow: 'hidden',
-    shadowColor: '#c9a84c', shadowOpacity: 0.35,
-    shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4,
-  },
-  adminLoginBtnGrad: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 8, paddingVertical: 14, minHeight: 48,
-  },
-  adminLoginBtnTxt: {
-    fontFamily: 'GoogleSans_700Bold', fontSize: 14,
-    color: '#0d1b3e', letterSpacing: 0.3,
-  },
+  adminFieldInput: { flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: '#011f4b' },
+  adminErrorBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 7, backgroundColor: 'rgba(231,76,60,0.10)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(231,76,60,0.28)', padding: 11 },
+  adminErrorTxt: { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#e74c3c', flex: 1, lineHeight: 17 },
+  adminAttemptDot: { width: 10, height: 10, borderRadius: 5 },
+  adminLoginBtn: { borderRadius: 12, overflow: 'hidden', shadowColor: '#c9a84c', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+  adminLoginBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, minHeight: 48 },
+  adminLoginBtnTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#0d1b3e', letterSpacing: 0.3 },
 });

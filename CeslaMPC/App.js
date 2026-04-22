@@ -10,20 +10,27 @@ import CanteenMemberScreen from "./src/screens/CanteenMemberScreen";
 import CoopScreen from "./src/screens/CoopScreen";
 import AdminScreen from "./src/screens/AdminScreen";
 import ManageCoopScreen from "./src/screens/ManageCoopScreen";
+import ManageGroceryScreen from "./src/screens/ManageGroceryScreen";
 import ManageCanteenScreen from "./src/screens/ManageCanteenScreen";
 import ManageMerchandiseScreen from "./src/screens/ManageMerchandiseScreen";
 import ManageBillingScreen from "./src/screens/ManageBillingScreen";
 
-// ── Merchandise — portal first, then member or visitor ──
-import MerchandisePortalScreen from "./src/screens/MerchandisePortalScreen";   // ← NEW
-import MerchandiseMemberScreen from "./src/screens/MerchandiseMemberScreen";   // ← NEW
-import MerchandiseScreen from "./src/screens/MerchandiseScreen";               // visitor (unchanged)
+// ── Merchandise ───────────────────────────────────────────────────────────────
+import MerchandisePortalScreen from "./src/screens/MerchandisePortalScreen";
+import MerchandiseMemberScreen from "./src/screens/MerchandiseMemberScreen";
+import MerchandiseScreen from "./src/screens/MerchandiseScreen";
+
+// ── Grocery ───────────────────────────────────────────────────────────────────
+import GroceryPortalScreen from "./src/screens/GroceryPortalScreen";
+import GroceryVisitorScreen from "./src/screens/GroceryVisitorScreen";
+import GroceryMemberScreen from "./src/screens/GroceryMemberScreen";
 
 import BillingDashboardScreen from "./src/screens/BillingDashboardScreen";
 
 import { CanteenProvider } from "./src/context/CanteenContext";
 import { MerchandiseProvider } from "./src/context/MerchandiseContext";
 import { BillingProvider } from "./src/context/BillingContext";
+import { GroceryProvider } from "./src/context/GroceryContext";
 
 const Stack = createStackNavigator();
 
@@ -32,6 +39,7 @@ export default function App() {
     <CanteenProvider>
     <MerchandiseProvider>
     <BillingProvider>
+    <GroceryProvider>
     <NavigationContainer>
       <Stack.Navigator
         initialRouteName="Home"
@@ -48,6 +56,7 @@ export default function App() {
         <Stack.Screen name="AdminScreen"             component={AdminScreen} />
         <Stack.Screen name="ManageCoopScreen"        component={ManageCoopScreen} />
         <Stack.Screen name="ManageCanteenScreen"     component={ManageCanteenScreen} />
+        <Stack.Screen name="ManageGroceryScreen"     component={ManageGroceryScreen} />
         <Stack.Screen name="ManageMerchandiseScreen" component={ManageMerchandiseScreen} />
         <Stack.Screen name="ManageBillingScreen"     component={ManageBillingScreen} />
         <Stack.Screen name="CanteenScreen"           component={CanteenScreen} />
@@ -57,20 +66,29 @@ export default function App() {
         {/*
           ── MERCHANDISE FLOW ──────────────────────────────────────────
           HomeScreen  →  MerchandisePortalScreen
-                              ├── "Member"  →  MerchandiseMemberScreen  (login gate + ordering)
-                              └── "Visitor" →  MerchandiseScreen         (walk-in ordering)
+                              ├── "Member"  →  MerchandiseMemberScreen
+                              └── "Visitor" →  MerchandiseScreen
           ─────────────────────────────────────────────────────────────
         */}
-        {/* ── entry point: Member/Visitor chooser ── */}
         <Stack.Screen name="MerchandisePortalScreen"  component={MerchandisePortalScreen} />
-        {/* ── member login gate + ordering ── */}
         <Stack.Screen name="MerchandiseMemberScreen"  component={MerchandiseMemberScreen} />
-        {/* ── visitor / walk-in ordering ── */}
         <Stack.Screen name="MerchandiseScreen"        component={MerchandiseScreen} />
+
+        {/*
+          ── GROCERY FLOW ───────────────────────────────────────────────
+          HomeScreen  →  GroceryPortalScreen
+                              ├── "Member"  →  GroceryMemberScreen   (login + ordering)
+                              └── "Visitor" →  GroceryVisitorScreen  (walk-in ordering)
+          ─────────────────────────────────────────────────────────────
+        */}
+        <Stack.Screen name="GroceryPortalScreen"  component={GroceryPortalScreen} />
+        <Stack.Screen name="GroceryVisitorScreen" component={GroceryVisitorScreen} />
+        <Stack.Screen name="GroceryMemberScreen"  component={GroceryMemberScreen} />
 
         <Stack.Screen name="BillingDashboardScreen"  component={BillingDashboardScreen} />
       </Stack.Navigator>
     </NavigationContainer>
+    </GroceryProvider>
     </BillingProvider>
     </MerchandiseProvider>
     </CanteenProvider>

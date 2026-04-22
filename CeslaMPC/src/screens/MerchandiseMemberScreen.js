@@ -1080,7 +1080,7 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
   // Available years: always 2025–2070, with current year guaranteed
   const availableYears = React.useMemo(() => {
     const years = [];
-    for (let y = 2070; y >= 2025; y--) years.push(y);
+    for (let y = 2070; y >= 2000; y--) years.push(y);
     return years;
   }, []);
 
@@ -1187,7 +1187,7 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
       }}>
 
         {/* ══════════════ LEFT — MY ORDER HISTORY ══════════════ */}
-        <View style={[histStyles.panel, { flex: isWide ? 2 : 1 }]}>
+        <View style={[histStyles.panel, { flex: isWide ? 3 : 1 }]}>
 
           {/* Panel header row */}
           <View style={histStyles.panelHeaderRow}>
@@ -1262,15 +1262,16 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
                 nestedScrollEnabled
                 {...(Platform.OS === 'web' ? { style: { flex: 1, overflowY: 'auto', overflowX: 'hidden' } } : {})}
               >
-                {/* Inner: horizontal for all columns — thead + tbody together so they scroll in sync */}
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={Platform.OS !== 'web'}
-                  scrollEnabled={Platform.OS !== 'web'}
-                  nestedScrollEnabled={false}
-                  {...(Platform.OS === 'web' ? { style: { overflow: 'hidden' } } : {})}
-                >
-                  <View style={{ flexDirection: 'column', ...(Platform.OS === 'web' ? { width: '100%' } : { minWidth: showStatus ? 564 : 508 }) }}>
+                {/* Web: plain View fills panel width. Mobile: horizontal ScrollView for overflow. */}
+                {(Platform.OS === 'web'
+                  ? (c) => c
+                  : (c) => (
+                      <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled={false}>
+                        {c}
+                      </ScrollView>
+                    )
+                )(
+                  <View style={{ flexDirection: 'column', ...(Platform.OS === 'web' ? { flex: 1 } : { minWidth: showStatus ? 564 : 508 }) }}>
                     {/* Thead — sticky-ish: always rendered first */}
                     <View style={{ backgroundColor: 'rgba(220,232,242,0.97)', borderBottomWidth: 1.5, borderBottomColor: 'rgba(180,205,225,0.90)',
                       ...(Platform.OS === 'web' ? { position: 'sticky', top: 0, zIndex: 10 } : {}) }}>
@@ -1368,14 +1369,14 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
                       );
                     })}
                   </View>
-                </ScrollView>
+                )}
               </ScrollView>
             </View>
           )}
         </View>
 
         {/* ══════════════ RIGHT — ANNUAL HISTORY REPORTS ══════════════ */}
-        <View style={[histStyles.panel, { zIndex: 100, flex: 1 }]}>
+        <View style={[histStyles.panel, { zIndex: 100, flex: 2 }]}>
 
           {/* Panel header */}
           <Text style={[histStyles.panelTitle, { marginBottom: 10 }]}>📊 ANNUAL HISTORY REPORTS</Text>
@@ -1396,18 +1397,25 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
             </TouchableOpacity>
             {yearDropOpen && (
               <View style={histStyles.yearDropdown}>
-                {availableYears.map(yr => (
-                  <TouchableOpacity
-                    key={yr}
-                    style={[histStyles.yearDropItem, yr === selectedYear && histStyles.yearDropItemActive]}
-                    onPress={() => { setSelectedYear(yr); setYearDropOpen(false); }}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[histStyles.yearDropItemText, yr === selectedYear && { color: '#fff', fontFamily: 'GoogleSans_700Bold' }]}>
-                      {yr}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                <ScrollView
+                  style={{ maxHeight: 220 }}
+                  showsVerticalScrollIndicator
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {availableYears.map(yr => (
+                    <TouchableOpacity
+                      key={yr}
+                      style={[histStyles.yearDropItem, yr === selectedYear && histStyles.yearDropItemActive]}
+                      onPress={() => { setSelectedYear(yr); setYearDropOpen(false); }}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[histStyles.yearDropItemText, yr === selectedYear && { color: '#fff', fontFamily: 'GoogleSans_700Bold' }]}>
+                        {yr}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
             )}
           </View>
@@ -1430,25 +1438,28 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
 
           {/* Month pills (Daily only) */}
           {reportPeriod === 'daily' && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ marginTop: 2, flexShrink: 0 }}
-              contentContainerStyle={{ gap: 5, paddingHorizontal: 2, alignItems: 'center' }}
-            >
-              {MONTHS.map((m, i) => (
-                <TouchableOpacity
-                  key={m}
-                  style={[histStyles.monthPill, selectedMonth === i && histStyles.monthPillActive]}
-                  onPress={() => setSelectedMonth(i)}
-                  activeOpacity={0.80}
-                >
-                  <Text style={[histStyles.monthPillTxt, selectedMonth === i && histStyles.monthPillTxtActive]}>
-                    {m}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={{ height: 30, marginTop: 6, ...(Platform.OS === 'web' ? { overflowX: 'auto' } : {}) }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ flex: 1 }}
+                contentContainerStyle={{ gap: 5, paddingHorizontal: 2, alignItems: 'center' }}
+                scrollEnabled={Platform.OS !== 'web'}
+              >
+                {MONTHS.map((m, i) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[histStyles.monthPill, selectedMonth === i && histStyles.monthPillActive]}
+                    onPress={() => setSelectedMonth(i)}
+                    activeOpacity={0.80}
+                  >
+                    <Text style={[histStyles.monthPillTxt, selectedMonth === i && histStyles.monthPillTxtActive]}>
+                      {m}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
           )}
 
           {/* Summary cards */}
@@ -1638,7 +1649,7 @@ const histStyles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(200,218,235,0.80)',
     shadowColor: '#011f4b', shadowOpacity: 0.15, shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 }, elevation: 9999,
-    zIndex: 9999, minWidth: 100, overflow: 'hidden',
+    zIndex: 9999, minWidth: 100,
   },
   yearDropItem: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(200,218,235,0.50)' },
   yearDropItemActive: { backgroundColor: '#1a3a6b' },
