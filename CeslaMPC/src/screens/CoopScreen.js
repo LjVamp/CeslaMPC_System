@@ -22,7 +22,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import ChatSystem from '../components/ChatSystem';
+// ChatSystem replaced by built-in FloatingChat below
 
 // ─── Notification handler — must be set before any notification fires ─────────
 Notifications.setNotificationHandler({
@@ -230,10 +230,7 @@ const NAV = [
     { key: 'changepw',   label: 'Change Password',  icon: '🔑' },
     { key: 'notifs',     label: 'Notifications',    icon: '🔔' },
   ]},
-  { key: 'help_grp',     label: 'Help & Support',   icon: '💬', children: [
-    { key: 'chat_admin', label: 'Chat with Admin',  icon: '🛡️' },
-    { key: 'chat_members', label: 'Co-member Chat', icon: '👥' },
-  ]},
+
 ];
 
 const SidebarGroup = ({ group, active, onNav, onClose }) => {
@@ -2608,34 +2605,68 @@ const ChangePasswordView = ({ member, contentHeight }) => {
   );
 };
 
-const NotifsView = ({ member, contentHeight }) => {
+const NotifsView = ({ member, contentHeight, onNav }) => {
   const [notifs,  setNotifs]  = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     return onSnapshot(query(collection(db, 'members', member.uid, 'notifications'), orderBy('createdAt', 'desc')), snap => { setNotifs(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); }, () => setLoading(false));
   }, [member.uid]);
-  const markRead = async id => updateDoc(doc(db, 'members', member.uid, 'notifications', id), { read: true });
+
+  const handleTap = async (n) => {
+    // Mark read
+    if (!n.read && n.id !== 'sys') {
+      await updateDoc(doc(db, 'members', member.uid, 'notifications', n.id), { read: true }).catch(() => {});
+    }
+    // Navigate to chat if applicable
+    if (n.navKey && onNav) onNav(n.navKey);
+  };
+
   const sysNotifs = member.approvedAt ? [{ id: 'sys', icon: '✅', title: 'Account Approved!', message: `Your membership was approved on ${fmtDate(member.approvedAt)}. You now have full access.`, color: C.green, createdAt: member.approvedAt, read: true }] : [];
-  const all = [...sysNotifs, ...notifs];
+  // Exclude chat-type notifications — handled by FloatingChat
+  const all = [...sysNotifs, ...notifs.filter(n => n.type !== 'chat')];
+  const unreadCount = all.filter(n => !n.read).length;
   if (loading) return <Spinner msg="Loading notifications..." />;
   return (
     <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
       <Text style={s.pageTitle}>🔔 Notifications</Text>
-      <Text style={s.pageSub}>{all.filter(n => !n.read).length} unread.</Text>
-      {all.length === 0 && <GCard style={{ alignItems: 'center', padding: 40 }}><Text style={{ fontSize: 36, marginBottom: 10 }}>🔔</Text><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: C.textMuted, textAlign: 'center' }}>No notifications yet.</Text></GCard>}
-      {all.map(n => (
-        <TouchableOpacity key={n.id} style={[s.notifCard, { borderLeftColor: n.color || C.gold, opacity: n.read ? 0.60 : 1 }]} onPress={() => !n.read && n.id !== 'sys' && markRead(n.id)} activeOpacity={0.8}>
-          <View style={[s.notifIcon, { backgroundColor: (n.color || C.gold) + '22' }]}><Text style={{ fontSize: 18 }}>{n.icon || '🔔'}</Text></View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-              <Text style={s.notifTitle}>{n.title}</Text>
-              {!n.read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: n.color || C.gold }} />}
+      <Text style={s.pageSub}>{unreadCount > 0 ? `${unreadCount} unread — tap a message to open.` : 'All caught up!'}</Text>
+      {all.length === 0 && (
+        <GCard style={{ alignItems: 'center', padding: 40 }}>
+          <Text style={{ fontSize: 36, marginBottom: 10 }}>🔔</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: C.textMuted, textAlign: 'center' }}>No notifications yet.</Text>
+        </GCard>
+      )}
+      {all.map(n => {
+        const isChat = n.type === 'chat';
+        const borderColor = isChat ? '#2563b0' : (n.color || C.gold);
+        return (
+          <TouchableOpacity
+            key={n.id}
+            style={[s.notifCard, { borderLeftColor: borderColor, opacity: n.read ? 0.60 : 1 }]}
+            onPress={() => handleTap(n)}
+            activeOpacity={0.8}
+          >
+            <View style={[s.notifIcon, { backgroundColor: borderColor + '22' }]}>
+              <Text style={{ fontSize: 18 }}>{n.icon || '🔔'}</Text>
             </View>
-            <Text style={s.notifMsg}>{n.message}</Text>
-            <Text style={s.notifTime}>{fmtTime(n.createdAt)}</Text>
-          </View>
-        </TouchableOpacity>
-      ))}
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                <Text style={[s.notifTitle, { flex: 1, marginRight: 6 }]} numberOfLines={1}>{n.title}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {isChat && !n.read && (
+                    <View style={{ backgroundColor: '#2563b0', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>TAP TO OPEN</Text>
+                    </View>
+                  )}
+                  {!n.read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: borderColor }} />}
+                </View>
+              </View>
+              <Text style={s.notifMsg} numberOfLines={2}>{n.message}</Text>
+              <Text style={s.notifTime}>{fmtTime(n.createdAt)}</Text>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
     </ScrollView>
   );
 };
@@ -2712,14 +2743,26 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
     if (!text.trim() || sending || !roomId) return;
     setSending(true);
     try {
+      const msgText = text.trim();
       await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
         senderId: member.uid, senderName: member.name,
-        text: text.trim(), createdAt: serverTimestamp(), readBy: [member.uid],
+        text: msgText, createdAt: serverTimestamp(), readBy: [member.uid],
       });
       await updateDoc(doc(db, 'chatRooms', roomId), {
-        lastMessage: text.trim(), lastAt: serverTimestamp(),
+        lastMessage: msgText, lastAt: serverTimestamp(),
         lastSender: member.name, lastSenderId: member.uid,  // ← needed for notification filtering
       });
+      // ── Notify admin when member sends to admin chat ──────────────────────
+      if (chatType === 'admin') {
+        await addDoc(collection(db, 'adminNotifications'), {
+          type: 'chat', icon: '💬',
+          title: `Message from ${member.name}`,
+          message: msgText.length > 80 ? msgText.slice(0, 80) + '…' : msgText,
+          memberId: member.uid, memberUserId: member.userId,
+          roomId, navKey: 'chat_inbox',
+          createdAt: serverTimestamp(), read: false,
+        });
+      }
       setText('');
     } catch (e) { console.warn(e); }
     finally { setSending(false); }
@@ -2889,6 +2932,625 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
 };
 
 // ─── MEMBER DASHBOARD ─────────────────────────────────────────────────────────
+// ─── SMALL MESSAGE NOTIFICATION POPUP (near message icon, like Facebook) ──────
+const MsgNotifPopup = ({ notif, onClose, onOpen }) => {
+  const translateY = useRef(new Animated.Value(-80)).current;
+  const opacity    = useRef(new Animated.Value(0)).current;
+  const timerRef   = useRef(null);
+
+  useEffect(() => {
+    if (!notif) return;
+    Animated.parallel([
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 90, friction: 11 }),
+      Animated.timing(opacity,    { toValue: 1, duration: 180, useNativeDriver: true }),
+    ]).start();
+    timerRef.current = setTimeout(dismiss, 5000);
+    return () => clearTimeout(timerRef.current);
+  }, [notif?.id]);
+
+  const dismiss = () => {
+    clearTimeout(timerRef.current);
+    Animated.parallel([
+      Animated.timing(translateY, { toValue: -80, duration: 220, useNativeDriver: true }),
+      Animated.timing(opacity,    { toValue: 0,   duration: 180, useNativeDriver: true }),
+    ]).start(() => onClose?.());
+  };
+
+  if (!notif) return null;
+
+  return (
+    <Animated.View style={{
+      position: 'absolute',
+      top: Platform.OS === 'web' ? 52 : 96,
+      right: 12,
+      width: 270,
+      transform: [{ translateY }],
+      opacity,
+      zIndex: 99999,
+    }}>
+      <TouchableOpacity
+        activeOpacity={0.92}
+        onPress={() => { dismiss(); onOpen?.(); }}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 10,
+          backgroundColor: '#1a2d4e',
+          borderRadius: 16, padding: 12,
+          borderWidth: 1.5, borderColor: C.gold,
+          shadowColor: '#000', shadowOpacity: 0.28,
+          shadowRadius: 14, shadowOffset: { width: 0, height: 5 },
+        }}
+      >
+        {/* Admin shield icon */}
+        <View style={{
+          width: 38, height: 38, borderRadius: 19,
+          backgroundColor: 'rgba(201,168,76,0.25)',
+          borderWidth: 1.5, borderColor: C.gold,
+          justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+        }}>
+          <Text style={{ fontSize: 17 }}>🛡️</Text>
+        </View>
+        {/* Text */}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff' }}>Admin</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.68)', marginTop: 1 }} numberOfLines={2}>
+            {notif.text}
+          </Text>
+        </View>
+        {/* Dismiss */}
+        <TouchableOpacity
+          onPress={(e) => { e?.stopPropagation?.(); dismiss(); }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' }}
+        >
+          <Text style={{ color: 'rgba(255,255,255,0.70)', fontSize: 11 }}>✕</Text>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+// ─── MESSAGE DROPDOWN — Conversation list → chat view (like FB Messenger) ─────
+const MsgDropdown = ({ member, onClose }) => {
+  const uid = member?.uid;
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [convos,       setConvos]       = useState([]); // list of {roomId, name, avatar, lastMsg, lastAt, unread}
+  const [loadingList,  setLoadingList]  = useState(true);
+  const [activeRoom,   setActiveRoom]   = useState(null); // { roomId, name }
+  const [messages,     setMessages]     = useState([]);
+  const [loadingMsgs,  setLoadingMsgs]  = useState(false);
+  const [text,         setText]         = useState('');
+  const [sending,      setSending]      = useState(false);
+  const scrollRef = useRef(null);
+
+  // ── Build conversation list from chatRoom docs ─────────────────────────────
+  useEffect(() => {
+    if (!uid) return;
+    const subs = [];
+
+    // 1. Admin room
+    const adminId = `admin_${uid}`;
+    subs.push(onSnapshot(doc(db, 'chatRooms', adminId), snap => {
+      const d = snap.data() || {};
+      setConvos(prev => {
+        const rest = prev.filter(c => c.roomId !== adminId);
+        return [{ roomId: adminId, name: 'Admin / Support', icon: '🛡️', lastMsg: d.lastMessage || '', lastAt: d.lastAt || null }, ...rest]
+          .sort((a, b) => (b.lastAt?.toMillis?.() ?? 0) - (a.lastAt?.toMillis?.() ?? 0));
+      });
+      setLoadingList(false);
+    }, () => setLoadingList(false)));
+
+    // 2. Group members room
+    const grpId = 'group_members';
+    subs.push(onSnapshot(doc(db, 'chatRooms', grpId), snap => {
+      const d = snap.data() || {};
+      setConvos(prev => {
+        const rest = prev.filter(c => c.roomId !== grpId);
+        return [{ roomId: grpId, name: 'Co-member Group', icon: '👥', lastMsg: d.lastMessage || '', lastAt: d.lastAt || null }, ...rest]
+          .sort((a, b) => (b.lastAt?.toMillis?.() ?? 0) - (a.lastAt?.toMillis?.() ?? 0));
+      });
+    }, () => {}));
+
+    // 3. DM rooms this member is in
+    subs.push(onSnapshot(
+      query(collection(db, 'chatRooms'), where('members', 'array-contains', uid)),
+      snap => {
+        snap.docs.forEach(roomDoc => {
+          const rId = roomDoc.id;
+          if (rId === adminId || rId === grpId) return;
+          const d = roomDoc.data() || {};
+          // Other person's name from memberNames map
+          const otherName = Object.entries(d.memberNames || {}).find(([k]) => k !== uid)?.[1] || 'Member';
+          setConvos(prev => {
+            const rest = prev.filter(c => c.roomId !== rId);
+            return [{ roomId: rId, name: otherName, icon: '💬', lastMsg: d.lastMessage || '', lastAt: d.lastAt || null }, ...rest]
+              .sort((a, b) => (b.lastAt?.toMillis?.() ?? 0) - (a.lastAt?.toMillis?.() ?? 0));
+          });
+        });
+      }, () => {}
+    ));
+
+    return () => subs.forEach(fn => typeof fn === 'function' && fn());
+  }, [uid]);
+
+  // ── Load messages when a conversation is selected ─────────────────────────
+  useEffect(() => {
+    if (!activeRoom) return;
+    setLoadingMsgs(true);
+    setMessages([]);
+    const q = query(collection(db, 'chatRooms', activeRoom.roomId, 'messages'), orderBy('createdAt', 'asc'), limit(50));
+    const unsub = onSnapshot(q, snap => {
+      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoadingMsgs(false);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 80);
+    }, () => setLoadingMsgs(false));
+    return () => unsub();
+  }, [activeRoom?.roomId]);
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  const sendMsg = async () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending || !activeRoom) return;
+    setSending(true);
+    setText('');
+    try {
+      await addDoc(collection(db, 'chatRooms', activeRoom.roomId, 'messages'), {
+        text: trimmed, senderId: uid, senderName: member.name,
+        createdAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, 'chatRooms', activeRoom.roomId), {
+        lastMessage: trimmed, lastSender: member.name, lastAt: serverTimestamp(),
+      });
+    } catch (_) {}
+    setSending(false);
+  };
+
+  // ── Shared panel styles ───────────────────────────────────────────────────
+  const panelStyle = {
+    position: 'absolute',
+    top: Platform.OS === 'web' ? 52 : 96,
+    right: 8,
+    width: 300,
+    backgroundColor: '#1a2d4e',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: C.gold,
+    shadowColor: '#000',
+    shadowOpacity: 0.32,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    zIndex: 9999,
+    overflow: 'hidden',
+  };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <TouchableOpacity
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9998 }}
+        activeOpacity={1} onPress={onClose}
+      />
+
+      <View style={panelStyle}>
+        {/* ── HEADER ──────────────────────────────────────────────────── */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.25)' }}>
+          {activeRoom ? (
+            <TouchableOpacity onPress={() => { setActiveRoom(null); setMessages([]); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.70)" />
+            </TouchableOpacity>
+          ) : (
+            <MaterialIcons name="chat-bubble-outline" size={17} color={C.gold} />
+          )}
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff', flex: 1 }} numberOfLines={1}>
+            {activeRoom ? activeRoom.name : 'Messages'}
+          </Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.55)" />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── CONVERSATION LIST ────────────────────────────────────────── */}
+        {!activeRoom && (
+          <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
+            {loadingList ? (
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={C.gold} />
+              </View>
+            ) : convos.length === 0 ? (
+              <View style={{ padding: 24, alignItems: 'center', gap: 8 }}>
+                <MaterialIcons name="chat-bubble-outline" size={32} color="rgba(255,255,255,0.18)" />
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.38)', textAlign: 'center' }}>No conversations yet.</Text>
+              </View>
+            ) : (
+              convos.map((c, i) => (
+                <TouchableOpacity
+                  key={c.roomId}
+                  onPress={() => setActiveRoom({ roomId: c.roomId, name: `${c.icon} ${c.name}` })}
+                  activeOpacity={0.75}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < convos.length - 1 ? 1 : 0, borderColor: 'rgba(255,255,255,0.07)' }}
+                >
+                  {/* Avatar */}
+                  <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                    <Text style={{ fontSize: 18 }}>{c.icon}</Text>
+                  </View>
+                  {/* Text */}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }} numberOfLines={1}>{c.name}</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }} numberOfLines={1}>
+                      {c.lastMsg || 'No messages yet'}
+                    </Text>
+                  </View>
+                  {/* Time + chevron */}
+                  <View style={{ alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                    {c.lastAt && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>{fmtDate(c.lastAt)}</Text>}
+                    <MaterialIcons name="chevron-right" size={16} color="rgba(255,255,255,0.28)" />
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        )}
+
+        {/* ── CHAT VIEW (active room) ──────────────────────────────────── */}
+        {activeRoom && (
+          <>
+            {/* Messages */}
+            <ScrollView
+              ref={scrollRef}
+              style={{ maxHeight: 280 }}
+              contentContainerStyle={{ padding: 12, gap: 6 }}
+              showsVerticalScrollIndicator={false}
+              onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+            >
+              {loadingMsgs ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color={C.gold} />
+                </View>
+              ) : messages.length === 0 ? (
+                <View style={{ padding: 20, alignItems: 'center', gap: 6 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.38)', textAlign: 'center' }}>No messages yet. Say something!</Text>
+                </View>
+              ) : (
+                messages.map((msg, i) => {
+                  const isMine = msg.senderId === uid;
+                  const prev = messages[i - 1];
+                  const showName = !isMine && msg.senderId !== prev?.senderId;
+                  return (
+                    <View key={msg.id} style={{ alignItems: isMine ? 'flex-end' : 'flex-start' }}>
+                      {showName && (
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold, marginBottom: 2, marginHorizontal: 4 }}>
+                          {msg.senderName || 'Member'}
+                        </Text>
+                      )}
+                      <View style={{ maxWidth: '82%', backgroundColor: isMine ? 'rgba(37,99,176,0.72)' : 'rgba(255,255,255,0.12)', borderRadius: 12, borderBottomRightRadius: isMine ? 3 : 12, borderBottomLeftRadius: isMine ? 12 : 3, paddingHorizontal: 11, paddingVertical: 7 }}>
+                        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff', lineHeight: 18 }}>{msg.text}</Text>
+                      </View>
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.28)', marginTop: 2, marginHorizontal: 4 }}>
+                        {msg.createdAt ? fmtTime(msg.createdAt) : ''}
+                      </Text>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {/* Input */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}>
+              <TextInput
+                style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', maxHeight: 72 }}
+                value={text} onChangeText={setText}
+                placeholder="Type a message..." placeholderTextColor="rgba(255,255,255,0.30)"
+                multiline maxLength={500}
+                onSubmitEditing={sendMsg} blurOnSubmit={false}
+              />
+              <TouchableOpacity
+                onPress={sendMsg} disabled={!text.trim() || sending}
+                style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: text.trim() ? C.gold : 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' }}
+              >
+                {sending
+                  ? <ActivityIndicator size="small" color="#0f1e35" />
+                  : <MaterialIcons name="send" size={16} color={text.trim() ? '#0f1e35' : 'rgba(255,255,255,0.35)'} />
+                }
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </View>
+    </>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FLOATING CHAT BOX — small gamay nga chat bubble, matching app palette
+// ═════════════════════════════════════════════════════════════════════════════
+const FloatingChat = ({ member }) => {
+  const [open,        setOpen]        = useState(false);
+  const [tab,         setTab]         = useState('admin'); // 'admin' | 'members'
+  const [roomId,      setRoomId]      = useState(null);
+  const [messages,    setMessages]    = useState([]);
+  const [text,        setText]        = useState('');
+  const [sending,     setSending]     = useState(false);
+  const [unread,      setUnread]      = useState(0);
+  const scaleAnim  = useRef(new Animated.Value(0)).current;
+  const scrollRef  = useRef(null);
+
+  // Toggle animation
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) setUnread(0);
+    Animated.spring(scaleAnim, {
+      toValue: next ? 1 : 0,
+      useNativeDriver: true,
+      tension: 130,
+      friction: 9,
+    }).start();
+  };
+
+  // Setup chat room when tab changes
+  useEffect(() => {
+    if (!member?.uid) return;
+    if (tab === 'admin') {
+      const rId = `admin_${member.uid}`;
+      setDoc(doc(db, 'chatRooms', rId), {
+        type: 'admin', memberId: member.uid, memberName: member.name,
+        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
+      }, { merge: true }).then(() => setRoomId(rId)).catch(() => {});
+    } else {
+      setDoc(doc(db, 'chatRooms', 'group_members'), {
+        type: 'group', name: 'Members Group Chat',
+        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
+      }, { merge: true }).then(() => setRoomId('group_members')).catch(() => {});
+    }
+  }, [tab, member?.uid]);
+
+  // Listen to messages
+  useEffect(() => {
+    if (!roomId) return;
+    const q = query(
+      collection(db, 'chatRooms', roomId, 'messages'),
+      orderBy('createdAt', 'asc'), limit(60)
+    );
+    const unsub = onSnapshot(q, snap => {
+      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setMessages(msgs);
+      if (!open) {
+        // Count unread — messages not from me
+        const unreadCount = msgs.filter(m => m.senderId !== member?.uid).length;
+        setUnread(prev => msgs.length > 0 && !open ? prev + 1 : prev);
+      }
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+    });
+    return unsub;
+  }, [roomId]);
+
+  const send = async () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending || !roomId) return;
+    setSending(true);
+    setText('');
+    try {
+      await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
+        senderId: member.uid, senderName: member.name,
+        text: trimmed, createdAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, 'chatRooms', roomId), {
+        lastMessage: trimmed, lastAt: serverTimestamp(),
+        lastSender: member.name, lastSenderId: member.uid,
+      });
+      if (tab === 'admin') {
+        await addDoc(collection(db, 'adminNotifications'), {
+          type: 'chat', icon: '💬',
+          title: `Message from ${member.name}`,
+          message: trimmed.length > 80 ? trimmed.slice(0, 80) + '…' : trimmed,
+          memberId: member.uid, memberUserId: member.userId,
+          roomId, navKey: 'chat_inbox',
+          createdAt: serverTimestamp(), read: false,
+        });
+      }
+    } catch (e) { console.warn(e); }
+    finally { setSending(false); }
+  };
+
+  const fmtT = ts => {
+    if (!ts) return '';
+    const d = ts?.toDate?.() || new Date(ts);
+    return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true });
+  };
+
+  const fcS = StyleSheet.create({
+    fab: {
+      width: 50, height: 50, borderRadius: 25,
+      backgroundColor: C.navy, borderWidth: 2, borderColor: C.gold,
+      justifyContent: 'center', alignItems: 'center',
+      elevation: 10,
+      shadowColor: '#000', shadowOpacity: 0.30,
+      shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+    },
+    badge: {
+      position: 'absolute', top: -4, right: -4,
+      width: 18, height: 18, borderRadius: 9,
+      backgroundColor: C.red, justifyContent: 'center', alignItems: 'center',
+    },
+    badgeTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' },
+    window: {
+      width: 295, height: 370,
+      backgroundColor: 'rgba(15,30,53,0.97)',
+      borderRadius: 18,
+      borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.45)',
+      marginBottom: 10, overflow: 'hidden',
+      elevation: 18,
+      shadowColor: '#000', shadowOpacity: 0.35,
+      shadowRadius: 20, shadowOffset: { width: 0, height: 8 },
+    },
+    header: {
+      backgroundColor: '#1a2d4e',
+      borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.25)',
+      flexDirection: 'row', alignItems: 'center', gap: 9, padding: 10,
+    },
+    avatar: {
+      width: 34, height: 34, borderRadius: 17,
+      backgroundColor: 'rgba(201,168,76,0.22)', borderWidth: 1.5, borderColor: C.gold,
+      justifyContent: 'center', alignItems: 'center',
+    },
+    avatarTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.gold },
+    headerName: { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' },
+    headerSub: { fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(201,168,76,0.80)' },
+    closeBtn: {
+      width: 26, height: 26, borderRadius: 13,
+      backgroundColor: 'rgba(255,255,255,0.10)',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    tabs: { flexDirection: 'row', borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+    tab: {
+      flex: 1, paddingVertical: 7, alignItems: 'center',
+      borderBottomWidth: 2, borderColor: 'transparent',
+    },
+    tabActive: { borderBottomColor: C.gold },
+    tabTxt: { fontFamily: 'GoogleSans_500Medium', fontSize: 10, color: 'rgba(255,255,255,0.38)' },
+    tabTxtActive: { color: C.gold },
+    msgs: { flex: 1, padding: 10 },
+    msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, marginBottom: 7 },
+    msgRowMine: { flexDirection: 'row-reverse' },
+    miniAvatar: {
+      width: 24, height: 24, borderRadius: 12,
+      backgroundColor: 'rgba(201,168,76,0.18)',
+      borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)',
+      justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    },
+    miniAvatarTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold },
+    bubble: {
+      backgroundColor: 'rgba(255,255,255,0.13)', borderRadius: 16,
+      borderBottomLeftRadius: 4, paddingVertical: 7, paddingHorizontal: 11, maxWidth: 200,
+    },
+    bubbleMine: {
+      backgroundColor: '#243554', borderBottomLeftRadius: 16, borderBottomRightRadius: 4,
+      borderWidth: 1, borderColor: 'rgba(201,168,76,0.18)',
+    },
+    bubbleTxt: { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#e8e8e8', lineHeight: 18 },
+    msgTime: { fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.28)', marginTop: 2, paddingHorizontal: 3 },
+    inputRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 7,
+      padding: 9, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    },
+    input: {
+      flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff',
+      backgroundColor: 'rgba(255,255,255,0.10)',
+      borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+      borderRadius: 20, paddingVertical: 8, paddingHorizontal: 13,
+    },
+    sendBtn: {
+      width: 34, height: 34, borderRadius: 17,
+      justifyContent: 'center', alignItems: 'center',
+    },
+  });
+
+  const tabName = tab === 'admin' ? 'Admin / Support' : 'Co-member Group';
+  const tabSub  = tab === 'admin' ? '● Live support' : '● Members Group Chat';
+  const tabIcon = tab === 'admin' ? '🛡️' : '👥';
+
+  return (
+    <View style={{ position: 'absolute', bottom: 20, right: 16, alignItems: 'flex-end', zIndex: 1000 }} pointerEvents="box-none">
+      {/* Chat window */}
+      <Animated.View style={[fcS.window, { transform: [{ scale: scaleAnim }], opacity: scaleAnim }]} pointerEvents={open ? 'auto' : 'none'}>
+        {/* Header */}
+        <View style={fcS.header}>
+          <View style={fcS.avatar}><Text style={fcS.avatarTxt}>{tab === 'admin' ? 'AD' : 'GP'}</Text></View>
+          <View style={{ flex: 1 }}>
+            <Text style={fcS.headerName}>{tabName}</Text>
+            <Text style={fcS.headerSub}>{tabSub}</Text>
+          </View>
+          <TouchableOpacity style={fcS.closeBtn} onPress={toggle}>
+            <Text style={{ color: 'rgba(255,255,255,0.60)', fontSize: 14 }}>✕</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Tabs */}
+        <View style={fcS.tabs}>
+          {[['admin', '🛡️ Admin'], ['members', '👥 Members']].map(([key, label]) => (
+            <TouchableOpacity key={key}
+              style={[fcS.tab, tab === key && fcS.tabActive]}
+              onPress={() => { setTab(key); setMessages([]); }}>
+              <Text style={[fcS.tabTxt, tab === key && fcS.tabTxtActive]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Messages */}
+        <ScrollView ref={scrollRef} style={fcS.msgs} showsVerticalScrollIndicator={false}>
+          {messages.length === 0 && (
+            <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>{tabIcon}</Text>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.35)', textAlign: 'center', lineHeight: 18 }}>
+                {tab === 'admin' ? 'Send a message to Admin.' : 'Say hello to your co-members!'}
+              </Text>
+            </View>
+          )}
+          {messages.map((msg, i) => {
+            const isMine = msg.senderId === member?.uid;
+            const prev   = messages[i - 1];
+            const showName = !isMine && msg.senderId !== prev?.senderId && tab === 'members';
+            const initials = (msg.senderName || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+            return (
+              <View key={msg.id} style={[fcS.msgRow, isMine && fcS.msgRowMine]}>
+                {!isMine && (
+                  <View style={fcS.miniAvatar}>
+                    <Text style={fcS.miniAvatarTxt}>{initials}</Text>
+                  </View>
+                )}
+                <View style={{ maxWidth: 200 }}>
+                  {showName && <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold, marginBottom: 2, paddingLeft: 3 }}>{msg.senderName}</Text>}
+                  <View style={[fcS.bubble, isMine && fcS.bubbleMine]}>
+                    <Text style={fcS.bubbleTxt}>{msg.text}</Text>
+                  </View>
+                  <Text style={[fcS.msgTime, isMine && { textAlign: 'right' }]}>{fmtT(msg.createdAt)}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+
+        {/* Input */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={fcS.inputRow}>
+            <TextInput
+              style={fcS.input}
+              value={text}
+              onChangeText={setText}
+              placeholder="Type a message..."
+              placeholderTextColor="rgba(255,255,255,0.28)"
+              onSubmitEditing={send}
+              returnKeyType="send"
+              maxLength={500}
+            />
+            <TouchableOpacity
+              style={[fcS.sendBtn, { backgroundColor: text.trim() ? C.gold : 'rgba(255,255,255,0.12)' }]}
+              onPress={send}
+              disabled={!text.trim() || sending}
+              activeOpacity={0.8}>
+              {sending
+                ? <ActivityIndicator size="small" color={C.navy} />
+                : <MaterialIcons name="send" size={16} color={text.trim() ? C.navy : 'rgba(255,255,255,0.35)'} />
+              }
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Animated.View>
+
+      {/* FAB */}
+      <TouchableOpacity style={fcS.fab} onPress={toggle} activeOpacity={0.85}>
+        {unread > 0 && !open && (
+          <View style={fcS.badge}>
+            <Text style={fcS.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
+          </View>
+        )}
+        <MaterialIcons name={open ? 'close' : 'chat'} size={24} color={C.gold} />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   const { height, isMobile } = useRwd();
   // Rounded header: marginTop (web=16, mobile=44) + header height (~62) + gap (~8)
@@ -2903,10 +3565,25 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   const fadeAnim  = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
+  // Message notification popup state
+  const [msgNotif, setMsgNotif] = useState(null); // { id, text } from admin
+  // Message dropdown preview (toggled by message icon in topbar)
+  const [showMsgDropdown, setShowMsgDropdown] = useState(false);
+
   // Real-time member sync
   useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(doc(db, 'members', memberInit.uid), snap => { if (snap.exists()) setMember({ uid: snap.id, ...snap.data() }); }); }, [memberInit?.uid]);
-  // Unread count
-  useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(query(collection(db, 'members', memberInit.uid, 'notifications'), where('read', '==', false)), snap => setUnread(snap.size)); }, [memberInit?.uid]);
+  // Unread count — exclude chat-type (handled by FloatingChat)
+  useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(query(collection(db, 'members', memberInit.uid, 'notifications'), where('read', '==', false)), snap => { const nonChat = snap.docs.filter(d => d.data().type !== 'chat'); setUnread(nonChat.length); }); }, [memberInit?.uid]);
+  // Unread chat messages count (chat-type only, for message icon badge)
+  const [unreadChat, setUnreadChat] = useState(0);
+  useEffect(() => {
+    if (!memberInit?.uid) return;
+    return onSnapshot(
+      query(collection(db, 'members', memberInit.uid, 'notifications'), where('read', '==', false), where('type', '==', 'chat')),
+      snap => setUnreadChat(snap.size),
+      () => {}
+    );
+  }, [memberInit?.uid]);
 
   // ── Notification setup: permissions + Android channel ────────────────────
   const notifReadyRef = useRef(false);
@@ -2932,16 +3609,45 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
     })();
   }, []);
 
-  // ── Watch chatRoom DOCUMENTS (not subcollections) for incoming messages ───
-  // We watch the chatRoom doc's `lastAt` field — it updates on every message send.
-  // This is reliable even when the room was just created by the other side.
+  // ── Web audio helper — plays a short ping sound for incoming messages ───────
+  const playMsgSound = () => {
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        // Build a short "ding" using Web Audio API — no external file needed
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.18);
+        gain.gain.setValueAtTime(0.55, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.4);
+      }
+    } catch (_) {}
+  };
+
+  // ── Watch chatRoom DOCUMENTS for incoming messages (mobile + web) ──────────
   useEffect(() => {
-    if (!memberInit?.uid || Platform.OS === 'web') return;
+    if (!memberInit?.uid) return;
     const uid  = memberInit.uid;
+    const isWeb = Platform.OS === 'web';
     const subs = [];
     const dmWatching = new Set();
 
     const fireNotif = async (senderName, text, navKey) => {
+      // ── Web: play sound + bump unreadChat directly ──────────────────────
+      if (isWeb) {
+        playMsgSound();
+        // unreadChat is driven by Firestore notifications listener below,
+        // but also force-increment immediately for instant badge feedback
+        setUnreadChat(prev => prev + 1);
+        return;
+      }
+      // ── Native: push notification ───────────────────────────────────────
       if (!notifReadyRef.current) return;
       try {
         await Notifications.scheduleNotificationAsync({
@@ -2957,9 +3663,9 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       } catch (e) { console.error('[CESLA] scheduleNotification error:', e); }
     };
 
-    // Watch a single chatRoom doc — fires notification when lastAt increases
+    // Watch a single chatRoom doc — fires when lastAt increases
     const watchRoomDoc = (roomId, navKey) => {
-      let baselineMs = -1; // -1 = not yet initialised
+      let baselineMs = -1;
       return onSnapshot(
         doc(db, 'chatRooms', roomId),
         snap => {
@@ -2968,22 +3674,35 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
           const atMs = d.lastAt?.toMillis?.()
             ?? (d.lastAt?.seconds != null ? d.lastAt.seconds * 1000 : 0);
 
-          if (baselineMs === -1) {             // first snapshot → set baseline, no notif
-            baselineMs = atMs;
-            return;
-          }
-          if (atMs <= baselineMs) return;      // same/older timestamp → skip
+          if (baselineMs === -1) { baselineMs = atMs; return; }
+          if (atMs <= baselineMs) return;
           baselineMs = atMs;
 
           // Skip own messages
           if (d.lastSenderId === uid) return;
-          if (!d.lastSenderId && d.lastSender === memberInit.name) return; // fallback
+          if (!d.lastSenderId && d.lastSender === memberInit.name) return;
 
-          fireNotif(
-            d.lastSender     || 'New message',
-            d.lastMessage    || '📩 New message',
+          const senderName = d.lastSender  || 'New message';
+          const msgText    = d.lastMessage || '📩 New message';
+
+          fireNotif(senderName, msgText, navKey);
+
+          // Show popup near message icon (admin chat only)
+          if (navKey === 'chat_admin') {
+            setMsgNotif({ id: roomId + '_' + atMs, text: msgText });
+          }
+
+          // Write Firestore notification (for bell + unreadChat count)
+          addDoc(collection(db, 'members', uid, 'notifications'), {
+            type:    'chat',
+            icon:    '💬',
+            title:   `New message from ${senderName}`,
+            message: msgText.length > 80 ? msgText.slice(0, 80) + '…' : msgText,
+            color:   '#2563b0',
             navKey,
-          );
+            createdAt: serverTimestamp(),
+            read:    false,
+          }).catch(() => {});
         },
         err => console.error('[CESLA] watchRoomDoc error:', roomId, err),
       );
@@ -2993,7 +3712,7 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
     subs.push(watchRoomDoc(`admin_${uid}`, 'chat_admin'));
     subs.push(watchRoomDoc('group_members', 'chat_members'));
 
-    // Watch DM rooms — query only needs array-contains (no composite index needed)
+    // Watch DM rooms
     const dmUnsub = onSnapshot(
       query(collection(db, 'chatRooms'), where('members', 'array-contains', uid)),
       snap => {
@@ -3085,7 +3804,7 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       case 'guidelines':   return <GuidelinesView    contentHeight={h} isMobile={m} />;
       case 'editprofile':  return <EditProfileView   member={member} contentHeight={h} isMobile={m} />;
       case 'changepw':     return <ChangePasswordView member={member} contentHeight={h} isMobile={m} />;
-      case 'notifs':       return <NotifsView        member={member} contentHeight={h} isMobile={m} />;
+      case 'notifs':       return <NotifsView        member={member} contentHeight={h} isMobile={m} onNav={switchNav} />;
       case 'chat_admin':   return <ChatDirectView    member={member} chatType="admin"   contentHeight={h} />;
       case 'chat_members': return <ChatDirectView    member={member} chatType="members" contentHeight={h} />;
       default:             return <OverviewView      member={member} onNav={switchNav} contentHeight={h} isMobile={m} />;
@@ -3123,9 +3842,31 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
             )}
           </View>
 
-          {/* RIGHT — notification bell + profile */}
+          {/* RIGHT — message icon + notification bell + profile */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {/* Notification bell */}
+            {/* Message icon — shows dropdown preview, badge = unread chat msgs */}
+            <TouchableOpacity style={s.dashRoundBtn} onPress={() => {
+              setShowMsgDropdown(v => !v);
+              // Mark all chat notifications as read when opening dropdown
+              if (!showMsgDropdown && memberInit?.uid) {
+                getDocs(query(
+                  collection(db, 'members', memberInit.uid, 'notifications'),
+                  where('read', '==', false),
+                  where('type', '==', 'chat')
+                )).then(snap => {
+                  snap.docs.forEach(d => updateDoc(d.ref, { read: true }).catch(() => {}));
+                  setUnreadChat(0);
+                }).catch(() => {});
+              }
+            }}>
+              <MaterialIcons name="chat-bubble-outline" size={19} color="#fff" />
+              {unreadChat > 0 && (
+                <View style={s.bellBadge}>
+                  <Text style={s.bellBadgeTxt}>{unreadChat > 9 ? '9+' : unreadChat}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            {/* Notification bell — opens all notifications */}
             <TouchableOpacity style={s.dashRoundBtn} onPress={() => switchNav('notifs')}>
               <Text style={{ fontSize: 16, textAlign: 'center', lineHeight: 22, includeFontPadding: false }}>🔔</Text>
               {unread > 0 && <View style={s.bellBadge}><Text style={s.bellBadgeTxt}>{unread > 9 ? '9+' : unread}</Text></View>}
@@ -3185,8 +3926,23 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
         </View>
       )}
 
-      {/* Floating Chat System */}
-      <ChatSystem currentMember={member} />
+      {/* Floating Chat Box */}
+      <FloatingChat member={member} />
+
+      {/* Message Notification Popup — slides in near message icon when admin messages */}
+      <MsgNotifPopup
+        notif={msgNotif}
+        onClose={() => setMsgNotif(null)}
+        onOpen={() => { setMsgNotif(null); switchNav('chat_admin'); }}
+      />
+
+      {/* Message Dropdown Preview — shown when message icon in topbar is clicked */}
+      {showMsgDropdown && (
+        <MsgDropdown
+          member={member}
+          onClose={() => setShowMsgDropdown(false)}
+        />
+      )}
     </View>
   );
 };

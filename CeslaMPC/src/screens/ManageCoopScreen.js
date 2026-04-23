@@ -12,6 +12,7 @@ import {
   FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import { NotoSerif_700Bold } from '@expo-google-fonts/noto-serif';
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
@@ -1278,23 +1279,43 @@ const ClaimsView = () => {
 };
 
 // ── 8. NOTIFICATIONS ──────────────────────────────────────────────────────────
-const NotifsView = ({ members }) => {
+const NotifsView = ({ members, onNav }) => {
   const { data: notifs } = useCollection('adminNotifications', orderBy('createdAt', 'desc'));
   const unread = notifs.filter(n => !n.read).length;
+
+  const handleTap = async (n) => {
+    await markNotifRead(n.id).catch(() => {});
+    // Navigate to chat inbox if it's a chat notification
+    if (n.type === 'chat' && onNav) onNav('chat_inbox');
+  };
+
+  const getBorderColor = (n) => {
+    if (n.type === 'chat')         return C.blue;
+    if (n.type === 'registration') return C.gold;
+    if (n.type === 'approved')     return C.green;
+    return C.gold;
+  };
 
   return (
     <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
       <Text style={a.pageTitle}>🔔 Notifications</Text>
-      <Text style={a.pageSub}>{unread} unread notification{unread !== 1 ? 's' : ''}.</Text>
+      <Text style={a.pageSub}>{unread > 0 ? `${unread} unread — tap a message to open.` : 'All caught up!'}</Text>
 
       {/* Live pending members as alerts */}
       {members.filter(m => m.status === 'Pending').map(m => (
-        <TouchableOpacity key={`pending-${m.id}`} style={[a.notifCard, { borderLeftColor: C.orange }]} activeOpacity={0.8}>
+        <TouchableOpacity key={`pending-${m.id}`}
+          style={[a.notifCard, { borderLeftColor: C.orange }]}
+          onPress={() => onNav && onNav('pending')} activeOpacity={0.8}>
           <View style={[a.notifIcon, { backgroundColor: C.orange + '22' }]}>
             <Text style={{ fontSize: 18 }}>🆕</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={a.notifTitle}>New Member Registration</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+              <Text style={[a.notifTitle, { flex: 1 }]} numberOfLines={1}>New Member Registration</Text>
+              <View style={{ backgroundColor: C.orange, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>TAP TO REVIEW</Text>
+              </View>
+            </View>
             <Text style={a.notifMsg}>{m.name} ({m.userId}) registered and is awaiting your approval.</Text>
             <Text style={a.notifTime}>{fmtTime(m.createdAt)}</Text>
           </View>
@@ -1303,21 +1324,32 @@ const NotifsView = ({ members }) => {
       ))}
 
       {/* Firestore admin notifications */}
-      {notifs.map(n => (
-        <TouchableOpacity key={n.id}
-          style={[a.notifCard, { borderLeftColor: n.type === 'registration' ? C.gold : n.type === 'approved' ? C.green : C.blue, opacity: n.read ? 0.55 : 1 }]}
-          onPress={() => markNotifRead(n.id)} activeOpacity={0.8}>
-          <View style={[a.notifIcon, { backgroundColor: (n.type === 'approved' ? C.green : C.gold) + '22' }]}>
-            <Text style={{ fontSize: 18 }}>{n.icon || '🔔'}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={a.notifTitle}>{n.title}</Text>
-            <Text style={a.notifMsg}>{n.message}</Text>
-            <Text style={a.notifTime}>{fmtTime(n.createdAt)}</Text>
-          </View>
-          {!n.read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.gold, marginTop: 4 }} />}
-        </TouchableOpacity>
-      ))}
+      {notifs.map(n => {
+        const isChat   = n.type === 'chat';
+        const borderClr = getBorderColor(n);
+        return (
+          <TouchableOpacity key={n.id}
+            style={[a.notifCard, { borderLeftColor: borderClr, opacity: n.read ? 0.55 : 1 }]}
+            onPress={() => handleTap(n)} activeOpacity={0.8}>
+            <View style={[a.notifIcon, { backgroundColor: borderClr + '22' }]}>
+              <Text style={{ fontSize: 18 }}>{n.icon || '🔔'}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                <Text style={[a.notifTitle, { flex: 1 }]} numberOfLines={1}>{n.title}</Text>
+                {isChat && !n.read && (
+                  <View style={{ backgroundColor: C.blue, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>TAP TO OPEN</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={a.notifMsg} numberOfLines={2}>{n.message}</Text>
+              <Text style={a.notifTime}>{fmtTime(n.createdAt)}</Text>
+            </View>
+            {!n.read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: borderClr, marginTop: 4 }} />}
+          </TouchableOpacity>
+        );
+      })}
 
       {notifs.length === 0 && members.filter(m => m.status === 'Pending').length === 0 && (
         <GCard style={{ alignItems: 'center', padding: 36 }}>
@@ -1983,18 +2015,32 @@ const AdminChatRoom = ({ roomId, memberName, onBack }) => {
     if (!text.trim() || sending) return;
     setSending(true);
     try {
+      const msgText  = text.trim();
+      const memberId = roomId.replace('admin_', '');
       await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
         senderId: 'admin',
         senderName: 'Admin',
-        text: text.trim(),
+        text: msgText,
         createdAt: serverTimestamp(),
         readBy: ['admin'],
       });
       await updateDoc(doc(db, 'chatRooms', roomId), {
-        lastMessage: text.trim(),
+        lastMessage: msgText,
         lastAt: serverTimestamp(),
         lastSender: 'Admin',
+        lastSenderId: 'admin',
       });
+      // ── Notify the member so their bell icon shows the admin reply ────────
+      addDoc(collection(db, 'members', memberId, 'notifications'), {
+        type:    'chat',
+        icon:    '💬',
+        title:   'New message from Admin',
+        message: msgText.length > 80 ? msgText.slice(0, 80) + '\u2026' : msgText,
+        color:   '#0f1e35',
+        navKey:  'chat_admin',
+        createdAt: serverTimestamp(),
+        read:    false,
+      }).catch(() => {});
       setText('');
     } catch (e) { console.warn(e); }
     finally { setSending(false); }
@@ -2576,6 +2622,90 @@ const AdminGroupChatView = () => {
   );
 };
 
+// ─── SMALL MESSAGE NOTIFICATION POPUP (near message icon, like Facebook) ──────
+const MsgNotifPopup = ({ notif, onClose, onOpen }) => {
+  const translateY = useRef(new Animated.Value(-80)).current;
+  const opacity    = useRef(new Animated.Value(0)).current;
+  const timerRef   = useRef(null);
+
+  useEffect(() => {
+    if (!notif) return;
+    // slide in
+    Animated.parallel([
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 90, friction: 11 }),
+      Animated.timing(opacity,    { toValue: 1, duration: 180, useNativeDriver: true }),
+    ]).start();
+    // auto-dismiss after 5s
+    timerRef.current = setTimeout(dismiss, 5000);
+    return () => clearTimeout(timerRef.current);
+  }, [notif?.id]);
+
+  const dismiss = () => {
+    clearTimeout(timerRef.current);
+    Animated.parallel([
+      Animated.timing(translateY, { toValue: -80, duration: 220, useNativeDriver: true }),
+      Animated.timing(opacity,    { toValue: 0,   duration: 180, useNativeDriver: true }),
+    ]).start(() => onClose?.());
+  };
+
+  if (!notif) return null;
+
+  const initials = (notif.memberName || '?')
+    .split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+  return (
+    <Animated.View style={{
+      position: 'absolute',
+      top: Platform.OS === 'web' ? 52 : 96,
+      right: 12,
+      width: 280,
+      transform: [{ translateY }],
+      opacity,
+      zIndex: 99999,
+    }}>
+      <TouchableOpacity
+        activeOpacity={0.92}
+        onPress={() => { dismiss(); onOpen?.(); }}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 10,
+          backgroundColor: '#1a2d4e',
+          borderRadius: 16, padding: 12,
+          borderWidth: 1.5, borderColor: C.gold,
+          shadowColor: '#000', shadowOpacity: 0.28,
+          shadowRadius: 14, shadowOffset: { width: 0, height: 5 },
+        }}
+      >
+        {/* Avatar */}
+        <View style={{
+          width: 38, height: 38, borderRadius: 19,
+          backgroundColor: 'rgba(201,168,76,0.25)',
+          borderWidth: 1.5, borderColor: C.gold,
+          justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+        }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.gold }}>{initials}</Text>
+        </View>
+        {/* Text */}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff' }} numberOfLines={1}>
+            {notif.memberName}
+          </Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.68)', marginTop: 1 }} numberOfLines={2}>
+            {notif.lastMessage}
+          </Text>
+        </View>
+        {/* Dismiss */}
+        <TouchableOpacity
+          onPress={(e) => { e?.stopPropagation?.(); dismiss(); }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' }}
+        >
+          <Text style={{ color: 'rgba(255,255,255,0.70)', fontSize: 11 }}>✕</Text>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
 const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
   const { height } = useWindowDimensions();
   const [activeNav, setActiveNav] = useState('overview');
@@ -2595,19 +2725,43 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
 
   // Real-time unread chat count across all admin chat rooms
   const [chatUnread, setChatUnread] = useState(0);
+  // Message notification popup state
+  const [msgNotif, setMsgNotif]       = useState(null); // { id, memberName, lastMessage, roomId }
+  const bannerBaselineRef             = useRef({});
+
   useEffect(() => {
     const q = query(collection(db, 'chatRooms'), where('type', '==', 'admin'));
-    const unsub = onSnapshot(q, async snap => {
-      let total = 0;
-      snap.docs.forEach(roomDoc => {
-        // We'll count via sub-collection via a separate listener set
-      });
-      // Simpler: track via lastSender not being admin
+    const unsub = onSnapshot(q, snap => {
+      // Unread count
       const unreadRooms = snap.docs.filter(d => {
         const data = d.data();
         return data.lastMessage && data.lastSender && data.lastSender !== 'Admin';
       }).length;
       setChatUnread(unreadRooms);
+
+      // Popup: detect truly new incoming messages
+      snap.docs.forEach(roomDoc => {
+        const data   = roomDoc.data();
+        const roomId = roomDoc.id;
+        const atMs   = data.lastAt?.toMillis?.()
+          ?? (data.lastAt?.seconds != null ? data.lastAt.seconds * 1000 : 0);
+
+        if (bannerBaselineRef.current[roomId] == null) {
+          bannerBaselineRef.current[roomId] = atMs;
+          return;
+        }
+        if (atMs <= bannerBaselineRef.current[roomId]) return;
+        bannerBaselineRef.current[roomId] = atMs;
+
+        if (data.lastSenderId === 'admin' || data.lastSender === 'Admin') return;
+
+        setMsgNotif({
+          id: roomId + '_' + atMs,
+          memberName:  data.memberName || 'Member',
+          lastMessage: data.lastMessage || '💬 New message',
+          roomId,
+        });
+      });
     }, () => {});
     return unsub;
   }, []);
@@ -2658,7 +2812,7 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
       case 'audit':         return <AuditTrailView />;
       case 'performance':   return <PerformanceView  members={members} loans={loans} claims={claims} />;
       case 'settings':      return <SettingsView />;
-      case 'notifications': return <NotifsView       members={members} />;
+      case 'notifications': return <NotifsView       members={members} onNav={switchNav} />;
       case 'chat_inbox':    return <AdminChatInboxView />;
       case 'chat_group':    return <AdminGroupChatView />;
       default:              return <OverviewView     members={members} claims={claims} loans={loans} />;
@@ -2682,18 +2836,18 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {/* Notification bell */}
+          {/* Message icon — chat inbox, badge = unread chat msgs only */}
+          <TouchableOpacity style={a.bellBtn} onPress={() => switchNav('chat_inbox')}>
+            <MaterialIcons name="chat-bubble-outline" size={19} color="#fff" />
+            {chatUnread > 0 && (
+              <View style={a.bellBadge}><Text style={a.bellBadgeTxt}>{chatUnread > 9 ? '9+' : chatUnread}</Text></View>
+            )}
+          </TouchableOpacity>
+          {/* Notification bell — all notifications */}
           <TouchableOpacity style={a.bellBtn} onPress={() => switchNav('notifications')}>
             <Text style={{ fontSize: 17 }}>🔔</Text>
             {unreadNotifs > 0 && (
               <View style={a.bellBadge}><Text style={a.bellBadgeTxt}>{unreadNotifs > 9 ? '9+' : unreadNotifs}</Text></View>
-            )}
-          </TouchableOpacity>
-          {/* Chat quick-access */}
-          <TouchableOpacity style={a.bellBtn} onPress={() => switchNav('chat_inbox')}>
-            <Text style={{ fontSize: 17 }}>💬</Text>
-            {chatUnread > 0 && (
-              <View style={a.bellBadge}><Text style={a.bellBadgeTxt}>{chatUnread > 9 ? '9+' : chatUnread}</Text></View>
             )}
           </TouchableOpacity>
           {/* Pending members quick badge */}
@@ -2720,6 +2874,13 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
           {renderContent()}
         </Animated.View>
       </View>
+
+      {/* ── MESSAGE NOTIFICATION POPUP ── */}
+      <MsgNotifPopup
+        notif={msgNotif}
+        onClose={() => setMsgNotif(null)}
+        onOpen={() => { setMsgNotif(null); switchNav('chat_inbox'); }}
+      />
 
       {/* ── MOBILE DRAWER — full screen height ── */}
       {!isWide && drawer && (

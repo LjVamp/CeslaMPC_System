@@ -73,8 +73,6 @@ const Avatar = ({ member, size = 36, style }) => {
 };
 
 // ─── FIRESTORE HELPERS ───────────────────────────────────────────────────────
-
-// Get or create a DM room between two members
 const getDMRoomId = (uid1, uid2) => [uid1, uid2].sort().join('_');
 
 const ensureDMRoom = async (uid1, uid2, name1, name2) => {
@@ -140,6 +138,7 @@ const sendMessage = async (roomId, senderId, senderName, text) => {
     lastMessage: text.trim(),
     lastAt: serverTimestamp(),
     lastSender: senderName,
+    lastSenderId: senderId,
   });
 };
 
@@ -202,7 +201,7 @@ const ChatRoomView = ({ roomId, currentMember, roomTitle, roomType, onBack }) =>
           </Text>
         </View>
         {roomType === 'admin' && (
-          <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: 'rgba(26,138,74,0.25)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.50)' }}>
+          <View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10, backgroundColor: 'rgba(26,138,74,0.25)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.50)' }}>
             <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.green }}>● Live</Text>
           </View>
         )}
@@ -212,20 +211,20 @@ const ChatRoomView = ({ roomId, currentMember, roomTitle, roomType, onBack }) =>
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1, backgroundColor: 'rgba(152,186,213,0.15)' }}
-        contentContainerStyle={{ padding: 12, paddingBottom: 8 }}
+        contentContainerStyle={{ padding: 10, paddingBottom: 6 }}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
       >
         {messages.length === 0 && (
-          <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-            <Text style={{ fontSize: 32, marginBottom: 8 }}>
+          <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+            <Text style={{ fontSize: 28, marginBottom: 6 }}>
               {roomType === 'admin' ? '🛡️' : roomType === 'group' ? '👥' : '💬'}
             </Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textMuted, textAlign: 'center', lineHeight: 18 }}>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, textAlign: 'center', lineHeight: 17 }}>
               {roomType === 'admin'
-                ? 'Chat with Admin. Ask anything about\nyour account, loans, or savings.'
+                ? 'Chat with Admin.\nAsk anything about your account.'
                 : roomType === 'group'
-                ? 'Welcome to the Members Group Chat!\nSay hello to your co-members.'
+                ? 'Welcome to the Group Chat!\nSay hello to your co-members.'
                 : 'Start your conversation here.'}
             </Text>
           </View>
@@ -262,7 +261,7 @@ const ChatRoomView = ({ roomId, currentMember, roomTitle, roomType, onBack }) =>
           >
             {sending
               ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={{ color: '#fff', fontSize: 16 }}>➤</Text>
+              : <Text style={{ color: '#fff', fontSize: 15 }}>➤</Text>
             }
           </TouchableOpacity>
         </View>
@@ -308,9 +307,9 @@ const MembersList = ({ currentMember, onSelectMember, onBack }) => {
         <Text style={ch.roomTitle}>Select a Member</Text>
       </View>
       <View style={ch.searchBox}>
-        <Text style={{ color: C.textMuted, marginRight: 6 }}>🔍</Text>
+        <Text style={{ color: C.textMuted, marginRight: 6, fontSize: 13 }}>🔍</Text>
         <TextInput
-          style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy }}
+          style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}
           value={search} onChangeText={setSearch}
           placeholder="Search name or ID..."
           placeholderTextColor={C.textMuted}
@@ -323,16 +322,16 @@ const MembersList = ({ currentMember, onSelectMember, onBack }) => {
           <ScrollView showsVerticalScrollIndicator={false}>
             {filtered.map(m => (
               <TouchableOpacity key={m.id} style={ch.memberRow} onPress={() => onSelectMember(m)} activeOpacity={0.8}>
-                <Avatar member={m} size={38} />
+                <Avatar member={m} size={34} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>{m.name}</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.navy }}>{m.name}</Text>
                   <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>{m.userId}</Text>
                 </View>
-                <Text style={{ color: C.textMuted, fontSize: 18 }}>›</Text>
+                <Text style={{ color: C.textMuted, fontSize: 16 }}>›</Text>
               </TouchableOpacity>
             ))}
             {filtered.length === 0 && (
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', marginTop: 32 }}>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textMuted, textAlign: 'center', marginTop: 28 }}>
                 No members found.
               </Text>
             )}
@@ -351,7 +350,6 @@ const ChatHome = ({ currentMember, onSelectRoom, onSelectDM }) => {
   const [groupLast, setGroupLast] = useState(null);
   const [dmRooms, setDmRooms] = useState([]);
 
-  // Ensure admin + group rooms exist
   useEffect(() => {
     ensureAdminRoom(currentMember.uid, currentMember.name).then(id => {
       setAdminRoomId(id);
@@ -369,7 +367,6 @@ const ChatHome = ({ currentMember, onSelectRoom, onSelectDM }) => {
     });
   }, [currentMember.uid]);
 
-  // Listen for DM rooms involving this member
   useEffect(() => {
     const q = query(
       collection(db, 'chatRooms'),
@@ -382,23 +379,23 @@ const ChatHome = ({ currentMember, onSelectRoom, onSelectDM }) => {
     return unsub;
   }, [currentMember.uid]);
 
-  const RoomRow = ({ icon, title, sub, lastMsg, lastAt, color, onPress, badge }) => (
+  const RoomRow = ({ icon, title, sub, lastMsg, lastAt, color, onPress }) => (
     <TouchableOpacity style={ch.roomRow} onPress={onPress} activeOpacity={0.8}>
       <View style={[ch.roomIcon, { backgroundColor: color + '22' }]}>
-        <Text style={{ fontSize: 20 }}>{icon}</Text>
+        <Text style={{ fontSize: 18 }}>{icon}</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>{title}</Text>
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginTop: 1 }}>{sub}</Text>
+        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.navy }}>{title}</Text>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 1 }}>{sub}</Text>
         {lastMsg ? (
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, marginTop: 2 }} numberOfLines={1}>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textSec, marginTop: 2 }} numberOfLines={1}>
             {lastMsg}
           </Text>
         ) : null}
       </View>
-      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+      <View style={{ alignItems: 'flex-end', gap: 3 }}>
         {lastAt ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: C.textMuted }}>{fmtTime(lastAt)}</Text> : null}
-        <Text style={{ color: C.textMuted, fontSize: 16 }}>›</Text>
+        <Text style={{ color: C.textMuted, fontSize: 14 }}>›</Text>
       </View>
     </TouchableOpacity>
   );
@@ -406,8 +403,8 @@ const ChatHome = ({ currentMember, onSelectRoom, onSelectDM }) => {
   return (
     <View style={{ flex: 1 }}>
       <LinearGradient colors={['#1a2d4e', '#243554']} style={ch.homeHeader}>
-        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.gold, letterSpacing: 1.5 }}>CESLA MPC</Text>
-        <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 17, color: '#fff', marginTop: 2 }}>Messages</Text>
+        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.gold, letterSpacing: 1.5 }}>CESLA MPC</Text>
+        <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 15, color: '#fff', marginTop: 1 }}>Messages</Text>
       </LinearGradient>
 
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
@@ -432,15 +429,15 @@ const ChatHome = ({ currentMember, onSelectRoom, onSelectDM }) => {
         />
 
         {/* Direct Messages */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 14, paddingBottom: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 12, paddingBottom: 3 }}>
           <Text style={[ch.sectionLabel, { marginTop: 0, marginBottom: 0 }]}>DIRECT MESSAGES</Text>
-          <TouchableOpacity onPress={onSelectDM} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: 'rgba(37,99,176,0.15)', borderWidth: 1, borderColor: 'rgba(37,99,176,0.35)' }}>
+          <TouchableOpacity onPress={onSelectDM} style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, backgroundColor: 'rgba(37,99,176,0.15)', borderWidth: 1, borderColor: 'rgba(37,99,176,0.35)' }}>
             <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.blue }}>+ New DM</Text>
           </TouchableOpacity>
         </View>
         {dmRooms.length === 0 && (
-          <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textMuted, textAlign: 'center' }}>
+          <View style={{ alignItems: 'center', paddingVertical: 14 }}>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, textAlign: 'center' }}>
               No direct messages yet.{'\n'}Tap "+ New DM" to start chatting!
             </Text>
           </View>
@@ -460,18 +457,17 @@ const ChatHome = ({ currentMember, onSelectRoom, onSelectDM }) => {
           );
         })}
 
-        <View style={{ height: 20 }} />
+        <View style={{ height: 16 }} />
       </ScrollView>
     </View>
   );
 };
 
 // ─── MAIN CHAT SYSTEM ─────────────────────────────────────────────────────────
-// screen: 'home' | 'room' | 'members'
 export default function ChatSystem({ currentMember }) {
   const [open, setOpen] = useState(false);
   const [screen, setScreen] = useState('home');
-  const [activeRoom, setActiveRoom] = useState(null); // { id, title, type }
+  const [activeRoom, setActiveRoom] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -501,10 +497,9 @@ export default function ChatSystem({ currentMember }) {
     }).start();
   }, [open]);
 
-  // Count unread messages across all rooms
+  // Count unread messages
   useEffect(() => {
     if (!currentMember?.uid) return;
-    // Listen for admin room unread
     const adminRoomId = `admin_${currentMember.uid}`;
     const q = query(
       collection(db, 'chatRooms', adminRoomId, 'messages'),
@@ -523,12 +518,18 @@ export default function ChatSystem({ currentMember }) {
 
   const translateY = slideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [500, 0],
+    outputRange: [400, 0],
   });
   const opacity = slideAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0, 0.5, 1],
+    inputRange: [0, 0.4, 1],
+    outputRange: [0, 0.6, 1],
   });
+
+  const closeChat = () => {
+    setOpen(false);
+    setScreen('home');
+    setActiveRoom(null);
+  };
 
   const openRoom = (id, title, type) => {
     setActiveRoom({ id, title, type });
@@ -552,10 +553,19 @@ export default function ChatSystem({ currentMember }) {
 
   return (
     <>
+      {/* ── BACKDROP — tap outside to close ── */}
+      {open && (
+        <TouchableOpacity
+          style={ch.backdrop}
+          activeOpacity={1}
+          onPress={closeChat}
+        />
+      )}
+
       {/* ── CHAT PANEL ── */}
       {open && (
         <Animated.View style={[ch.panel, { transform: [{ translateY }], opacity }]}>
-          <View style={{ flex: 1, borderRadius: 20, overflow: 'hidden', backgroundColor: '#f0f5fa' }}>
+          <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: '#f0f5fa' }}>
             {screen === 'home' && (
               <ChatHome
                 currentMember={currentMember}
@@ -579,18 +589,11 @@ export default function ChatSystem({ currentMember }) {
                 onBack={goHome}
               />
             )}
-            {/* Close button */}
-            <TouchableOpacity
-              style={ch.closeBtn}
-              onPress={() => { setOpen(false); goHome(); }}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Text style={{ color: C.textMuted, fontSize: 14, fontWeight: '700' }}>✕</Text>
-            </TouchableOpacity>
           </View>
         </Animated.View>
       )}
 
-      {/* ── FAB (Floating Action Button) ── */}
+      {/* ── FAB ── */}
       <Animated.View style={[ch.fabWrap, { transform: [{ scale: scaleAnim }] }]}>
         <TouchableOpacity
           style={ch.fab}
@@ -602,10 +605,9 @@ export default function ChatSystem({ currentMember }) {
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             style={ch.fabGrad}
           >
-            <Text style={{ fontSize: 22 }}>{open ? '✕' : '💬'}</Text>
+            <Text style={{ fontSize: 20 }}>{open ? '✕' : '💬'}</Text>
           </LinearGradient>
         </TouchableOpacity>
-        {/* Unread badge */}
         {unreadCount > 0 && !open && (
           <View style={ch.fabBadge}>
             <Text style={ch.fabBadgeTxt}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
@@ -618,33 +620,29 @@ export default function ChatSystem({ currentMember }) {
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const ch = StyleSheet.create({
-  // Panel
+  // Backdrop — full screen transparent, closes chat on tap
+  backdrop: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'transparent',
+    zIndex: 9997,
+  },
+
+  // Panel — smaller size
   panel: {
     position: 'absolute',
-    bottom: 90,
+    bottom: 82,
     right: 16,
-    width: 340,
-    height: 520,
-    borderRadius: 20,
+    width: 290,
+    height: 420,
+    borderRadius: 16,
     shadowColor: '#0f1e35',
     shadowOpacity: 0.28,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 20,
     zIndex: 9998,
-    ...(Platform.OS === 'web' ? { maxHeight: '75vh' } : {}),
-  },
-  closeBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 12,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.70)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
+    ...(Platform.OS === 'web' ? { maxHeight: '65vh' } : {}),
   },
 
   // FAB
@@ -655,19 +653,19 @@ const ch = StyleSheet.create({
     zIndex: 9999,
   },
   fab: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     shadowColor: '#0f1e35',
     shadowOpacity: 0.30,
-    shadowRadius: 12,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 10,
   },
   fabGrad: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -675,9 +673,9 @@ const ch = StyleSheet.create({
     position: 'absolute',
     top: -3,
     right: -3,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: C.red,
     justifyContent: 'center',
     alignItems: 'center',
@@ -686,39 +684,39 @@ const ch = StyleSheet.create({
   },
   fabBadgeTxt: {
     fontFamily: 'GoogleSans_700Bold',
-    fontSize: 9,
+    fontSize: 8,
     color: '#fff',
   },
 
   // Home
   homeHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    paddingBottom: 14,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 11,
   },
   sectionLabel: {
     fontFamily: 'GoogleSans_700Bold',
-    fontSize: 9,
+    fontSize: 8,
     color: C.textMuted,
     letterSpacing: 2,
-    paddingHorizontal: 14,
-    marginTop: 14,
-    marginBottom: 4,
+    paddingHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 2,
   },
   roomRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderColor: 'rgba(15,30,53,0.07)',
     backgroundColor: 'rgba(255,255,255,0.50)',
   },
   roomIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
@@ -728,15 +726,15 @@ const ch = StyleSheet.create({
   roomHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     backgroundColor: '#1a2d4e',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
   },
   backBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.15)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -744,19 +742,19 @@ const ch = StyleSheet.create({
   },
   roomTitle: {
     fontFamily: 'GoogleSans_700Bold',
-    fontSize: 14,
+    fontSize: 13,
     color: '#fff',
   },
   roomSub: {
     fontFamily: 'GoogleSans_400Regular',
-    fontSize: 10,
+    fontSize: 9,
     color: 'rgba(255,255,255,0.55)',
     marginTop: 1,
   },
 
   // Bubbles
   bubbleWrap: {
-    marginBottom: 8,
+    marginBottom: 6,
     maxWidth: '80%',
     alignSelf: 'flex-start',
   },
@@ -765,39 +763,39 @@ const ch = StyleSheet.create({
   },
   bubbleSender: {
     fontFamily: 'GoogleSans_700Bold',
-    fontSize: 10,
+    fontSize: 9,
     color: C.textMuted,
-    marginBottom: 3,
+    marginBottom: 2,
     paddingLeft: 2,
   },
   bubble: {
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 14,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
   },
   bubbleOther: {
     backgroundColor: '#fff',
-    borderBottomLeftRadius: 4,
+    borderBottomLeftRadius: 3,
     shadowColor: '#0f1e35',
     shadowOpacity: 0.06,
-    shadowRadius: 4,
+    shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
   },
   bubbleMine: {
     backgroundColor: '#1a2d4e',
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: 3,
   },
   bubbleTxt: {
     fontFamily: 'GoogleSans_400Regular',
-    fontSize: 13,
+    fontSize: 12,
     color: C.navy,
-    lineHeight: 19,
+    lineHeight: 17,
   },
   bubbleTime: {
     fontFamily: 'GoogleSans_400Regular',
-    fontSize: 9,
+    fontSize: 8,
     color: C.textMuted,
-    marginTop: 3,
+    marginTop: 2,
     paddingHorizontal: 2,
   },
 
@@ -805,8 +803,8 @@ const ch = StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 8,
-    padding: 10,
+    gap: 7,
+    padding: 8,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderColor: 'rgba(15,30,53,0.10)',
@@ -814,20 +812,20 @@ const ch = StyleSheet.create({
   input: {
     flex: 1,
     fontFamily: 'GoogleSans_400Regular',
-    fontSize: 13,
+    fontSize: 12,
     color: C.navy,
     backgroundColor: 'rgba(240,246,252,0.90)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 1.5,
     borderColor: 'rgba(200,218,235,0.75)',
-    maxHeight: 90,
+    maxHeight: 72,
   },
   sendBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: '#1a2d4e',
     justifyContent: 'center',
     alignItems: 'center',
@@ -838,20 +836,20 @@ const ch = StyleSheet.create({
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    margin: 12,
+    margin: 10,
     backgroundColor: 'rgba(255,255,255,0.75)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderWidth: 1.5,
     borderColor: 'rgba(200,218,235,0.75)',
   },
   memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderColor: 'rgba(15,30,53,0.07)',
   },
