@@ -446,6 +446,7 @@ export default function AdminScreen({ navigation, route }) {
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [selectedSystem, setSelectedSystem] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   // ── Grid layout: 3 cards per row on wide, 2 on narrow ────────────────────
   const PAD = isWide ? 32 : 14;
@@ -520,10 +521,6 @@ export default function AdminScreen({ navigation, route }) {
         zIndex: 100,
       }}>
         <View style={[styles.header, { paddingHorizontal: isWide ? 40 : 16, paddingVertical: isWide ? 16 : 10 }]}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation && navigation.goBack()}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
-
           <View style={styles.headerCenter}>
             <Text style={[styles.headerH1, { fontSize: isWide ? 20 : isSmall ? 14 : 16 }]} numberOfLines={1} adjustsFontSizeToFit>
               <Text style={styles.headerGold}>Admin </Text>Dashboard
@@ -568,7 +565,7 @@ export default function AdminScreen({ navigation, route }) {
                     activeOpacity={0.80}
                     onPress={() => {
                       setProfileOpen(false);
-                      setTimeout(() => navigation && navigation.navigate('Home'), 150);
+                      setTimeout(() => setLogoutConfirmOpen(true), 150);
                     }}
                   >
                     <MaterialIcons name="logout" size={15} color="#e74c3c"/>
@@ -588,25 +585,34 @@ export default function AdminScreen({ navigation, route }) {
           <Text style={[styles.sectionSub, { fontSize: isWide ? 14 : 13 }]}>Select a system to manage its data and settings</Text>
         </Animated.View>
 
-        {/* ── 5 cards — wraps automatically ── */}
-        <View style={[styles.grid, {
-          paddingHorizontal: PAD,
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          alignItems: 'stretch',
-          justifyContent: isWide ? 'flex-start' : 'center',
-          gap: GAP,
-        }]}>
-          {SYSTEMS.map((sys, i) => (
-            <SystemCard
-              key={sys.key}
-              sys={sys}
-              onPress={handleCardPress}
-              delay={[150, 250, 350, 450, 550][i] || 550}
-              cardWidth={cardWidth}
-              isWide={isWide}
-            />
-          ))}
+        {/* ── 5 cards — row 1: first 3, row 2: last 2 centered ── */}
+        <View style={[styles.grid, { paddingHorizontal: PAD, gap: GAP }]}>
+          {/* Row 1 — 3 cards */}
+          <View style={{ flexDirection: 'row', gap: GAP, justifyContent: isWide ? 'flex-start' : 'center' }}>
+            {SYSTEMS.slice(0, 3).map((sys, i) => (
+              <SystemCard
+                key={sys.key}
+                sys={sys}
+                onPress={handleCardPress}
+                delay={[150, 250, 350][i]}
+                cardWidth={cardWidth}
+                isWide={isWide}
+              />
+            ))}
+          </View>
+          {/* Row 2 — 2 cards, centered */}
+          <View style={{ flexDirection: 'row', gap: GAP, justifyContent: 'center' }}>
+            {SYSTEMS.slice(3).map((sys, i) => (
+              <SystemCard
+                key={sys.key}
+                sys={sys}
+                onPress={handleCardPress}
+                delay={[450, 550][i]}
+                cardWidth={cardWidth}
+                isWide={isWide}
+              />
+            ))}
+          </View>
         </View>
 
         <Animated.View style={[styles.footer, { opacity: secFade }]}>
@@ -622,6 +628,49 @@ export default function AdminScreen({ navigation, route }) {
         onClose={() => { setLoginModalOpen(false); setSelectedSystem(null); }}
         onSuccess={handleLoginSuccess}
       />
+
+      {/* ── LOGOUT CONFIRMATION MODAL ── */}
+      <Modal transparent visible={logoutConfirmOpen} animationType="fade" onRequestClose={() => setLogoutConfirmOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setLogoutConfirmOpen(false)} />
+          <View style={styles.logoutModal}>
+            <View style={[styles.accentBar, { backgroundColor: '#e74c3c' }]} />
+            <View style={styles.logoutModalBody}>
+              <View style={styles.logoutIconWrap}>
+                <MaterialIcons name="logout" size={28} color="#e74c3c" />
+              </View>
+              <Text style={styles.logoutModalTitle}>Log Out?</Text>
+              <Text style={styles.logoutModalSub}>Are you sure you want to log out of the Admin Dashboard?</Text>
+              <View style={styles.logoutModalBtns}>
+                <TouchableOpacity
+                  style={styles.logoutCancelBtn}
+                  activeOpacity={0.80}
+                  onPress={() => setLogoutConfirmOpen(false)}
+                >
+                  <Text style={styles.logoutCancelTxt}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.logoutConfirmBtn}
+                  activeOpacity={0.80}
+                  onPress={() => {
+                    setLogoutConfirmOpen(false);
+                    setTimeout(() => navigation && navigation.navigate('Home'), 200);
+                  }}
+                >
+                  <LinearGradient
+                    colors={['#e74c3c', '#c0392b']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.logoutConfirmGrad}
+                  >
+                    <MaterialIcons name="logout" size={15} color="#fff" />
+                    <Text style={styles.logoutConfirmTxt}>Yes, Log Out</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -654,7 +703,7 @@ const styles = StyleSheet.create({
   adminChipAvatarTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#0d1b3e' },
   adminChipName: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, maxWidth: 70 },
 
-  sectionLabel: { alignItems: 'center', marginTop: 14, marginBottom: 10, paddingHorizontal: 20 },
+  sectionLabel: { alignItems: 'center', marginTop: 44, marginBottom: 22, paddingHorizontal: 20 },
   sectionTitle: { fontFamily: 'GoogleSans_700Bold', letterSpacing: 5, textTransform: 'uppercase', color: '#011f4b', marginBottom: 8 },
   sectionSub: { fontFamily: 'GoogleSans_400Regular', color: 'rgba(255,255,255,0.88)', letterSpacing: 0.5, textAlign: 'center' },
 
@@ -765,5 +814,53 @@ const styles = StyleSheet.create({
   },
   profileLogoutTxt: {
     fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e74c3c',
+  },
+
+  // ── Logout Confirm Modal ───────────────────────────────────────────────────
+  logoutModal: {
+    width: '100%', maxWidth: 360, borderRadius: 20,
+    backgroundColor: '#f0f5fa', overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.30, shadowRadius: 30,
+    shadowOffset: { width: 0, height: 10 }, elevation: 20,
+  },
+  logoutModalBody: {
+    alignItems: 'center', padding: 28, paddingTop: 24, gap: 10,
+  },
+  logoutIconWrap: {
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: 'rgba(231,76,60,0.10)',
+    borderWidth: 1.5, borderColor: 'rgba(231,76,60,0.25)',
+    justifyContent: 'center', alignItems: 'center', marginBottom: 4,
+  },
+  logoutModalTitle: {
+    fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: '#011f4b', letterSpacing: 0.3,
+  },
+  logoutModalSub: {
+    fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(1,31,75,0.55)',
+    textAlign: 'center', lineHeight: 20, marginBottom: 8,
+  },
+  logoutModalBtns: {
+    flexDirection: 'row', gap: 10, width: '100%',
+  },
+  logoutCancelBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: 12,
+    backgroundColor: 'rgba(1,31,75,0.07)',
+    borderWidth: 1.5, borderColor: 'rgba(1,31,75,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  logoutCancelTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: 'rgba(1,31,75,0.60)',
+  },
+  logoutConfirmBtn: {
+    flex: 1, borderRadius: 12, overflow: 'hidden',
+    shadowColor: '#e74c3c', shadowOpacity: 0.30, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 }, elevation: 4,
+  },
+  logoutConfirmGrad: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 13,
+  },
+  logoutConfirmTxt: {
+    fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff',
   },
 });

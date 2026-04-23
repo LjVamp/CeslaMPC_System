@@ -20,7 +20,18 @@ import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import ChatSystem from '../components/ChatSystem';
+
+// ─── Notification handler — must be set before any notification fires ─────────
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge:  true,
+  }),
+});
 
 // ─── Firebase ────────────────────────────────────────────────────────────────
 import {
@@ -45,6 +56,9 @@ const C = {
   textSec:   'rgba(15,30,53,0.65)',
   textMuted: 'rgba(15,30,53,0.42)',
 };
+
+// ── Persistent session key ────────────────────────────────────────────────────
+const SESSION_KEY = '@cesla_member_session_v1';
 
 // ── Responsive hook — use anywhere ──────────────────────────────────────────
 const useRwd = () => {
@@ -2703,7 +2717,8 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
         text: text.trim(), createdAt: serverTimestamp(), readBy: [member.uid],
       });
       await updateDoc(doc(db, 'chatRooms', roomId), {
-        lastMessage: text.trim(), lastAt: serverTimestamp(), lastSender: member.name,
+        lastMessage: text.trim(), lastAt: serverTimestamp(),
+        lastSender: member.name, lastSenderId: member.uid,  // ← needed for notification filtering
       });
       setText('');
     } catch (e) { console.warn(e); }
@@ -2893,6 +2908,130 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   // Unread count
   useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(query(collection(db, 'members', memberInit.uid, 'notifications'), where('read', '==', false)), snap => setUnread(snap.size)); }, [memberInit?.uid]);
 
+  // ── Notification setup: permissions + Android channel ────────────────────
+  const notifReadyRef = useRef(false);
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    (async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') return;
+
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('chat_messages', {
+            name:             'Chat Messages',
+            importance:        Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            enableVibrate:    true,
+            showBadge:        true,
+            sound:            'default',
+          });
+        }
+        notifReadyRef.current = true;
+      } catch (e) { console.error('[CESLA] notif setup error:', e); }
+    })();
+  }, []);
+
+  // ── Watch chatRoom DOCUMENTS (not subcollections) for incoming messages ───
+  // We watch the chatRoom doc's `lastAt` field — it updates on every message send.
+  // This is reliable even when the room was just created by the other side.
+  useEffect(() => {
+    if (!memberInit?.uid || Platform.OS === 'web') return;
+    const uid  = memberInit.uid;
+    const subs = [];
+    const dmWatching = new Set();
+
+    const fireNotif = async (senderName, text, navKey) => {
+      if (!notifReadyRef.current) return;
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title:  `💬 ${senderName}`,
+            body:   text.length > 80 ? text.slice(0, 80) + '…' : text,
+            sound:  'default',
+            data:   { navKey },
+            ...(Platform.OS === 'android' ? { channelId: 'chat_messages' } : {}),
+          },
+          trigger: null,
+        });
+      } catch (e) { console.error('[CESLA] scheduleNotification error:', e); }
+    };
+
+    // Watch a single chatRoom doc — fires notification when lastAt increases
+    const watchRoomDoc = (roomId, navKey) => {
+      let baselineMs = -1; // -1 = not yet initialised
+      return onSnapshot(
+        doc(db, 'chatRooms', roomId),
+        snap => {
+          if (!snap.exists()) return;
+          const d    = snap.data();
+          const atMs = d.lastAt?.toMillis?.()
+            ?? (d.lastAt?.seconds != null ? d.lastAt.seconds * 1000 : 0);
+
+          if (baselineMs === -1) {             // first snapshot → set baseline, no notif
+            baselineMs = atMs;
+            return;
+          }
+          if (atMs <= baselineMs) return;      // same/older timestamp → skip
+          baselineMs = atMs;
+
+          // Skip own messages
+          if (d.lastSenderId === uid) return;
+          if (!d.lastSenderId && d.lastSender === memberInit.name) return; // fallback
+
+          fireNotif(
+            d.lastSender     || 'New message',
+            d.lastMessage    || '📩 New message',
+            navKey,
+          );
+        },
+        err => console.error('[CESLA] watchRoomDoc error:', roomId, err),
+      );
+    };
+
+    // Always watch admin chat + group chat
+    subs.push(watchRoomDoc(`admin_${uid}`, 'chat_admin'));
+    subs.push(watchRoomDoc('group_members', 'chat_members'));
+
+    // Watch DM rooms — query only needs array-contains (no composite index needed)
+    const dmUnsub = onSnapshot(
+      query(collection(db, 'chatRooms'), where('members', 'array-contains', uid)),
+      snap => {
+        snap.docs.forEach(rDoc => {
+          const rId = rDoc.id;
+          if (dmWatching.has(rId)) return;
+          dmWatching.add(rId);
+          subs.push(watchRoomDoc(rId, 'chat_members'));
+        });
+      },
+      err => console.error('[CESLA] DM rooms query error:', err),
+    );
+    subs.push(dmUnsub);
+
+    return () => subs.forEach(fn => typeof fn === 'function' && fn());
+  }, [memberInit?.uid]);
+
+  // ── Handle notification tap → open correct chatbox ─────────────────────
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    // App was opened BY tapping the notification (terminated state)
+    Notifications.getLastNotificationResponseAsync()
+      .then(resp => {
+        if (!resp) return;
+        const { navKey } = resp.notification.request.content.data || {};
+        if (navKey) switchNav(navKey);
+      })
+      .catch(() => {});
+
+    // Notification tapped while app is in fg / bg
+    const sub = Notifications.addNotificationResponseReceivedListener(resp => {
+      const { navKey } = resp.notification.request.content.data || {};
+      if (navKey) switchNav(navKey);
+    });
+    return () => sub.remove();
+  }, []);
+
   // Android hardware back button — show logout confirmation
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -3074,6 +3213,20 @@ export default function CoopScreen({ navigation, route }) {
     }
   }, [route?.params?.view]);
 
+  // ── Restore persisted session (stays logged in across app restarts) ───────
+  useEffect(() => {
+    if (route?.params?.view) return; // respect explicit nav param
+    AsyncStorage.getItem(SESSION_KEY)
+      .then(raw => {
+        if (!raw) return;
+        try {
+          const saved = JSON.parse(raw);
+          if (saved?.uid) { setMember(saved); setView('dashboard'); }
+        } catch { /* ignore corrupt data */ }
+      })
+      .catch(() => {});
+  }, []);
+
   // Login state
   const [userId,       setUserId]       = useState('');
   const [pw,           setPw]           = useState('');
@@ -3130,6 +3283,8 @@ export default function CoopScreen({ navigation, route }) {
     setLoginLoading(true); setLoginErr('');
     try {
       const m = await loginByUserIdFS(userId.trim(), pw);
+      // ── Persist session so app stays logged in after restart ──────────────
+      try { await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(m)); } catch { /* silent */ }
       setMember(m);
       setView('dashboard'); // ← stays in same screen, no navigation needed
     } catch (e) { setLoginErr(e.message || 'Invalid User ID or password.'); }
@@ -3153,6 +3308,8 @@ export default function CoopScreen({ navigation, route }) {
 
   const handleCopy = async uid => { await Clipboard.setStringAsync(uid); setCopied(true); setTimeout(() => setCopied(false), 2500); };
   const handleLogout = () => {
+    // ── Clear persisted session ──────────────────────────────────────────────
+    try { AsyncStorage.removeItem(SESSION_KEY); } catch { /* silent */ }
     setMember(null); setUserId(''); setPw(''); setView('login');
     // Reset navigation stack — skip AdminScreen to avoid auto-redirecting to ManageCanteenScreen
     if (navigation) {
