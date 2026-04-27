@@ -2954,7 +2954,7 @@ const OrderingMonitoring = ({ orders, onUpdateStatus }) => {
                       </View>
                       <Text style={lp.cardItems} numberOfLines={3}>{itemsList}</Text>
                       <Text style={lp.cardTotal}>{'\u20b1'}{Number(order.total).toFixed(0)}</Text>
-                      <Text style={lp.cardPay}>{order.payment==='gcash'?'📱 GCash':'💵 Cash'}</Text>
+                      <Text style={lp.cardPay}>{(()=>{ const pm=(order.payment||order.paymentMode||'').toLowerCase(); return pm==='gcash'?'📱 GCash':pm==='credit'||pm==='credits'?'🏦 Credit':'💵 Cash'; })()}</Text>
                       {cfg.btnLabel&&(
                         <TouchableOpacity style={[lp.actionBtn,{backgroundColor:cfg.btnColor}]} onPress={()=>onUpdateStatus(order.id,cfg.next)} activeOpacity={0.80}>
                           <Text style={lp.actionBtnTxt}>{cfg.btnLabel}</Text>

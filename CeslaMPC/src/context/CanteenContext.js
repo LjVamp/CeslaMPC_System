@@ -68,46 +68,53 @@ export const CanteenProvider = ({ children }) => {
   const [orders,     setOrdersState] = useState([]);
   const [loaded,     setLoaded]      = useState(false);
 
-  // ── Seed then attach real-time Firestore listeners ────────────────────────
+  // ── Attach real-time Firestore listeners immediately, seed in parallel ──────
   useEffect(() => {
-    let unsubItems, unsubAds, unsubOrders;
+    // Seed runs in background — listeners start RIGHT AWAY so orders are never missed
+    seedIfEmpty().catch(e => console.warn('seed error (non-fatal):', e));
 
-    seedIfEmpty().then(() => {
-      // Items — sorted by numeric id
-      unsubItems = onSnapshot(
-        collection(db, 'canteen_items'),
-        snap => {
-          const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-          data.sort((a, b) => (parseInt(a.id) || 999) - (parseInt(b.id) || 999));
-          setItemsState(data);
-          setLoaded(true);
-        },
-        err => console.warn('canteen items error:', err)
-      );
+    const toMs = (v) => {
+      if (!v) return 0;
+      if (typeof v?.toMillis === 'function') return v.toMillis();
+      if (typeof v?.toDate  === 'function') return v.toDate().getTime();
+      if (typeof v === 'number') return v;
+      return new Date(v).getTime() || 0;
+    };
 
-      // Ads
-      unsubAds = onSnapshot(
-        collection(db, 'canteen_ads'),
-        snap => setAdsState(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
-        err => console.warn('canteen ads error:', err)
-      );
+    // Items — sorted by numeric id
+    const unsubItems = onSnapshot(
+      collection(db, 'canteen_items'),
+      snap => {
+        const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+        data.sort((a, b) => (parseInt(a.id) || 999) - (parseInt(b.id) || 999));
+        setItemsState(data);
+        setLoaded(true);
+      },
+      err => console.warn('canteen items error:', err)
+    );
 
-      // Orders — sorted newest first by createdAt
-      unsubOrders = onSnapshot(
-        collection(db, 'canteen_orders'),
-        snap => {
-          const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-          data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-          setOrdersState(data);
-        },
-        err => console.warn('canteen orders error:', err)
-      );
-    });
+    // Ads
+    const unsubAds = onSnapshot(
+      collection(db, 'canteen_ads'),
+      snap => setAdsState(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
+      err => console.warn('canteen ads error:', err)
+    );
+
+    // Orders — sorted newest first by createdAt, handles Firestore Timestamp + Date.now()
+    const unsubOrders = onSnapshot(
+      collection(db, 'canteen_orders'),
+      snap => {
+        const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+        data.sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt));
+        setOrdersState(data);
+      },
+      err => console.warn('canteen orders error:', err)
+    );
 
     return () => {
-      unsubItems?.();
-      unsubAds?.();
-      unsubOrders?.();
+      unsubItems();
+      unsubAds();
+      unsubOrders();
     };
   }, []);
 

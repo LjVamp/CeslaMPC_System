@@ -59,6 +59,16 @@ const C = {
 
 // ── Persistent session key ────────────────────────────────────────────────────
 const SESSION_KEY = '@cesla_member_session_v1';
+// ── Message settings key ──────────────────────────────────────────────────────
+const MSG_SETTINGS_KEY = '@cesla_msg_settings_v1';
+const DEFAULT_MSG_SETTINGS = {
+  activeNow:         true,   // show online/active dot to others
+  notifSound:        true,   // play sound on incoming message
+  notifVibrate:      true,   // vibrate on incoming message
+  notifPreview:      true,   // show message preview in notification
+  notifAdminOnly:    false,  // only notify for admin messages
+  notifMuted:        false,  // mute all message notifications
+};
 
 // ── Responsive hook — use anywhere ──────────────────────────────────────────
 const useRwd = () => {
@@ -113,7 +123,7 @@ const registerMemberFS = async ({ lastName, firstName, middleName, password }) =
   const name = `${lastName.trim()}, ${firstName.trim()}${mid}`;
   const ref  = await addDoc(collection(db, 'members'), {
     userId, name, lastName: lastName.trim(), firstName: firstName.trim(), middleName: middleName?.trim() || '',
-    passwordHash: hashPw(password), role: 'member', status: 'Pending',
+    passwordHash: hashPw(password), role: 'member', status: 'Registered',
     shares: 0, savings: 0, loan: 0, loanBalance: 0, creditBalance: 0,
     contact: '', email: '', address: '', appForm: {},
     createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
@@ -121,7 +131,7 @@ const registerMemberFS = async ({ lastName, firstName, middleName, password }) =
   });
   await addDoc(collection(db, 'adminNotifications'), {
     type: 'registration', icon: '🆕', title: 'New Member Registration',
-    message: `${name} (${userId}) registered and is awaiting approval.`,
+    message: `${name} (${userId}) registered and has limited access. Awaiting application form approval.`,
     memberId: ref.id, memberUserId: userId, createdAt: serverTimestamp(), read: false,
   });
   return { uid: ref.id, userId, name };
@@ -133,12 +143,23 @@ const loginByUserIdFS = async (userId, password) => {
   const d = snap.docs[0];
   const m = { uid: d.id, ...d.data() };
   if (hashPw(password) !== m.passwordHash) throw new Error('Incorrect password. Please try again.');
+  // 'Registered' is allowed — they get limited access (appform only)
   if (m.status === 'Pending')  throw new Error('Your account is pending admin approval. Please wait.');
   if (m.status === 'Rejected') throw new Error('Your registration was rejected. Please contact admin.');
   if (m.status === 'Inactive') throw new Error('Your account is inactive. Please contact admin.');
   await updateDoc(doc(db, 'members', d.id), { lastLogin: serverTimestamp() });
   const { passwordHash, ...safe } = m;
   return safe;
+};
+
+// ── Online presence helpers ───────────────────────────────────────────────────
+const setOnlineStatus = async (uid, isOnline) => {
+  try {
+    await updateDoc(doc(db, 'members', uid), {
+      isOnline,
+      lastSeen: serverTimestamp(),
+    });
+  } catch (_) {}
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -213,7 +234,7 @@ const NAV = [
   { key: 'overview',     label: 'Overview',         icon: '⊞', single: true },
   { key: 'acct_grp',     label: 'My Account',       icon: '👤', children: [
     { key: 'profile',    label: 'My Profile',       icon: '👤' },
-    { key: 'appform',    label: 'Application Form', icon: '📋' },
+    { key: 'appform',    label: 'Application Form', icon: '📋', registeredOk: true },
   ]},
   { key: 'fin_grp',      label: 'Savings & Shares', icon: '💰', children: [
     { key: 'savings',    label: 'Savings',          icon: '💰' },
@@ -233,35 +254,54 @@ const NAV = [
 
 ];
 
-const SidebarGroup = ({ group, active, onNav, onClose }) => {
+const SidebarGroup = ({ group, active, onNav, onClose, isRegistered }) => {
   const isActive = group.single ? active === group.key : !!(group.children?.find(c => c.key === active));
   const [open, setOpen] = useState(isActive && !group.single);
   const anim    = useRef(new Animated.Value(isActive && !group.single ? 1 : 0)).current;
-  const toggle  = () => { if (group.single) { onNav(group.key); onClose?.(); return; } const next = !open; setOpen(next); Animated.timing(anim, { toValue: next ? 1 : 0, duration: 200, useNativeDriver: false }).start(); };
+
+  // For Registered members: only appform child is accessible
+  const isGroupLocked = isRegistered && !group.single && !group.children?.some(c => c.registeredOk);
+  const isSingleLocked = isRegistered && group.single && group.key !== 'overview';
+
+  const toggle  = () => {
+    if (isGroupLocked || isSingleLocked) return; // locked — do nothing
+    if (group.single) { onNav(group.key); onClose?.(); return; }
+    const next = !open; setOpen(next); Animated.timing(anim, { toValue: next ? 1 : 0, duration: 200, useNativeDriver: false }).start();
+  };
   const maxH    = anim.interpolate({ inputRange: [0, 1], outputRange: [0, (group.children?.length || 0) * 42] });
   const chevRot = anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '90deg'] });
+  const locked  = isGroupLocked || isSingleLocked;
+
   return (
     <View style={{ marginHorizontal: 6, marginBottom: 1 }}>
-      <TouchableOpacity style={[s.sideHead, group.single && active === group.key && s.sideActive]} onPress={toggle} activeOpacity={0.8}>
+      <TouchableOpacity style={[s.sideHead, group.single && active === group.key && s.sideActive, locked && { opacity: 0.38 }]} onPress={toggle} activeOpacity={locked ? 1 : 0.8}>
         <Text style={[s.sideIcon, group.single && active === group.key && { color: C.navy }]}>{group.icon}</Text>
         <Text style={[s.sideLabel, group.single && active === group.key && { color: C.navy, fontFamily: 'GoogleSans_700Bold' }, !group.single && isActive && { color: C.gold }]}>{group.label}</Text>
-        {!group.single && <Animated.Text style={[{ color: 'rgba(255,255,255,0.40)', fontSize: 17 }, { transform: [{ rotate: chevRot }] }]}>›</Animated.Text>}
+        {locked && <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.30)' }}>🔒</Text>}
+        {!group.single && !locked && <Animated.Text style={[{ color: 'rgba(255,255,255,0.40)', fontSize: 17 }, { transform: [{ rotate: chevRot }] }]}>›</Animated.Text>}
       </TouchableOpacity>
-      {!group.single && (
+      {!group.single && !isGroupLocked && (
         <Animated.View style={{ maxHeight: maxH, overflow: 'hidden' }}>
-          {group.children.map(c => (
-            <TouchableOpacity key={c.key} style={[s.sideChild, active === c.key && s.sideChildActive]} onPress={() => { onNav(c.key); onClose?.(); }} activeOpacity={0.8}>
-              <Text style={{ fontSize: 7, color: active === c.key ? C.gold : 'rgba(255,255,255,0.30)', width: 12, textAlign: 'center' }}>{active === c.key ? '◆' : '◇'}</Text>
-              <Text style={[s.sideChildTxt, active === c.key && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{c.label}</Text>
-            </TouchableOpacity>
-          ))}
+          {group.children.map(c => {
+            const childLocked = isRegistered && !c.registeredOk;
+            return (
+              <TouchableOpacity key={c.key}
+                style={[s.sideChild, active === c.key && s.sideChildActive, childLocked && { opacity: 0.38 }]}
+                onPress={() => { if (childLocked) return; onNav(c.key); onClose?.(); }}
+                activeOpacity={childLocked ? 1 : 0.8}>
+                <Text style={{ fontSize: 7, color: active === c.key ? C.gold : 'rgba(255,255,255,0.30)', width: 12, textAlign: 'center' }}>{active === c.key ? '◆' : '◇'}</Text>
+                <Text style={[s.sideChildTxt, active === c.key && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{c.label}</Text>
+                {childLocked && <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)' }}>🔒</Text>}
+              </TouchableOpacity>
+            );
+          })}
         </Animated.View>
       )}
     </View>
   );
 };
 
-const MemberSidebar = ({ active, onNav, onClose, unread, onLogout, onBack, canGoBack }) => (
+const MemberSidebar = ({ active, onNav, onClose, unread, onLogout, onBack, canGoBack, isRegistered }) => (
   <View style={s.sidebar}>
     <View style={s.sidebarBrand}>
       <View style={s.sidebarLogo}><Text style={s.sidebarLogoTxt}>CS</Text></View>
@@ -276,9 +316,14 @@ const MemberSidebar = ({ active, onNav, onClose, unread, onLogout, onBack, canGo
         </TouchableOpacity>
       )}
     </View>
+    {isRegistered && (
+      <View style={{ marginHorizontal: 10, marginBottom: 6, backgroundColor: 'rgba(201,168,76,0.18)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', padding: 9 }}>
+        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#e8c87a', textAlign: 'center', lineHeight: 15 }}>⚠️ Limited Access{'\n'}Submit Application Form for full access</Text>
+      </View>
+    )}
     <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 14, marginBottom: 6 }} />
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }} style={{ flex: 1 }}>
-      {NAV.map(g => <SidebarGroup key={g.key} group={g} active={active} onNav={onNav} onClose={onClose} />)}
+      {NAV.map(g => <SidebarGroup key={g.key} group={g} active={active} onNav={onNav} onClose={onClose} isRegistered={isRegistered} />)}
     </ScrollView>
     {/* Notif badge */}
     {unread > 0 && (
@@ -2885,11 +2930,21 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
           <TouchableOpacity key={m.id} onPress={() => selectDM(m)} activeOpacity={0.8}>
             <GCard style={{ padding: 12, marginBottom: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(201,168,76,0.22)', borderWidth: 1.5, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.gold }}>{mkI(m.name)}</Text>
+                <View style={{ position: 'relative' }}>
+                  <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(201,168,76,0.22)', borderWidth: 1.5, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.gold }}>{mkI(m.name)}</Text>
+                  </View>
+                  {m.isOnline && (
+                    <View style={{ position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#1a8a4a', borderWidth: 2, borderColor: '#fff' }} />
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>{m.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>{m.name}</Text>
+                    {m.isOnline && (
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#1a8a4a' }}>● Active now</Text>
+                    )}
+                  </View>
                   <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>{m.userId}</Text>
                 </View>
                 <Text style={{ color: C.textMuted, fontSize: 18 }}>›</Text>
@@ -3009,62 +3064,145 @@ const MsgNotifPopup = ({ notif, onClose, onOpen }) => {
   );
 };
 
-// ─── MESSAGE DROPDOWN — Conversation list → chat view (like FB Messenger) ─────
-const MsgDropdown = ({ member, onClose }) => {
+// ─── MESSAGE DROPDOWN — Full messenger with compose, groups, context menu ──────
+const MsgDropdown = ({ member, onClose, onResetUnread }) => {
   const uid = member?.uid;
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  // Panel fills more of screen — 92% width on mobile, capped at 420 on wide
+  const panelW  = Math.min(screenW * 0.92, 420);
+  // Max content height = screen height minus top offset and some margin
+  const topOffset   = Platform.OS === 'web' ? 52 : 96;
+  const panelMaxH   = screenH - topOffset - 20; // 20px bottom margin
+  const listH       = Math.min(panelMaxH - 120, 460);  // conversation list area
+  const chatH       = Math.min(panelMaxH - 120, 400);  // chat messages area
+  const composeH    = Math.min(panelMaxH - 80,  440);  // compose/newgroup list
 
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [convos,       setConvos]       = useState([]); // list of {roomId, name, avatar, lastMsg, lastAt, unread}
-  const [loadingList,  setLoadingList]  = useState(true);
-  const [activeRoom,   setActiveRoom]   = useState(null); // { roomId, name }
-  const [messages,     setMessages]     = useState([]);
-  const [loadingMsgs,  setLoadingMsgs]  = useState(false);
-  const [text,         setText]         = useState('');
-  const [sending,      setSending]      = useState(false);
+  // ── Screens: 'list' | 'room' | 'compose' | 'newgroup' | 'settings' ────────
+  const [screen,         setScreen]         = useState('list');
+  const [convos,         setConvos]         = useState([]);
+  const [loadingList,    setLoadingList]    = useState(true);
+  const [activeRoom,     setActiveRoom]     = useState(null); // { roomId, name, type }
+  const [messages,       setMessages]       = useState([]);
+  const [loadingMsgs,    setLoadingMsgs]    = useState(false);
+  const [text,           setText]           = useState('');
+  const [sending,        setSending]        = useState(false);
+  // Compose
+  const [allPeople,      setAllPeople]      = useState([]); // members + admin entry
+  const [peopleSearch,   setPeopleSearch]   = useState('');
+  const [loadingPeople,  setLoadingPeople]  = useState(false);
+  // New Group
+  const [groupName,      setGroupName]      = useState('');
+  const [groupPicks,     setGroupPicks]     = useState([]); // uids picked
+  const [creatingGroup,  setCreatingGroup]  = useState(false);
+  // Context menu (long-press on convo row)
+  const [ctxMenu,        setCtxMenu]        = useState(null); // { convo, x, y }
+  // Message long-press menu
+  const [msgMenu,        setMsgMenu]        = useState(null); // { msg }
+  // Message Settings
+  const [msgSettings,    setMsgSettings]    = useState(DEFAULT_MSG_SETTINGS);
+  const [settingsSaved,  setSettingsSaved]  = useState(false);
+  // Archived toggle
+  const [showArchived,   setShowArchived]   = useState(false);
   const scrollRef = useRef(null);
 
-  // ── Build conversation list from chatRoom docs ─────────────────────────────
+  // Load settings on mount
+  useEffect(() => {
+    AsyncStorage.getItem(MSG_SETTINGS_KEY).then(raw => {
+      if (raw) {
+        try { setMsgSettings({ ...DEFAULT_MSG_SETTINGS, ...JSON.parse(raw) }); } catch { /* ignore */ }
+      }
+    }).catch(() => {});
+  }, []);
+
+  const saveMsgSettings = async (updated) => {
+    setMsgSettings(updated);
+    try { await AsyncStorage.setItem(MSG_SETTINGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
+    // If activeNow changed, update Firestore presence
+    if (updated.activeNow !== msgSettings.activeNow && uid) {
+      setOnlineStatus(uid, updated.activeNow);
+    }
+    setSettingsSaved(true);
+    setTimeout(() => setSettingsSaved(false), 1800);
+  };
+
+  // Reset badge on open
+  useEffect(() => { onResetUnread?.(); }, []);
+
+  // ── Load people for compose (members + admin) ─────────────────────────────
+  const loadPeople = () => {
+    setLoadingPeople(true);
+    getDocs(query(collection(db, 'members'))).then(snap => {
+      const members = snap.docs
+        .map(d => ({ uid: d.id, ...d.data() }))
+        .filter(m => m.uid !== uid && m.status === 'Active')
+        .sort((a, b) => {
+          // Online members first, then alphabetical
+          if (a.isOnline && !b.isOnline) return -1;
+          if (!a.isOnline && b.isOnline) return 1;
+          return (a.name || '').localeCompare(b.name || '');
+        });
+      setAllPeople([
+        { uid: '__admin__', name: 'Admin / Support', icon: '🛡️', isAdmin: true },
+        { uid: '__group_members__', name: 'Co-member Group Chat', icon: '👥', isGroup: true },
+        ...members,
+      ]);
+      setLoadingPeople(false);
+    }).catch(() => setLoadingPeople(false));
+  };
+
+  // ── Build conversation list ───────────────────────────────────────────────
   useEffect(() => {
     if (!uid) return;
     const subs = [];
-
-    // 1. Admin room
     const adminId = `admin_${uid}`;
+
+    const upsert = (roomId, entry) => {
+      setConvos(prev => {
+        const rest = prev.filter(c => c.roomId !== roomId);
+        return [entry, ...rest].sort((a, b) => (b.lastAtMs ?? 0) - (a.lastAtMs ?? 0));
+      });
+    };
+
+    // Admin room
     subs.push(onSnapshot(doc(db, 'chatRooms', adminId), snap => {
       const d = snap.data() || {};
-      setConvos(prev => {
-        const rest = prev.filter(c => c.roomId !== adminId);
-        return [{ roomId: adminId, name: 'Admin / Support', icon: '🛡️', lastMsg: d.lastMessage || '', lastAt: d.lastAt || null }, ...rest]
-          .sort((a, b) => (b.lastAt?.toMillis?.() ?? 0) - (a.lastAt?.toMillis?.() ?? 0));
+      upsert(adminId, {
+        roomId: adminId, name: 'Admin / Support', icon: '🛡️', type: 'admin',
+        lastMsg: d.lastMessage || '', lastAtMs: d.lastAt?.toMillis?.() ?? 0,
+        archived: d.archived || false,
       });
       setLoadingList(false);
     }, () => setLoadingList(false)));
 
-    // 2. Group members room
-    const grpId = 'group_members';
-    subs.push(onSnapshot(doc(db, 'chatRooms', grpId), snap => {
+    // Group members room
+    subs.push(onSnapshot(doc(db, 'chatRooms', 'group_members'), snap => {
       const d = snap.data() || {};
-      setConvos(prev => {
-        const rest = prev.filter(c => c.roomId !== grpId);
-        return [{ roomId: grpId, name: 'Co-member Group', icon: '👥', lastMsg: d.lastMessage || '', lastAt: d.lastAt || null }, ...rest]
-          .sort((a, b) => (b.lastAt?.toMillis?.() ?? 0) - (a.lastAt?.toMillis?.() ?? 0));
+      upsert('group_members', {
+        roomId: 'group_members', name: 'Co-member Group', icon: '👥', type: 'group',
+        lastMsg: d.lastMessage || '', lastAtMs: d.lastAt?.toMillis?.() ?? 0,
+        archived: d.archived || false,
       });
     }, () => {}));
 
-    // 3. DM rooms this member is in
+    // DM rooms & custom groups
     subs.push(onSnapshot(
       query(collection(db, 'chatRooms'), where('members', 'array-contains', uid)),
       snap => {
-        snap.docs.forEach(roomDoc => {
-          const rId = roomDoc.id;
-          if (rId === adminId || rId === grpId) return;
-          const d = roomDoc.data() || {};
-          // Other person's name from memberNames map
-          const otherName = Object.entries(d.memberNames || {}).find(([k]) => k !== uid)?.[1] || 'Member';
-          setConvos(prev => {
-            const rest = prev.filter(c => c.roomId !== rId);
-            return [{ roomId: rId, name: otherName, icon: '💬', lastMsg: d.lastMessage || '', lastAt: d.lastAt || null }, ...rest]
-              .sort((a, b) => (b.lastAt?.toMillis?.() ?? 0) - (a.lastAt?.toMillis?.() ?? 0));
+        snap.docs.forEach(rDoc => {
+          const rId = rDoc.id;
+          if (rId === adminId || rId === 'group_members') return;
+          const d = rDoc.data() || {};
+          const isGrp = d.type === 'group_custom';
+          const otherName = isGrp
+            ? (d.groupName || 'Group Chat')
+            : (Object.entries(d.memberNames || {}).find(([k]) => k !== uid)?.[1] || 'Member');
+          upsert(rId, {
+            roomId: rId, name: otherName,
+            icon: isGrp ? '👥' : '💬',
+            type: isGrp ? 'group_custom' : 'dm',
+            lastMsg: d.lastMessage || '',
+            lastAtMs: d.lastAt?.toMillis?.() ?? 0,
+            archived: d.archived || false,
           });
         });
       }, () => {}
@@ -3073,12 +3211,15 @@ const MsgDropdown = ({ member, onClose }) => {
     return () => subs.forEach(fn => typeof fn === 'function' && fn());
   }, [uid]);
 
-  // ── Load messages when a conversation is selected ─────────────────────────
+  // ── Load messages when room selected ─────────────────────────────────────
   useEffect(() => {
     if (!activeRoom) return;
     setLoadingMsgs(true);
     setMessages([]);
-    const q = query(collection(db, 'chatRooms', activeRoom.roomId, 'messages'), orderBy('createdAt', 'asc'), limit(50));
+    const q = query(
+      collection(db, 'chatRooms', activeRoom.roomId, 'messages'),
+      orderBy('createdAt', 'asc'), limit(80)
+    );
     const unsub = onSnapshot(q, snap => {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoadingMsgs(false);
@@ -3096,118 +3237,554 @@ const MsgDropdown = ({ member, onClose }) => {
     try {
       await addDoc(collection(db, 'chatRooms', activeRoom.roomId, 'messages'), {
         text: trimmed, senderId: uid, senderName: member.name,
-        createdAt: serverTimestamp(),
+        createdAt: serverTimestamp(), deleted: false,
       });
       await updateDoc(doc(db, 'chatRooms', activeRoom.roomId), {
-        lastMessage: trimmed, lastSender: member.name, lastAt: serverTimestamp(),
+        lastMessage: trimmed, lastSender: member.name,
+        lastSenderId: uid, lastAt: serverTimestamp(),
       });
+      if (activeRoom.type === 'admin') {
+        addDoc(collection(db, 'adminNotifications'), {
+          type: 'chat', icon: '💬',
+          title: `Message from ${member.name}`,
+          message: trimmed.length > 80 ? trimmed.slice(0, 80) + '…' : trimmed,
+          memberId: uid, memberUserId: member.userId,
+          roomId: activeRoom.roomId, navKey: 'chat_inbox',
+          createdAt: serverTimestamp(), read: false,
+        }).catch(() => {});
+      }
     } catch (_) {}
     setSending(false);
   };
 
-  // ── Shared panel styles ───────────────────────────────────────────────────
+  // ── Delete my message ─────────────────────────────────────────────────────
+  const deleteMsg = async (msg) => {
+    if (msg.senderId !== uid) return;
+    try {
+      await updateDoc(doc(db, 'chatRooms', activeRoom.roomId, 'messages', msg.id), {
+        deleted: true, text: '',
+      });
+    } catch (_) {}
+    setMsgMenu(null);
+  };
+
+  // ── Convo context actions ─────────────────────────────────────────────────
+  const archiveConvo = async (convo) => {
+    await updateDoc(doc(db, 'chatRooms', convo.roomId), { archived: true }).catch(() => {});
+    setCtxMenu(null);
+  };
+  const unarchiveConvo = async (convo) => {
+    await updateDoc(doc(db, 'chatRooms', convo.roomId), { archived: false }).catch(() => {});
+    setCtxMenu(null);
+  };
+  const deleteConvo = async (convo) => {
+    // For DMs/custom groups created by member — soft delete by removing from members list
+    try {
+      if (convo.type === 'dm') {
+        await updateDoc(doc(db, 'chatRooms', convo.roomId), {
+          members: [],  // member removes themselves
+          deleted: true,
+        });
+      } else {
+        // For admin/group: just archive
+        await updateDoc(doc(db, 'chatRooms', convo.roomId), { archived: true });
+      }
+    } catch (_) {}
+    setConvos(prev => prev.filter(c => c.roomId !== convo.roomId));
+    setCtxMenu(null);
+  };
+  const markRead = (convo) => {
+    updateDoc(doc(db, 'chatRooms', convo.roomId), { [`memberLastReadAt_${uid}`]: serverTimestamp() }).catch(() => {});
+    setCtxMenu(null);
+  };
+
+  // ── Open DM or existing room ──────────────────────────────────────────────
+  const openDM = async (person) => {
+    let roomId, name, type;
+    if (person.isAdmin) {
+      roomId = `admin_${uid}`; name = 'Admin / Support'; type = 'admin';
+      await setDoc(doc(db, 'chatRooms', roomId), {
+        type: 'admin', memberId: uid, memberName: member.name,
+        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
+      }, { merge: true });
+    } else if (person.isGroup) {
+      roomId = 'group_members'; name = 'Co-member Group'; type = 'group';
+      await setDoc(doc(db, 'chatRooms', roomId), {
+        type: 'group', name: 'Members Group Chat',
+        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
+      }, { merge: true });
+    } else {
+      const dmId = [uid, person.uid].sort().join('_');
+      roomId = dmId; name = person.name; type = 'dm';
+      await setDoc(doc(db, 'chatRooms', dmId), {
+        type: 'dm', members: [uid, person.uid],
+        memberNames: { [uid]: member.name, [person.uid]: person.name },
+        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
+      }, { merge: true });
+    }
+    setScreen('list');
+    setPeopleSearch('');
+    setActiveRoom({ roomId, name, type });
+  };
+
+  // ── Create group chat ─────────────────────────────────────────────────────
+  const createGroup = async () => {
+    if (!groupName.trim() || groupPicks.length < 2) return;
+    setCreatingGroup(true);
+    try {
+      const allMembers = [uid, ...groupPicks];
+      const nameMap = { [uid]: member.name };
+      groupPicks.forEach(pUid => {
+        const p = allPeople.find(x => x.uid === pUid);
+        if (p) nameMap[pUid] = p.name;
+      });
+      const ref = await addDoc(collection(db, 'chatRooms'), {
+        type: 'group_custom', groupName: groupName.trim(),
+        members: allMembers, memberNames: nameMap,
+        createdBy: uid, createdAt: serverTimestamp(),
+        lastMessage: null, lastAt: serverTimestamp(),
+      });
+      setScreen('list');
+      setGroupName('');
+      setGroupPicks([]);
+      setActiveRoom({ roomId: ref.id, name: groupName.trim(), type: 'group_custom' });
+    } catch (_) {}
+    setCreatingGroup(false);
+  };
+
+  // ── Shared panel style ────────────────────────────────────────────────────
   const panelStyle = {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 52 : 96,
+    top: topOffset,
     right: 8,
-    width: 300,
+    width: panelW,
+    maxHeight: panelMaxH,
     backgroundColor: '#1a2d4e',
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1.5,
     borderColor: C.gold,
     shadowColor: '#000',
-    shadowOpacity: 0.32,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.38,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
     zIndex: 9999,
     overflow: 'hidden',
   };
+
+  const fmtDate = ts => {
+    if (!ts) return '';
+    const d = typeof ts === 'number' ? new Date(ts) : (ts?.toDate?.() || new Date(ts));
+    return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true });
+  };
+
+  // ── Header title & back action ────────────────────────────────────────────
+  const headerTitle = screen === 'compose' ? 'New Message'
+    : screen === 'newgroup' ? 'New Group Chat'
+    : screen === 'settings' ? 'Message Settings'
+    : activeRoom ? activeRoom.name
+    : 'Messages';
+
+  const goBack = () => {
+    if (activeRoom) { setActiveRoom(null); setMessages([]); return; }
+    if (screen !== 'list') { setScreen('list'); setPeopleSearch(''); setGroupName(''); setGroupPicks([]); }
+  };
+  const showBack = !!activeRoom || screen !== 'list';
 
   return (
     <>
       {/* Backdrop */}
       <TouchableOpacity
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9998 }}
-        activeOpacity={1} onPress={onClose}
+        activeOpacity={1} onPress={() => { setCtxMenu(null); setMsgMenu(null); if (!ctxMenu && !msgMenu) onClose(); }}
       />
+
+      {/* Context menu backdrop */}
+      {(ctxMenu || msgMenu) && (
+        <TouchableOpacity
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000 }}
+          activeOpacity={1} onPress={() => { setCtxMenu(null); setMsgMenu(null); }}
+        />
+      )}
 
       <View style={panelStyle}>
         {/* ── HEADER ──────────────────────────────────────────────────── */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.25)' }}>
-          {activeRoom ? (
-            <TouchableOpacity onPress={() => { setActiveRoom(null); setMessages([]); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          {showBack ? (
+            <TouchableOpacity onPress={goBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.70)" />
             </TouchableOpacity>
           ) : (
             <MaterialIcons name="chat-bubble-outline" size={17} color={C.gold} />
           )}
           <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff', flex: 1 }} numberOfLines={1}>
-            {activeRoom ? activeRoom.name : 'Messages'}
+            {headerTitle}
           </Text>
+          {/* New message / new group buttons — only on list */}
+          {screen === 'list' && !activeRoom && (
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              <TouchableOpacity
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={() => setScreen('settings')}
+                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center' }}
+              >
+                <MaterialIcons name="settings" size={14} color={C.gold} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={() => { setScreen('newgroup'); loadPeople(); }}
+                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center' }}
+              >
+                <MaterialIcons name="group-add" size={14} color={C.gold} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={() => { setScreen('compose'); loadPeople(); }}
+                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center' }}
+              >
+                <MaterialIcons name="edit" size={14} color={C.gold} />
+              </TouchableOpacity>
+            </View>
+          )}
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.55)" />
           </TouchableOpacity>
         </View>
 
-        {/* ── CONVERSATION LIST ────────────────────────────────────────── */}
-        {!activeRoom && (
-          <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
-            {loadingList ? (
-              <View style={{ padding: 24, alignItems: 'center' }}>
-                <ActivityIndicator size="small" color={C.gold} />
-              </View>
-            ) : convos.length === 0 ? (
-              <View style={{ padding: 24, alignItems: 'center', gap: 8 }}>
-                <MaterialIcons name="chat-bubble-outline" size={32} color="rgba(255,255,255,0.18)" />
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.38)', textAlign: 'center' }}>No conversations yet.</Text>
-              </View>
-            ) : (
-              convos.map((c, i) => (
+        {/* ── SETTINGS SCREEN ──────────────────────────────────────────── */}
+        {screen === 'settings' && !activeRoom && (
+          <ScrollView style={{ maxHeight: listH }} showsVerticalScrollIndicator={false}>
+            {/* Active Now */}
+            <View style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 6, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold, letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 10 }}>Presence</Text>
+              {/* Active Now toggle */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: msgSettings.activeNow ? '#4cde8a' : 'rgba(255,255,255,0.25)' }} />
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>Active Now</Text>
+                  </View>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3, lineHeight: 16 }}>
+                    Show others that you are currently online
+                  </Text>
+                </View>
                 <TouchableOpacity
-                  key={c.roomId}
-                  onPress={() => setActiveRoom({ roomId: c.roomId, name: `${c.icon} ${c.name}` })}
-                  activeOpacity={0.75}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < convos.length - 1 ? 1 : 0, borderColor: 'rgba(255,255,255,0.07)' }}
+                  onPress={() => saveMsgSettings({ ...msgSettings, activeNow: !msgSettings.activeNow })}
+                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.activeNow ? '#4cde8a' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
                 >
-                  {/* Avatar */}
-                  <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
-                    <Text style={{ fontSize: 18 }}>{c.icon}</Text>
-                  </View>
-                  {/* Text */}
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }} numberOfLines={1}>{c.name}</Text>
-                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }} numberOfLines={1}>
-                      {c.lastMsg || 'No messages yet'}
-                    </Text>
-                  </View>
-                  {/* Time + chevron */}
-                  <View style={{ alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                    {c.lastAt && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>{fmtDate(c.lastAt)}</Text>}
-                    <MaterialIcons name="chevron-right" size={16} color="rgba(255,255,255,0.28)" />
-                  </View>
+                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.activeNow ? 'flex-end' : 'flex-start', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 3 }} />
                 </TouchableOpacity>
-              ))
+              </View>
+            </View>
+
+            {/* Notification Sound */}
+            <View style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 6, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold, letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 10 }}>Notifications</Text>
+
+              {/* Mute All */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: msgSettings.notifMuted ? '#e55' : '#fff' }}>🔕  Mute All Messages</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>No sound or vibration from chats</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => saveMsgSettings({ ...msgSettings, notifMuted: !msgSettings.notifMuted })}
+                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.notifMuted ? '#e55' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                >
+                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.notifMuted ? 'flex-end' : 'flex-start' }} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Sound */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, opacity: msgSettings.notifMuted ? 0.35 : 1 }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>🔔  Notification Sound</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>Play a sound for new messages</Text>
+                </View>
+                <TouchableOpacity
+                  disabled={msgSettings.notifMuted}
+                  onPress={() => saveMsgSettings({ ...msgSettings, notifSound: !msgSettings.notifSound })}
+                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.notifSound && !msgSettings.notifMuted ? '#4cde8a' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                >
+                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.notifSound ? 'flex-end' : 'flex-start' }} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Vibrate */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, opacity: msgSettings.notifMuted ? 0.35 : 1 }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>📳  Vibration</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>Vibrate on new messages</Text>
+                </View>
+                <TouchableOpacity
+                  disabled={msgSettings.notifMuted}
+                  onPress={() => saveMsgSettings({ ...msgSettings, notifVibrate: !msgSettings.notifVibrate })}
+                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.notifVibrate && !msgSettings.notifMuted ? '#4cde8a' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                >
+                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.notifVibrate ? 'flex-end' : 'flex-start' }} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Preview */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, opacity: msgSettings.notifMuted ? 0.35 : 1 }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>👁  Message Preview</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>Show message content in notification</Text>
+                </View>
+                <TouchableOpacity
+                  disabled={msgSettings.notifMuted}
+                  onPress={() => saveMsgSettings({ ...msgSettings, notifPreview: !msgSettings.notifPreview })}
+                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.notifPreview && !msgSettings.notifMuted ? '#4cde8a' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                >
+                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.notifPreview ? 'flex-end' : 'flex-start' }} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Admin Only */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, opacity: msgSettings.notifMuted ? 0.35 : 1 }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>🛡️  Admin Messages Only</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>Only notify for admin chat messages</Text>
+                </View>
+                <TouchableOpacity
+                  disabled={msgSettings.notifMuted}
+                  onPress={() => saveMsgSettings({ ...msgSettings, notifAdminOnly: !msgSettings.notifAdminOnly })}
+                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.notifAdminOnly && !msgSettings.notifMuted ? '#4cde8a' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                >
+                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.notifAdminOnly ? 'flex-end' : 'flex-start' }} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {settingsSaved && (
+              <View style={{ margin: 12, backgroundColor: 'rgba(26,138,74,0.25)', borderRadius: 10, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(26,138,74,0.50)' }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#4cde8a' }}>✓  Settings saved</Text>
+              </View>
             )}
           </ScrollView>
         )}
 
-        {/* ── CHAT VIEW (active room) ──────────────────────────────────── */}
+        {/* ── COMPOSE SCREEN ───────────────────────────────────────────── */}
+        {screen === 'compose' && !activeRoom && (
+          <ScrollView style={{ maxHeight: composeH }} keyboardShouldPersistTaps="handled">
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, margin: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
+              <MaterialIcons name="search" size={15} color="rgba(255,255,255,0.40)" />
+              <TextInput
+                style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff', paddingHorizontal: 8, paddingVertical: 4 }}
+                value={peopleSearch} onChangeText={setPeopleSearch}
+                placeholder="Search name..." placeholderTextColor="rgba(255,255,255,0.30)"
+                autoFocus
+              />
+            </View>
+            {loadingPeople ? (
+              <View style={{ padding: 20, alignItems: 'center' }}><ActivityIndicator size="small" color={C.gold} /></View>
+            ) : (
+              allPeople
+                .filter(p => { const q = peopleSearch.trim().toLowerCase(); return !q || (p.name || '').toLowerCase().includes(q); })
+                .map((p, i, arr) => (
+                  <TouchableOpacity key={p.uid} activeOpacity={0.75}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(255,255,255,0.07)' }}
+                    onPress={() => openDM(p)}
+                  >
+                    <View style={{ position: 'relative' }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.35)', justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={{ fontSize: p.icon ? 16 : 12, fontFamily: 'GoogleSans_700Bold', color: C.gold }}>
+                          {p.icon || (p.name || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+                        </Text>
+                      </View>
+                      {!p.isAdmin && !p.isGroup && p.isOnline && (
+                        <View style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#4cde8a', borderWidth: 1.5, borderColor: '#1a2d4e' }} />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff' }} numberOfLines={1}>{p.name}</Text>
+                        {!p.isAdmin && !p.isGroup && p.isOnline && (
+                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#4cde8a' }}>● Active now</Text>
+                        )}
+                      </View>
+                      {p.userId && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.38)' }}>{p.userId}</Text>}
+                    </View>
+                    <MaterialIcons name="chevron-right" size={16} color="rgba(255,255,255,0.28)" />
+                  </TouchableOpacity>
+                ))
+            )}
+          </ScrollView>
+        )}
+
+        {/* ── NEW GROUP SCREEN ─────────────────────────────────────────── */}
+        {screen === 'newgroup' && !activeRoom && (
+          <ScrollView style={{ maxHeight: composeH }} keyboardShouldPersistTaps="handled">
+            {/* Group name input */}
+            <View style={{ padding: 10, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+              <TextInput
+                style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: '#fff', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
+                value={groupName} onChangeText={setGroupName}
+                placeholder="Group name..." placeholderTextColor="rgba(255,255,255,0.30)"
+                autoFocus maxLength={50}
+              />
+              {groupPicks.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8, flexDirection: 'row' }}>
+                  {groupPicks.map(pUid => {
+                    const p = allPeople.find(x => x.uid === pUid);
+                    return (
+                      <TouchableOpacity key={pUid} onPress={() => setGroupPicks(prev => prev.filter(x => x !== pUid))}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(201,168,76,0.25)', borderRadius: 14, paddingHorizontal: 8, paddingVertical: 4, marginRight: 6 }}>
+                        <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: C.gold }}>{p?.name?.split(' ')[0]}</Text>
+                        <MaterialIcons name="close" size={11} color={C.gold} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+            {/* Member picker */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, margin: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
+              <MaterialIcons name="search" size={15} color="rgba(255,255,255,0.40)" />
+              <TextInput
+                style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff', paddingHorizontal: 8, paddingVertical: 4 }}
+                value={peopleSearch} onChangeText={setPeopleSearch}
+                placeholder="Add members..." placeholderTextColor="rgba(255,255,255,0.30)"
+              />
+            </View>
+            {loadingPeople ? (
+              <View style={{ padding: 20, alignItems: 'center' }}><ActivityIndicator size="small" color={C.gold} /></View>
+            ) : (
+              allPeople
+                .filter(p => !p.isAdmin && !p.isGroup)
+                .filter(p => { const q = peopleSearch.trim().toLowerCase(); return !q || (p.name || '').toLowerCase().includes(q); })
+                .map((p, i, arr) => {
+                  const picked = groupPicks.includes(p.uid);
+                  return (
+                    <TouchableOpacity key={p.uid} activeOpacity={0.75}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(255,255,255,0.07)' }}
+                      onPress={() => setGroupPicks(prev => picked ? prev.filter(x => x !== p.uid) : [...prev, p.uid])}
+                    >
+                      <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: picked ? C.gold : 'rgba(255,255,255,0.25)', backgroundColor: picked ? C.gold : 'transparent', justifyContent: 'center', alignItems: 'center' }}>
+                        {picked && <MaterialIcons name="check" size={12} color={C.navy} />}
+                      </View>
+                      <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(201,168,76,0.18)', justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.gold }}>
+                          {(p.name || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff', flex: 1 }} numberOfLines={1}>{p.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })
+            )}
+            {/* Create button */}
+            <TouchableOpacity
+              onPress={createGroup}
+              disabled={!groupName.trim() || groupPicks.length < 2 || creatingGroup}
+              style={{ margin: 12, backgroundColor: groupName.trim() && groupPicks.length >= 2 ? C.gold : 'rgba(255,255,255,0.10)', borderRadius: 10, paddingVertical: 11, alignItems: 'center' }}
+            >
+              {creatingGroup
+                ? <ActivityIndicator size="small" color={C.navy} />
+                : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: groupName.trim() && groupPicks.length >= 2 ? C.navy : 'rgba(255,255,255,0.30)' }}>
+                    {groupPicks.length < 2 ? `Add at least ${2 - groupPicks.length} more member${groupPicks.length === 1 ? '' : 's'}` : `Create "${groupName.trim() || 'Group'}" →`}
+                  </Text>
+              }
+            </TouchableOpacity>
+          </ScrollView>
+        )}
+
+        {/* ── CONVERSATION LIST ─────────────────────────────────────────── */}
+        {screen === 'list' && !activeRoom && (
+          <ScrollView style={{ maxHeight: listH }} showsVerticalScrollIndicator={false}>
+            {loadingList ? (
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={C.gold} />
+              </View>
+            ) : convos.filter(c => !c.archived).length === 0 ? (
+              <View style={{ padding: 24, alignItems: 'center', gap: 8 }}>
+                <MaterialIcons name="chat-bubble-outline" size={32} color="rgba(255,255,255,0.18)" />
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.38)', textAlign: 'center' }}>No conversations yet.{'\n'}Tap ✏️ to start a new chat.</Text>
+              </View>
+            ) : (
+              convos.filter(c => !c.archived).map((c, i, arr) => (
+                <TouchableOpacity
+                  key={c.roomId}
+                  onPress={() => setActiveRoom({ roomId: c.roomId, name: c.name, type: c.type })}
+                  onLongPress={() => setCtxMenu({ convo: c })}
+                  delayLongPress={400}
+                  activeOpacity={0.75}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(255,255,255,0.07)', backgroundColor: ctxMenu?.convo?.roomId === c.roomId ? 'rgba(201,168,76,0.10)' : 'transparent' }}
+                >
+                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                    <Text style={{ fontSize: 20 }}>{c.icon}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff' }} numberOfLines={1}>{c.name}</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 2 }} numberOfLines={1}>
+                      {c.lastMsg || 'No messages yet'}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                    {c.lastAtMs > 0 && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.30)' }}>{fmtDate(c.lastAtMs)}</Text>}
+                    <MaterialIcons name="chevron-right" size={18} color="rgba(255,255,255,0.28)" />
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+
+            {/* ── Archived section ─────────────────────────────────────── */}
+            {convos.some(c => c.archived) && (
+              <>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.07)', backgroundColor: 'rgba(255,255,255,0.03)' }}
+                  onPress={() => setShowArchived(v => !v)}
+                  activeOpacity={0.75}
+                >
+                  <MaterialIcons name="archive" size={16} color={showArchived ? C.gold : 'rgba(255,255,255,0.40)'} />
+                  <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: showArchived ? C.gold : 'rgba(255,255,255,0.45)', flex: 1 }}>
+                    Archived ({convos.filter(c => c.archived).length})
+                  </Text>
+                  <MaterialIcons name={showArchived ? 'expand-less' : 'expand-more'} size={18} color="rgba(255,255,255,0.35)" />
+                </TouchableOpacity>
+                {showArchived && convos.filter(c => c.archived).map((c, i, arr) => (
+                  <TouchableOpacity
+                    key={c.roomId}
+                    onPress={() => setActiveRoom({ roomId: c.roomId, name: c.name, type: c.type })}
+                    onLongPress={() => setCtxMenu({ convo: c })}
+                    delayLongPress={400}
+                    activeOpacity={0.75}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(255,255,255,0.05)', backgroundColor: 'rgba(0,0,0,0.10)' }}
+                  >
+                    <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                      <Text style={{ fontSize: 18, opacity: 0.6 }}>{c.icon}</Text>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: 'rgba(255,255,255,0.50)' }} numberOfLines={1}>{c.name}</Text>
+                        <View style={{ backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: 0.5 }}>ARCHIVED</Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.28)', marginTop: 2 }} numberOfLines={1}>
+                        {c.lastMsg || 'No messages'}
+                      </Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={16} color="rgba(255,255,255,0.20)" />
+                  </TouchableOpacity>
+                ))}
+              </>
+            )}
+          </ScrollView>
+        )}
+
+        {/* ── CHAT ROOM VIEW ────────────────────────────────────────────── */}
         {activeRoom && (
           <>
-            {/* Messages */}
             <ScrollView
               ref={scrollRef}
-              style={{ maxHeight: 280 }}
-              contentContainerStyle={{ padding: 12, gap: 6 }}
+              style={{ maxHeight: chatH }}
+              contentContainerStyle={{ padding: 14, paddingBottom: 4 }}
               showsVerticalScrollIndicator={false}
-              onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
             >
               {loadingMsgs ? (
-                <View style={{ padding: 20, alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color={C.gold} />
-                </View>
+                <View style={{ padding: 20, alignItems: 'center' }}><ActivityIndicator size="small" color={C.gold} /></View>
               ) : messages.length === 0 ? (
-                <View style={{ padding: 20, alignItems: 'center', gap: 6 }}>
+                <View style={{ padding: 20, alignItems: 'center' }}>
                   <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.38)', textAlign: 'center' }}>No messages yet. Say something!</Text>
                 </View>
               ) : (
@@ -3215,350 +3792,122 @@ const MsgDropdown = ({ member, onClose }) => {
                   const isMine = msg.senderId === uid;
                   const prev = messages[i - 1];
                   const showName = !isMine && msg.senderId !== prev?.senderId;
+                  const isDeleted = msg.deleted;
                   return (
-                    <View key={msg.id} style={{ alignItems: isMine ? 'flex-end' : 'flex-start' }}>
+                    <View key={msg.id} style={{ alignItems: isMine ? 'flex-end' : 'flex-start', marginBottom: 6 }}>
                       {showName && (
                         <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold, marginBottom: 2, marginHorizontal: 4 }}>
                           {msg.senderName || 'Member'}
                         </Text>
                       )}
-                      <View style={{ maxWidth: '82%', backgroundColor: isMine ? 'rgba(37,99,176,0.72)' : 'rgba(255,255,255,0.12)', borderRadius: 12, borderBottomRightRadius: isMine ? 3 : 12, borderBottomLeftRadius: isMine ? 12 : 3, paddingHorizontal: 11, paddingVertical: 7 }}>
-                        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff', lineHeight: 18 }}>{msg.text}</Text>
-                      </View>
+                      <TouchableOpacity
+                        onLongPress={() => isMine && !isDeleted && setMsgMenu({ msg })}
+                        delayLongPress={400}
+                        activeOpacity={0.85}
+                      >
+                        <View style={{
+                          maxWidth: panelW * 0.65, backgroundColor: isDeleted ? 'rgba(255,255,255,0.05)' : isMine ? 'rgba(37,99,176,0.75)' : 'rgba(255,255,255,0.12)',
+                          borderRadius: 14, borderBottomRightRadius: isMine ? 3 : 14, borderBottomLeftRadius: isMine ? 14 : 3,
+                          paddingHorizontal: 11, paddingVertical: 7,
+                          borderWidth: isDeleted ? 1 : 0, borderColor: 'rgba(255,255,255,0.10)',
+                        }}>
+                          <Text style={{ fontFamily: isDeleted ? 'GoogleSans_400Regular' : 'GoogleSans_400Regular', fontSize: 12, color: isDeleted ? 'rgba(255,255,255,0.30)' : '#fff', lineHeight: 18, fontStyle: isDeleted ? 'italic' : 'normal' }}>
+                            {isDeleted ? 'You deleted this message' : msg.text}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
                       <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.28)', marginTop: 2, marginHorizontal: 4 }}>
-                        {msg.createdAt ? fmtTime(msg.createdAt) : ''}
+                        {msg.createdAt ? new Date(msg.createdAt?.toDate?.() || msg.createdAt).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true }) : ''}
                       </Text>
                     </View>
                   );
                 })
               )}
             </ScrollView>
-
-            {/* Input */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}>
-              <TextInput
-                style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', maxHeight: 72 }}
-                value={text} onChangeText={setText}
-                placeholder="Type a message..." placeholderTextColor="rgba(255,255,255,0.30)"
-                multiline maxLength={500}
-                onSubmitEditing={sendMsg} blurOnSubmit={false}
-              />
-              <TouchableOpacity
-                onPress={sendMsg} disabled={!text.trim() || sending}
-                style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: text.trim() ? C.gold : 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' }}
-              >
-                {sending
-                  ? <ActivityIndicator size="small" color="#0f1e35" />
-                  : <MaterialIcons name="send" size={16} color={text.trim() ? '#0f1e35' : 'rgba(255,255,255,0.35)'} />
-                }
-              </TouchableOpacity>
-            </View>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 9, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}>
+                <TextInput
+                  style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff', backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 13 }}
+                  value={text} onChangeText={setText}
+                  placeholder="Type a message..." placeholderTextColor="rgba(255,255,255,0.28)"
+                  onSubmitEditing={sendMsg} returnKeyType="send" maxLength={500}
+                />
+                <TouchableOpacity
+                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: text.trim() ? C.gold : 'rgba(255,255,255,0.10)', justifyContent: 'center', alignItems: 'center' }}
+                  onPress={sendMsg} disabled={!text.trim() || sending}
+                >
+                  {sending ? <ActivityIndicator size="small" color={C.navy} /> : <MaterialIcons name="send" size={16} color={text.trim() ? C.navy : 'rgba(255,255,255,0.35)'} />}
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
           </>
         )}
       </View>
+
+      {/* ── CONTEXT MENU (long-press on convo) ──────────────────────── */}
+      {ctxMenu && (
+        <View style={{
+          position: 'absolute', top: topOffset, right: 8,
+          width: 220, backgroundColor: '#1a2d4e', borderRadius: 12,
+          borderWidth: 1.5, borderColor: C.gold,
+          shadowColor: '#000', shadowOpacity: 0.40, shadowRadius: 16, shadowOffset: { width: 0, height: 4 },
+          zIndex: 10001, overflow: 'hidden',
+        }}>
+          <View style={{ padding: 10, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold }} numberOfLines={1}>{ctxMenu.convo.name}</Text>
+          </View>
+          {[
+            { icon: 'done-all', label: 'Mark as read', action: () => markRead(ctxMenu.convo) },
+            { icon: 'archive', label: ctxMenu.convo.archived ? 'Unarchive' : 'Archive', action: () => ctxMenu.convo.archived ? unarchiveConvo(ctxMenu.convo) : archiveConvo(ctxMenu.convo) },
+            { icon: 'delete-outline', label: 'Delete chat', action: () => deleteConvo(ctxMenu.convo), danger: true },
+          ].map((item, i) => (
+            <TouchableOpacity key={i} onPress={item.action} activeOpacity={0.75}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < 2 ? 1 : 0, borderColor: 'rgba(255,255,255,0.07)' }}>
+              <MaterialIcons name={item.icon} size={17} color={item.danger ? '#e55' : 'rgba(255,255,255,0.70)'} />
+              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: item.danger ? '#e55' : '#fff' }}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* ── MESSAGE CONTEXT MENU (long-press on own message) ─────────── */}
+      {msgMenu && (
+        <View style={{
+          position: 'absolute', top: topOffset, right: 8,
+          width: 200, backgroundColor: '#1a2d4e', borderRadius: 12,
+          borderWidth: 1.5, borderColor: C.gold,
+          shadowColor: '#000', shadowOpacity: 0.40, shadowRadius: 16, shadowOffset: { width: 0, height: 4 },
+          zIndex: 10001, overflow: 'hidden',
+        }}>
+          <TouchableOpacity
+            onPress={() => deleteMsg(msgMenu.msg)} activeOpacity={0.75}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 14 }}>
+            <MaterialIcons name="delete-outline" size={17} color="#e55" />
+            <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: '#e55' }}>Delete message</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setMsgMenu(null)} activeOpacity={0.75}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+            <MaterialIcons name="close" size={17} color="rgba(255,255,255,0.55)" />
+            <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.70)' }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </>
   );
 };
 
-// ═════════════════════════════════════════════════════════════════════════════
-// FLOATING CHAT BOX — small gamay nga chat bubble, matching app palette
-// ═════════════════════════════════════════════════════════════════════════════
-const FloatingChat = ({ member }) => {
-  const [open,        setOpen]        = useState(false);
-  const [tab,         setTab]         = useState('admin'); // 'admin' | 'members'
-  const [roomId,      setRoomId]      = useState(null);
-  const [messages,    setMessages]    = useState([]);
-  const [text,        setText]        = useState('');
-  const [sending,     setSending]     = useState(false);
-  const [unread,      setUnread]      = useState(0);
-  const scaleAnim  = useRef(new Animated.Value(0)).current;
-  const scrollRef  = useRef(null);
 
-  // Toggle animation
-  const toggle = () => {
-    const next = !open;
-    setOpen(next);
-    if (next) setUnread(0);
-    Animated.spring(scaleAnim, {
-      toValue: next ? 1 : 0,
-      useNativeDriver: true,
-      tension: 130,
-      friction: 9,
-    }).start();
-  };
-
-  // Setup chat room when tab changes
-  useEffect(() => {
-    if (!member?.uid) return;
-    if (tab === 'admin') {
-      const rId = `admin_${member.uid}`;
-      setDoc(doc(db, 'chatRooms', rId), {
-        type: 'admin', memberId: member.uid, memberName: member.name,
-        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
-      }, { merge: true }).then(() => setRoomId(rId)).catch(() => {});
-    } else {
-      setDoc(doc(db, 'chatRooms', 'group_members'), {
-        type: 'group', name: 'Members Group Chat',
-        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
-      }, { merge: true }).then(() => setRoomId('group_members')).catch(() => {});
-    }
-  }, [tab, member?.uid]);
-
-  // Listen to messages
-  useEffect(() => {
-    if (!roomId) return;
-    const q = query(
-      collection(db, 'chatRooms', roomId, 'messages'),
-      orderBy('createdAt', 'asc'), limit(60)
-    );
-    const unsub = onSnapshot(q, snap => {
-      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setMessages(msgs);
-      if (!open) {
-        // Count unread — messages not from me
-        const unreadCount = msgs.filter(m => m.senderId !== member?.uid).length;
-        setUnread(prev => msgs.length > 0 && !open ? prev + 1 : prev);
-      }
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
-    });
-    return unsub;
-  }, [roomId]);
-
-  const send = async () => {
-    const trimmed = text.trim();
-    if (!trimmed || sending || !roomId) return;
-    setSending(true);
-    setText('');
-    try {
-      await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
-        senderId: member.uid, senderName: member.name,
-        text: trimmed, createdAt: serverTimestamp(),
-      });
-      await updateDoc(doc(db, 'chatRooms', roomId), {
-        lastMessage: trimmed, lastAt: serverTimestamp(),
-        lastSender: member.name, lastSenderId: member.uid,
-      });
-      if (tab === 'admin') {
-        await addDoc(collection(db, 'adminNotifications'), {
-          type: 'chat', icon: '💬',
-          title: `Message from ${member.name}`,
-          message: trimmed.length > 80 ? trimmed.slice(0, 80) + '…' : trimmed,
-          memberId: member.uid, memberUserId: member.userId,
-          roomId, navKey: 'chat_inbox',
-          createdAt: serverTimestamp(), read: false,
-        });
-      }
-    } catch (e) { console.warn(e); }
-    finally { setSending(false); }
-  };
-
-  const fmtT = ts => {
-    if (!ts) return '';
-    const d = ts?.toDate?.() || new Date(ts);
-    return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true });
-  };
-
-  const fcS = StyleSheet.create({
-    fab: {
-      width: 50, height: 50, borderRadius: 25,
-      backgroundColor: C.navy, borderWidth: 2, borderColor: C.gold,
-      justifyContent: 'center', alignItems: 'center',
-      elevation: 10,
-      shadowColor: '#000', shadowOpacity: 0.30,
-      shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
-    },
-    badge: {
-      position: 'absolute', top: -4, right: -4,
-      width: 18, height: 18, borderRadius: 9,
-      backgroundColor: C.red, justifyContent: 'center', alignItems: 'center',
-    },
-    badgeTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' },
-    window: {
-      width: 295, height: 370,
-      backgroundColor: 'rgba(15,30,53,0.97)',
-      borderRadius: 18,
-      borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.45)',
-      marginBottom: 10, overflow: 'hidden',
-      elevation: 18,
-      shadowColor: '#000', shadowOpacity: 0.35,
-      shadowRadius: 20, shadowOffset: { width: 0, height: 8 },
-    },
-    header: {
-      backgroundColor: '#1a2d4e',
-      borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.25)',
-      flexDirection: 'row', alignItems: 'center', gap: 9, padding: 10,
-    },
-    avatar: {
-      width: 34, height: 34, borderRadius: 17,
-      backgroundColor: 'rgba(201,168,76,0.22)', borderWidth: 1.5, borderColor: C.gold,
-      justifyContent: 'center', alignItems: 'center',
-    },
-    avatarTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.gold },
-    headerName: { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' },
-    headerSub: { fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(201,168,76,0.80)' },
-    closeBtn: {
-      width: 26, height: 26, borderRadius: 13,
-      backgroundColor: 'rgba(255,255,255,0.10)',
-      justifyContent: 'center', alignItems: 'center',
-    },
-    tabs: { flexDirection: 'row', borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-    tab: {
-      flex: 1, paddingVertical: 7, alignItems: 'center',
-      borderBottomWidth: 2, borderColor: 'transparent',
-    },
-    tabActive: { borderBottomColor: C.gold },
-    tabTxt: { fontFamily: 'GoogleSans_500Medium', fontSize: 10, color: 'rgba(255,255,255,0.38)' },
-    tabTxtActive: { color: C.gold },
-    msgs: { flex: 1, padding: 10 },
-    msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, marginBottom: 7 },
-    msgRowMine: { flexDirection: 'row-reverse' },
-    miniAvatar: {
-      width: 24, height: 24, borderRadius: 12,
-      backgroundColor: 'rgba(201,168,76,0.18)',
-      borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)',
-      justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-    },
-    miniAvatarTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold },
-    bubble: {
-      backgroundColor: 'rgba(255,255,255,0.13)', borderRadius: 16,
-      borderBottomLeftRadius: 4, paddingVertical: 7, paddingHorizontal: 11, maxWidth: 200,
-    },
-    bubbleMine: {
-      backgroundColor: '#243554', borderBottomLeftRadius: 16, borderBottomRightRadius: 4,
-      borderWidth: 1, borderColor: 'rgba(201,168,76,0.18)',
-    },
-    bubbleTxt: { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#e8e8e8', lineHeight: 18 },
-    msgTime: { fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.28)', marginTop: 2, paddingHorizontal: 3 },
-    inputRow: {
-      flexDirection: 'row', alignItems: 'center', gap: 7,
-      padding: 9, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-    },
-    input: {
-      flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff',
-      backgroundColor: 'rgba(255,255,255,0.10)',
-      borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-      borderRadius: 20, paddingVertical: 8, paddingHorizontal: 13,
-    },
-    sendBtn: {
-      width: 34, height: 34, borderRadius: 17,
-      justifyContent: 'center', alignItems: 'center',
-    },
-  });
-
-  const tabName = tab === 'admin' ? 'Admin / Support' : 'Co-member Group';
-  const tabSub  = tab === 'admin' ? '● Live support' : '● Members Group Chat';
-  const tabIcon = tab === 'admin' ? '🛡️' : '👥';
-
-  return (
-    <View style={{ position: 'absolute', bottom: 20, right: 16, alignItems: 'flex-end', zIndex: 1000 }} pointerEvents="box-none">
-      {/* Chat window */}
-      <Animated.View style={[fcS.window, { transform: [{ scale: scaleAnim }], opacity: scaleAnim }]} pointerEvents={open ? 'auto' : 'none'}>
-        {/* Header */}
-        <View style={fcS.header}>
-          <View style={fcS.avatar}><Text style={fcS.avatarTxt}>{tab === 'admin' ? 'AD' : 'GP'}</Text></View>
-          <View style={{ flex: 1 }}>
-            <Text style={fcS.headerName}>{tabName}</Text>
-            <Text style={fcS.headerSub}>{tabSub}</Text>
-          </View>
-          <TouchableOpacity style={fcS.closeBtn} onPress={toggle}>
-            <Text style={{ color: 'rgba(255,255,255,0.60)', fontSize: 14 }}>✕</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Tabs */}
-        <View style={fcS.tabs}>
-          {[['admin', '🛡️ Admin'], ['members', '👥 Members']].map(([key, label]) => (
-            <TouchableOpacity key={key}
-              style={[fcS.tab, tab === key && fcS.tabActive]}
-              onPress={() => { setTab(key); setMessages([]); }}>
-              <Text style={[fcS.tabTxt, tab === key && fcS.tabTxtActive]}>{label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Messages */}
-        <ScrollView ref={scrollRef} style={fcS.msgs} showsVerticalScrollIndicator={false}>
-          {messages.length === 0 && (
-            <View style={{ alignItems: 'center', paddingVertical: 30 }}>
-              <Text style={{ fontSize: 32, marginBottom: 8 }}>{tabIcon}</Text>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.35)', textAlign: 'center', lineHeight: 18 }}>
-                {tab === 'admin' ? 'Send a message to Admin.' : 'Say hello to your co-members!'}
-              </Text>
-            </View>
-          )}
-          {messages.map((msg, i) => {
-            const isMine = msg.senderId === member?.uid;
-            const prev   = messages[i - 1];
-            const showName = !isMine && msg.senderId !== prev?.senderId && tab === 'members';
-            const initials = (msg.senderName || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
-            return (
-              <View key={msg.id} style={[fcS.msgRow, isMine && fcS.msgRowMine]}>
-                {!isMine && (
-                  <View style={fcS.miniAvatar}>
-                    <Text style={fcS.miniAvatarTxt}>{initials}</Text>
-                  </View>
-                )}
-                <View style={{ maxWidth: 200 }}>
-                  {showName && <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold, marginBottom: 2, paddingLeft: 3 }}>{msg.senderName}</Text>}
-                  <View style={[fcS.bubble, isMine && fcS.bubbleMine]}>
-                    <Text style={fcS.bubbleTxt}>{msg.text}</Text>
-                  </View>
-                  <Text style={[fcS.msgTime, isMine && { textAlign: 'right' }]}>{fmtT(msg.createdAt)}</Text>
-                </View>
-              </View>
-            );
-          })}
-        </ScrollView>
-
-        {/* Input */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={fcS.inputRow}>
-            <TextInput
-              style={fcS.input}
-              value={text}
-              onChangeText={setText}
-              placeholder="Type a message..."
-              placeholderTextColor="rgba(255,255,255,0.28)"
-              onSubmitEditing={send}
-              returnKeyType="send"
-              maxLength={500}
-            />
-            <TouchableOpacity
-              style={[fcS.sendBtn, { backgroundColor: text.trim() ? C.gold : 'rgba(255,255,255,0.12)' }]}
-              onPress={send}
-              disabled={!text.trim() || sending}
-              activeOpacity={0.8}>
-              {sending
-                ? <ActivityIndicator size="small" color={C.navy} />
-                : <MaterialIcons name="send" size={16} color={text.trim() ? C.navy : 'rgba(255,255,255,0.35)'} />
-              }
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Animated.View>
-
-      {/* FAB */}
-      <TouchableOpacity style={fcS.fab} onPress={toggle} activeOpacity={0.85}>
-        {unread > 0 && !open && (
-          <View style={fcS.badge}>
-            <Text style={fcS.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
-          </View>
-        )}
-        <MaterialIcons name={open ? 'close' : 'chat'} size={24} color={C.gold} />
-      </TouchableOpacity>
-    </View>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
 const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   const { height, isMobile } = useRwd();
   // Rounded header: marginTop (web=16, mobile=44) + header height (~62) + gap (~8)
   const topbarHeight = Platform.OS === 'web' ? 86 : isSmall ? 114 : 114;
   const contentHeight = height - topbarHeight;
 
-  const [nav,        setNav]        = useState('overview');
-  const [navHistory, setNavHistory] = useState(['overview']); // for back button
+  const isRegistered = memberInit?.status === 'Registered';
+
+  const [nav,        setNav]        = useState(isRegistered ? 'appform' : 'overview');
+  const [navHistory, setNavHistory] = useState([isRegistered ? 'appform' : 'overview']); // for back button
   const [member, setMember] = useState(memberInit);
   const [drawer, setDrawer] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -3572,20 +3921,19 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
 
   // Real-time member sync
   useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(doc(db, 'members', memberInit.uid), snap => { if (snap.exists()) setMember({ uid: snap.id, ...snap.data() }); }); }, [memberInit?.uid]);
-  // Unread count — exclude chat-type (handled by FloatingChat)
-  useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(query(collection(db, 'members', memberInit.uid, 'notifications'), where('read', '==', false)), snap => { const nonChat = snap.docs.filter(d => d.data().type !== 'chat'); setUnread(nonChat.length); }); }, [memberInit?.uid]);
-  // Unread chat messages count (chat-type only, for message icon badge)
-  const [unreadChat, setUnreadChat] = useState(0);
+  
+  // ── Keep online status alive — set offline on unmount ────────────────────
   useEffect(() => {
     if (!memberInit?.uid) return;
-    return onSnapshot(
-      query(collection(db, 'members', memberInit.uid, 'notifications'), where('read', '==', false), where('type', '==', 'chat')),
-      snap => setUnreadChat(snap.size),
-      () => {}
-    );
+    setOnlineStatus(memberInit.uid, true);
+    return () => setOnlineStatus(memberInit.uid, false);
   }, [memberInit?.uid]);
+  // Unread count — exclude chat-type (handled by FloatingChat)
+  useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(query(collection(db, 'members', memberInit.uid, 'notifications'), where('read', '==', false)), snap => { const nonChat = snap.docs.filter(d => d.data().type !== 'chat'); setUnread(nonChat.length); }); }, [memberInit?.uid]);
+  // unreadChat is managed in-memory via watchRoomDoc bump + reset on open
+  const [unreadChat, setUnreadChat] = useState(0);
 
-  // ── Notification setup: permissions + Android channel ────────────────────
+  // ── Notification setup: permissions + Android channel + Push Token ──────────
   const notifReadyRef = useRef(false);
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -3605,9 +3953,27 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
           });
         }
         notifReadyRef.current = true;
+
+        // ── Save Expo Push Token to Firestore ─────────────────────────────
+        // This lets the Firebase Cloud Function send push even when app is closed
+        if (memberInit?.uid) {
+          try {
+            const tokenData = await Notifications.getExpoPushTokenAsync();
+            const pushToken = tokenData.data;
+            await updateDoc(doc(db, 'members', memberInit.uid), {
+              expoPushToken:  pushToken,
+              tokenUpdatedAt: serverTimestamp(),
+              devicePlatform: Platform.OS,
+            });
+          } catch (tokenErr) {
+            // Token save failed — foreground notifications still work
+            console.warn('[CESLA] Push token save failed:', tokenErr);
+          }
+        }
+
       } catch (e) { console.error('[CESLA] notif setup error:', e); }
     })();
-  }, []);
+  }, [memberInit?.uid]);
 
   // ── Web audio helper — plays a short ping sound for incoming messages ───────
   const playMsgSound = () => {
@@ -3639,24 +4005,37 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
     const dmWatching = new Set();
 
     const fireNotif = async (senderName, text, navKey) => {
-      // ── Web: play sound + bump unreadChat directly ──────────────────────
+      // ── Load current message settings ──────────────────────────────────────
+      let settings = DEFAULT_MSG_SETTINGS;
+      try {
+        const raw = await AsyncStorage.getItem(MSG_SETTINGS_KEY);
+        if (raw) settings = { ...DEFAULT_MSG_SETTINGS, ...JSON.parse(raw) };
+      } catch { /* use defaults */ }
+
+      // ── Admin-only filter ──────────────────────────────────────────────────
+      if (settings.notifAdminOnly && navKey !== 'chat_admin') return;
+
+      // ── Web: play sound only ────────────────────────────────────────────
       if (isWeb) {
-        playMsgSound();
-        // unreadChat is driven by Firestore notifications listener below,
-        // but also force-increment immediately for instant badge feedback
-        setUnreadChat(prev => prev + 1);
+        if (!settings.notifMuted && settings.notifSound) playMsgSound();
         return;
       }
       // ── Native: push notification ───────────────────────────────────────
+      if (settings.notifMuted) return;
       if (!notifReadyRef.current) return;
       try {
         await Notifications.scheduleNotificationAsync({
           content: {
             title:  `💬 ${senderName}`,
-            body:   text.length > 80 ? text.slice(0, 80) + '…' : text,
-            sound:  'default',
+            body:   settings.notifPreview
+              ? (text.length > 80 ? text.slice(0, 80) + '…' : text)
+              : 'You have a new message',
+            sound:  settings.notifSound ? 'default' : null,
             data:   { navKey },
-            ...(Platform.OS === 'android' ? { channelId: 'chat_messages' } : {}),
+            ...(Platform.OS === 'android' ? {
+              channelId: 'chat_messages',
+              vibrationPattern: settings.notifVibrate ? [0, 250, 250, 250] : [],
+            } : {}),
           },
           trigger: null,
         });
@@ -3685,6 +4064,7 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
           const senderName = d.lastSender  || 'New message';
           const msgText    = d.lastMessage || '📩 New message';
 
+          // Play sound / push notif — no more Firestore notif doc (avoids repeat)
           fireNotif(senderName, msgText, navKey);
 
           // Show popup near message icon (admin chat only)
@@ -3692,17 +4072,8 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
             setMsgNotif({ id: roomId + '_' + atMs, text: msgText });
           }
 
-          // Write Firestore notification (for bell + unreadChat count)
-          addDoc(collection(db, 'members', uid, 'notifications'), {
-            type:    'chat',
-            icon:    '💬',
-            title:   `New message from ${senderName}`,
-            message: msgText.length > 80 ? msgText.slice(0, 80) + '…' : msgText,
-            color:   '#2563b0',
-            navKey,
-            createdAt: serverTimestamp(),
-            read:    false,
-          }).catch(() => {});
+          // Bump unread chat badge in-memory only
+          setUnreadChat(prev => prev + 1);
         },
         err => console.error('[CESLA] watchRoomDoc error:', roomId, err),
       );
@@ -3770,6 +4141,13 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   }, [onLogout]);
 
   const switchNav = key => {
+    // Registered members can only access appform
+    if (isRegistered) {
+      const allChildren = NAV.flatMap(g => g.children || []);
+      const child = allChildren.find(c => c.key === key);
+      const isSingle = NAV.find(g => g.single && g.key === key);
+      if (!child?.registeredOk && !isSingle) return; // block locked nav
+    }
     Animated.parallel([Animated.timing(fadeAnim, { toValue: 0, duration: 130, useNativeDriver: true }), Animated.timing(slideAnim, { toValue: 10, duration: 130, useNativeDriver: true })]).start(() => {
       setNavHistory(prev => [...prev, key]);
       setNav(key);
@@ -3792,6 +4170,29 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   const renderContent = () => {
     const h = contentHeight;
     const m = isMobile;
+
+    // Registered members: only appform is accessible
+    if (isRegistered && nav !== 'appform') {
+      return (
+        <ScrollView contentContainerStyle={[s.pageOuter, { alignItems: 'center', justifyContent: 'center', flex: 1 }]} showsVerticalScrollIndicator={false} style={h ? { height: h } : undefined}>
+          <View style={{ backgroundColor: 'rgba(201,168,76,0.14)', borderRadius: 16, borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.40)', padding: 24, alignItems: 'center', maxWidth: 340, width: '100%' }}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>📋</Text>
+            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: C.navy, textAlign: 'center', marginBottom: 8 }}>Complete Your Application</Text>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec, textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
+              Your account is registered but not yet fully approved.{'\n\n'}
+              Please fill out your <Text style={{ fontFamily: 'GoogleSans_700Bold', color: C.navy }}>Application Form</Text> and wait for admin approval to unlock the full member portal.
+            </Text>
+            <TouchableOpacity
+              onPress={() => switchNav('appform')}
+              style={{ backgroundColor: C.gold, borderRadius: 12, paddingVertical: 13, paddingHorizontal: 32, shadowColor: C.gold, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }}
+              activeOpacity={0.85}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy, letterSpacing: 1 }}>OPEN APPLICATION FORM →</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      );
+    }
+
     switch (nav) {
       case 'overview':     return <OverviewView     member={member} onNav={switchNav} contentHeight={h} isMobile={m} />;
       case 'profile':      return <ProfileView      member={member} contentHeight={h} isMobile={m} />;
@@ -3844,20 +4245,10 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
 
           {/* RIGHT — message icon + notification bell + profile */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {/* Message icon — shows dropdown preview, badge = unread chat msgs */}
+            {/* Message icon — open messages dropdown, reset badge */}
             <TouchableOpacity style={s.dashRoundBtn} onPress={() => {
               setShowMsgDropdown(v => !v);
-              // Mark all chat notifications as read when opening dropdown
-              if (!showMsgDropdown && memberInit?.uid) {
-                getDocs(query(
-                  collection(db, 'members', memberInit.uid, 'notifications'),
-                  where('read', '==', false),
-                  where('type', '==', 'chat')
-                )).then(snap => {
-                  snap.docs.forEach(d => updateDoc(d.ref, { read: true }).catch(() => {}));
-                  setUnreadChat(0);
-                }).catch(() => {});
-              }
+              if (!showMsgDropdown) setUnreadChat(0);
             }}>
               <MaterialIcons name="chat-bubble-outline" size={19} color="#fff" />
               {unreadChat > 0 && (
@@ -3887,6 +4278,16 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
 
       {/* Body — full width, no persistent sidebar */}
       <View style={{ flex: 1 }}>
+        {/* Limited access banner for Registered members */}
+        {isRegistered && (
+          <View style={{ marginHorizontal: isSmall ? 8 : 10, marginTop: 8, backgroundColor: 'rgba(201,168,76,0.20)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.50)', paddingVertical: 8, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 15 }}>⚠️</Text>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.navy, flex: 1, lineHeight: 16 }}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>Limited Access — </Text>
+              Fill out your Application Form and wait for admin approval to unlock all features.
+            </Text>
+          </View>
+        )}
         <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
           {renderContent()}
         </Animated.View>
@@ -3921,13 +4322,13 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
             <MemberSidebar active={nav} onNav={switchNav} onClose={() => setDrawer(false)} unread={unread}
               onLogout={() => { setDrawer(false); onLogout(); }}
               onBack={() => { goBack(); setDrawer(false); }}
-              canGoBack={navHistory.length > 1} />
+              canGoBack={navHistory.length > 1}
+              isRegistered={isRegistered} />
           </View>
         </View>
       )}
 
-      {/* Floating Chat Box */}
-      <FloatingChat member={member} />
+
 
       {/* Message Notification Popup — slides in near message icon when admin messages */}
       <MsgNotifPopup
@@ -3941,6 +4342,7 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
         <MsgDropdown
           member={member}
           onClose={() => setShowMsgDropdown(false)}
+          onResetUnread={() => setUnreadChat(0)}
         />
       )}
     </View>
@@ -3977,7 +4379,7 @@ export default function CoopScreen({ navigation, route }) {
         if (!raw) return;
         try {
           const saved = JSON.parse(raw);
-          if (saved?.uid) { setMember(saved); setView('dashboard'); }
+          if (saved?.uid) { setMember(saved); setView('dashboard'); setOnlineStatus(saved.uid, true); }
         } catch { /* ignore corrupt data */ }
       })
       .catch(() => {});
@@ -4041,6 +4443,8 @@ export default function CoopScreen({ navigation, route }) {
       const m = await loginByUserIdFS(userId.trim(), pw);
       // ── Persist session so app stays logged in after restart ──────────────
       try { await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(m)); } catch { /* silent */ }
+      // ── Mark member as online ─────────────────────────────────────────────
+      setOnlineStatus(m.uid, true);
       setMember(m);
       setView('dashboard'); // ← stays in same screen, no navigation needed
     } catch (e) { setLoginErr(e.message || 'Invalid User ID or password.'); }
@@ -4064,6 +4468,8 @@ export default function CoopScreen({ navigation, route }) {
 
   const handleCopy = async uid => { await Clipboard.setStringAsync(uid); setCopied(true); setTimeout(() => setCopied(false), 2500); };
   const handleLogout = () => {
+    // ── Mark offline ─────────────────────────────────────────────────────────
+    if (member?.uid) setOnlineStatus(member.uid, false);
     // ── Clear persisted session ──────────────────────────────────────────────
     try { AsyncStorage.removeItem(SESSION_KEY); } catch { /* silent */ }
     setMember(null); setUserId(''); setPw(''); setView('login');
@@ -4185,7 +4591,7 @@ export default function CoopScreen({ navigation, route }) {
                 <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>Create Your Account</Text>
                 <Text style={s.cardSub}>CESLA Multi-Purpose Cooperative · CLIMBS Employee</Text>
                 <View style={s.stepRow}>
-                  {[{ n: 1, lbl: 'Create\nAccount' }, { n: 2, lbl: 'Admin\nApproval' }, { n: 3, lbl: 'Login &\nAccess' }].map((step, i) => (
+                  {[{ n: 1, lbl: 'Create\nAccount' }, { n: 2, lbl: 'Fill App\nForm' }, { n: 3, lbl: 'Admin\nApproves' }].map((step, i) => (
                     <View key={step.n} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                       <View style={s.stepItem}><View style={[s.stepCircle, step.n === 1 && s.stepCircleActive]}><Text style={[s.stepNum, step.n === 1 && s.stepNumActive]}>{step.n}</Text></View><Text style={[s.stepLbl, step.n === 1 && s.stepLblActive]}>{step.lbl}</Text></View>
                       {i < 2 && <View style={s.stepLine} />}
@@ -4222,18 +4628,18 @@ export default function CoopScreen({ navigation, route }) {
             {view === 'success' && regMember && (
               <>
                 <View style={s.avatarWrap}><LinearGradient colors={['rgba(26,138,74,0.30)', 'rgba(26,138,74,0.10)']} style={s.avatarGrad}><MaterialIcons name="check-circle" size={isWide ? 32 : 28} color="#1a8a4a" /></LinearGradient></View>
-                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>Registration Submitted!</Text>
-                <Text style={s.cardSub}>Your account has been saved to Firebase. Wait for admin approval.</Text>
+                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>Registration Complete!</Text>
+                <Text style={s.cardSub}>Your account is created. You can login now with limited access.</Text>
                 <View style={[s.uidBox, { marginTop: 6 }]}>
                   <View style={{ flex: 1 }}><Text style={s.uidLabel}>🔑 YOUR USER ID (GAMITON SA LOGIN)</Text><Text style={s.uidValue}>{regMember.userId}</Text></View>
                   <TouchableOpacity style={[s.copyBtn, copied && s.copyBtnDone]} onPress={() => handleCopy(regMember.userId)}><Text style={s.copyBtnTxt}>{copied ? '✓ Copied' : '📋 Copy'}</Text></TouchableOpacity>
                 </View>
                 <View style={s.flowCard}>
-                  {[{ icon: '✅', label: 'Account created in Firebase', done: true }, { icon: '🔔', label: 'Admin notified automatically', done: true }, { icon: '⏳', label: 'Waiting for admin approval', done: false }, { icon: '🔓', label: 'Login after approval', done: false }].map((step, i) => (
+                  {[{ icon: '✅', label: 'Account created — login agad!', done: true }, { icon: '📋', label: 'Fill Application Form (limited access)', done: true }, { icon: '⏳', label: 'Admin reviews your Application Form', done: false }, { icon: '🔓', label: 'Full access after admin approval', done: false }].map((step, i) => (
                     <View key={i} style={s.flowRow}><Text style={{ fontSize: 14 }}>{step.icon}</Text><Text style={[s.flowTxt, step.done && s.flowTxtDone]}>{step.label}</Text></View>
                   ))}
                 </View>
-                <View style={s.pendingBox}><MaterialIcons name="hourglass-empty" size={18} color="#c9a84c" /><Text style={s.pendingTxt}>Your account is <Text style={s.pendingBold}>Pending Admin Approval.</Text>{'\n'}Login after the admin activates your account.</Text></View>
+                <View style={s.pendingBox}><MaterialIcons name="info-outline" size={18} color="#c9a84c" /><Text style={s.pendingTxt}>You can <Text style={s.pendingBold}>login now</Text> and fill your Application Form.{'\n'}Full access (savings, loans, etc.) will be unlocked after admin approves your application.</Text></View>
                 <TouchableOpacity style={s.primaryBtn} onPress={() => { setUserId(regMember.userId); setPw(''); setRegMember(null); switchView('login'); }} activeOpacity={0.85}>
                   <LinearGradient colors={['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.primaryBtnGrad}>
                     <Text style={s.primaryBtnArrow}>→</Text><Text style={s.primaryBtnTxt}>GO TO LOGIN</Text>

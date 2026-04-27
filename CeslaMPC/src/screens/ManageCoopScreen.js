@@ -185,6 +185,7 @@ const StatusPill = ({ status }) => {
   const map = {
     Active:        { bg: 'rgba(26,138,74,0.18)',  border: 'rgba(26,138,74,0.50)',  color: C.green },
     Pending:       { bg: 'rgba(180,110,10,0.18)', border: 'rgba(180,110,10,0.50)', color: C.orange },
+    Registered:    { bg: 'rgba(37,99,176,0.15)',  border: 'rgba(37,99,176,0.45)',  color: C.blue },
     Inactive:      { bg: 'rgba(192,57,43,0.15)',  border: 'rgba(192,57,43,0.45)',  color: C.red },
     Rejected:      { bg: 'rgba(192,57,43,0.15)',  border: 'rgba(192,57,43,0.45)',  color: C.red },
     Approved:      { bg: 'rgba(26,138,74,0.18)',  border: 'rgba(26,138,74,0.50)',  color: C.green },
@@ -246,7 +247,7 @@ const MetricTile = ({ label, value, icon, color, sub }) => (
 const NAV = [
   { key: 'overview',      label: 'Overview',          icon: '⊞', single: true },
   { key: 'members_grp',   label: 'Members',           icon: '👥', children: [
-    { key: 'pending',     label: 'Pending Approval',  icon: '⏳' },
+    { key: 'pending',     label: 'App Form Review',   icon: '📋' },
     { key: 'all_members', label: 'All Members',       icon: '👤' },
     { key: 'delinquency', label: 'Delinquency',       icon: '⚠️' },
   ]},
@@ -367,7 +368,7 @@ const OverviewView = ({ members, claims, loans }) => {
 
   const total       = members.length;
   const active      = members.filter(m => m.status === 'Active').length;
-  const pending     = members.filter(m => m.status === 'Pending').length;
+  const pending     = members.filter(m => m.status === 'Pending' || m.status === 'Registered').length;
   const newToday    = members.filter(m => { const d = m.createdAt?.toDate?.() || new Date(m.createdAt || 0); return d >= todayStart; }).length;
   const newWeek     = members.filter(m => { const d = m.createdAt?.toDate?.() || new Date(m.createdAt || 0); return d >= weekStart; }).length;
   const totalSavings= members.reduce((s, m) => s + (m.savings || 0), 0);
@@ -407,7 +408,7 @@ const OverviewView = ({ members, claims, loans }) => {
       <Text style={a.sHead}>📊 KEY METRICS</Text>
       <View style={a.tileGrid}>
         <MetricTile label="Total Members"     value={fmtNum(total)}       icon="👥" color={C.blue}     sub={`${active} active`} />
-        <MetricTile label="Pending Approval"  value={fmtNum(pending)}     icon="⏳" color={C.orange}   sub="Awaiting review" />
+        <MetricTile label="For App Review"    value={fmtNum(pending)}     icon="📋" color={C.blue}     sub="Awaiting approval" />
         <MetricTile label="Total Savings"     value={fmtCur(totalSavings)}icon="💰" color={C.green}    sub="All members" />
         <MetricTile label="Total Shares"      value={fmtCur(totalShares)} icon="📊" color={C.gold}     sub="Share capital" />
         <MetricTile label="Loans Outstanding" value={fmtCur(totalLoans)}  icon="💳" color={C.orangeLt} sub={`${pendLoans} pending apps`} />
@@ -438,7 +439,12 @@ const OverviewView = ({ members, claims, loans }) => {
 
 // ── 2. PENDING APPROVAL — the core feature ────────────────────────────────────
 const PendingView = ({ members }) => {
-  const pending = members.filter(m => m.status === 'Pending');
+  // 'Registered' = free registration done, waiting for app form approval
+  // 'Pending'    = legacy status (kept for backward compat)
+  const registered = members.filter(m => m.status === 'Registered');
+  const legacy     = members.filter(m => m.status === 'Pending');
+  const all        = [...registered, ...legacy];
+
   const [sel,    setSel]    = useState(null);
   const [action, setAction] = useState(null); // 'approve' | 'reject'
   const [reason, setReason] = useState('');
@@ -458,71 +464,120 @@ const PendingView = ({ members }) => {
     finally { setBusy(false); }
   };
 
+  const hasAppForm = m => {
+    const af = m.appForm || {};
+    return !!(af.dob || af.placeOfBirth || af.civilStatus || af.contactNo || af.empType);
+  };
+
   return (
     <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
-      <Text style={a.pageTitle}>⏳ Pending Approval</Text>
+      <Text style={a.pageTitle}>📋 Application Form Review</Text>
       <Text style={a.pageSub}>
-        {pending.length > 0
-          ? `${pending.length} employee${pending.length !== 1 ? 's' : ''} registered and waiting for your review.`
-          : 'All registrations have been reviewed.'}
+        {all.length > 0
+          ? `${registered.length} registered member${registered.length !== 1 ? 's' : ''} awaiting application form approval.`
+          : 'All applications have been reviewed.'}
       </Text>
 
       {/* Explainer banner */}
-      {pending.length > 0 && (
+      {registered.length > 0 && (
         <View style={a.infoBanner}>
           <Text style={a.infoBannerTxt}>
-            🔔 When you <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>Approve</Text> a member, they will immediately be able to login using their User ID and password.{'\n'}
-            If you <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>Reject</Text>, they will not be able to login.
+            📝 These members registered for free and can already login with <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>limited access</Text> (Application Form only).{'\n'}
+            Once you <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>Approve</Text> their application form, they get <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>full access</Text> to the cooperative portal.
           </Text>
         </View>
       )}
 
-      {pending.length === 0 && (
+      {all.length === 0 && (
         <GCard style={{ alignItems: 'center', padding: 44 }}>
           <Text style={{ fontSize: 40, marginBottom: 12, textAlign: 'center' }}>✅</Text>
-          <Text style={a.emptyTxt}>No pending registrations at this time.</Text>
+          <Text style={a.emptyTxt}>No pending applications at this time.</Text>
         </GCard>
       )}
 
-      {pending.map(m => (
-        <GCard key={m.id} style={{ borderLeftWidth: 4, borderLeftColor: C.orange }}>
-          {/* Member info */}
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-            <View style={a.memberAvatar}>
-              <Text style={a.memberAvatarTxt}>{initials(m.name)}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={a.memberName}>{m.name}</Text>
-              <Text style={a.memberUserId}>{m.userId}</Text>
-              <Text style={a.memberMeta}>Registered: {fmtDate(m.createdAt)}</Text>
-              {m.email   ? <Text style={a.memberMeta}>Email: {m.email}</Text>   : null}
-              {m.contact ? <Text style={a.memberMeta}>Contact: {m.contact}</Text> : null}
-            </View>
-            <StatusPill status="Pending" />
-          </View>
+      {/* Registered members (new free-registration flow) */}
+      {registered.length > 0 && (
+        <>
+          <Text style={a.sHead}>🆕 REGISTERED — AWAITING APP FORM APPROVAL</Text>
+          {registered.map(m => (
+            <GCard key={m.id} style={{ borderLeftWidth: 4, borderLeftColor: C.blue }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
+                <View style={a.memberAvatar}>
+                  <Text style={a.memberAvatarTxt}>{initials(m.name)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={a.memberName}>{m.name}</Text>
+                  <Text style={a.memberUserId}>{m.userId}</Text>
+                  <Text style={a.memberMeta}>Registered: {fmtDate(m.createdAt)}</Text>
+                  {m.email   ? <Text style={a.memberMeta}>Email: {m.email}</Text>   : null}
+                  {m.contact ? <Text style={a.memberMeta}>Contact: {m.contact}</Text> : null}
+                </View>
+                <StatusPill status="Registered" />
+              </View>
+              {/* App form status indicator */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, backgroundColor: hasAppForm(m) ? 'rgba(26,138,74,0.12)' : 'rgba(201,168,76,0.12)', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: hasAppForm(m) ? 'rgba(26,138,74,0.35)' : 'rgba(201,168,76,0.35)' }}>
+                <Text style={{ fontSize: 14 }}>{hasAppForm(m) ? '✅' : '⏳'}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: hasAppForm(m) ? C.green : C.orange, flex: 1 }}>
+                  {hasAppForm(m) ? 'Application Form submitted — ready for review' : 'Application Form not yet submitted by member'}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={[a.btnAction, { backgroundColor: 'rgba(26,138,74,0.15)', borderColor: 'rgba(26,138,74,0.50)' }]}
+                  onPress={() => open(m, 'approve')} activeOpacity={0.8}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.green }}>✓  Approve & Give Full Access</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[a.btnAction, { backgroundColor: 'rgba(192,57,43,0.12)', borderColor: 'rgba(192,57,43,0.45)' }]}
+                  onPress={() => open(m, 'reject')} activeOpacity={0.8}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.red }}>✕  Reject</Text>
+                </TouchableOpacity>
+              </View>
+            </GCard>
+          ))}
+        </>
+      )}
 
-          {/* Action buttons */}
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity style={[a.btnAction, { backgroundColor: 'rgba(26,138,74,0.15)', borderColor: 'rgba(26,138,74,0.50)' }]}
-              onPress={() => open(m, 'approve')} activeOpacity={0.8}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.green }}>✓  Approve</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[a.btnAction, { backgroundColor: 'rgba(192,57,43,0.12)', borderColor: 'rgba(192,57,43,0.45)' }]}
-              onPress={() => open(m, 'reject')} activeOpacity={0.8}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.red }}>✕  Reject</Text>
-            </TouchableOpacity>
-          </View>
-        </GCard>
-      ))}
+      {/* Legacy Pending members */}
+      {legacy.length > 0 && (
+        <>
+          <Text style={[a.sHead, { marginTop: 12 }]}>⏳ LEGACY PENDING (OLD REGISTRATIONS)</Text>
+          {legacy.map(m => (
+            <GCard key={m.id} style={{ borderLeftWidth: 4, borderLeftColor: C.orange }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+                <View style={a.memberAvatar}>
+                  <Text style={a.memberAvatarTxt}>{initials(m.name)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={a.memberName}>{m.name}</Text>
+                  <Text style={a.memberUserId}>{m.userId}</Text>
+                  <Text style={a.memberMeta}>Registered: {fmtDate(m.createdAt)}</Text>
+                  {m.email   ? <Text style={a.memberMeta}>Email: {m.email}</Text>   : null}
+                  {m.contact ? <Text style={a.memberMeta}>Contact: {m.contact}</Text> : null}
+                </View>
+                <StatusPill status="Pending" />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={[a.btnAction, { backgroundColor: 'rgba(26,138,74,0.15)', borderColor: 'rgba(26,138,74,0.50)' }]}
+                  onPress={() => open(m, 'approve')} activeOpacity={0.8}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.green }}>✓  Approve</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[a.btnAction, { backgroundColor: 'rgba(192,57,43,0.12)', borderColor: 'rgba(192,57,43,0.45)' }]}
+                  onPress={() => open(m, 'reject')} activeOpacity={0.8}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.red }}>✕  Reject</Text>
+                </TouchableOpacity>
+              </View>
+            </GCard>
+          ))}
+        </>
+      )}
 
       {/* Confirm modal */}
       <ActionModal
         visible={!!sel && !!action}
         title={action === 'approve' ? '✅ Approve Member' : '❌ Reject Member'}
         message={action === 'approve'
-          ? `Approve ${sel?.name}?\n\nThey will be able to login immediately using their User ID (${sel?.userId}) and their registered password.`
-          : `Reject ${sel?.name}'s registration?`}
-        confirmLabel={action === 'approve' ? 'Approve' : 'Reject'}
+          ? `Approve ${sel?.name}?\n\nThey will get FULL ACCESS to the cooperative portal — savings, loans, and all features will be unlocked.`
+          : `Reject ${sel?.name}'s application?`}
+        confirmLabel={action === 'approve' ? 'Approve & Give Full Access' : 'Reject'}
         confirmColor={action === 'approve' ? C.green : C.red}
         onConfirm={confirm}
         onCancel={close}
@@ -535,7 +590,7 @@ const PendingView = ({ members }) => {
               style={a.modalInput}
               value={reason}
               onChangeText={setReason}
-              placeholder="e.g. Incomplete information, not a CLIMBS employee..."
+              placeholder="e.g. Incomplete application form, not a CLIMBS employee..."
               placeholderTextColor={C.textMuted}
               multiline numberOfLines={3}
             />
@@ -1301,25 +1356,27 @@ const NotifsView = ({ members, onNav }) => {
       <Text style={a.pageTitle}>🔔 Notifications</Text>
       <Text style={a.pageSub}>{unread > 0 ? `${unread} unread — tap a message to open.` : 'All caught up!'}</Text>
 
-      {/* Live pending members as alerts */}
-      {members.filter(m => m.status === 'Pending').map(m => (
+      {/* Live registered/pending members as alerts */}
+      {members.filter(m => m.status === 'Registered' || m.status === 'Pending').map(m => (
         <TouchableOpacity key={`pending-${m.id}`}
-          style={[a.notifCard, { borderLeftColor: C.orange }]}
+          style={[a.notifCard, { borderLeftColor: m.status === 'Registered' ? C.blue : C.orange }]}
           onPress={() => onNav && onNav('pending')} activeOpacity={0.8}>
-          <View style={[a.notifIcon, { backgroundColor: C.orange + '22' }]}>
-            <Text style={{ fontSize: 18 }}>🆕</Text>
+          <View style={[a.notifIcon, { backgroundColor: (m.status === 'Registered' ? C.blue : C.orange) + '22' }]}>
+            <Text style={{ fontSize: 18 }}>📋</Text>
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <Text style={[a.notifTitle, { flex: 1 }]} numberOfLines={1}>New Member Registration</Text>
-              <View style={{ backgroundColor: C.orange, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+              <Text style={[a.notifTitle, { flex: 1 }]} numberOfLines={1}>
+                {m.status === 'Registered' ? 'App Form Review Needed' : 'New Member Registration'}
+              </Text>
+              <View style={{ backgroundColor: m.status === 'Registered' ? C.blue : C.orange, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
                 <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>TAP TO REVIEW</Text>
               </View>
             </View>
-            <Text style={a.notifMsg}>{m.name} ({m.userId}) registered and is awaiting your approval.</Text>
+            <Text style={a.notifMsg}>{m.name} ({m.userId}) {m.status === 'Registered' ? 'registered and is awaiting application form approval.' : 'is awaiting your approval.'}</Text>
             <Text style={a.notifTime}>{fmtTime(m.createdAt)}</Text>
           </View>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.orange, marginTop: 4 }} />
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.status === 'Registered' ? C.blue : C.orange, marginTop: 4 }} />
         </TouchableOpacity>
       ))}
 
@@ -1351,7 +1408,7 @@ const NotifsView = ({ members, onNav }) => {
         );
       })}
 
-      {notifs.length === 0 && members.filter(m => m.status === 'Pending').length === 0 && (
+      {notifs.length === 0 && members.filter(m => m.status === 'Pending' || m.status === 'Registered').length === 0 && (
         <GCard style={{ alignItems: 'center', padding: 36 }}>
           <Text style={{ fontSize: 36, marginBottom: 10, textAlign: 'center' }}>🔔</Text>
           <Text style={a.emptyTxt}>No notifications at this time.</Text>
@@ -1548,6 +1605,7 @@ const ReportsView = ({ members, claims, loans }) => {
           <StatRow label="Total Members"     value={members.length} />
           <StatRow label="Active"            value={activeCount}    color={C.green} />
           <StatRow label="Pending Approval"  value={members.filter(m => m.status === 'Pending').length}  color={C.orange} />
+          <StatRow label="Registered (Limited)" value={members.filter(m => m.status === 'Registered').length} color={C.blue} />
           <StatRow label="Inactive"          value={members.filter(m => m.status === 'Inactive').length} color={C.red} />
           <StatRow label="Rejected"          value={members.filter(m => m.status === 'Rejected').length} color={C.red} />
           <StatRow label="New This Month"    value={thisMonth.length} color={C.blue} />
@@ -1985,6 +2043,12 @@ const AdminChatRoom = ({ roomId, memberName, onBack }) => {
   const [sending, setSending]   = useState(false);
   const scrollRef = useRef(null);
 
+  // Mark room as read by admin when opened
+  useEffect(() => {
+    if (!roomId) return;
+    updateDoc(doc(db, 'chatRooms', roomId), { adminLastReadAt: serverTimestamp() }).catch(() => {});
+  }, [roomId]);
+
   useEffect(() => {
     if (!roomId) return;
     const q = query(
@@ -1996,7 +2060,7 @@ const AdminChatRoom = ({ roomId, memberName, onBack }) => {
       const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setMessages(msgs);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
-      // Auto mark unread messages as read
+      // Auto mark unread messages as read + stamp adminLastReadAt
       const batch = writeBatch(db);
       let hasUnread = false;
       snap.docs.forEach(d => {
@@ -2006,7 +2070,10 @@ const AdminChatRoom = ({ roomId, memberName, onBack }) => {
           hasUnread = true;
         }
       });
-      if (hasUnread) batch.commit().catch(() => {});
+      if (hasUnread) {
+        batch.commit().catch(() => {});
+        updateDoc(doc(db, 'chatRooms', roomId), { adminLastReadAt: serverTimestamp() }).catch(() => {});
+      }
     });
     return unsub;
   }, [roomId]);
@@ -2030,17 +2097,7 @@ const AdminChatRoom = ({ roomId, memberName, onBack }) => {
         lastSender: 'Admin',
         lastSenderId: 'admin',
       });
-      // ── Notify the member so their bell icon shows the admin reply ────────
-      addDoc(collection(db, 'members', memberId, 'notifications'), {
-        type:    'chat',
-        icon:    '💬',
-        title:   'New message from Admin',
-        message: msgText.length > 80 ? msgText.slice(0, 80) + '\u2026' : msgText,
-        color:   '#0f1e35',
-        navKey:  'chat_admin',
-        createdAt: serverTimestamp(),
-        read:    false,
-      }).catch(() => {});
+        // Member notified via their own watchRoomDoc listener -- no duplicate Firestore write needed
       setText('');
     } catch (e) { console.warn(e); }
     finally { setSending(false); }
@@ -2720,7 +2777,7 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
   const { data: loans   } = useCollection('loanApplications',    orderBy('createdAt', 'desc'));
   const { data: notifs  } = useCollection('adminNotifications',  orderBy('createdAt', 'desc'));
 
-  const pendingCount = members.filter(m => m.status === 'Pending').length;
+  const pendingCount = members.filter(m => m.status === 'Pending' || m.status === 'Registered').length;
   const unreadNotifs = notifs.filter(n => !n.read).length + pendingCount;
 
   // Real-time unread chat count across all admin chat rooms
@@ -2732,10 +2789,13 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
   useEffect(() => {
     const q = query(collection(db, 'chatRooms'), where('type', '==', 'admin'));
     const unsub = onSnapshot(q, snap => {
-      // Unread count
+      // Unread count -- only rooms where lastAt > adminLastReadAt
       const unreadRooms = snap.docs.filter(d => {
         const data = d.data();
-        return data.lastMessage && data.lastSender && data.lastSender !== 'Admin';
+        if (!data.lastMessage || !data.lastSender || data.lastSender === 'Admin') return false;
+        const lastAtMs    = data.lastAt?.toMillis?.() ?? (data.lastAt?.seconds != null ? data.lastAt.seconds * 1000 : 0);
+        const adminReadMs = data.adminLastReadAt?.toMillis?.() ?? (data.adminLastReadAt?.seconds != null ? data.adminLastReadAt.seconds * 1000 : 0);
+        return lastAtMs > adminReadMs;
       }).length;
       setChatUnread(unreadRooms);
 
@@ -2853,7 +2913,7 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
           {/* Pending members quick badge */}
           {pendingCount > 0 && (
             <TouchableOpacity style={a.pendingBadge} onPress={() => switchNav('pending')}>
-              <Text style={a.pendingBadgeTxt}>⏳ {pendingCount} Pending</Text>
+              <Text style={a.pendingBadgeTxt}>📋 {pendingCount} For Review</Text>
             </TouchableOpacity>
           )}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
