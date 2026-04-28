@@ -1,11 +1,11 @@
 // src/screens/CanteenMemberScreen.js
-// CESLA MPC — Grocery Member Portal
+// CESLA MPC — Canteen Member Portal
 // Based 100% on CanteenVisitor.js — same design, same UI, same layout
 // Differences: Firebase login (CoopScreen credentials) + member chip + order history
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useGrocery } from '../context/GroceryContext';
+import { useCanteen } from '../context/CanteenContext';
 
 // ── Firebase (CoopScreen login method) ──────────────────────────────────────
 import {
@@ -41,6 +41,7 @@ import {
   ScrollView, Animated, StatusBar, Image,
   useWindowDimensions, Platform, TextInput, Modal, Alert, ActivityIndicator,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
@@ -49,7 +50,10 @@ import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from 
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 
-// ─── LAZY-LOAD react-native-maps (native only) ────────────────────────────────
+
+
+
+// ─── LAZY-LOAD react-native-maps (native only, avoids web import error) ────────
 let MapView = null;
 let Marker  = null;
 if (Platform.OS !== 'web') {
@@ -57,142 +61,307 @@ if (Platform.OS !== 'web') {
     const RNMaps = require('react-native-maps');
     MapView = RNMaps.default;
     Marker  = RNMaps.Marker;
-  } catch (_) {}
+  } catch (_) { /* react-native-maps not installed */ }
 }
 
-// ─── LEAFLET HTML (web map) ───────────────────────────────────────────────────
+// ─── LEAFLET HTML (injected as iframe srcdoc on web) ─────────────────────────
+// Full interactive map: OpenStreetMap tiles + draggable pin + click-to-pin
+// Communicates with parent via postMessage
 const LEAFLET_HTML = (lat, lng, isDeliver) => `<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>* { margin:0; padding:0; box-sizing:border-box; } html,body,#map { width:100%; height:100%; } .leaflet-control-attribution { font-size:8px; }</style>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body,#map { width:100%; height:100%; }
+  .leaflet-control-attribution { font-size:8px; }
+</style>
 </head>
 <body>
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  var initLat = ${lat || 8.4822}; var initLng = ${lng || 124.6472};
+  var initLat = ${lat || 8.4822};
+  var initLng = ${lng || 124.6472};
   var pinColor = '${isDeliver ? '#e74c3c' : '#1a3a6b'}';
+
+  // CDO city bounds — covers all barangays
   var cdoBounds = L.latLngBounds([[8.37, 124.55], [8.58, 124.78]]);
-  var map = L.map('map', { maxBounds: cdoBounds, maxBoundsViscosity: 1.0, minZoom: 12 }).setView([initLat, initLng], ${lat ? 17 : 14});
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }).addTo(map);
-  var icon = L.divIcon({ html: '<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;background:' + pinColor + ';border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.35);transform:rotate(-45deg);"></div>', iconSize:[26,26], iconAnchor:[13,26], className:'' });
+  var map = L.map('map', {
+    maxBounds: cdoBounds,
+    maxBoundsViscosity: 1.0,
+    minZoom: 12,
+  }).setView([initLat, initLng], ${lat ? 17 : 14});
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  // Custom colored icon
+  var icon = L.divIcon({
+    html: '<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;background:' + pinColor + ';border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.35);transform:rotate(-45deg);"></div>',
+    iconSize: [26,26], iconAnchor:[13,26], className:''
+  });
+
   var marker = null;
+
   function setPin(lat, lng) {
-    if (marker) { marker.setLatLng([lat, lng]); } else {
+    if (marker) { marker.setLatLng([lat, lng]); }
+    else {
       marker = L.marker([lat, lng], { icon: icon, draggable: true }).addTo(map);
-      marker.on('dragend', function(e) { var ll = e.target.getLatLng(); window.parent.postMessage(JSON.stringify({ type:'coords', lat: ll.lat, lng: ll.lng }), '*'); });
+      marker.on('dragend', function(e) {
+        var ll = e.target.getLatLng();
+        window.parent.postMessage(JSON.stringify({ type:'coords', lat: ll.lat, lng: ll.lng }), '*');
+      });
     }
     window.parent.postMessage(JSON.stringify({ type:'coords', lat: lat, lng: lng }), '*');
   }
+
   ${lat ? `setPin(${lat}, ${lng});` : ''}
+
   map.on('click', function(e) { setPin(e.latlng.lat, e.latlng.lng); map.panTo(e.latlng); });
-  window.addEventListener('message', function(e) { try { var msg = JSON.parse(e.data); if (msg.type === 'flyTo') { setPin(msg.lat, msg.lng); map.setView([msg.lat, msg.lng], 16); } } catch(_) {} });
+
+  // Listen for messages from parent (e.g. "fly to location")
+  window.addEventListener('message', function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+      if (msg.type === 'flyTo') { setPin(msg.lat, msg.lng); map.setView([msg.lat, msg.lng], 16); }
+    } catch(_) {}
+  });
 </script>
 </body>
 </html>`;
 
+// ─── LOCATION PICKER MODAL ────────────────────────────────────────────────────
+// FoodPanda-style:
+//   • Address search bar (Nominatim / OpenStreetMap — no API key needed)
+//   • "Use My Location" GPS button
+//   • Interactive map: Leaflet iframe (web) | react-native-maps (native)
+//   • Click/drag pin anywhere — works outside campus
 const DEFAULT_REGION = { latitude:8.4822, longitude:124.6472, latitudeDelta:0.04, longitudeDelta:0.04 };
 
-// ─── LOCATION PICKER MODAL ────────────────────────────────────────────────────
 const LocationPickerModal = ({ visible, onClose, onConfirm, deliveryType }) => {
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(80)).current;
-  const [coords,      setCoords]      = useState(null);
-  const [address,     setAddress]     = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [searching,   setSearching]   = useState(false);
-  const [locLoading,  setLocLoading]  = useState(false);
-  const [region,      setRegion]      = useState(DEFAULT_REGION);
-  const [mapKey,      setMapKey]      = useState(0);
+
+  const [coords,       setCoords]       = useState(null);
+  const [address,      setAddress]      = useState('');
+  const [searchQuery,  setSearchQuery]  = useState('');
+  const [suggestions,  setSuggestions]  = useState([]);
+  const [searching,    setSearching]    = useState(false);
+  const [locLoading,   setLocLoading]   = useState(false);
+  const [region,       setRegion]       = useState(DEFAULT_REGION);
+  const [mapKey,       setMapKey]       = useState(0); // force iframe re-render
+  const iframeRef = useRef(null);
   const searchTimer = useRef(null);
 
+  // ── Entrance animation ─────────────────────────────────────────────────────
   useEffect(() => {
     if (visible) {
       Animated.parallel([
         Animated.timing(fadeAnim,  { toValue:1, duration:260, useNativeDriver:true }),
         Animated.spring(slideAnim, { toValue:0, tension:65, friction:11, useNativeDriver:true }),
       ]).start();
-    } else { fadeAnim.setValue(0); slideAnim.setValue(80); setSearchQuery(''); setSuggestions([]); }
+    } else {
+      fadeAnim.setValue(0);
+      slideAnim.setValue(80);
+      setSearchQuery('');
+      setSuggestions([]);
+    }
   }, [visible]);
 
+  // ── Listen for pin coords from Leaflet iframe (web) ───────────────────────
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const handler = async (e) => {
       try {
-        const msg = JSON.parse(e.data); if (msg.type !== 'coords') return;
-        const { lat, lng } = msg; setCoords({ lat, lng });
+        const msg = JSON.parse(e.data);
+        if (msg.type !== 'coords') return;
+        const { lat, lng } = msg;
+        setCoords({ lat, lng });
+        // Reverse geocode via Geoapify
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: { 'Accept-Language': 'en' } });
-          const data = await res.json(); if (data.display_name) setAddress(data.display_name);
-        } catch (_) { setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`); }
+          const res = await fetch(
+            `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&lang=en&apiKey=${GEOAPIFY_KEY}`
+          );
+          const data = await res.json();
+          const addr = data.features?.[0]?.properties?.formatted;
+          setAddress(addr || `${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+        } catch (_) {
+          setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+        }
       } catch (_) {}
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, []);
 
+  // ── Search config ────────────────────────────────────────────────────────
+  const GEOAPIFY_KEY = 'a331c3962fec4895bf75aa4947d35fbc'; // 🔑 free at geoapify.com (3000 req/day)
+  const CDO_LAT  = 8.4822;
+  const CDO_LNG  = 124.6472;
+  const CDO_BBOX = '124.55,8.37,124.78,8.58';
+
+  // ── Photon search (primary, fully free, OSM-based) ────────────────────────
+  const searchPhoton = async (text) => {
+    const res = await fetch(
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(text)},Cagayan de Oro`
+      + `&lat=${CDO_LAT}&lon=${CDO_LNG}&limit=6&lang=en`
+    );
+    const data = await res.json();
+    return (data.features || [])
+      .filter(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        return lat >= 8.37 && lat <= 8.58 && lng >= 124.55 && lng <= 124.78;
+      })
+      .map(f => ({
+        display_name: [
+          f.properties.name,
+          f.properties.street,
+          f.properties.district,
+          f.properties.city,
+        ].filter(Boolean).join(', '),
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0],
+        place_id: null,
+      }));
+  };
+
+  // ── Geoapify search (fallback, 3000 req/day free) ─────────────────────────
+  const searchGeoapify = async (text) => {
+    const res = await fetch(
+      `https://api.geoapify.com/v1/geocode/autocomplete`
+      + `?text=${encodeURIComponent(text)}`
+      + `&bias=proximity:${CDO_LNG},${CDO_LAT}`
+      + `&filter=rect:${CDO_BBOX}`
+      + `&limit=6&lang=en&apiKey=${GEOAPIFY_KEY}`
+    );
+    const data = await res.json();
+    return (data.features || []).map(f => ({
+      display_name: f.properties.formatted,
+      lat: f.geometry.coordinates[1],
+      lng: f.geometry.coordinates[0],
+      place_id: null,
+    }));
+  };
+
   const handleSearchChange = (text) => {
-    setSearchQuery(text); clearTimeout(searchTimer.current);
-    if (text.length < 3) { setSuggestions([]); return; }
+    setSearchQuery(text);
+    clearTimeout(searchTimer.current);
+    if (text.length < 2) { setSuggestions([]); return; }
     searchTimer.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)},+Cagayan+de+Oro&format=json&limit=8&addressdetails=1&countrycodes=ph&viewbox=124.55,8.37,124.78,8.58`, { headers: { 'Accept-Language': 'en' } });
-        const data = await res.json();
-        setSuggestions(data.map(r => ({ display_name: r.display_name, lat: parseFloat(r.lat), lng: parseFloat(r.lon) })));
-      } catch (_) { setSuggestions([]); }
+        let results = await searchPhoton(text);
+        if (results.length === 0) {
+          results = await searchGeoapify(text);
+        }
+        setSuggestions(results);
+      } catch (_) {
+        try {
+          const results = await searchGeoapify(text);
+          setSuggestions(results);
+        } catch (__) { setSuggestions([]); }
+      }
       setSearching(false);
-    }, 600);
+    }, 400);
   };
 
+  const resolvePlaceId = async () => null;
+
+  // ── Tap suggestion → fly map to that location ───────────────────────────
   const handleSelectSuggestion = (s) => {
-    setCoords({ lat: s.lat, lng: s.lng }); setAddress(s.display_name); setSearchQuery(''); setSuggestions([]);
-    if (Platform.OS !== 'web') { setRegion({ latitude:s.lat, longitude:s.lng, latitudeDelta:0.005, longitudeDelta:0.005 }); }
-    else { setMapKey(k => k + 1); }
+    setSearchQuery('');
+    setSuggestions([]);
+    setCoords({ lat: s.lat, lng: s.lng });
+    setAddress(s.display_name);
+    if (Platform.OS !== 'web') {
+      setRegion({ latitude:s.lat, longitude:s.lng, latitudeDelta:0.003, longitudeDelta:0.003 });
+    } else {
+      setMapKey(k => k + 1);
+    }
   };
 
+  // ── GPS current location ──────────────────────────────────────────────────
   const handleGetLocation = async () => {
     setLocLoading(true);
     try {
       let latitude, longitude;
       if (Platform.OS === 'web') {
-        if (!navigator.geolocation) { Alert.alert('Not Supported', 'Geolocation not supported.'); setLocLoading(false); return; }
-        await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(p => { latitude = p.coords.latitude; longitude = p.coords.longitude; res(); }, rej, { enableHighAccuracy: true, timeout: 12000 }));
+        if (!navigator.geolocation) {
+          Alert.alert('Not Supported', 'Geolocation not supported by this browser.');
+          setLocLoading(false); return;
+        }
+        await new Promise((res, rej) => {
+          navigator.geolocation.getCurrentPosition(
+            p => { latitude = p.coords.latitude; longitude = p.coords.longitude; res(); },
+            e => rej(e),
+            { enableHighAccuracy: true, timeout: 12000 }
+          );
+        });
       } else {
-        const Loc = require('expo-location');
-        const { status } = await Loc.requestForegroundPermissionsAsync();
-        if (status !== 'granted') { Alert.alert('Permission Denied', 'Location permission required.'); setLocLoading(false); return; }
-        const loc = await Loc.getCurrentPositionAsync({ accuracy: Loc.Accuracy.High });
-        latitude = loc.coords.latitude; longitude = loc.coords.longitude;
+        const Location = require('expo-location');
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Location permission is required.');
+          setLocLoading(false); return;
+        }
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        latitude  = loc.coords.latitude;
+        longitude = loc.coords.longitude;
       }
       setCoords({ lat: latitude, lng: longitude });
+      // Reverse geocode via Geoapify
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, { headers: { 'Accept-Language': 'en' } });
-        const data = await res.json(); setAddress(data.display_name || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
-      } catch (_) { setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`); }
-      if (Platform.OS !== 'web') { setRegion({ latitude, longitude, latitudeDelta:0.005, longitudeDelta:0.005 }); }
-      else { setMapKey(k => k + 1); }
-    } catch (e) { Alert.alert('Error', 'Could not get location. Please enable GPS.'); }
+        const res = await fetch(
+          `https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&lang=en&apiKey=${GEOAPIFY_KEY}`
+        );
+        const data = await res.json();
+        const addr = data.features?.[0]?.properties?.formatted;
+        setAddress(addr || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      } catch (_) {
+        setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      }
+      if (Platform.OS !== 'web') {
+        setRegion({ latitude, longitude, latitudeDelta:0.003, longitudeDelta:0.003 });
+      } else {
+        setMapKey(k => k + 1);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Could not get location. Please enable GPS and try again.');
+    }
     setLocLoading(false);
   };
 
+  // ── Native: marker drag → reverse geocode via Geoapify ──────────────────
   const handleMarkerDrag = async (e) => {
-    const { latitude, longitude } = e.nativeEvent.coordinate; setCoords({ lat: latitude, lng: longitude });
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+    setCoords({ lat: latitude, lng: longitude });
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, { headers: { 'Accept-Language': 'en' } });
-      const data = await res.json(); setAddress(data.display_name || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
-    } catch (_) { setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`); }
+      const res = await fetch(
+        `https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&lang=en&apiKey=${GEOAPIFY_KEY}`
+      );
+      const data = await res.json();
+      const addr = data.features?.[0]?.properties?.formatted;
+      setAddress(addr || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+    } catch (_) {
+      setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+    }
   };
 
   const handleConfirm = () => {
-    if (!address.trim()) { Alert.alert('No location', 'Please set a location first.'); return; }
-    onConfirm({ address: address.trim(), coords }); onClose();
+    if (!address.trim()) {
+      Alert.alert('No location', 'Please set a location first.');
+      return;
+    }
+    onConfirm({ address: address.trim(), coords });
+    onClose();
   };
 
   const isDeliver = deliveryType === 'deliver';
+
   if (!visible) return null;
 
   return (
@@ -200,25 +369,54 @@ const LocationPickerModal = ({ visible, onClose, onConfirm, deliveryType }) => {
       <Animated.View style={[lpStyles.overlay, { opacity: fadeAnim }]}>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[lpStyles.sheet, { transform:[{ translateY: slideAnim }] }]}>
+
+          {/* ── Header ── */}
           <View style={lpStyles.header}>
             <Text style={lpStyles.headerIcon}>{isDeliver ? '🛵' : '🏃'}</Text>
             <View style={{ flex:1 }}>
-              <Text style={lpStyles.headerTitle}>{isDeliver ? 'Set Delivery Location' : 'Set Pick-Up Location'}</Text>
-              <Text style={lpStyles.headerSub}>{isDeliver ? 'Search address or drop pin on map' : 'Search or tap on map to set pick-up point'}</Text>
+              <Text style={lpStyles.headerTitle}>
+                {isDeliver ? 'Set Delivery Location' : 'Set Pick-Up Location'}
+              </Text>
+              <Text style={lpStyles.headerSub}>
+                {isDeliver
+                  ? 'Search address or drop pin on map'
+                  : 'Search or tap on map to set pick-up point'}
+              </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={lpStyles.closeBtn}><Text style={lpStyles.closeBtnTxt}>✕</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onClose} style={lpStyles.closeBtn}>
+              <Text style={lpStyles.closeBtnTxt}>✕</Text>
+            </TouchableOpacity>
           </View>
+
+          {/* ── Address search bar ── */}
           <View style={lpStyles.searchWrap}>
             <View style={lpStyles.searchRow}>
               <Text style={lpStyles.searchIcon}>🔍</Text>
-              <TextInput style={lpStyles.searchInput} value={searchQuery} onChangeText={handleSearchChange} placeholder="Search address, landmark, place…" placeholderTextColor="rgba(1,31,75,0.35)" returnKeyType="search" />
+              <TextInput
+                style={lpStyles.searchInput}
+                value={searchQuery}
+                onChangeText={handleSearchChange}
+                placeholder="Search address, landmark, place…"
+                placeholderTextColor="rgba(1,31,75,0.35)"
+                returnKeyType="search"
+              />
               {searching && <Text style={{ fontSize:11, color:'rgba(1,31,75,0.45)' }}>…</Text>}
-              {searchQuery.length > 0 && !searching && (<TouchableOpacity onPress={() => { setSearchQuery(''); setSuggestions([]); }}><Text style={{ fontSize:13, color:'rgba(1,31,75,0.40)', paddingHorizontal:4 }}>✕</Text></TouchableOpacity>)}
+              {searchQuery.length > 0 && !searching && (
+                <TouchableOpacity onPress={() => { setSearchQuery(''); setSuggestions([]); }}>
+                  <Text style={{ fontSize:13, color:'rgba(1,31,75,0.40)', paddingHorizontal:4 }}>✕</Text>
+                </TouchableOpacity>
+              )}
             </View>
+            {/* Suggestions dropdown */}
             {suggestions.length > 0 && (
               <View style={lpStyles.suggestions}>
                 {suggestions.map((s, i) => (
-                  <TouchableOpacity key={i} style={[lpStyles.suggestionItem, i < suggestions.length - 1 && lpStyles.suggestionBorder]} onPress={() => handleSelectSuggestion(s)} activeOpacity={0.70}>
+                  <TouchableOpacity
+                    key={i}
+                    style={[lpStyles.suggestionItem, i < suggestions.length - 1 && lpStyles.suggestionBorder]}
+                    onPress={() => handleSelectSuggestion(s)}
+                    activeOpacity={0.70}
+                  >
                     <Text style={lpStyles.suggestionPin}>📍</Text>
                     <Text style={lpStyles.suggestionTxt} numberOfLines={2}>{s.display_name}</Text>
                   </TouchableOpacity>
@@ -226,35 +424,120 @@ const LocationPickerModal = ({ visible, onClose, onConfirm, deliveryType }) => {
               </View>
             )}
           </View>
-          <TouchableOpacity style={lpStyles.myLocBtn} onPress={handleGetLocation} activeOpacity={0.80} disabled={locLoading}>
-            <LinearGradient colors={isDeliver ? ['#c0392b','#e74c3c'] : ['#1a3a6b','#2c5282']} start={{x:0,y:0}} end={{x:1,y:0}} style={lpStyles.myLocGrad}>
-              <Text style={lpStyles.myLocTxt}>{locLoading ? '⏳  Getting your location…' : '📡  Use My Current Location'}</Text>
+
+          {/* ── GPS button ── */}
+          <TouchableOpacity
+            style={lpStyles.myLocBtn}
+            onPress={handleGetLocation}
+            activeOpacity={0.80}
+            disabled={locLoading}
+          >
+            <LinearGradient
+              colors={isDeliver ? ['#c0392b','#e74c3c'] : ['#1a3a6b','#2c5282']}
+              start={{x:0,y:0}} end={{x:1,y:0}}
+              style={lpStyles.myLocGrad}
+            >
+              <Text style={lpStyles.myLocTxt}>
+                {locLoading ? '⏳  Getting your location…' : '📡  Use My Current Location'}
+              </Text>
             </LinearGradient>
           </TouchableOpacity>
+
+          {/* ── Map ── */}
           <View style={lpStyles.mapWrap}>
             {Platform.OS !== 'web' && MapView ? (
+              /* ─ NATIVE: react-native-maps ─ */
               <>
-                <MapView style={{ flex:1 }} region={region} onPress={(e) => { const { latitude, longitude } = e.nativeEvent.coordinate; setRegion(r => ({ ...r, latitude, longitude })); handleMarkerDrag({ nativeEvent: { coordinate: { latitude, longitude } } }); }} showsUserLocation showsMyLocationButton={false} showsCompass showsScale>
-                  {coords && <Marker coordinate={{ latitude: coords.lat, longitude: coords.lng }} draggable onDragEnd={handleMarkerDrag} pinColor={isDeliver ? '#e74c3c' : '#1a3a6b'} />}
+                <MapView
+                  style={{ flex:1 }}
+                  region={region}
+                  onPress={(e) => {
+                    const { latitude, longitude } = e.nativeEvent.coordinate;
+                    setRegion(r => ({ ...r, latitude, longitude }));
+                    handleMarkerDrag({ nativeEvent: { coordinate: { latitude, longitude } } });
+                  }}
+                  showsUserLocation
+                  showsMyLocationButton={false}
+                  showsCompass
+                  showsScale
+                >
+                  {coords && (
+                    <Marker
+                      coordinate={{ latitude: coords.lat, longitude: coords.lng }}
+                      draggable
+                      onDragEnd={handleMarkerDrag}
+                      pinColor={isDeliver ? '#e74c3c' : '#1a3a6b'}
+                    />
+                  )}
                 </MapView>
-                {!coords && <View style={lpStyles.mapHint} pointerEvents="none"><View style={lpStyles.mapHintBubble}><Text style={lpStyles.mapHintTxt}>👆 Tap anywhere on the map to pin</Text></View></View>}
+                {!coords && (
+                  <View style={lpStyles.mapHint} pointerEvents="none">
+                    <View style={lpStyles.mapHintBubble}>
+                      <Text style={lpStyles.mapHintTxt}>👆 Tap anywhere on the map to pin</Text>
+                    </View>
+                  </View>
+                )}
+                {coords && (
+                  <View style={lpStyles.mapHint} pointerEvents="none">
+                    <View style={lpStyles.mapHintBubble}>
+                      <Text style={lpStyles.mapHintTxt}>Drag pin to adjust</Text>
+                    </View>
+                  </View>
+                )}
               </>
-            ) : Platform.OS === 'web' ? (
-              <iframe key={mapKey} title="Location Map" srcDoc={LEAFLET_HTML(coords?.lat, coords?.lng, isDeliver)} style={{ width:'100%', height:'100%', border:0, borderRadius:14 }} sandbox="allow-scripts allow-same-origin" />
             ) : (
-              <View style={lpStyles.mapPlaceholder}><Text style={{ fontSize:36 }}>🗺️</Text><Text style={lpStyles.mapPlaceholderTxt}>Map not available. Use search or GPS.</Text></View>
+              /* ─ WEB: Leaflet iframe — fully interactive ─ */
+              Platform.OS === 'web' ? (
+                <iframe
+                  key={mapKey}
+                  ref={iframeRef}
+                  title="Location Map"
+                  srcDoc={LEAFLET_HTML(coords?.lat, coords?.lng, isDeliver)}
+                  style={{ width:'100%', height:'100%', border:0, borderRadius:14 }}
+                  sandbox="allow-scripts allow-same-origin"
+                />
+              ) : (
+                <View style={lpStyles.mapPlaceholder}>
+                  <Text style={{ fontSize:36 }}>🗺️</Text>
+                  <Text style={lpStyles.mapPlaceholderTxt}>Map not available. Use search or GPS.</Text>
+                </View>
+              )
             )}
           </View>
+
+          {/* ── Selected address display ── */}
           <View style={lpStyles.addrRow}>
             <Text style={lpStyles.addrPin}>{isDeliver ? '📦' : '📍'}</Text>
-            <TextInput style={lpStyles.addrInput} value={address} onChangeText={setAddress} placeholder={isDeliver ? 'Delivery address will appear here…' : 'Pick-up location will appear here…'} placeholderTextColor="rgba(1,31,75,0.35)" multiline />
-            {address.length > 0 && (<TouchableOpacity onPress={() => { setAddress(''); setCoords(null); }}><Text style={{ fontSize:13, color:'rgba(1,31,75,0.40)', paddingLeft:4 }}>✕</Text></TouchableOpacity>)}
+            <TextInput
+              style={lpStyles.addrInput}
+              value={address}
+              onChangeText={setAddress}
+              placeholder={isDeliver ? 'Delivery address will appear here…' : 'Pick-up location will appear here…'}
+              placeholderTextColor="rgba(1,31,75,0.35)"
+              multiline
+            />
+            {address.length > 0 && (
+              <TouchableOpacity onPress={() => { setAddress(''); setCoords(null); }}>
+                <Text style={{ fontSize:13, color:'rgba(1,31,75,0.40)', paddingLeft:4 }}>✕</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <TouchableOpacity style={[lpStyles.confirmBtn, !address.trim() && { opacity:0.40 }]} onPress={handleConfirm} activeOpacity={0.80}>
-            <LinearGradient colors={isDeliver ? ['#c0392b','#e74c3c'] : ['#27ae60','#2ecc71']} start={{x:0,y:0}} end={{x:1,y:0}} style={lpStyles.confirmGrad}>
+
+          {/* ── Confirm ── */}
+          <TouchableOpacity
+            style={[lpStyles.confirmBtn, !address.trim() && { opacity:0.40 }]}
+            onPress={handleConfirm}
+            activeOpacity={0.80}
+          >
+            <LinearGradient
+              colors={isDeliver ? ['#c0392b','#e74c3c'] : ['#27ae60','#2ecc71']}
+              start={{x:0,y:0}} end={{x:1,y:0}}
+              style={lpStyles.confirmGrad}
+            >
               <Text style={lpStyles.confirmTxt}>✅  Confirm Location</Text>
             </LinearGradient>
           </TouchableOpacity>
+
         </Animated.View>
       </Animated.View>
     </Modal>
@@ -263,38 +546,75 @@ const LocationPickerModal = ({ visible, onClose, onConfirm, deliveryType }) => {
 
 const lpStyles = StyleSheet.create({
   overlay: { flex:1, backgroundColor:'rgba(1,15,40,0.60)', justifyContent:'flex-end' },
-  sheet: { backgroundColor:'#f0f5f9', borderTopLeftRadius:24, borderTopRightRadius:24, padding:18, gap:10, maxHeight:'92%', shadowColor:'#000', shadowOpacity:0.28, shadowRadius:24, elevation:20 },
+  sheet: {
+    backgroundColor:'#f0f5f9',
+    borderTopLeftRadius:24, borderTopRightRadius:24,
+    padding:18, gap:10, maxHeight:'92%',
+    shadowColor:'#000', shadowOpacity:0.28, shadowRadius:24, elevation:20,
+  },
   header: { flexDirection:'row', alignItems:'center', gap:10, marginBottom:2 },
   headerIcon: { fontSize:26 },
   headerTitle: { fontFamily:'GoogleSans_700Bold', fontSize:15, color:'#0f1e35' },
   headerSub:   { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.50)', marginTop:2 },
   closeBtn: { width:32, height:32, backgroundColor:'rgba(1,31,75,0.08)', borderRadius:16, justifyContent:'center', alignItems:'center' },
   closeBtnTxt: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:'rgba(1,31,75,0.55)' },
+
+  // Search
   searchWrap: { position:'relative', zIndex:99 },
-  searchRow: { flexDirection:'row', alignItems:'center', backgroundColor:'#fff', borderRadius:12, borderWidth:1, borderColor:'rgba(200,218,235,0.90)', paddingHorizontal:12, paddingVertical:4, gap:8 },
+  searchRow: {
+    flexDirection:'row', alignItems:'center',
+    backgroundColor:'#fff', borderRadius:12,
+    borderWidth:1, borderColor:'rgba(200,218,235,0.90)',
+    paddingHorizontal:12, paddingVertical:4, gap:8,
+  },
   searchIcon: { fontSize:15 },
   searchInput: { flex:1, fontFamily:'GoogleSans_400Regular', fontSize:13, color:'#0f1e35', paddingVertical:9 },
-  suggestions: { position:'absolute', top:'100%', left:0, right:0, backgroundColor:'#fff', borderRadius:12, marginTop:4, borderWidth:1, borderColor:'rgba(200,218,235,0.80)', shadowColor:'#000', shadowOpacity:0.14, shadowRadius:12, shadowOffset:{width:0,height:4}, elevation:12, overflow:'hidden' },
+  suggestions: {
+    position:'absolute', top:'100%', left:0, right:0,
+    backgroundColor:'#fff', borderRadius:12, marginTop:4,
+    borderWidth:1, borderColor:'rgba(200,218,235,0.80)',
+    shadowColor:'#000', shadowOpacity:0.14, shadowRadius:12,
+    shadowOffset:{width:0,height:4}, elevation:12, overflow:'hidden',
+  },
   suggestionItem: { flexDirection:'row', alignItems:'flex-start', paddingHorizontal:14, paddingVertical:11, gap:8 },
   suggestionBorder: { borderBottomWidth:1, borderBottomColor:'rgba(200,218,235,0.50)' },
   suggestionPin: { fontSize:14, paddingTop:1 },
   suggestionTxt: { flex:1, fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.75)', lineHeight:17 },
+
+  // GPS btn
   myLocBtn: { borderRadius:11, overflow:'hidden' },
   myLocGrad: { paddingVertical:11, alignItems:'center' },
   myLocTxt: { fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff' },
-  mapWrap: { height:230, borderRadius:14, overflow:'hidden', backgroundColor:'rgba(200,218,235,0.30)', borderWidth:1, borderColor:'rgba(200,218,235,0.70)' },
+
+  // Map
+  mapWrap: {
+    height: 230, borderRadius:14, overflow:'hidden',
+    backgroundColor:'rgba(200,218,235,0.30)',
+    borderWidth:1, borderColor:'rgba(200,218,235,0.70)',
+  },
   mapHint: { position:'absolute', bottom:10, left:0, right:0, alignItems:'center' },
   mapHintBubble: { backgroundColor:'rgba(0,0,0,0.55)', borderRadius:20, paddingHorizontal:14, paddingVertical:6 },
   mapHintTxt: { fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#fff' },
   mapPlaceholder: { flex:1, justifyContent:'center', alignItems:'center', gap:8 },
   mapPlaceholderTxt: { fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.45)', textAlign:'center', paddingHorizontal:24 },
-  addrRow: { flexDirection:'row', alignItems:'flex-start', backgroundColor:'#fff', borderRadius:12, borderWidth:1, borderColor:'rgba(200,218,235,0.90)', paddingHorizontal:12, paddingVertical:4, gap:8 },
+
+  // Address row
+  addrRow: {
+    flexDirection:'row', alignItems:'flex-start',
+    backgroundColor:'#fff', borderRadius:12,
+    borderWidth:1, borderColor:'rgba(200,218,235,0.90)',
+    paddingHorizontal:12, paddingVertical:4, gap:8,
+  },
   addrPin: { fontSize:18, paddingTop:8 },
   addrInput: { flex:1, fontFamily:'GoogleSans_400Regular', fontSize:12, color:'#0f1e35', paddingVertical:9, minHeight:38, maxHeight:72 },
+
+  // Confirm
   confirmBtn: { borderRadius:12, overflow:'hidden' },
   confirmGrad: { paddingVertical:14, alignItems:'center' },
   confirmTxt: { fontFamily:'GoogleSans_700Bold', fontSize:14, color:'#fff' },
 });
+
+
 
 // ─── IMAGE ZOOM MODAL ─────────────────────────────────────────────────────────
 const ImageZoomModal = ({ visible, item, onClose }) => {
@@ -420,8 +740,8 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
             {/* Header */}
             <View style={styles.receiptHeader}>
-              <Text style={styles.receiptShopName}>🛒  CESLA GROCERY</Text>
-              <Text style={styles.receiptShopSub}>Grocery Ordering System</Text>
+              <Text style={styles.receiptShopName}>🍽️  CLIMBS CANTEEN</Text>
+              <Text style={styles.receiptShopSub}>Canteen Ordering System</Text>
               <View style={styles.receiptDividerDashed} />
               <Text style={styles.receiptMeta}>Order No.: #{orderNo}</Text>
               <Text style={styles.receiptMeta}>{time}</Text>
@@ -486,7 +806,7 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
 
               <View style={styles.receiptDividerDashed} />
               <Text style={styles.receiptThankYou}>Thank you for your order! 🙏</Text>
-              <Text style={styles.receiptFooter}>— CESLA Grocery © 2026 —</Text>
+              <Text style={styles.receiptFooter}>— CLIMBS Canteen © 2025 —</Text>
             </View>
           </ScrollView>
 
@@ -519,7 +839,7 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
 };
 
 // ─── CART PANEL ───────────────────────────────────────────────────────────────
-const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWide, hideTitle, lastOrder, onShowReceipt, orderHistory = [], member }) => {
+const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWide, hideTitle, lastOrder, onShowReceipt, orderHistory = [] }) => {
   const [checked, setChecked] = useState({});
   const [paymentMode, setPaymentMode] = useState('cash');
   const [deliveryType, setDeliveryType] = useState('pickup');
@@ -527,8 +847,9 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
   const [deliveryCoords, setDeliveryCoords] = useState(null);
   const [locPickerVisible, setLocPickerVisible] = useState(false);
 
-  const GROCERY_LAT = 8.4748;
-  const GROCERY_LNG = 124.6465;
+  // ── Canteen coords (origin for delivery distance) ──────────────────────────
+  const CANTEEN_LAT = 8.4748; // update to your actual canteen coordinates
+  const CANTEEN_LNG = 124.6465;
   const DELIVERY_BASE = 15;
   const DELIVERY_PER_KM = 5;
 
@@ -541,7 +862,7 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
   };
 
   const deliveryFee = (deliveryType === 'deliver' && deliveryCoords)
-    ? Math.round(DELIVERY_BASE + getDistanceKm(GROCERY_LAT, GROCERY_LNG, deliveryCoords.lat, deliveryCoords.lng) * DELIVERY_PER_KM)
+    ? Math.round(DELIVERY_BASE + getDistanceKm(CANTEEN_LAT, CANTEEN_LNG, deliveryCoords.lat, deliveryCoords.lng) * DELIVERY_PER_KM)
     : 0;
 
   const cartItems = Object.values(cart).filter(i => i.qty > 0);
@@ -557,8 +878,12 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
     });
   }, [JSON.stringify(cartItems.map(i => i.item.id))]);
 
+  // Reset location when switching to pick up
   useEffect(() => {
-    if (deliveryType === 'pickup') { setDeliveryLocation(''); setDeliveryCoords(null); }
+    if (deliveryType === 'pickup') {
+      setDeliveryLocation('');
+      setDeliveryCoords(null);
+    }
   }, [deliveryType]);
 
   const toggleCheck = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
@@ -571,7 +896,8 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
     if (checkedItems.length === 0) return;
     if (deliveryType === 'deliver' && !deliveryLocation.trim()) {
       Alert.alert('No delivery location', 'Please set your delivery location first.');
-      setLocPickerVisible(true); return;
+      setLocPickerVisible(true);
+      return;
     }
     const orderNo = Math.floor(1000 + Math.random() * 9000);
     const now = new Date();
@@ -627,7 +953,7 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
         {deliveryType === 'deliver' && (
           <View style={styles.totalRow}>
             <Text style={[styles.totalLabel, { fontSize:12, color: deliveryCoords ? '#e74c3c' : 'rgba(1,31,75,0.45)' }]}>
-              🛵 Delivery Fee {deliveryCoords ? `(${getDistanceKm(GROCERY_LAT, GROCERY_LNG, deliveryCoords.lat, deliveryCoords.lng).toFixed(1)} km)` : ''}:
+              🛵 Delivery Fee {deliveryCoords ? `(${getDistanceKm(CANTEEN_LAT, CANTEEN_LNG, deliveryCoords.lat, deliveryCoords.lng).toFixed(1)} km)` : ''}:
             </Text>
             <Text style={[styles.totalValue, { fontSize:13, color: deliveryCoords ? '#e74c3c' : 'rgba(1,31,75,0.45)' }]}>
               {deliveryCoords ? `₱ ${deliveryFee.toFixed(2)}` : '—'}
@@ -655,39 +981,13 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
               </View>
               <Text style={[styles.paymentModeText, paymentMode === 'gcash' && styles.paymentModeTextActive]}>📱 GCash</Text>
             </TouchableOpacity>
-            {(() => {
-              const isApprovedMember = member?.status === 'Active';
-              return (
-                <TouchableOpacity
-                  style={[styles.paymentModeOption, !isApprovedMember && { opacity: 0.40 }]}
-                  onPress={() => {
-                    if (!isApprovedMember) {
-                      Alert.alert(
-                        'Credit Not Available',
-                        'Credit payment is only available to approved (active) members. Please complete your application form and wait for admin approval.',
-                        [{ text: 'OK' }]
-                      );
-                      return;
-                    }
-                    setPaymentMode('credit');
-                  }}
-                  activeOpacity={!isApprovedMember ? 1 : 0.8}
-                >
-                  <View style={[styles.radioOuter, paymentMode === 'credit' && styles.radioOuterActive]}>
-                    {paymentMode === 'credit' && <View style={styles.radioInner} />}
-                  </View>
-                  <Text style={[styles.paymentModeText, paymentMode === 'credit' && styles.paymentModeTextActive]}>
-                    🪙 Credit{!isApprovedMember ? ' 🔒' : ''}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })()}
+            <TouchableOpacity style={styles.paymentModeOption} onPress={() => setPaymentMode('credit')} activeOpacity={0.8}>
+              <View style={[styles.radioOuter, paymentMode === 'credit' && styles.radioOuterActive]}>
+                {paymentMode === 'credit' && <View style={styles.radioInner} />}
+              </View>
+              <Text style={[styles.paymentModeText, paymentMode === 'credit' && styles.paymentModeTextActive]}>🪙 Credit</Text>
+            </TouchableOpacity>
           </View>
-          {member && member.status !== 'Active' && (
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(192,57,43,0.80)', marginTop: 5, lineHeight: 14 }}>
-              🔒 Credit is only available to approved members.
-            </Text>
-          )}
           {paymentMode === 'credit' && (
             <View style={{ marginTop: 6, backgroundColor: 'rgba(201,168,76,0.14)', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)' }}>
               <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(1,31,75,0.75)', lineHeight: 15 }}>
@@ -697,26 +997,43 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
           )}
         </View>
 
+
         {/* ── Order Type (Pick Up / Deliver) ── */}
         <View style={delivStyles.box}>
           <Text style={delivStyles.sectionLabel}>Order Type</Text>
           <View style={delivStyles.toggleRow}>
-            <TouchableOpacity style={[delivStyles.toggleBtn, deliveryType === 'pickup' && delivStyles.toggleBtnActive]} onPress={() => setDeliveryType('pickup')} activeOpacity={0.80}>
+            <TouchableOpacity
+              style={[delivStyles.toggleBtn, deliveryType === 'pickup' && delivStyles.toggleBtnActive]}
+              onPress={() => setDeliveryType('pickup')}
+              activeOpacity={0.80}
+            >
               <Text style={delivStyles.toggleIcon}>🏃</Text>
               <Text style={[delivStyles.toggleTxt, deliveryType === 'pickup' && delivStyles.toggleTxtActive]}>Pick Up</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[delivStyles.toggleBtn, deliveryType === 'deliver' && delivStyles.toggleBtnActiveDeliver]} onPress={() => { setDeliveryType('deliver'); setLocPickerVisible(true); }} activeOpacity={0.80}>
+            <TouchableOpacity
+              style={[delivStyles.toggleBtn, deliveryType === 'deliver' && delivStyles.toggleBtnActiveDeliver]}
+              onPress={() => { setDeliveryType('deliver'); setLocPickerVisible(true); }}
+              activeOpacity={0.80}
+            >
               <Text style={delivStyles.toggleIcon}>🛵</Text>
               <Text style={[delivStyles.toggleTxt, deliveryType === 'deliver' && delivStyles.toggleTxtActiveDeliver]}>Deliver</Text>
             </TouchableOpacity>
           </View>
+          {/* ── Delivery location row — only shown when Deliver is selected ── */}
           {deliveryType === 'deliver' && (
-            <TouchableOpacity style={[delivStyles.mapTrigger, deliveryLocation ? delivStyles.mapTriggerSet : delivStyles.mapTriggerUnset]} onPress={() => setLocPickerVisible(true)} activeOpacity={0.80}>
+            <TouchableOpacity
+              style={[delivStyles.mapTrigger, deliveryLocation ? delivStyles.mapTriggerSet : delivStyles.mapTriggerUnset]}
+              onPress={() => setLocPickerVisible(true)}
+              activeOpacity={0.80}
+            >
               <Text style={delivStyles.mapTriggerPin}>📦</Text>
-              <Text style={[delivStyles.mapTriggerTxt, deliveryLocation && delivStyles.mapTriggerTxtSet]} numberOfLines={2}>{deliveryLocation || 'Tap to set delivery location…'}</Text>
+              <Text style={[delivStyles.mapTriggerTxt, deliveryLocation && delivStyles.mapTriggerTxtSet]} numberOfLines={2}>
+                {deliveryLocation || 'Tap to set delivery location…'}
+              </Text>
               <Text style={delivStyles.mapTriggerChevron}>{deliveryLocation ? '✏️' : '🗺️'}</Text>
             </TouchableOpacity>
           )}
+
         </View>
 
         {/* ── Place Order button ── */}
@@ -761,7 +1078,10 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
       <LocationPickerModal
         visible={locPickerVisible}
         onClose={() => setLocPickerVisible(false)}
-        onConfirm={({ address, coords }) => { setDeliveryLocation(address); setDeliveryCoords(coords); }}
+        onConfirm={({ address, coords }) => {
+          setDeliveryLocation(address);
+          setDeliveryCoords(coords);
+        }}
         deliveryType={deliveryType}
       />
     </>
@@ -773,9 +1093,9 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
 // Can be minimised to a floating pill; re-expands when status changes.
 const QUEUE_STEPS = [
   { key: 'pending',   icon: '🕐', label: 'Order Placed',       sub: 'Your order has been received!'         },
-  { key: 'preparing', icon: '🔥', label: 'Preparing Your Order', sub: 'The staff is preparing your items.'   },
-  { key: 'ready',     icon: '✅', label: 'Ready to Pick Up',    sub: 'Your order is ready! Please proceed to the counter.' },
-  { key: 'done',      icon: '🎉', label: 'Order Complete',      sub: 'Thank you for your purchase!'               },
+  { key: 'preparing', icon: '🔥', label: 'Preparing Your Order', sub: 'The canteen is cooking your food.'   },
+  { key: 'ready',     icon: '✅', label: 'Ready to Pick Up',    sub: 'Your order is ready! Please proceed to the canteen.' },
+  { key: 'done',      icon: '🎉', label: 'Order Complete',      sub: 'Thank you for ordering!'               },
 ];
 
 const QueueStatusModal = ({ visible, orderId, orderNo, currentStatus, onClose, onMinimize, minimized }) => {
@@ -942,7 +1262,7 @@ const qs = StyleSheet.create({
 });
 
 // ─── BOTTOM SHEET CART (Mobile) ───────────────────────────────────────────────
-const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onPlaceOrder, lastOrder, onShowReceipt, orderHistory = [], member }) => {
+const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onPlaceOrder, lastOrder, onShowReceipt, orderHistory = [] }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const [activeSheetTab, setActiveSheetTab] = useState('cart');
 
@@ -986,7 +1306,7 @@ const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onP
               onClear={onClear} onOrder={onOrder} isWide={false}
               hideTitle={true} onPlaceOrder={onPlaceOrder}
               lastOrder={lastOrder} onShowReceipt={onShowReceipt}
-              orderHistory={orderHistory} member={member}
+              orderHistory={orderHistory}
             />
           </ScrollView>
         ) : (
@@ -1046,12 +1366,12 @@ const AdBanner = ({ isWide, adAnim, ads, navigation }) => {
 
   // ── Filter: show only ads targeted to 'member' or 'both' ───────────────────
   const filteredAds = ads && ads.length > 0
-    ? ads.filter(ad => !ad.target || ad.target === 'both' || ad.target === 'grocery_member')
+    ? ads.filter(ad => !ad.target || ad.target === 'both' || ad.target === 'member')
     : [];
 
   const ADS = filteredAds.length > 0 ? filteredAds : [
-    { id:1, bg:['#1a6b3a','#2e8253'], emoji:'🛒', title:"Today's Deals", sub:'Fresh groceries available!' },
-    { id:2, bg:['#7b3f00','#c9a84c'], emoji:'🥦',  title:'Weekly Sale',      sub:'Great prices on essentials!' },
+    { id:1, bg:['#1a3a6b','#2e5fa3'], emoji:'🍽️', title:"Today's Special", sub:'Fresh meals served daily!' },
+    { id:2, bg:['#7b3f00','#c9a84c'], emoji:'☕',  title:'Merienda Promo',   sub:'Snacks & drinks available!' },
   ];
 
   // Reset current index when ADS list changes to avoid out-of-bounds
@@ -1078,16 +1398,13 @@ const AdBanner = ({ isWide, adAnim, ads, navigation }) => {
     setCurrent(idx);
   };
 
-  // Mobile: animate show/hide via adAnim (1=visible 0=hidden)
-  const mobileAnimStyle = (!isWide && adAnim) ? {
-    overflow: 'hidden',
-    height: adAnim.interpolate({ inputRange:[0,1], outputRange:[0, 128] }),
-    opacity: adAnim.interpolate({ inputRange:[0,1], outputRange:[0, 1] }),
-    marginBottom: adAnim.interpolate({ inputRange:[0,1], outputRange:[0, 8] }),
+  // Mobile: instantly show/hide via adVisible boolean (no animation to prevent glitch)
+  const mobileHideStyle = (!isWide && adAnim === false) ? {
+    display: 'none',
   } : {};
 
   return (
-    <Animated.View style={[{ alignSelf:'stretch' }, mobileAnimStyle]}>
+    <View style={[{ alignSelf:'stretch' }, mobileHideStyle]}>
       <ScrollView
         ref={scrollRef}
         horizontal pagingEnabled
@@ -1141,7 +1458,7 @@ const AdBanner = ({ isWide, adAnim, ads, navigation }) => {
           );
         })}
       </ScrollView>
-    </Animated.View>
+    </View>
   );
 };
 
@@ -1259,8 +1576,8 @@ const CreditOrderCard = ({ order }) => {
   );
 };
 
-export default function GroceryMemberScreen({ navigation }) {
-  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock, orders, reloadFromStorage } = useGrocery();
+export default function CanteenMemberScreen({ navigation }) {
+  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock, orders, reloadFromStorage } = useCanteen();
   const { width, height } = useWindowDimensions();
   const isWide  = width >= 768;
   const isSmall = width < 400;
@@ -1370,7 +1687,7 @@ export default function GroceryMemberScreen({ navigation }) {
     setOrderHistory([]);
     if (!member?.uid) return;
     const q = query(
-      collection(db, 'grocery_orders'),
+      collection(db, 'canteen_orders'),
       where('memberId', '==', member.uid)
     );
     const unsub = onSnapshot(q, snap => {
@@ -1427,9 +1744,9 @@ export default function GroceryMemberScreen({ navigation }) {
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
   const bodyFade    = useRef(new Animated.Value(0)).current;
-  const adAnim      = useRef(new Animated.Value(1)).current;
+  const [adVisible, setAdVisible] = useState(true);
   const lastScrollY = useRef(0);
-  const adAnimTarget = useRef(1);
+  const adVisibleRef = useRef(true);
   const receiptViewRef = useRef(null);
 
   useEffect(() => {
@@ -1471,10 +1788,10 @@ export default function GroceryMemberScreen({ navigation }) {
             ? '✅ Your order is ready to pick up!'
             : '🔥 The canteen is now preparing your order!';
           if (Notification.permission === 'granted') {
-            new Notification('CESLA Grocery', { body: msg, icon: '🛒' });
+            new Notification('CLIMBS Canteen', { body: msg, icon: '🍽️' });
           } else if (Notification.permission !== 'denied') {
             Notification.requestPermission().then(p => {
-              if (p === 'granted') new Notification('CESLA Grocery', { body: msg });
+              if (p === 'granted') new Notification('CLIMBS Canteen', { body: msg });
             });
           }
         }
@@ -1522,7 +1839,7 @@ export default function GroceryMemberScreen({ navigation }) {
       status: 'pending',
       payment:      normalizedPayment,
       paymentMode:  normalizedPayment,
-      source: 'grocery_member',
+      source: 'member',
       memberId:     member?.uid    || null,
       memberName:   member?.name   || (member?.firstName && member?.lastName ? `${member.lastName}, ${member.firstName}` : null) || null,
       memberUserId: member?.userId || null,
@@ -1706,7 +2023,7 @@ export default function GroceryMemberScreen({ navigation }) {
           <View style={styles.headerCenter}>
             <Text style={[styles.headerH1, { fontSize: isWide ? 22 : isSmall ? 14:16 }]} numberOfLines={1} adjustsFontSizeToFit>
               <Text style={styles.headerGold}>CLIMBS </Text>
-              Grocery Ordering System
+              Canteen Ordering System
             </Text>
             <View style={styles.visitorTag}>
               <Text style={styles.visitorTagText}>
@@ -1788,7 +2105,7 @@ export default function GroceryMemberScreen({ navigation }) {
             <LinearGradient colors={['#1a2d4e','#304674']} style={{ width:76, height:76, borderRadius:38, justifyContent:'center', alignItems:'center', borderWidth:2.5, borderColor:'#c9a84c', marginBottom:16 }}>
               <Text style={{ fontSize:32 }}>🍽️</Text>
             </LinearGradient>
-            <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20, color:'#0f1e35', textAlign:'center', marginBottom:4 }}>Grocery Member Portal</Text>
+            <Text style={{ fontFamily:'NotoSerif_700Bold', fontSize:20, color:'#0f1e35', textAlign:'center', marginBottom:4 }}>Canteen Member Portal</Text>
             <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(15,30,53,0.60)', textAlign:'center', marginBottom:14, lineHeight:18 }}>CLIMBS Cooperative — Member Login</Text>
             {/* Hint */}
             <View style={{ width:'100%', backgroundColor:'rgba(201,168,76,0.14)', borderRadius:9, borderWidth:1, borderColor:'rgba(201,168,76,0.38)', padding:10, marginBottom:14 }}>
@@ -1900,7 +2217,7 @@ export default function GroceryMemberScreen({ navigation }) {
 
           {/* ── Ad Banner ── */}
           <View style={{ marginBottom: isWide ? 12 : 0 }}>
-            <AdBanner isWide={isWide} adAnim={adAnim} ads={CONTEXT_ADS} navigation={navigation} />
+            <AdBanner isWide={isWide} adAnim={adVisible} ads={CONTEXT_ADS} navigation={navigation} />
           </View>
 
           {/* Items panel — fills remaining space */}
@@ -1935,15 +2252,10 @@ export default function GroceryMemberScreen({ navigation }) {
                 const y = e.nativeEvent.contentOffset.y;
                 const goingDown = y > lastScrollY.current;
                 lastScrollY.current = y;
-                const target = goingDown && y > 10 ? 0 : 1;
-                if (target !== adAnimTarget.current) {
-                  adAnimTarget.current = target;
-                  adAnim.stopAnimation();
-                  Animated.timing(adAnim, {
-                    toValue: target,
-                    duration: 120,
-                    useNativeDriver: false,
-                  }).start();
+                const target = !(goingDown && y > 10);
+                if (target !== adVisibleRef.current) {
+                  adVisibleRef.current = target;
+                  setAdVisible(target);
                 }
               } : undefined}
               style={{ flex:1, minHeight:0 }}
@@ -1976,7 +2288,7 @@ export default function GroceryMemberScreen({ navigation }) {
             onClear={clearCart} onOrder={placeOrder} isWide={isWide}
             hideTitle={false} onPlaceOrder={handlePlaceOrder}
             lastOrder={lastOrder} onShowReceipt={handleShowReceipt}
-            orderHistory={orderHistory} member={member}
+            orderHistory={orderHistory}
           />
         )}
         {/* Mobile floating cart button */}
@@ -2064,7 +2376,7 @@ export default function GroceryMemberScreen({ navigation }) {
                 <View style={{ flexDirection:'row', alignItems:'flex-start', gap:8, padding:9, borderRadius:9, marginBottom:10, backgroundColor:'rgba(201,168,76,0.10)', borderWidth:1, borderColor:'rgba(201,168,76,0.28)' }}>
                   <Text style={{ fontSize:12 }}>⚠️</Text>
                   <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(1,31,75,0.68)', lineHeight:17, flex:1 }}>
-                    Ang mga orders nga <Text style={{ fontFamily:'GoogleSans_700Bold', color:'rgba(1,31,75,0.82)' }}>Credit</Text> ang payment kay ilusot sa imong sweldo o dividend sa payday. Kontaka ang grocery admin para sa settlement.
+                    Ang mga orders nga <Text style={{ fontFamily:'GoogleSans_700Bold', color:'rgba(1,31,75,0.82)' }}>Credit</Text> ang payment kay ilusot sa imong sweldo o dividend sa payday. Kontaka ang canteen admin para sa settlement.
                   </Text>
                 </View>
               )}
@@ -2162,7 +2474,7 @@ export default function GroceryMemberScreen({ navigation }) {
           onClose={() => setCartOpen(false)}
           onPlaceOrder={handlePlaceOrder}
           lastOrder={lastOrder} onShowReceipt={handleShowReceipt}
-          orderHistory={orderHistory} member={member}
+          orderHistory={orderHistory}
         />
       )}
 
@@ -2490,25 +2802,117 @@ const HistoryTabContent = ({ orderHistory, isWide, showStatus = true, onShopNow 
   );
 };
 
-// ─── DELIVERY STYLES ──────────────────────────────────────────────────────────
+
 const delivStyles = StyleSheet.create({
-  box: { backgroundColor:'rgba(255,255,255,0.55)', borderRadius:12, borderWidth:1, borderColor:'rgba(200,218,235,0.80)', padding:11, gap:8, marginBottom:2 },
-  sectionLabel: { fontFamily:'GoogleSans_700Bold', fontSize:10, color:'rgba(1,31,75,0.55)', letterSpacing:1.4, textTransform:'uppercase', marginBottom:2 },
-  toggleRow: { flexDirection:'row', gap:8 },
-  toggleBtn: { flex:1, flexDirection:'row', alignItems:'center', justifyContent:'center', gap:6, paddingVertical:9, borderRadius:10, backgroundColor:'rgba(1,31,75,0.06)', borderWidth:1.5, borderColor:'rgba(1,31,75,0.12)' },
-  toggleBtnActive: { backgroundColor:'rgba(26,58,107,0.12)', borderColor:'#1a3a6b' },
-  toggleBtnActiveDeliver: { backgroundColor:'rgba(231,76,60,0.10)', borderColor:'#e74c3c' },
-  toggleIcon: { fontSize:16 },
-  toggleTxt: { fontFamily:'GoogleSans_700Bold', fontSize:12, color:'rgba(1,31,75,0.50)' },
-  toggleTxtActive: { color:'#1a3a6b' },
-  toggleTxtActiveDeliver: { color:'#c0392b' },
-  mapTrigger: { flexDirection:'row', alignItems:'center', gap:8, backgroundColor:'rgba(255,255,255,0.80)', borderRadius:10, borderWidth:1, borderColor:'rgba(200,218,235,0.90)', paddingHorizontal:10, paddingVertical:10 },
-  mapTriggerSet: { borderColor:'rgba(39,174,96,0.55)', backgroundColor:'rgba(39,174,96,0.07)' },
-  mapTriggerUnset: { borderColor:'rgba(231,76,60,0.45)', backgroundColor:'rgba(231,76,60,0.05)', borderStyle:'dashed' },
-  mapTriggerPin: { fontSize:16 },
-  mapTriggerTxt: { flex:1, fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.40)' },
-  mapTriggerTxtSet: { color:'#0f1e35', fontFamily:'GoogleSans_500Medium' },
-  mapTriggerChevron: { fontFamily:'GoogleSans_700Bold', fontSize:11, color:'rgba(1,31,75,0.35)' },
+  box: {
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(200,218,235,0.80)',
+    padding: 11,
+    gap: 8,
+    marginBottom: 2,
+  },
+  mapTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.80)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(200,218,235,0.90)',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  mapTriggerSet: {
+    borderColor: 'rgba(39,174,96,0.55)',
+    backgroundColor: 'rgba(39,174,96,0.07)',
+  },
+  mapTriggerUnset: {
+    borderColor: 'rgba(231,76,60,0.45)',
+    backgroundColor: 'rgba(231,76,60,0.05)',
+    borderStyle: 'dashed',
+  },
+  mapTriggerPin: { fontSize: 16 },
+  mapTriggerTxt: {
+    flex: 1,
+    fontFamily: 'GoogleSans_400Regular',
+    fontSize: 12,
+    color: 'rgba(1,31,75,0.40)',
+  },
+  mapTriggerTxtSet: {
+    color: '#0f1e35',
+    fontFamily: 'GoogleSans_500Medium',
+  },
+  mapTriggerChevron: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 11,
+    color: 'rgba(1,31,75,0.35)',
+  },
+  sectionLabel: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 10,
+    color: 'rgba(1,31,75,0.55)',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  toggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: 'rgba(1,31,75,0.06)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(1,31,75,0.12)',
+  },
+  toggleBtnActive: {
+    backgroundColor: 'rgba(26,58,107,0.12)',
+    borderColor: '#1a3a6b',
+  },
+  toggleBtnActiveDeliver: {
+    backgroundColor: 'rgba(231,76,60,0.10)',
+    borderColor: '#e74c3c',
+  },
+  toggleIcon: { fontSize: 16 },
+  toggleTxt: {
+    fontFamily: 'GoogleSans_700Bold',
+    fontSize: 12,
+    color: 'rgba(1,31,75,0.50)',
+  },
+  toggleTxtActive: {
+    color: '#1a3a6b',
+  },
+  toggleTxtActiveDeliver: {
+    color: '#c0392b',
+  },
+  locRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.80)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(200,218,235,0.90)',
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    gap: 6,
+  },
+  locPin: { fontSize: 16 },
+  locInput: {
+    flex: 1,
+    fontFamily: 'GoogleSans_400Regular',
+    fontSize: 12,
+    color: '#0f1e35',
+    paddingVertical: 8,
+  },
+
 });
 
 // ─── HISTORY STYLES ───────────────────────────────────────────────────────────

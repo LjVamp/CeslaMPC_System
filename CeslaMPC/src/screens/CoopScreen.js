@@ -9,7 +9,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Animated, StatusBar, useWindowDimensions, Platform,
-  TextInput, ActivityIndicator, KeyboardAvoidingView, Image, Alert, BackHandler,
+  TextInput, ActivityIndicator, KeyboardAvoidingView, Image, Alert, BackHandler, Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -1905,22 +1905,273 @@ const af = StyleSheet.create({
   tableCell:        { flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.navy, paddingHorizontal: 7, paddingVertical: 8 },
 });
 
-const FinanceView = ({ title, icon, value, label, color, member, contentHeight }) => (
-  <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-    <Text style={s.pageTitle}>{title}</Text>
-    <GCard style={{ alignItems: 'center', padding: 28, borderTopWidth: 4, borderTopColor: color }}>
-      <Text style={{ fontSize: 32, marginBottom: 10 }}>{icon}</Text>
-      <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 32, color, marginBottom: 6 }}>{fmtCur(value)}</Text>
-      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec }}>{label}</Text>
-      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginTop: 4 }}>Last updated: {fmtDate(member.updatedAt)}</Text>
-    </GCard>
-    <Text style={s.sHead}>📋 TRANSACTION HISTORY</Text>
-    <GCard style={{ alignItems: 'center', padding: 32 }}>
-      <Text style={{ fontSize: 32, marginBottom: 10 }}>📄</Text>
-      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>No transactions yet.{'\n'}Contact admin for manual entries.</Text>
-    </GCard>
-  </ScrollView>
-);
+// ── Helper: generate txn number (member-side) ─────────────────────────────────
+const genMemberTxnNo = (type) => {
+  const prefix = { savings: 'SAV', shares: 'SHR', loan: 'LNS' }[type] || 'TXN';
+  const ts = Date.now().toString(36).toUpperCase().slice(-6);
+  return `${prefix}-${ts}`;
+};
+
+const FinanceView = ({ title, icon, value, label, color, member, contentHeight, type }) => {
+  // type: 'savings' | 'shares' | 'loan' (for loan this view is not used but kept for safety)
+  const [txns,      setTxns]      = useState([]);
+  const [txnLoad,   setTxnLoad]   = useState(true);
+  const [mode,      setMode]      = useState(null);   // 'deposit' | 'withdraw' | null
+  const [amount,    setAmount]    = useState('');
+  const [remarks,   setRemarks]   = useState('');
+  const [busy,      setBusy]      = useState(false);
+  const [doneMsg,   setDoneMsg]   = useState('');
+  const [errMsg,    setErrMsg]    = useState('');
+  const [liveValue, setLiveValue] = useState(null);
+
+  // Withdrawal requests pending
+  const [pendingWithdrawals, setPendingWithdrawals] = useState([]);
+
+  const curBal = liveValue !== null ? liveValue : Number(value || 0);
+
+  // Load transactions real-time
+  useEffect(() => {
+    setTxnLoad(true);
+    const unsub = onSnapshot(
+      query(collection(db, 'transactions'),
+        where('memberId', '==', member.uid),
+        where('type', '==', type),
+        orderBy('createdAt', 'desc')
+      ),
+      snap => { setTxns(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setTxnLoad(false); },
+      () => setTxnLoad(false)
+    );
+    return unsub;
+  }, [member.uid, type]);
+
+  // Load pending withdrawal requests for this member + type
+  useEffect(() => {
+    const unsub = onSnapshot(
+      query(collection(db, 'withdrawalRequests'),
+        where('memberId', '==', member.uid),
+        where('type', '==', type),
+        where('status', '==', 'Pending'),
+        orderBy('createdAt', 'desc')
+      ),
+      snap => setPendingWithdrawals(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      () => {}
+    );
+    return unsub;
+  }, [member.uid, type]);
+
+  const resetForm = () => { setMode(null); setAmount(''); setRemarks(''); setErrMsg(''); };
+
+  const handleDeposit = async () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0)   { setErrMsg('Enter a valid amount.'); return; }
+    if (amt > 9999999)      { setErrMsg('Amount too large.'); return; }
+    setBusy(true); setErrMsg('');
+    try {
+      const txnNo  = genMemberTxnNo(type);
+      const newBal = curBal + amt;
+      const descMap = { savings: 'Savings Deposit', shares: 'Share Capital Deposit' };
+      // Save transaction
+      await addDoc(collection(db, 'transactions'), {
+        memberId: member.uid, memberName: member.name, memberUserId: member.userId,
+        type, txnNo, amount: amt,
+        description: descMap[type] || 'Deposit',
+        remarks: remarks.trim() || '',
+        createdAt: serverTimestamp(),
+      });
+      // Update balance
+      const fieldMap = { savings: 'savings', shares: 'shares' };
+      await updateDoc(doc(db, 'members', member.uid), {
+        [fieldMap[type]]: newBal,
+        updatedAt: serverTimestamp(),
+      });
+      // Notify admin
+      await addDoc(collection(db, 'adminNotifications'), {
+        type: 'deposit', icon: '💰',
+        title: `${descMap[type] || 'Deposit'} — ${member.name}`,
+        message: `${member.name} (${member.userId}) deposited ${fmtCur(amt)} to ${type}.`,
+        memberId: member.uid, memberUserId: member.userId,
+        createdAt: serverTimestamp(), read: false,
+      });
+      setLiveValue(newBal);
+      setDoneMsg(`✓ Deposit of ${fmtCur(amt)} successful!`);
+      resetForm();
+      setTimeout(() => setDoneMsg(''), 4000);
+    } catch (e) { setErrMsg(e.message || 'Deposit failed.'); }
+    finally { setBusy(false); }
+  };
+
+  const handleWithdrawRequest = async () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0)          { setErrMsg('Enter a valid amount.'); return; }
+    if (amt > curBal)              { setErrMsg(`Insufficient balance. Current: ${fmtCur(curBal)}`); return; }
+    if (amt > 9999999)             { setErrMsg('Amount too large.'); return; }
+    // Check if already has pending withdrawal
+    if (pendingWithdrawals.length > 0) { setErrMsg('You already have a pending withdrawal request. Please wait for admin approval.'); return; }
+    setBusy(true); setErrMsg('');
+    try {
+      await addDoc(collection(db, 'withdrawalRequests'), {
+        memberId: member.uid, memberName: member.name, memberUserId: member.userId,
+        type, amount: amt,
+        remarks: remarks.trim() || '',
+        status: 'Pending',
+        createdAt: serverTimestamp(),
+      });
+      await addDoc(collection(db, 'adminNotifications'), {
+        type: 'withdrawal_request', icon: '📤',
+        title: `Withdrawal Request — ${member.name}`,
+        message: `${member.name} (${member.userId}) is requesting a ${type} withdrawal of ${fmtCur(amt)}.`,
+        memberId: member.uid, memberUserId: member.userId,
+        createdAt: serverTimestamp(), read: false,
+      });
+      setDoneMsg(`✓ Withdrawal request of ${fmtCur(amt)} submitted! Awaiting admin approval.`);
+      resetForm();
+      setTimeout(() => setDoneMsg(''), 5000);
+    } catch (e) { setErrMsg(e.message || 'Request failed.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+      <Text style={s.pageTitle}>{title}</Text>
+
+      {/* ── Balance Card ── */}
+      <GCard style={{ alignItems: 'center', padding: 24, borderTopWidth: 4, borderTopColor: color, marginBottom: 12 }}>
+        <Text style={{ fontSize: 30, marginBottom: 8 }}>{icon}</Text>
+        <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 30, color, marginBottom: 4 }}>{fmtCur(curBal)}</Text>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec }}>{label}</Text>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 3 }}>Last updated: {fmtDate(member.updatedAt)}</Text>
+      </GCard>
+
+      {/* ── Success message ── */}
+      {doneMsg ? (
+        <View style={{ backgroundColor: 'rgba(26,138,74,0.14)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(26,138,74,0.40)', padding: 12, marginBottom: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <Text style={{ fontSize: 16 }}>✅</Text>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, flex: 1, lineHeight: 18 }}>{doneMsg}</Text>
+        </View>
+      ) : null}
+
+      {/* ── Pending withdrawal notice ── */}
+      {pendingWithdrawals.length > 0 && (
+        <View style={{ backgroundColor: 'rgba(196,125,14,0.12)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(196,125,14,0.35)', padding: 12, marginBottom: 12 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.orange, marginBottom: 4 }}>⏳ Pending Withdrawal Request</Text>
+          {pendingWithdrawals.map(w => (
+            <Text key={w.id} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
+              {fmtCur(w.amount)} — Awaiting admin approval{w.remarks ? ` · "${w.remarks}"` : ''}{'\n'}
+              <Text style={{ fontSize: 10, color: C.textMuted }}>Submitted: {fmtTime(w.createdAt)}</Text>
+            </Text>
+          ))}
+        </View>
+      )}
+
+      {/* ── Action buttons or form ── */}
+      {mode === null ? (
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+          <TouchableOpacity
+            onPress={() => { setMode('deposit'); setErrMsg(''); }}
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(26,138,74,0.15)', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(26,138,74,0.50)', paddingVertical: 13 }}>
+            <Text style={{ fontSize: 16 }}>⬆️</Text>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.green }}>Deposit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => { setMode('withdraw'); setErrMsg(''); }}
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(192,57,43,0.40)', paddingVertical: 13 }}>
+            <Text style={{ fontSize: 16 }}>⬇️</Text>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.red }}>Withdraw</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <GCard style={{ borderTopWidth: 3, borderTopColor: mode === 'deposit' ? C.green : C.red, marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: mode === 'deposit' ? C.green : C.red }}>
+              {mode === 'deposit' ? '📥 Deposit' : '📤 Withdrawal Request'}
+            </Text>
+            <TouchableOpacity onPress={resetForm} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: 'rgba(15,30,53,0.07)' }}>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+
+          {mode === 'withdraw' && (
+            <View style={{ backgroundColor: 'rgba(196,125,14,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(196,125,14,0.30)', padding: 10, marginBottom: 12 }}>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.orange, lineHeight: 17 }}>
+                ⚠️ Withdrawal requests need <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>admin approval</Text> before processing. You'll be notified once approved.
+              </Text>
+            </View>
+          )}
+
+          <Text style={s.fieldLabel}>AMOUNT (₱)</Text>
+          <View style={[s.fieldRow, { marginBottom: 10 }]}>
+            <TextInput
+              style={[s.fieldInput, { flex: 1 }]}
+              value={amount}
+              onChangeText={v => { setAmount(v.replace(/[^0-9.]/g, '')); setErrMsg(''); }}
+              placeholder="0.00"
+              placeholderTextColor={C.textMuted}
+              keyboardType="decimal-pad"
+            />
+          </View>
+
+          <Text style={s.fieldLabel}>REMARKS (OPTIONAL)</Text>
+          <View style={[s.fieldRow, { marginBottom: 10 }]}>
+            <TextInput
+              style={[s.fieldInput, { flex: 1, minHeight: 44 }]}
+              value={remarks}
+              onChangeText={setRemarks}
+              placeholder={mode === 'deposit' ? 'e.g. Monthly contribution' : 'e.g. Emergency withdrawal'}
+              placeholderTextColor={C.textMuted}
+              multiline
+            />
+          </View>
+
+          {errMsg ? (
+            <View style={[s.errorBox, { marginBottom: 10 }]}>
+              <MaterialIcons name="error-outline" size={14} color={C.red} />
+              <Text style={s.errorTxt}>{errMsg}</Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            onPress={mode === 'deposit' ? handleDeposit : handleWithdrawRequest}
+            disabled={busy}
+            style={{ borderRadius: 10, paddingVertical: 13, alignItems: 'center', backgroundColor: mode === 'deposit' ? C.green : C.red, opacity: busy ? 0.65 : 1 }}>
+            {busy
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff', letterSpacing: 0.5 }}>
+                  {mode === 'deposit' ? 'Confirm Deposit' : 'Submit Withdrawal Request'}
+                </Text>}
+          </TouchableOpacity>
+        </GCard>
+      )}
+
+      {/* ── Transaction History ── */}
+      <Text style={s.sHead}>📋 TRANSACTION HISTORY</Text>
+      {txnLoad && <ActivityIndicator color={C.gold} style={{ marginVertical: 20 }} />}
+      {!txnLoad && txns.length === 0 && (
+        <GCard style={{ alignItems: 'center', padding: 32 }}>
+          <Text style={{ fontSize: 32, marginBottom: 10 }}>📄</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>No transactions yet.</Text>
+        </GCard>
+      )}
+      {!txnLoad && txns.map(txn => {
+        const isCredit = txn.amount > 0;
+        return (
+          <GCard key={txn.id} style={{ padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: isCredit ? C.green : C.red }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>{txn.description || (isCredit ? 'Credit' : 'Debit')}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 2 }}>TXN# {txn.txnNo}</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>{fmtTime(txn.createdAt)}</Text>
+              </View>
+              <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 15, color: isCredit ? C.green : C.red }}>
+                {isCredit ? '+' : ''}{fmtCur(txn.amount)}
+              </Text>
+            </View>
+            {txn.remarks ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, marginTop: 6, fontStyle: 'italic' }}>{txn.remarks}</Text> : null}
+          </GCard>
+        );
+      })}
+    </ScrollView>
+  );
+};
 
 const ApplyLoanView = ({ member, contentHeight }) => {
   const [amount, setAmount] = useState('');
@@ -3911,6 +4162,79 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   const [member, setMember] = useState(memberInit);
   const [drawer, setDrawer] = useState(false);
   const [unread, setUnread] = useState(0);
+  // Quick deposit / withdrawal modal from topbar icons
+  const [quickTxn, setQuickTxn] = useState(null); // { mode: 'deposit'|'withdraw', type: 'savings'|'shares' } | null
+  const [quickAmt,     setQuickAmt]     = useState('');
+  const [quickType,    setQuickType]    = useState('savings'); // which account
+  const [quickMode,    setQuickMode]    = useState(null);      // 'deposit'|'withdraw'
+  const [quickBusy,    setQuickBusy]    = useState(false);
+  const [quickDone,    setQuickDone]    = useState('');
+  const [quickErr,     setQuickErr]     = useState('');
+  const [showQuickModal, setShowQuickModal] = useState(false);
+
+  const openQuickModal = (mode) => {
+    setQuickMode(mode); setQuickType('savings');
+    setQuickAmt(''); setQuickErr(''); setQuickDone('');
+    setShowQuickModal(true);
+  };
+  const closeQuickModal = () => { setShowQuickModal(false); setQuickAmt(''); setQuickErr(''); setQuickDone(''); };
+
+  const handleQuickTxn = async () => {
+    const amt = parseFloat(quickAmt);
+    if (!amt || amt <= 0)  { setQuickErr('Enter a valid amount.'); return; }
+    if (amt > 9999999)     { setQuickErr('Amount too large.'); return; }
+    const curBal = Number((quickType === 'savings' ? member.savings : member.shares) || 0);
+    if (quickMode === 'withdraw' && amt > curBal) { setQuickErr(`Insufficient balance. Current: ${fmtCur(curBal)}`); return; }
+    setQuickBusy(true); setQuickErr('');
+    try {
+      if (quickMode === 'deposit') {
+        const txnNo  = genMemberTxnNo(quickType);
+        const newBal = curBal + amt;
+        const desc   = quickType === 'savings' ? 'Savings Deposit' : 'Share Capital Deposit';
+        await addDoc(collection(db, 'transactions'), {
+          memberId: member.uid, memberName: member.name, memberUserId: member.userId,
+          type: quickType, txnNo, amount: amt, description: desc,
+          remarks: '', createdAt: serverTimestamp(),
+        });
+        await updateDoc(doc(db, 'members', member.uid), {
+          [quickType === 'savings' ? 'savings' : 'shares']: newBal,
+          updatedAt: serverTimestamp(),
+        });
+        await addDoc(collection(db, 'adminNotifications'), {
+          type: 'deposit', icon: '💰', title: `${desc} — ${member.name}`,
+          message: `${member.name} (${member.userId}) deposited ${fmtCur(amt)} to ${quickType}.`,
+          memberId: member.uid, memberUserId: member.userId,
+          createdAt: serverTimestamp(), read: false,
+        });
+        setQuickDone(`✓ Deposited ${fmtCur(amt)} to ${quickType === 'savings' ? 'Savings' : 'Share Capital'}!`);
+      } else {
+        // Withdrawal request
+        const existingPending = await getDocs(query(
+          collection(db, 'withdrawalRequests'),
+          where('memberId', '==', member.uid),
+          where('type', '==', quickType),
+          where('status', '==', 'Pending')
+        ));
+        if (!existingPending.empty) { setQuickErr('You already have a pending withdrawal for this account.'); setQuickBusy(false); return; }
+        await addDoc(collection(db, 'withdrawalRequests'), {
+          memberId: member.uid, memberName: member.name, memberUserId: member.userId,
+          type: quickType, amount: amt, remarks: '', status: 'Pending',
+          createdAt: serverTimestamp(),
+        });
+        await addDoc(collection(db, 'adminNotifications'), {
+          type: 'withdrawal_request', icon: '📤',
+          title: `Withdrawal Request — ${member.name}`,
+          message: `${member.name} (${member.userId}) requesting ${quickType} withdrawal of ${fmtCur(amt)}.`,
+          memberId: member.uid, memberUserId: member.userId,
+          createdAt: serverTimestamp(), read: false,
+        });
+        setQuickDone(`✓ Withdrawal request of ${fmtCur(amt)} submitted! Awaiting admin approval.`);
+      }
+      setQuickAmt('');
+      setTimeout(() => { closeQuickModal(); }, 2200);
+    } catch (e) { setQuickErr(e.message || 'Transaction failed.'); }
+    finally { setQuickBusy(false); }
+  };
   const fadeAnim  = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -4197,8 +4521,8 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       case 'overview':     return <OverviewView     member={member} onNav={switchNav} contentHeight={h} isMobile={m} />;
       case 'profile':      return <ProfileView      member={member} contentHeight={h} isMobile={m} />;
       case 'appform':      return <AppFormView       member={member} contentHeight={h} isMobile={m} />;
-      case 'savings':      return <FinanceView title="Savings"       icon="💰" value={member.savings} label="Total Savings Balance" color={C.green}  member={member} contentHeight={h} isMobile={m} />;
-      case 'sharecap':     return <FinanceView title="Share Capital" icon="📊" value={member.shares}  label="Total Share Capital"   color={C.gold}   member={member} contentHeight={h} isMobile={m} />;
+      case 'savings':      return <FinanceView title="Savings"       icon="💰" value={member.savings} label="Total Savings Balance" color={C.green}  member={member} contentHeight={h} isMobile={m} type="savings" />;
+      case 'sharecap':     return <FinanceView title="Share Capital" icon="📊" value={member.shares}  label="Total Share Capital"   color={C.gold}   member={member} contentHeight={h} isMobile={m} type="shares" />;
       case 'timedeposit':  return <FinanceView title="Time Deposit"  icon="🏦" value={0}              label="Time Deposit Balance"  color={C.blueLt} member={member} contentHeight={h} isMobile={m} />;
       case 'applyloan':    return <ApplyLoanView     member={member} contentHeight={h} isMobile={m} />;
       case 'myloans':      return <MyLoansView       member={member} contentHeight={h} isMobile={m} />;
@@ -4243,8 +4567,26 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
             )}
           </View>
 
-          {/* RIGHT — message icon + notification bell + profile */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {/* RIGHT — deposit + withdraw icons + message + bell + profile */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {/* Deposit icon */}
+            {!isRegistered && (
+              <TouchableOpacity
+                style={[s.dashRoundBtn, { borderColor: 'rgba(26,138,74,0.50)' }]}
+                onPress={() => openQuickModal('deposit')}
+                activeOpacity={0.8}>
+                <Image source={require('../../assets/wallet.png')} style={{ width: 20, height: 20, tintColor: '#4cde8a' }} />
+              </TouchableOpacity>
+            )}
+            {/* Withdraw icon */}
+            {!isRegistered && (
+              <TouchableOpacity
+                style={[s.dashRoundBtn, { borderColor: 'rgba(192,57,43,0.45)' }]}
+                onPress={() => openQuickModal('withdraw')}
+                activeOpacity={0.8}>
+                <Image source={require('../../assets/withdraw.png')} style={{ width: 20, height: 20, tintColor: '#e87a7a' }} />
+              </TouchableOpacity>
+            )}
             {/* Message icon — open messages dropdown, reset badge */}
             <TouchableOpacity style={s.dashRoundBtn} onPress={() => {
               setShowMsgDropdown(v => !v);
@@ -4329,6 +4671,107 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       )}
 
 
+
+      {/* Quick Deposit / Withdrawal Modal */}
+      {showQuickModal && (
+        <Modal visible transparent animationType="fade">
+          <View style={{ flex: 1, backgroundColor: 'rgba(10,20,40,0.65)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+            <View style={{ width: '100%', maxWidth: 380, backgroundColor: '#deeaf3', borderRadius: 20, overflow: 'hidden', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)', shadowColor: '#0f1e35', shadowOpacity: 0.25, shadowRadius: 20, shadowOffset: { width: 0, height: 6 } }}>
+              {/* Header */}
+              <LinearGradient colors={['#1a2d4e', '#243554']} style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: quickMode === 'deposit' ? 'rgba(26,138,74,0.30)' : 'rgba(192,57,43,0.30)', justifyContent: 'center', alignItems: 'center' }}>
+                  <Image
+                    source={quickMode === 'deposit' ? require('../../assets/wallet.png') : require('../../assets/withdraw.png')}
+                    style={{ width: 20, height: 20, tintColor: quickMode === 'deposit' ? '#4cde8a' : '#e87a7a' }}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#fff' }}>
+                    {quickMode === 'deposit' ? 'Quick Deposit' : 'Withdrawal Request'}
+                  </Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.50)', marginTop: 1 }}>
+                    {quickMode === 'deposit' ? 'Funds applied immediately' : 'Requires admin approval'}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={closeQuickModal} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ color: '#fff', fontSize: 14, lineHeight: 18 }}>✕</Text>
+                </TouchableOpacity>
+              </LinearGradient>
+
+              <View style={{ padding: 18 }}>
+                {/* Account type selector */}
+                <Text style={[s.fieldLabel, { marginBottom: 8 }]}>ACCOUNT</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                  {[
+                    { key: 'savings', label: 'Savings',      bal: member.savings, color: C.green },
+                    { key: 'shares',  label: 'Share Capital', bal: member.shares,  color: C.gold  },
+                  ].map(opt => (
+                    <TouchableOpacity key={opt.key} onPress={() => { setQuickType(opt.key); setQuickErr(''); }}
+                      style={{ flex: 1, borderRadius: 12, borderWidth: 2, borderColor: quickType === opt.key ? opt.color : 'rgba(15,30,53,0.15)', backgroundColor: quickType === opt.key ? (opt.color + '18') : 'rgba(255,255,255,0.55)', padding: 10, alignItems: 'center' }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: opt.color }}>{opt.label}</Text>
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 2 }}>{fmtCur(opt.bal)}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Warning for withdrawal */}
+                {quickMode === 'withdraw' && (
+                  <View style={{ backgroundColor: 'rgba(196,125,14,0.12)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(196,125,14,0.35)', padding: 10, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                    <Text style={{ fontSize: 13 }}>⚠️</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.orange, flex: 1, lineHeight: 16 }}>
+                      Withdrawal needs <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>admin approval</Text> before processing.
+                    </Text>
+                  </View>
+                )}
+
+                {/* Amount input */}
+                <Text style={[s.fieldLabel, { marginBottom: 6 }]}>AMOUNT (₱)</Text>
+                <View style={[s.fieldRow, { marginBottom: 14 }]}>
+                  <TextInput
+                    style={[s.fieldInput, { flex: 1, fontSize: 18, fontFamily: 'NotoSerif_700Bold', color: quickMode === 'deposit' ? C.green : C.red }]}
+                    value={quickAmt}
+                    onChangeText={v => { setQuickAmt(v.replace(/[^0-9.]/g, '')); setQuickErr(''); }}
+                    placeholder="0.00"
+                    placeholderTextColor={C.textMuted}
+                    keyboardType="decimal-pad"
+                    autoFocus
+                  />
+                </View>
+
+                {/* Error */}
+                {quickErr ? (
+                  <View style={[s.errorBox, { marginBottom: 12 }]}>
+                    <MaterialIcons name="error-outline" size={14} color={C.red} />
+                    <Text style={s.errorTxt}>{quickErr}</Text>
+                  </View>
+                ) : null}
+
+                {/* Success */}
+                {quickDone ? (
+                  <View style={{ backgroundColor: 'rgba(26,138,74,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(26,138,74,0.40)', padding: 10, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                    <Text style={{ fontSize: 14 }}>✅</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, flex: 1, lineHeight: 17 }}>{quickDone}</Text>
+                  </View>
+                ) : null}
+
+                {/* Confirm button */}
+                {!quickDone && (
+                  <TouchableOpacity
+                    onPress={handleQuickTxn}
+                    disabled={quickBusy}
+                    style={{ borderRadius: 12, paddingVertical: 13, alignItems: 'center', backgroundColor: quickMode === 'deposit' ? C.green : C.red, opacity: quickBusy ? 0.65 : 1 }}>
+                    {quickBusy
+                      ? <ActivityIndicator color="#fff" />
+                      : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff', letterSpacing: 0.5 }}>
+                          {quickMode === 'deposit' ? '⬆️  Confirm Deposit' : '⬇️  Submit Request'}
+                        </Text>}
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* Message Notification Popup — slides in near message icon when admin messages */}
       <MsgNotifPopup

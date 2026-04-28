@@ -2100,16 +2100,13 @@ const AdBanner = ({ isWide, adAnim, navigation }) => {
 
   if (ADS.length === 0) return null;
 
-  // Mobile: animate show/hide via adAnim (1=visible, 0=hidden)
-  const mobileAnimStyle = (!isWide && adAnim) ? {
-    overflow: 'hidden',
-    height: adAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 128] }),
-    opacity: adAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
-    marginBottom: adAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }),
+  // Mobile: instantly show/hide via adVisible boolean (no animation to prevent glitch)
+  const mobileHideStyle = (!isWide && adAnim === false) ? {
+    display: 'none',
   } : {};
 
   return (
-    <Animated.View style={[{ alignSelf: 'stretch' }, mobileAnimStyle]}>
+    <View style={[{ alignSelf: 'stretch' }, mobileHideStyle]}>
       <ScrollView
         ref={scrollRef}
         horizontal pagingEnabled showsHorizontalScrollIndicator={false}
@@ -2165,7 +2162,7 @@ const AdBanner = ({ isWide, adAnim, navigation }) => {
           );
         })}
       </ScrollView>
-    </Animated.View>
+    </View>
   );
 };
 
@@ -2215,9 +2212,9 @@ export default function MerchandiseMemberScreen({ navigation }) {
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
   const bodyFade = useRef(new Animated.Value(0)).current;
-  const adAnim   = useRef(new Animated.Value(1)).current;
+  const [adVisible, setAdVisible] = useState(true);
   const lastScrollY  = useRef(0);
-  const adAnimTarget = useRef(1);
+  const adVisibleRef = useRef(true);
   const receiptViewRef = useRef(null);
 
   useEffect(() => {
@@ -2660,7 +2657,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
               )}
 
               <View style={{ marginBottom: 12, flexShrink: 0 }}>
-                <AdBanner isWide={isWide} adAnim={adAnim} navigation={navigation} />
+                <AdBanner isWide={isWide} adAnim={adVisible} navigation={navigation} />
               </View>
 
               <View style={styles.itemsPanel}>
@@ -2693,15 +2690,10 @@ export default function MerchandiseMemberScreen({ navigation }) {
                     const y = e.nativeEvent.contentOffset.y;
                     const goingDown = y > lastScrollY.current;
                     lastScrollY.current = y;
-                    const target = goingDown && y > 10 ? 0 : 1;
-                    if (target !== adAnimTarget.current) {
-                      adAnimTarget.current = target;
-                      adAnim.stopAnimation();
-                      Animated.timing(adAnim, {
-                        toValue: target,
-                        duration: 120,
-                        useNativeDriver: false,
-                      }).start();
+                    const target = !(goingDown && y > 10);
+                    if (target !== adVisibleRef.current) {
+                      adVisibleRef.current = target;
+                      setAdVisible(target);
                     }
                   } : undefined}
                   style={Platform.OS === 'web' ? { height: height - 310 } : { flex: 1 }}

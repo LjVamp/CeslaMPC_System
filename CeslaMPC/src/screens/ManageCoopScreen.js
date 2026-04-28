@@ -252,8 +252,9 @@ const NAV = [
     { key: 'delinquency', label: 'Delinquency',       icon: '⚠️' },
   ]},
   { key: 'financial_grp', label: 'Financial',         icon: '💰', children: [
-    { key: 'collections', label: 'Collections',       icon: '💵' },
-    { key: 'loans',       label: 'Loans',             icon: '💳' },
+    { key: 'collections',  label: 'Collections',       icon: '💵' },
+    { key: 'loans',        label: 'Loans',             icon: '💳' },
+    { key: 'withdrawals',  label: 'Withdrawal Requests', icon: '📤' },
   ]},
   { key: 'claims_grp',    label: 'Claims',            icon: '🧾', children: [
     { key: 'claims',      label: 'Claims',            icon: '🧾' },
@@ -276,8 +277,9 @@ const NAV = [
 
 const SidebarItem = ({ group, active, onNav, onClose, badge }) => {
   const isGroupActive = group.single ? active === group.key : !!(group.children?.find(c => c.key === active));
-  const [open, setOpen] = useState(isGroupActive && !group.single);
-  const anim = useRef(new Animated.Value(isGroupActive && !group.single ? 1 : 0)).current;
+  const shouldAutoOpen = !group.single && (isGroupActive || badge > 0);
+  const [open, setOpen] = useState(shouldAutoOpen);
+  const anim = useRef(new Animated.Value(shouldAutoOpen ? 1 : 0)).current;
 
   const toggle = () => {
     if (group.single) { onNav(group.key); onClose?.(); return; }
@@ -311,6 +313,9 @@ const SidebarItem = ({ group, active, onNav, onClose, badge }) => {
                 {active === c.key ? '◆' : '◇'}
               </Text>
               <Text style={[a.sideChildTxt, active === c.key && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{c.label}</Text>
+              {c.key === 'withdrawals' && badge > 0 && (
+                <View style={a.sideBadge}><Text style={a.sideBadgeTxt}>{badge > 99 ? '99+' : badge}</Text></View>
+              )}
             </TouchableOpacity>
           ))}
         </Animated.View>
@@ -319,7 +324,7 @@ const SidebarItem = ({ group, active, onNav, onClose, badge }) => {
   );
 };
 
-const Sidebar = ({ active, onNav, onClose, pendingCount, notifsCount, chatUnread = 0, onLogout, onBack, canGoBack }) => (
+const Sidebar = ({ active, onNav, onClose, pendingCount, notifsCount, chatUnread = 0, withdrawalCount = 0, onLogout, onBack, canGoBack }) => (
   <View style={a.sidebar}>
     <View style={a.sidebarBrand}>
       <View style={a.sidebarLogo}><Text style={a.sidebarLogoTxt}>CS</Text></View>
@@ -338,7 +343,7 @@ const Sidebar = ({ active, onNav, onClose, pendingCount, notifsCount, chatUnread
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }} style={{ flex: 1 }}>
       {NAV.map(g => (
         <SidebarItem key={g.key} group={g} active={active} onNav={onNav} onClose={onClose}
-          badge={g.key === 'members_grp' ? pendingCount : g.key === 'system_grp' ? notifsCount : g.key === 'chat_grp' ? chatUnread : 0}
+          badge={g.key === 'members_grp' ? pendingCount : g.key === 'system_grp' ? notifsCount : g.key === 'chat_grp' ? chatUnread : g.key === 'financial_grp' ? withdrawalCount : 0}
         />
       ))}
     </ScrollView>
@@ -620,8 +625,112 @@ const MemberDetailModal = ({ member, onClose, height }) => {
   const [resetDone, setResetDone] = useState(false);
   const [resetErr, setResetErr]   = useState('');
 
+  // ── Deposit / Withdrawal state ──────────────────────────────────────────────
+  const [txnMode,    setTxnMode]    = useState(null);   // 'deposit' | 'withdraw' | null
+  const [txnAmount,  setTxnAmount]  = useState('');
+  const [txnRemarks, setTxnRemarks] = useState('');
+  const [txnBusy,    setTxnBusy]    = useState(false);
+  const [txnDone,    setTxnDone]    = useState('');
+  const [txnErr,     setTxnErr]     = useState('');
+  // Track live member balance (updated after each txn)
+  const [liveBalance, setLiveBalance] = useState(null);
+
+  // Reset txn form when switching tabs or mode
+  const resetTxnForm = () => {
+    setTxnMode(null); setTxnAmount(''); setTxnRemarks('');
+    setTxnErr(''); setTxnDone('');
+  };
+
+  // Get current balance for the active tab
+  const getCurrentBalance = () => {
+    const base = liveBalance !== null ? liveBalance : (
+      tab === 'savings' ? member.savings :
+      tab === 'shares'  ? member.shares  : member.loanBalance
+    );
+    return Number(base || 0);
+  };
+
+  const doTransaction = async () => {
+    const amt = parseFloat(txnAmount);
+    if (!amt || amt <= 0)          { setTxnErr('Enter a valid amount.'); return; }
+    if (amt > 9999999)             { setTxnErr('Amount too large.'); return; }
+    const curBal = getCurrentBalance();
+    if (txnMode === 'withdraw' && tab !== 'loan' && amt > curBal) {
+      setTxnErr(`Insufficient balance. Current: ${fmtCur(curBal)}`); return;
+    }
+    if (txnMode === 'withdraw' && tab === 'loan' && amt > curBal) {
+      setTxnErr(`Payment exceeds outstanding balance. Remaining: ${fmtCur(curBal)}`); return;
+    }
+
+    setTxnBusy(true); setTxnErr('');
+    try {
+      const isDeposit = txnMode === 'deposit';
+      // For loan tab: deposit = release more loan, withdrawal = payment
+      const signedAmt = isDeposit ? amt : -amt;
+
+      // Build new balance
+      const fieldMap = { savings: 'savings', shares: 'shares', loan: 'loanBalance' };
+      const field = fieldMap[tab];
+      let newBal = curBal + (tab === 'loan' ? -amt : (isDeposit ? amt : -amt));
+
+      // Generate txn number
+      const txnNo = genTxnNo(tab, txns.length);
+      const descMap = {
+        savings: isDeposit ? 'Savings Deposit'    : 'Savings Withdrawal',
+        shares:  isDeposit ? 'Share Capital Credit': 'Share Capital Debit',
+        loan:    isDeposit ? 'Loan Release'        : 'Loan Payment',
+      };
+
+      // Save transaction
+      await addDoc(collection(db, 'transactions'), {
+        memberId:    member.id,
+        memberName:  member.name,
+        memberUserId:member.userId,
+        type:        tab,
+        txnNo,
+        amount:      signedAmt,
+        description: descMap[tab],
+        remarks:     txnRemarks.trim() || '',
+        createdAt:   serverTimestamp(),
+      });
+
+      // Update member balance
+      const updateFields = { [field]: newBal, updatedAt: serverTimestamp() };
+      // For loan: also keep loan (original) updated if releasing new amount
+      if (tab === 'loan' && isDeposit) {
+        updateFields.loan        = (member.loan || 0) + amt;
+        updateFields.loanBalance = (member.loanBalance || 0) + amt;
+        newBal = updateFields.loanBalance;
+      }
+      await updateDoc(doc(db, 'members', member.id), updateFields);
+
+      // Audit log
+      await addDoc(collection(db, 'auditLogs'), {
+        action: descMap[tab],
+        target: member.name,
+        userId: member.userId,
+        memberId: member.id,
+        amount: amt,
+        txnNo,
+        time: serverTimestamp(),
+      });
+
+      setLiveBalance(newBal);
+      setTxnDone(`✓ ${descMap[tab]} of ${fmtCur(amt)} recorded.`);
+      setTxnAmount(''); setTxnRemarks(''); setTxnMode(null);
+      setTimeout(() => setTxnDone(''), 4000);
+    } catch (e) {
+      setTxnErr(e.message || 'Transaction failed.');
+    } finally {
+      setTxnBusy(false);
+    }
+  };
+
   const af = member.appForm || {};
   const hasAppForm = !!(af.dob || af.placeOfBirth || af.civilStatus || af.contactNo || af.empType);
+
+  // Reset transaction form when tab changes
+  useEffect(() => { resetTxnForm(); setLiveBalance(null); }, [tab]);
 
   // Load transactions when switching to financial tab
   useEffect(() => {
@@ -806,7 +915,9 @@ const MemberDetailModal = ({ member, onClose, height }) => {
                     {tab === 'savings' ? 'Total Savings Balance' : tab === 'shares' ? 'Total Share Capital' : 'Outstanding Loan Balance'}
                   </Text>
                   <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 28, color: tab === 'savings' ? C.green : tab === 'shares' ? C.gold : C.red }}>
-                    {tab === 'savings' ? fmtCur(member.savings) : tab === 'shares' ? fmtCur(member.shares) : fmtCur(member.loanBalance)}
+                    {tab === 'savings' ? fmtCur(liveBalance !== null ? liveBalance : member.savings)
+                     : tab === 'shares' ? fmtCur(liveBalance !== null ? liveBalance : member.shares)
+                     : fmtCur(liveBalance !== null ? liveBalance : member.loanBalance)}
                   </Text>
                   {tab === 'loan' && member.loan > 0 && (
                     <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginTop: 4 }}>
@@ -814,6 +925,82 @@ const MemberDetailModal = ({ member, onClose, height }) => {
                     </Text>
                   )}
                 </View>
+
+                {/* ── Deposit / Withdrawal UI ── */}
+                {txnDone ? (
+                  <View style={{ backgroundColor: 'rgba(26,138,74,0.14)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(26,138,74,0.40)', padding: 10, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ fontSize: 16 }}>✅</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, flex: 1 }}>{txnDone}</Text>
+                  </View>
+                ) : null}
+
+                {txnMode === null ? (
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                    <TouchableOpacity
+                      onPress={() => { setTxnMode('deposit'); setTxnErr(''); }}
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(26,138,74,0.15)', borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(26,138,74,0.50)', paddingVertical: 11 }}>
+                      <Text style={{ fontSize: 14 }}>⬆️</Text>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.green }}>
+                        {tab === 'loan' ? 'Release Loan' : 'Deposit'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => { setTxnMode('withdraw'); setTxnErr(''); }}
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(192,57,43,0.12)', borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(192,57,43,0.45)', paddingVertical: 11 }}>
+                      <Text style={{ fontSize: 14 }}>⬇️</Text>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.red }}>
+                        {tab === 'loan' ? 'Record Payment' : 'Withdraw'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={{ backgroundColor: 'rgba(255,255,255,0.65)', borderRadius: 12, borderWidth: 1.5, borderColor: txnMode === 'deposit' ? 'rgba(26,138,74,0.45)' : 'rgba(192,57,43,0.40)', padding: 14, marginBottom: 14 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: txnMode === 'deposit' ? C.green : C.red }}>
+                        {txnMode === 'deposit'
+                          ? (tab === 'loan' ? '📤 Release Loan Amount' : '📥 Deposit')
+                          : (tab === 'loan' ? '💵 Record Payment'      : '📤 Withdraw')}
+                      </Text>
+                      <TouchableOpacity onPress={resetTxnForm} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(15,30,53,0.08)' }}>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted }}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.3, marginBottom: 4 }}>AMOUNT (₱)</Text>
+                    <TextInput
+                      style={{ backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 8, borderWidth: 1.5, borderColor: txnMode === 'deposit' ? 'rgba(26,138,74,0.35)' : 'rgba(192,57,43,0.35)', padding: 10, fontFamily: 'GoogleSans_400Regular', fontSize: 15, color: C.navy, marginBottom: 8 }}
+                      value={txnAmount}
+                      onChangeText={v => { setTxnAmount(v.replace(/[^0-9.]/g, '')); setTxnErr(''); }}
+                      placeholder="0.00"
+                      placeholderTextColor={C.textMuted}
+                      keyboardType="decimal-pad"
+                    />
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.3, marginBottom: 4 }}>REMARKS (OPTIONAL)</Text>
+                    <TextInput
+                      style={{ backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 8, borderWidth: 1.5, borderColor: 'rgba(15,30,53,0.15)', padding: 10, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy, marginBottom: 10, minHeight: 52, textAlignVertical: 'top' }}
+                      value={txnRemarks}
+                      onChangeText={setTxnRemarks}
+                      placeholder="e.g. Monthly contribution, Payroll deduction..."
+                      placeholderTextColor={C.textMuted}
+                      multiline
+                    />
+                    {txnErr ? (
+                      <View style={{ flexDirection: 'row', gap: 6, backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 8, padding: 8, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(192,57,43,0.30)' }}>
+                        <Text style={{ fontSize: 13 }}>⚠️</Text>
+                        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.red, flex: 1 }}>{txnErr}</Text>
+                      </View>
+                    ) : null}
+                    <TouchableOpacity
+                      onPress={doTransaction}
+                      disabled={txnBusy}
+                      style={{ borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: txnMode === 'deposit' ? C.green : C.red, opacity: txnBusy ? 0.65 : 1 }}>
+                      {txnBusy
+                        ? <ActivityIndicator color="#fff" size="small" />
+                        : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>
+                            Confirm {txnMode === 'deposit' ? (tab === 'loan' ? 'Release' : 'Deposit') : (tab === 'loan' ? 'Payment' : 'Withdrawal')}
+                          </Text>}
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 {/* Transaction list */}
                 <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 1.8, marginBottom: 10 }}>TRANSACTION HISTORY</Text>
@@ -1237,6 +1424,200 @@ const LoansView = ({ loans }) => {
   );
 };
 
+// ── 6b. WITHDRAWAL REQUESTS ───────────────────────────────────────────────────
+const WithdrawalsView = ({ members }) => {
+  const { data: requests, loading } = useCollection('withdrawalRequests', orderBy('createdAt', 'desc'));
+  const [filter,  setFilter]  = useState('Pending');
+  const [sel,     setSel]     = useState(null);
+  const [action,  setAction]  = useState(null);
+  const [remarks, setRemarks] = useState('');
+  const [busy,    setBusy]    = useState(false);
+
+  const filtered = filter === 'All' ? requests : requests.filter(r => r.status === filter);
+
+  const pendingCount = requests.filter(r => r.status === 'Pending').length;
+
+  const doAction = async () => {
+    if (!sel) return;
+    setBusy(true);
+    try {
+      if (action === 'approve') {
+        // Read current balance and deduct
+        const memberRef = doc(db, 'members', sel.memberId);
+        const fieldMap  = { savings: 'savings', shares: 'shares' };
+        const field     = fieldMap[sel.type];
+
+        // Read current balance directly
+        let curBal = 0;
+        try {
+          const mSnap = await getDoc(memberRef);
+          if (mSnap.exists()) curBal = Number(mSnap.data()[field] || 0);
+        } catch (_) {}
+
+        const newBal = Math.max(0, curBal - sel.amount);
+
+        // Update member balance
+        await updateDoc(memberRef, { [field]: newBal, updatedAt: serverTimestamp() });
+
+        // Record transaction
+        const txnNo = `${sel.type === 'savings' ? 'SAV' : 'SHR'}-${Date.now().toString(36).toUpperCase().slice(-6)}-WD`;
+        await addDoc(collection(db, 'transactions'), {
+          memberId:     sel.memberId,
+          memberName:   sel.memberName,
+          memberUserId: sel.memberUserId,
+          type:         sel.type,
+          txnNo,
+          amount:       -sel.amount,   // negative = withdrawal
+          description:  sel.type === 'savings' ? 'Savings Withdrawal' : 'Share Capital Withdrawal',
+          remarks:      sel.remarks || '',
+          createdAt:    serverTimestamp(),
+        });
+
+        // Audit log
+        await addDoc(collection(db, 'auditLogs'), {
+          action: 'Withdrawal Approved',
+          target: sel.memberName,
+          userId: sel.memberUserId,
+          memberId: sel.memberId,
+          amount: sel.amount,
+          txnNo,
+          time: serverTimestamp(),
+        });
+
+        // Notify member via adminNotifications (member reads these too)
+        await addDoc(collection(db, 'adminNotifications'), {
+          type: 'withdrawal_approved', icon: '✅',
+          title: 'Withdrawal Approved',
+          message: `Your ${sel.type} withdrawal of ${fmtCur(sel.amount)} has been approved.`,
+          memberId: sel.memberId, memberUserId: sel.memberUserId,
+          createdAt: serverTimestamp(), read: false,
+        });
+      } else {
+        // Rejected — notify member
+        await addDoc(collection(db, 'auditLogs'), {
+          action: 'Withdrawal Rejected',
+          target: sel.memberName,
+          userId: sel.memberUserId,
+          memberId: sel.memberId,
+          amount: sel.amount,
+          remarks,
+          time: serverTimestamp(),
+        });
+        await addDoc(collection(db, 'adminNotifications'), {
+          type: 'withdrawal_rejected', icon: '❌',
+          title: 'Withdrawal Rejected',
+          message: `Your ${sel.type} withdrawal of ${fmtCur(sel.amount)} was rejected.${remarks ? ' Reason: ' + remarks : ''}`,
+          memberId: sel.memberId, memberUserId: sel.memberUserId,
+          createdAt: serverTimestamp(), read: false,
+        });
+      }
+
+      // Update request status
+      await updateDoc(doc(db, 'withdrawalRequests', sel.id), {
+        status:      action === 'approve' ? 'Approved' : 'Rejected',
+        adminRemarks: remarks,
+        resolvedAt:  serverTimestamp(),
+      });
+
+      setSel(null); setAction(null); setRemarks('');
+    } catch (e) { console.error(e); }
+    finally { setBusy(false); }
+  };
+
+  if (loading) return <Spinner msg="Loading withdrawal requests..." />;
+
+  return (
+    <ScrollView contentContainerStyle={a.pageOuter} showsVerticalScrollIndicator persistentScrollbar>
+      <Text style={a.pageTitle}>📤 Withdrawal Requests</Text>
+      <Text style={a.pageSub}>Member-submitted withdrawal requests requiring approval.</Text>
+
+      {/* Summary tiles */}
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {[
+          { l: 'Pending',  v: requests.filter(r => r.status === 'Pending').length,  c: C.orange },
+          { l: 'Approved', v: requests.filter(r => r.status === 'Approved').length, c: C.green  },
+          { l: 'Rejected', v: requests.filter(r => r.status === 'Rejected').length, c: C.red    },
+        ].map(s => (
+          <GCard key={s.l} style={{ flex: 1, minWidth: 90, alignItems: 'center', padding: 12, marginBottom: 0 }}>
+            <Text style={[a.tileVal, { color: s.c, fontSize: 22 }]}>{s.v}</Text>
+            <Text style={[a.tileLbl, { textAlign: 'center' }]}>{s.l}</Text>
+          </GCard>
+        ))}
+      </View>
+
+      {/* Filter chips */}
+      <View style={a.filterRow}>
+        {['Pending', 'Approved', 'Rejected', 'All'].map(f => (
+          <TouchableOpacity key={f} style={[a.filterChip, filter === f && a.filterChipOn]} onPress={() => setFilter(f)}>
+            <Text style={[a.filterChipTxt, filter === f && a.filterChipTxtOn]}>{f}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {filtered.map(r => {
+        const isPending = r.status === 'Pending';
+        const sc = r.status === 'Approved' ? C.green : r.status === 'Rejected' ? C.red : C.orange;
+        return (
+          <GCard key={r.id} style={{ borderLeftWidth: 4, borderLeftColor: sc }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
+              <View style={[a.memberAvatar, { backgroundColor: sc + '22' }]}>
+                <Text style={[a.memberAvatarTxt, { fontSize: 12 }]}>{r.type === 'savings' ? '💰' : '📊'}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={a.memberName}>{r.memberName}</Text>
+                <Text style={a.memberUserId}>{r.memberUserId}</Text>
+                <Text style={a.memberMeta}>Type: {r.type === 'savings' ? 'Savings' : 'Share Capital'}</Text>
+                <Text style={a.memberMeta}>Amount: <Text style={{ fontFamily: 'GoogleSans_700Bold', color: C.red }}>{fmtCur(r.amount)}</Text></Text>
+                {r.remarks ? <Text style={a.memberMeta}>Reason: {r.remarks}</Text> : null}
+                <Text style={a.memberMeta}>Filed: {fmtTime(r.createdAt)}</Text>
+              </View>
+              <StatusPill status={r.status || 'Pending'} />
+            </View>
+            {r.adminRemarks ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#9a7230', fontStyle: 'italic', marginBottom: 8 }}>Admin: {r.adminRemarks}</Text> : null}
+            {isPending && (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={[a.btnAction, { flex: 1, backgroundColor: 'rgba(26,138,74,0.15)', borderColor: 'rgba(26,138,74,0.50)' }]}
+                  onPress={() => { setSel(r); setAction('approve'); setRemarks(''); }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.green }}>✓ Approve</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[a.btnAction, { flex: 1, backgroundColor: 'rgba(192,57,43,0.12)', borderColor: 'rgba(192,57,43,0.45)' }]}
+                  onPress={() => { setSel(r); setAction('reject'); setRemarks(''); }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.red }}>✕ Reject</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </GCard>
+        );
+      })}
+
+      {filtered.length === 0 && (
+        <GCard style={{ alignItems: 'center', padding: 40 }}>
+          <Text style={{ fontSize: 36, marginBottom: 10 }}>📭</Text>
+          <Text style={a.emptyTxt}>{filter === 'Pending' ? 'No pending withdrawal requests.' : 'No requests found.'}</Text>
+        </GCard>
+      )}
+
+      <ActionModal
+        visible={!!action}
+        title={action === 'approve' ? '✅ Approve Withdrawal' : '❌ Reject Withdrawal'}
+        message={`${action === 'approve' ? 'Approve' : 'Reject'} withdrawal of ${fmtCur(sel?.amount)} (${sel?.type}) for ${sel?.memberName}?`}
+        confirmLabel={action === 'approve' ? 'Approve & Deduct' : 'Reject'}
+        confirmColor={action === 'approve' ? C.green : C.red}
+        onConfirm={doAction}
+        onCancel={() => { setSel(null); setAction(null); }}
+        loading={busy}
+      >
+        <View style={{ marginTop: 12 }}>
+          <Text style={a.modalFieldLbl}>Admin Remarks {action === 'approve' ? '(optional)' : '(reason for rejection)'}</Text>
+          <TextInput style={a.modalInput} value={remarks} onChangeText={setRemarks} placeholder="Optional remarks..." placeholderTextColor={C.textMuted} multiline numberOfLines={2} />
+        </View>
+      </ActionModal>
+    </ScrollView>
+  );
+};
+
 // ── 7. CLAIMS ─────────────────────────────────────────────────────────────────
 const ClaimsView = () => {
   const { data: claims, loading } = useCollection('claims', orderBy('filedAt', 'desc'));
@@ -1342,12 +1723,17 @@ const NotifsView = ({ members, onNav }) => {
     await markNotifRead(n.id).catch(() => {});
     // Navigate to chat inbox if it's a chat notification
     if (n.type === 'chat' && onNav) onNav('chat_inbox');
+    // Navigate to withdrawal requests if it's a withdrawal request notification
+    if (n.type === 'withdrawal_request' && onNav) onNav('withdrawals');
   };
 
   const getBorderColor = (n) => {
-    if (n.type === 'chat')         return C.blue;
-    if (n.type === 'registration') return C.gold;
-    if (n.type === 'approved')     return C.green;
+    if (n.type === 'chat')               return C.blue;
+    if (n.type === 'registration')       return C.gold;
+    if (n.type === 'approved')           return C.green;
+    if (n.type === 'withdrawal_request') return C.orange;
+    if (n.type === 'withdrawal_approved')return C.green;
+    if (n.type === 'withdrawal_rejected')return C.red;
     return C.gold;
   };
 
@@ -1397,6 +1783,11 @@ const NotifsView = ({ members, onNav }) => {
                 {isChat && !n.read && (
                   <View style={{ backgroundColor: C.blue, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
                     <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>TAP TO OPEN</Text>
+                  </View>
+                )}
+                {n.type === 'withdrawal_request' && !n.read && (
+                  <View style={{ backgroundColor: C.orange, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>TAP TO REVIEW</Text>
                   </View>
                 )}
               </View>
@@ -2772,13 +3163,15 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   // Real-time data
-  const { data: members } = useCollection('members',             orderBy('createdAt', 'desc'));
-  const { data: claims  } = useCollection('claims',              orderBy('filedAt',   'desc'));
-  const { data: loans   } = useCollection('loanApplications',    orderBy('createdAt', 'desc'));
-  const { data: notifs  } = useCollection('adminNotifications',  orderBy('createdAt', 'desc'));
+  const { data: members      } = useCollection('members',             orderBy('createdAt', 'desc'));
+  const { data: claims       } = useCollection('claims',              orderBy('filedAt',   'desc'));
+  const { data: loans        } = useCollection('loanApplications',    orderBy('createdAt', 'desc'));
+  const { data: notifs       } = useCollection('adminNotifications',  orderBy('createdAt', 'desc'));
+  const { data: withdrawalReqs } = useCollection('withdrawalRequests', orderBy('createdAt', 'desc'));
 
-  const pendingCount = members.filter(m => m.status === 'Pending' || m.status === 'Registered').length;
-  const unreadNotifs = notifs.filter(n => !n.read).length + pendingCount;
+  const pendingCount      = members.filter(m => m.status === 'Pending' || m.status === 'Registered').length;
+  const pendingWithdrawals = withdrawalReqs.filter(r => r.status === 'Pending').length;
+  const unreadNotifs      = notifs.filter(n => !n.read).length + pendingCount;
 
   // Real-time unread chat count across all admin chat rooms
   const [chatUnread, setChatUnread] = useState(0);
@@ -2866,6 +3259,7 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
       case 'delinquency':   return <DelinquencyView  members={members} />;
       case 'collections':   return <CollectionsView  members={members} />;
       case 'loans':         return <LoansView        loans={loans} />;
+      case 'withdrawals':   return <WithdrawalsView  members={members} />;
       case 'claims':        return <ClaimsView />;
       case 'reports':       return <ReportsView      members={members} claims={claims} loans={loans} />;
       case 'documents':     return <DocumentsView    members={members} />;
@@ -2927,7 +3321,7 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
       <View style={{ flex: 1, flexDirection: 'row' }}>
         {isWide && (
           <Sidebar active={activeNav} onNav={switchNav}
-            pendingCount={pendingCount} notifsCount={unreadNotifs} chatUnread={chatUnread}
+            pendingCount={pendingCount} notifsCount={unreadNotifs} chatUnread={chatUnread} withdrawalCount={pendingWithdrawals}
             onLogout={onLogout} onBack={goBack} canGoBack={navHistory.length > 1} />
         )}
         <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
@@ -2950,7 +3344,7 @@ const AdminDashboard = ({ admin, onLogout, isWide, isSmall }) => {
             activeOpacity={1} onPress={() => setDrawer(false)} />
           <View style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 220, zIndex: 21, flexDirection: 'column' }}>
             <Sidebar active={activeNav} onNav={switchNav} onClose={() => setDrawer(false)}
-              pendingCount={pendingCount} notifsCount={unreadNotifs} chatUnread={chatUnread}
+              pendingCount={pendingCount} notifsCount={unreadNotifs} chatUnread={chatUnread} withdrawalCount={pendingWithdrawals}
               onLogout={() => { setDrawer(false); onLogout(); }}
               onBack={() => { goBack(); setDrawer(false); }}
               canGoBack={navHistory.length > 1} />
