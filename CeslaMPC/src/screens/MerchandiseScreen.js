@@ -7,6 +7,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Animated, StatusBar, Image,
   useWindowDimensions, Platform, TextInput, Modal, Alert,
+  PanResponder,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -1749,9 +1750,32 @@ export default function MerchandiseScreen({ navigation, route }) {
   const hdrTrans = useRef(new Animated.Value(-16)).current;
   const bodyFade    = useRef(new Animated.Value(0)).current;
   const [adVisible, setAdVisible] = useState(true);
-  const lastScrollY = useRef(0);
   const adVisibleRef = useRef(true);
   const receiptViewRef = useRef(null);
+
+  // ── Mobile panel expand/collapse via header drag only ──────────────────────
+  const [panelExpanded, setPanelExpanded] = useState(false);
+  const panelExpandedRef = useRef(false);
+
+  const panelPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 4,
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy < -10) {
+          panelExpandedRef.current = true;
+          setPanelExpanded(true);
+          adVisibleRef.current = false;
+          setAdVisible(false);
+        } else if (gs.dy > 10) {
+          panelExpandedRef.current = false;
+          setPanelExpanded(false);
+          adVisibleRef.current = true;
+          setAdVisible(true);
+        }
+      },
+    })
+  ).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -2042,9 +2066,19 @@ export default function MerchandiseScreen({ navigation, route }) {
           </View>
 
           {/* Items panel — fills remaining space */}
-          <View style={styles.itemsPanel}>
-            {/* Label LEFT + Search RIGHT — same row */}
-            <View style={{ flexDirection:'row', alignItems:'center', marginBottom:6, gap:8 }}>
+          <View style={[styles.itemsPanel, !isWide && panelExpanded && { flex: 3 }]}>
+            {/* Panel header — drag handle, ONLY triggers swipe up/down on mobile */}
+            <View
+              {...(!isWide ? panelPanResponder.panHandlers : {})}
+              style={{ flexDirection:'row', alignItems:'center', marginBottom:6, gap:8,
+                paddingVertical: !isWide ? 6 : 0,
+              }}
+            >
+              {!isWide && (
+                <View style={{ position:'absolute', top:-10, left:0, right:0, alignItems:'center' }}>
+                  <View style={{ width:36, height:4, borderRadius:2, backgroundColor:'rgba(1,31,75,0.18)' }} />
+                </View>
+              )}
               <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#011f4b', letterSpacing:2, flexShrink:0 }}>
                 {search.trim() !== ''
                   ? ('RESULTS FOR "' + search.toUpperCase() + '"')
@@ -2071,17 +2105,6 @@ export default function MerchandiseScreen({ navigation, route }) {
             <ScrollView
               showsVerticalScrollIndicator={true}
               nestedScrollEnabled={true}
-              scrollEventThrottle={16}
-              onScroll={Platform.OS !== 'web' ? (e) => {
-                const y = e.nativeEvent.contentOffset.y;
-                const goingDown = y > lastScrollY.current;
-                lastScrollY.current = y;
-                const target = !(goingDown && y > 10);
-                if (target !== adVisibleRef.current) {
-                  adVisibleRef.current = target;
-                  setAdVisible(target);
-                }
-              } : undefined}
               style={Platform.OS === 'web' ? { height: height - 310 } : { flex:1 }}
               contentContainerStyle={[styles.menuGrid, { gap: Platform.OS==='web' ? 10 : 5, paddingBottom: Platform.OS !== 'web' ? 90 : 20 }]}
             >

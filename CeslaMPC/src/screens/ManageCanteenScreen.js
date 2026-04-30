@@ -3005,10 +3005,11 @@ export default function ManageCanteenScreen({ navigation }) {
   const isWide   = width >= 900;
 
   const {
-    items, ads, categories, orders,
+    items, ads, categories: _CTX_CATS, orders,
     saveItem, deleteItem, saveAd, addOrder, updateOrderStatus,
     deductStock, reloadFromStorage, setAds,
   } = useCanteen();
+  const categories = ['All', 'Breakfast', 'Lunch', 'Snacks', 'Dessert', 'Drinks', 'Combo'];
 
   const [fontsLoaded] = useFonts({
     NotoSerif_700Bold, GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold,

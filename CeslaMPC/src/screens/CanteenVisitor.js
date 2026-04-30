@@ -10,12 +10,15 @@ import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Animated, StatusBar, Image,
   useWindowDimensions, Platform, TextInput, Modal, Alert,
+  PanResponder,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts } from 'expo-font';
 import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/noto-serif';
 import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 // ─── PERSISTENCE KEY ──────────────────────────────────────────────────────────
 const VISITOR_HISTORY_KEY = 'canteen_visitor_order_history';
@@ -816,13 +819,15 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
 };
 
 // ─── CART PANEL ───────────────────────────────────────────────────────────────
-const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWide, hideTitle, lastOrder, onShowReceipt }) => {
+const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWide, hideTitle, lastOrder, onShowReceipt, orderHistory = [] }) => {
   const [checked, setChecked] = useState({});
   const [paymentMode, setPaymentMode] = useState('cash');
   const [deliveryType, setDeliveryType] = useState('pickup');
   const [deliveryLocation, setDeliveryLocation] = useState('');
   const [deliveryCoords, setDeliveryCoords] = useState(null);
   const [locPickerVisible, setLocPickerVisible] = useState(false);
+  const [activePanelTab, setActivePanelTab] = useState('cart'); // 'cart' | 'placed'
+  const pendingCount = orderHistory.filter(o => { const s = o.status || 'done'; return s === 'pending' || s === 'preparing' || s === 'ready'; }).length;
 
   // ── Canteen coords (origin for delivery distance) ──────────────────────────
   const CANTEEN_LAT = 8.4748; // update to your actual canteen coordinates
@@ -884,10 +889,38 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
     onPlaceOrder({ items: checkedItems, subtotal, deliveryFee, total, amountPaid: total, change: 0, orderNo, time, paymentMode, deliveryType, deliveryLocation });
   };
 
+  // Placed Orders tab date formatter
+  const fmtDatePanel = ts => {
+    if (!ts) return '';
+    try { const d = ts?.toDate?.() || new Date(ts); return d.toLocaleDateString('en-PH', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); } catch { return ''; }
+  };
+
   return (
     <>
     <View style={[styles.cartPanel, !isWide && styles.cartPanelMobile]}>
-      {!hideTitle && <Text style={styles.cartPanelTitle}>CART</Text>}
+
+      {/* ── Tab row: Cart | Placed Orders — only shown on wide/desktop panel, not inside CartBottomSheet ── */}
+      {!hideTitle && (
+        <View style={{ flexDirection:'row', backgroundColor:'rgba(1,31,75,0.08)', borderRadius:10, padding:3, gap:3, marginBottom:10 }}>
+          {[['cart','🛒 Cart'],['placed','📋 Placed Orders']].map(([key, label]) => (
+            <TouchableOpacity key={key} onPress={() => setActivePanelTab(key)}
+              style={[{ flex:1, paddingVertical:7, alignItems:'center', borderRadius:8, flexDirection:'row', justifyContent:'center', gap:5 },
+                activePanelTab === key && { backgroundColor:'#fff', shadowColor:'#000', shadowOpacity:0.10, shadowRadius:4, elevation:2 }]}
+              activeOpacity={0.80}
+            >
+              <Text style={{ fontFamily: activePanelTab === key ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize:11, color: activePanelTab === key ? '#0f1e35' : 'rgba(1,31,75,0.55)' }}>{label}</Text>
+              {key === 'placed' && pendingCount > 0 && (
+                <View style={{ backgroundColor:'#e74c3c', borderRadius:10, minWidth:18, height:18, alignItems:'center', justifyContent:'center', paddingHorizontal:4 }}>
+                  <Text style={{ color:'#fff', fontSize:10, fontFamily:'GoogleSans_700Bold', lineHeight:12 }}>{pendingCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* ══ CART TAB ══ */}
+      {activePanelTab === 'cart' && (<>
 
         {/* Items list with checkboxes */}
         <View style={styles.cartItemsBox}>
@@ -897,7 +930,6 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 200 }}>
               {cartItems.map(({ item, qty }) => (
                 <View key={item.id} style={styles.cartRow}>
-                  {/* Checkbox */}
                   <TouchableOpacity
                     style={[styles.checkbox, checked[item.id] && styles.checkboxChecked]}
                     onPress={() => toggleCheck(item.id)}
@@ -923,7 +955,7 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
           )}
         </View>
 
-        {/* Total — based on checked items only */}
+        {/* Totals */}
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Subtotal :</Text>
           <Text style={styles.totalValue}>₱ {subtotal.toFixed(2)}</Text>
@@ -962,8 +994,7 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
           </View>
         </View>
 
-
-        {/* ── Order Type (Pick Up / Deliver) ── */}
+        {/* Order Type */}
         <View style={delivStyles.box}>
           <Text style={delivStyles.sectionLabel}>Order Type</Text>
           <View style={delivStyles.toggleRow}>
@@ -984,7 +1015,6 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
               <Text style={[delivStyles.toggleTxt, deliveryType === 'deliver' && delivStyles.toggleTxtActiveDeliver]}>Deliver</Text>
             </TouchableOpacity>
           </View>
-          {/* ── Delivery location row — only shown when Deliver is selected ── */}
           {deliveryType === 'deliver' && (
             <TouchableOpacity
               style={[delivStyles.mapTrigger, deliveryLocation ? delivStyles.mapTriggerSet : delivStyles.mapTriggerUnset]}
@@ -998,10 +1028,9 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
               <Text style={delivStyles.mapTriggerChevron}>{deliveryLocation ? '✏️' : '🗺️'}</Text>
             </TouchableOpacity>
           )}
-
         </View>
 
-        {/* ── Place Order button ── */}
+        {/* Place Order */}
         <TouchableOpacity
           style={[styles.placeOrderBtn, checkedItems.length === 0 && styles.placeOrderBtnDisabled]}
           onPress={handlePlaceOrder}
@@ -1017,17 +1046,13 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* ── Clear cart button ── */}
-        <TouchableOpacity
-          style={styles.clearBtn}
-          onPress={onClear}
-          activeOpacity={0.80}
-        >
+        {/* Clear Cart */}
+        <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={0.80}>
           <Text style={styles.clearBtnIcon}>🗑️</Text>
           <Text style={styles.clearBtnText}>Clear Cart</Text>
         </TouchableOpacity>
 
-        {/* ── Download Receipt button ── */}
+        {/* Download Receipt */}
         <TouchableOpacity
           style={[styles.printBtn, !lastOrder && { opacity: 0.45 }]}
           onPress={lastOrder ? onShowReceipt : null}
@@ -1036,18 +1061,131 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, onOrder, onPlaceOrder, isWi
           <Text style={styles.printBtnIcon}>⬇️</Text>
           <Text style={styles.printBtnText}>Download Receipt</Text>
         </TouchableOpacity>
-      </View>
 
-      {/* Location Picker Modal */}
-      <LocationPickerModal
-        visible={locPickerVisible}
-        onClose={() => setLocPickerVisible(false)}
-        onConfirm={({ address, coords }) => {
-          setDeliveryLocation(address);
-          setDeliveryCoords(coords);
-        }}
-        deliveryType={deliveryType}
-      />
+      </>)}
+
+      {/* ══ PLACED ORDERS TAB ══ */}
+      {activePanelTab === 'placed' && (
+        <ScrollView showsVerticalScrollIndicator={false} style={{ flex:1 }} contentContainerStyle={{ paddingBottom:12 }}>
+          {orderHistory.length === 0 ? (
+            <View style={{ alignItems:'center', paddingVertical:40 }}>
+              <Text style={{ fontSize:32, marginBottom:10 }}>📋</Text>
+              <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.45)', textAlign:'center' }}>No placed orders yet.</Text>
+            </View>
+          ) : (
+            orderHistory.map((order, idx) => {
+              const items  = order.items || [];
+              const total  = order.total || 0;
+              const pm     = order.payment || order.paymentMode || order.paymentMethod || 'cash';
+              const pmBg   = pm === 'gcash' || pm === 'GCash' ? 'rgba(111,163,247,0.20)' : 'rgba(46,204,113,0.20)';
+              const pmBorder = pm === 'gcash' || pm === 'GCash' ? 'rgba(111,163,247,0.55)' : 'rgba(46,204,113,0.55)';
+              const status = order.status || 'done';
+              const statusConfig = {
+                pending:   { label:'Order Placed',      icon:'🕐', color:'#95a5a6', bg:'rgba(149,165,166,0.15)', border:'rgba(149,165,166,0.35)' },
+                preparing: { label:'Preparing',         icon:'🔥', color:'#e67e22', bg:'rgba(230,126,34,0.15)',  border:'rgba(230,126,34,0.40)'  },
+                ready:     { label:'Ready for Pick Up', icon:'✅', color:'#27ae60', bg:'rgba(39,174,96,0.15)',   border:'rgba(39,174,96,0.40)'   },
+                done:      { label:'Completed',         icon:'🎉', color:'#2980b9', bg:'rgba(41,128,185,0.12)', border:'rgba(41,128,185,0.30)'  },
+              };
+              const stCfg    = statusConfig[status] || statusConfig.done;
+              const isActive = status === 'pending' || status === 'preparing' || status === 'ready';
+              const STEPS    = ['pending','preparing','ready'];
+              const stepIdx  = STEPS.indexOf(status);
+              const stepLabels = { pending:'Placed', preparing:'Preparing', ready:'Ready' };
+              return (
+                <View key={order.docId || idx} style={{
+                  backgroundColor: isActive ? 'rgba(255,255,255,0.62)' : 'rgba(255,255,255,0.38)',
+                  borderRadius:12, padding:10, marginBottom:8,
+                  borderWidth: isActive ? 2 : 1.5,
+                  borderColor: isActive ? stCfg.border : 'rgba(255,255,255,0.70)',
+                  shadowColor: isActive ? stCfg.color : 'transparent',
+                  shadowOpacity: isActive ? 0.15 : 0,
+                  shadowRadius:6, elevation: isActive ? 3 : 0,
+                }}>
+                  {/* Header */}
+                  <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
+                    <View style={{ flex:1 }}>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#0f1e35' }}>#{order.orderNo || '—'}</Text>
+                      <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.50)', marginTop:1 }}>{fmtDatePanel(order.createdAt || order.time)}</Text>
+                    </View>
+                    <View style={{ paddingHorizontal:8, paddingVertical:3, borderRadius:16, backgroundColor: stCfg.bg, borderWidth:1, borderColor: stCfg.border, flexDirection:'row', alignItems:'center', gap:3 }}>
+                      <Text style={{ fontSize:10 }}>{stCfg.icon}</Text>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, color: stCfg.color, letterSpacing:0.3 }}>{stCfg.label}</Text>
+                    </View>
+                  </View>
+                  {/* Queue progress — active orders only */}
+                  {isActive && (
+                    <View style={{ flexDirection:'row', alignItems:'center', marginBottom:8, paddingHorizontal:2 }}>
+                      {STEPS.map((step, i) => {
+                        const sCfg   = statusConfig[step];
+                        const isDone = i < stepIdx;
+                        const isNow  = i === stepIdx;
+                        return (
+                          <React.Fragment key={step}>
+                            <View style={{ alignItems:'center', gap:2 }}>
+                              <View style={{
+                                width:24, height:24, borderRadius:12,
+                                backgroundColor: isDone ? '#27ae60' : isNow ? stCfg.color : 'rgba(1,31,75,0.10)',
+                                borderWidth:2,
+                                borderColor: isDone ? '#27ae60' : isNow ? stCfg.color : 'rgba(1,31,75,0.15)',
+                                justifyContent:'center', alignItems:'center',
+                              }}>
+                                <Text style={{ fontSize:10 }}>{isDone ? '✓' : sCfg.icon}</Text>
+                              </View>
+                              <Text style={{ fontFamily: isNow ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize:7, color: isNow ? stCfg.color : 'rgba(1,31,75,0.40)', textAlign:'center', maxWidth:38 }}>
+                                {stepLabels[step]}
+                              </Text>
+                            </View>
+                            {i < STEPS.length - 1 && (
+                              <View style={{ flex:1, height:2, backgroundColor: isDone ? '#27ae60' : 'rgba(1,31,75,0.12)', marginHorizontal:2, marginBottom:12 }} />
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {/* Payment + delivery badges */}
+                  <View style={{ flexDirection:'row', alignItems:'center', marginBottom:6, gap:4, flexWrap:'wrap' }}>
+                    <View style={{ paddingHorizontal:6, paddingVertical:2, borderRadius:10, backgroundColor: pmBg, borderWidth:1, borderColor: pmBorder }}>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#0f1e35', letterSpacing:0.6, textTransform:'uppercase' }}>{pm}</Text>
+                    </View>
+                    {order.deliveryType === 'deliver' && (
+                      <View style={{ paddingHorizontal:6, paddingVertical:2, borderRadius:10, backgroundColor:'rgba(231,76,60,0.12)', borderWidth:1, borderColor:'rgba(231,76,60,0.35)' }}>
+                        <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#c0392b' }}>🛵 Delivery</Text>
+                      </View>
+                    )}
+                  </View>
+                  {/* Items */}
+                  <View style={{ marginBottom:6, paddingBottom:6, borderBottomWidth:1, borderColor:'rgba(1,31,75,0.07)' }}>
+                    {items.map((it, j) => {
+                      const item = it.item || it;
+                      const qty  = it.qty || it.quantity || 1;
+                      return (
+                        <Text key={j} style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#0f1e35', marginBottom:2, lineHeight:16 }} numberOfLines={1}>
+                          {item.emoji || '🍽️'} {item.name} x{qty} — ₱{(item.price * qty).toFixed(2)}
+                        </Text>
+                      );
+                    })}
+                  </View>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#c9a84c' }}>Total: ₱{Number(total).toFixed(2)}</Text>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      )}
+
+    </View>
+
+    {/* Location Picker Modal */}
+    <LocationPickerModal
+      visible={locPickerVisible}
+      onClose={() => setLocPickerVisible(false)}
+      onConfirm={({ address, coords }) => {
+        setDeliveryLocation(address);
+        setDeliveryCoords(coords);
+      }}
+      deliveryType={deliveryType}
+    />
     </>
   );
 };
@@ -1062,7 +1200,7 @@ const QUEUE_STEPS = [
   { key: 'done',      icon: '🎉', label: 'Order Complete',      sub: 'Thank you for ordering!'               },
 ];
 
-const QueueStatusModal = ({ visible, orderId, orderNo, currentStatus, onClose, onMinimize, minimized }) => {
+const QueueStatusModal = ({ visible, orderId, orderNo, currentStatus, onClose, onMinimize, minimized, pillIndex = 0 }) => {
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -1098,23 +1236,9 @@ const QueueStatusModal = ({ visible, orderId, orderNo, currentStatus, onClose, o
 
   if (!visible) return null;
 
-  // ── Minimized pill — renders as an absolute overlay (not in Modal) ──
+  // ── Minimized — no persistent overlay on screen ──
   if (minimized) {
-    if (currentStatus === 'done') return null;
-    const pillColor = currentStatus === 'ready' ? '#27ae60' : currentStatus === 'preparing' ? '#e67e22' : '#1a3a6b';
-    return (
-      <View style={[qs.pill, { backgroundColor: pillColor }]} pointerEvents="box-none">
-        <TouchableOpacity
-          style={{ flexDirection:'row', alignItems:'center', flex:1, gap:8 }}
-          onPress={onMinimize}
-          activeOpacity={0.85}
-        >
-          <Text style={qs.pillIcon}>{activeStep.icon}</Text>
-          <Text style={qs.pillText}>Order #{orderNo} — {activeStep.label}</Text>
-          <Text style={qs.pillChevron}>▲</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return null;
   }
 
   return (
@@ -1226,8 +1350,10 @@ const qs = StyleSheet.create({
 });
 
 // ─── BOTTOM SHEET CART (Mobile) ───────────────────────────────────────────────
-const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onPlaceOrder, lastOrder, onShowReceipt }) => {
+const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onPlaceOrder, lastOrder, onShowReceipt, orderHistory = [] }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const [activeSheetTab, setActiveSheetTab] = useState('cart');
+  const pendingCount = orderHistory.filter(o => { const s = o.status || 'done'; return s === 'pending' || s === 'preparing' || s === 'ready'; }).length;
 
   useEffect(() => {
     Animated.spring(slideAnim, { toValue: 1, tension: 65, friction: 11, useNativeDriver: true }).start();
@@ -1235,31 +1361,156 @@ const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onOrder, onClose, onP
 
   const translateY = slideAnim.interpolate({ inputRange:[0,1], outputRange:[600,0] });
 
+  const fmtDate = ts => {
+    if (!ts) return '';
+    try { const d = ts?.toDate?.() || new Date(ts); return d.toLocaleDateString('en-PH', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); } catch { return ''; }
+  };
+
   return (
     <View style={styles.sheetOverlay}>
       <TouchableOpacity style={styles.sheetBackdrop} onPress={onClose} activeOpacity={1} />
       <Animated.View style={[styles.sheet, { transform:[{ translateY }] }]}>
         <View style={styles.sheetHandle} />
-        {/* Single CART header — no duplicate */}
+        {/* Tab row: Cart | Placed Orders */}
         <View style={styles.sheetHeader}>
-          <Text style={styles.cartPanelTitle}>CART</Text>
+          <View style={{ flexDirection:'row', flex:1, backgroundColor:'rgba(1,31,75,0.08)', borderRadius:10, padding:3, gap:3 }}>
+            {[['cart','🛒 Cart'],['placed','📋 Placed Orders']].map(([key, label]) => (
+              <TouchableOpacity key={key} onPress={() => setActiveSheetTab(key)}
+                style={[{ flex:1, paddingVertical:7, alignItems:'center', borderRadius:8, flexDirection:'row', justifyContent:'center', gap:5 },
+                  activeSheetTab === key && { backgroundColor:'#fff', shadowColor:'#000', shadowOpacity:0.10, shadowRadius:4, elevation:2 }]}>
+                <Text style={{ fontFamily: activeSheetTab === key ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize:12, color: activeSheetTab === key ? '#0f1e35' : 'rgba(1,31,75,0.55)' }}>{label}</Text>
+                {key === 'placed' && pendingCount > 0 && (
+                  <View style={{ backgroundColor:'#e74c3c', borderRadius:10, minWidth:18, height:18, alignItems:'center', justifyContent:'center', paddingHorizontal:4 }}>
+                    <Text style={{ color:'#fff', fontSize:10, fontFamily:'GoogleSans_700Bold', lineHeight:12 }}>{pendingCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
           <TouchableOpacity onPress={onClose} style={styles.sheetClose}>
             <Text style={{ color:'rgba(1,31,75,0.6)', fontSize:14 }}>✕</Text>
           </TouchableOpacity>
         </View>
-        {/* Scrollable content so Mode of Payment + buttons always visible */}
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ flexGrow:1 }}
-        >
-          <CartPanel
-            cart={cart} onAdd={onAdd} onRemove={onRemove}
-            onClear={onClear} onOrder={onOrder} isWide={false}
-            hideTitle={true} onPlaceOrder={onPlaceOrder}
-            lastOrder={lastOrder} onShowReceipt={onShowReceipt}
-          />
-        </ScrollView>
+
+        {/* Tab content */}
+        {activeSheetTab === 'cart' ? (
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow:1 }}>
+            <CartPanel
+              cart={cart} onAdd={onAdd} onRemove={onRemove}
+              onClear={onClear} onOrder={onOrder} isWide={false}
+              hideTitle={true} onPlaceOrder={onPlaceOrder}
+              lastOrder={lastOrder} onShowReceipt={onShowReceipt}
+              orderHistory={orderHistory}
+            />
+          </ScrollView>
+        ) : (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding:14, flexGrow:1 }}>
+            {orderHistory.length === 0 ? (
+              <View style={{ alignItems:'center', paddingVertical:40 }}>
+                <Text style={{ fontSize:36, marginBottom:10 }}>📋</Text>
+                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:13, color:'rgba(1,31,75,0.45)', textAlign:'center' }}>No placed orders yet.</Text>
+              </View>
+            ) : (
+              orderHistory.map((order, idx) => {
+                const items = order.items || [];
+                const total = order.total || 0;
+                const pm    = order.payment || order.paymentMode || order.paymentMethod || 'cash';
+                const pmBg  = pm === 'gcash' || pm === 'GCash' ? 'rgba(111,163,247,0.20)' : 'rgba(46,204,113,0.20)';
+                const pmBorder = pm === 'gcash' || pm === 'GCash' ? 'rgba(111,163,247,0.55)' : 'rgba(46,204,113,0.55)';
+                const status = order.status || 'done';
+                const statusConfig = {
+                  pending:   { label:'Order Placed',      icon:'🕐', color:'#95a5a6', bg:'rgba(149,165,166,0.15)', border:'rgba(149,165,166,0.35)' },
+                  preparing: { label:'Preparing',         icon:'🔥', color:'#e67e22', bg:'rgba(230,126,34,0.15)',  border:'rgba(230,126,34,0.40)'  },
+                  ready:     { label:'Ready for Pick Up', icon:'✅', color:'#27ae60', bg:'rgba(39,174,96,0.15)',   border:'rgba(39,174,96,0.40)'   },
+                  done:      { label:'Completed',         icon:'🎉', color:'#2980b9', bg:'rgba(41,128,185,0.12)', border:'rgba(41,128,185,0.30)'  },
+                };
+                const stCfg  = statusConfig[status] || statusConfig.done;
+                const isActive = status === 'pending' || status === 'preparing' || status === 'ready';
+                const STEPS = ['pending','preparing','ready'];
+                const stepIdx = STEPS.indexOf(status);
+                const stepLabels = { pending:'Placed', preparing:'Preparing', ready:'Ready' };
+                return (
+                  <View key={order.docId || idx} style={{
+                    backgroundColor: isActive ? 'rgba(255,255,255,0.62)' : 'rgba(255,255,255,0.38)',
+                    borderRadius:14, padding:14, marginBottom:10,
+                    borderWidth: isActive ? 2 : 1.5,
+                    borderColor: isActive ? stCfg.border : 'rgba(255,255,255,0.70)',
+                    shadowColor: isActive ? stCfg.color : 'transparent',
+                    shadowOpacity: isActive ? 0.15 : 0,
+                    shadowRadius: 8, elevation: isActive ? 3 : 0,
+                  }}>
+                    {/* Header */}
+                    <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                      <View style={{ flex:1 }}>
+                        <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#0f1e35' }}>#{order.orderNo || '—'}</Text>
+                        <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.50)', marginTop:2 }}>{fmtDate(order.createdAt || order.time)}</Text>
+                      </View>
+                      <View style={{ paddingHorizontal:10, paddingVertical:4, borderRadius:20, backgroundColor: stCfg.bg, borderWidth:1, borderColor: stCfg.border, flexDirection:'row', alignItems:'center', gap:4 }}>
+                        <Text style={{ fontSize:11 }}>{stCfg.icon}</Text>
+                        <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color: stCfg.color, letterSpacing:0.4 }}>{stCfg.label}</Text>
+                      </View>
+                    </View>
+                    {/* Queue progress */}
+                    {isActive && (
+                      <View style={{ flexDirection:'row', alignItems:'center', marginBottom:10, paddingHorizontal:4 }}>
+                        {STEPS.map((step, i) => {
+                          const sCfg   = statusConfig[step];
+                          const isDone = i < stepIdx;
+                          const isNow  = i === stepIdx;
+                          return (
+                            <React.Fragment key={step}>
+                              <View style={{ alignItems:'center', gap:3 }}>
+                                <View style={{
+                                  width:28, height:28, borderRadius:14,
+                                  backgroundColor: isDone ? '#27ae60' : isNow ? stCfg.color : 'rgba(1,31,75,0.10)',
+                                  borderWidth:2,
+                                  borderColor: isDone ? '#27ae60' : isNow ? stCfg.color : 'rgba(1,31,75,0.15)',
+                                  justifyContent:'center', alignItems:'center',
+                                }}>
+                                  <Text style={{ fontSize:11 }}>{isDone ? '✓' : sCfg.icon}</Text>
+                                </View>
+                                <Text style={{ fontFamily: isNow ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize:8, color: isNow ? stCfg.color : 'rgba(1,31,75,0.40)', textAlign:'center', maxWidth:44 }}>
+                                  {stepLabels[step]}
+                                </Text>
+                              </View>
+                              {i < STEPS.length - 1 && (
+                                <View style={{ flex:1, height:2, backgroundColor: isDone ? '#27ae60' : 'rgba(1,31,75,0.12)', marginHorizontal:3, marginBottom:14 }} />
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </View>
+                    )}
+                    {/* Payment badge */}
+                    <View style={{ flexDirection:'row', alignItems:'center', marginBottom:8, gap:6 }}>
+                      <View style={{ paddingHorizontal:8, paddingVertical:3, borderRadius:12, backgroundColor: pmBg, borderWidth:1, borderColor: pmBorder }}>
+                        <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, color:'#0f1e35', letterSpacing:0.8, textTransform:'uppercase' }}>{pm}</Text>
+                      </View>
+                      {order.deliveryType === 'deliver' && (
+                        <View style={{ paddingHorizontal:8, paddingVertical:3, borderRadius:12, backgroundColor:'rgba(231,76,60,0.12)', borderWidth:1, borderColor:'rgba(231,76,60,0.35)' }}>
+                          <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, color:'#c0392b' }}>🛵 Delivery</Text>
+                        </View>
+                      )}
+                    </View>
+                    {/* Items */}
+                    <View style={{ marginBottom:8, paddingBottom:8, borderBottomWidth:1, borderColor:'rgba(1,31,75,0.07)' }}>
+                      {items.map((it, j) => {
+                        const item = it.item || it;
+                        const qty  = it.qty || it.quantity || 1;
+                        return (
+                          <Text key={j} style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'#0f1e35', marginBottom:3, lineHeight:18 }}>
+                            {item.emoji || '🍽️'} {item.name} x{qty} — ₱{(item.price * qty).toFixed(2)}
+                          </Text>
+                        );
+                      })}
+                    </View>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#c9a84c' }}>Total: ₱{Number(total).toFixed(2)}</Text>
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        )}
       </Animated.View>
     </View>
   );
@@ -1396,7 +1647,8 @@ const adStyles = StyleSheet.create({
 
 
 export default function CanteenVisitor({ navigation }) {
-  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: CATEGORIES, addOrder, deductStock, orders, reloadFromStorage } = useCanteen();
+  const { items: MENU_ITEMS, ads: CONTEXT_ADS, categories: _CTX_CATS, addOrder, deductStock, orders, reloadFromStorage } = useCanteen();
+  const CATEGORIES = ['All', 'Breakfast', 'Lunch', 'Snacks', 'Dessert', 'Drinks', 'Combo'];
   const { width, height } = useWindowDimensions();
   const isWide  = width >= 768;
   const isSmall = width < 400;
@@ -1416,20 +1668,138 @@ export default function CanteenVisitor({ navigation }) {
   const [mainTab,      setMainTab]      = useState('order'); // 'order' | 'history'
   const [orderHistory, setOrderHistory] = useState([]);
 
-  // Queue status tracking
-  const [queueVisible,   setQueueVisible]   = useState(false);
-  const [queueMinimized, setQueueMinimized] = useState(false);
-  const [trackedOrderId, setTrackedOrderId] = useState(null);
-  const [liveStatus,     setLiveStatus]     = useState('pending');
-  const prevStatusRef = useRef(null);
+  // ── Multi-order queue tracking ────────────────────────────────────────────
+  // activeOrders: [{ id, orderNo, status, expanded }]
+  const [activeOrders, setActiveOrders] = useState([]);
+
+  // ── Order placed / status-change toast notification ──────────────────────
+  const [orderToast, setOrderToast] = useState(null); // { orderNo, title, message, icon, color }
+  const orderToastAnim = useRef(new Animated.Value(0)).current;
+
+  const showOrderToast = (orderNo, message, icon = '✅', color = '#1a3a6b', title = null) => {
+    setOrderToast({ orderNo, message, icon, color, title: title || `Order #${orderNo} Placed!` });
+    orderToastAnim.setValue(0);
+    Animated.sequence([
+      Animated.spring(orderToastAnim, { toValue: 1, tension: 70, friction: 11, useNativeDriver: true }),
+      Animated.delay(2800),
+      Animated.timing(orderToastAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start(() => setOrderToast(null));
+  };
 
   const hdrFade  = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-16)).current;
   const bodyFade    = useRef(new Animated.Value(0)).current;
   const [adVisible, setAdVisible] = useState(true);
-  const lastScrollY = useRef(0);
   const adVisibleRef = useRef(true);
   const receiptViewRef = useRef(null);
+
+  // ── Tracks active per-order Firestore subscriptions { [docId]: unsubFn } ─
+  const orderSubsRef = useRef({});
+
+  // ── Subscribe to one order doc for live status ────────────────────────────
+  // Defined BEFORE the useEffects below that call it.
+  // Mirrors CanteenMemberScreen's onSnapshot pattern but per individual docId.
+  const subscribeToOrder = useCallback((docId, orderNo) => {
+    if (!docId || orderSubsRef.current[docId]) return; // already subscribed
+    const unsubFn = onSnapshot(
+      doc(db, 'canteen_orders', docId),
+      (snap) => {
+        if (!snap.exists()) return;
+        const newStatus = snap.data().status;
+
+        // Update orderHistory + persist to AsyncStorage
+        setOrderHistory(prev => {
+          let changed = false;
+          const updated = prev.map(o => {
+            if (o.docId !== docId) return o;
+            if (o.status === newStatus) return o;
+            changed = true;
+            return { ...o, status: newStatus };
+          });
+          if (!changed) return prev;
+          AsyncStorage.setItem(VISITOR_HISTORY_KEY, JSON.stringify(updated)).catch(() => {});
+          return updated;
+        });
+
+        // Update activeOrders + toast
+        setActiveOrders(prev => {
+          const existing = prev.find(ao => ao.id === docId);
+          if (!existing || existing.status === newStatus) return prev;
+          const no = orderNo || existing.orderNo;
+          if (newStatus === 'ready') {
+            showOrderToast(no, 'Ready for pick up! Check Placed Orders 📋', '✅', '#27ae60', `Order #${no} is Ready!`);
+          } else if (newStatus === 'preparing') {
+            showOrderToast(no, 'Now being prepared! Check Placed Orders 📋', '🔥', '#e67e22', `Order #${no} is Preparing...`);
+          } else if (newStatus === 'done') {
+            showOrderToast(no, 'Order complete! Thank you 🎉', '🎉', '#2980b9', `Order #${no} Complete!`);
+          }
+          // Browser push notification
+          if ((newStatus === 'ready' || newStatus === 'preparing') &&
+              Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window) {
+            const msg = newStatus === 'ready'
+              ? `✅ Order #${no} is ready to pick up!`
+              : `🔥 Order #${no} is now being prepared!`;
+            if (Notification.permission === 'granted') {
+              new Notification('CLIMBS Canteen', { body: msg, icon: '🍽️' });
+            } else if (Notification.permission !== 'denied') {
+              Notification.requestPermission().then(p => {
+                if (p === 'granted') new Notification('CLIMBS Canteen', { body: msg });
+              });
+            }
+          }
+          return prev.map(ao =>
+            ao.id === docId ? { ...ao, status: newStatus, expanded: false } : ao
+          );
+        });
+
+        // Unsubscribe once done (wait for auto-remove effect)
+        if (newStatus === 'done') {
+          setTimeout(() => {
+            if (orderSubsRef.current[docId]) {
+              orderSubsRef.current[docId]();
+              delete orderSubsRef.current[docId];
+            }
+          }, 3500);
+        }
+      },
+      (err) => console.warn('Visitor order snapshot error:', err.message)
+    );
+    orderSubsRef.current[docId] = unsubFn;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cleanup all subscriptions on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(orderSubsRef.current).forEach(unsub => unsub());
+      orderSubsRef.current = {};
+    };
+  }, []);
+
+  // ── Mobile panel expand/collapse via header drag only ──────────────────────
+  const [panelExpanded, setPanelExpanded] = useState(false);
+  const panelExpandedRef = useRef(false);
+
+  const panelPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 4,
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy < -10) {
+          // Swipe UP → expand panel, hide ads
+          panelExpandedRef.current = true;
+          setPanelExpanded(true);
+          adVisibleRef.current = false;
+          setAdVisible(false);
+        } else if (gs.dy > 10) {
+          // Swipe DOWN → collapse panel, show ads
+          panelExpandedRef.current = false;
+          setPanelExpanded(false);
+          adVisibleRef.current = true;
+          setAdVisible(true);
+        }
+      },
+    })
+  ).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -1453,13 +1823,26 @@ export default function CanteenVisitor({ navigation }) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setOrderHistory(parsed);
+            // Subscribe to all non-done orders for live Firestore status
+            parsed.forEach(o => {
+              if (o.docId && o.status !== 'done') subscribeToOrder(o.docId, o.orderNo);
+            });
+            // Restore activeOrders pill tracking for non-done orders
+            const nonDone = parsed.filter(
+              o => o.status === 'pending' || o.status === 'preparing' || o.status === 'ready'
+            );
+            if (nonDone.length > 0) {
+              setActiveOrders(
+                nonDone.map(o => ({ id: o.docId, orderNo: o.orderNo, status: o.status, expanded: false }))
+              );
+            }
           }
         }
       } catch (e) {
         // silently ignore parse/storage errors
       }
     })();
-  }, []);
+  }, [subscribeToOrder]);
 
   // ── Re-load history when screen regains focus (e.g. after back navigation) ─
   useFocusEffect(
@@ -1471,54 +1854,47 @@ export default function CanteenVisitor({ navigation }) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
               setOrderHistory(parsed);
+              // Re-subscribe to any non-done orders not already tracked
+              parsed.forEach(o => {
+                if (o.docId && o.status !== 'done') subscribeToOrder(o.docId, o.orderNo);
+              });
+              // Restore activeOrders for non-done orders missing from the pill list
+              const nonDone = parsed.filter(
+                o => o.status === 'pending' || o.status === 'preparing' || o.status === 'ready'
+              );
+              if (nonDone.length > 0) {
+                setActiveOrders(prev => {
+                  const existingIds = new Set(prev.map(ao => ao.id));
+                  const toAdd = nonDone
+                    .filter(o => o.docId && !existingIds.has(o.docId))
+                    .map(o => ({ id: o.docId, orderNo: o.orderNo, status: o.status, expanded: false }));
+                  return toAdd.length === 0 ? prev : [...prev, ...toAdd];
+                });
+              }
             }
           }
         } catch (e) {
           // silently ignore
         }
       })();
-    }, [])
+    }, [subscribeToOrder])
   );
 
-  // Firestore onSnapshot on canteen_orders fires automatically when status changes
-  // No polling needed — the useEffect below watches `orders` array in real time
+  // NOTE: Order status updates are now handled via direct Firestore onSnapshot
+  // subscriptions in subscribeToOrder() above — one per docId. This is accurate
+  // and real-time, matching how CanteenMemberScreen works.
+  // The old useEffect([orders]) sync was removed because the context's `orders`
+  // array may exclude 'done' orders, causing statuses to never reach 'done'.
 
-  // ── Watch orders array for status change on tracked order ─────────────────
+  // ── Auto-remove done orders after 2.5s ────────────────────────────────────
   useEffect(() => {
-    if (!trackedOrderId) return;
-    const found = orders.find(o => o.id === trackedOrderId);
-    if (!found) return;
-    const newStatus = found.status;
-    if (newStatus !== prevStatusRef.current) {
-      prevStatusRef.current = newStatus;
-      setLiveStatus(newStatus);
-      // Re-expand if minimized when status changes
-      if (newStatus === 'ready' || newStatus === 'preparing') {
-        setQueueMinimized(false);
-        // Browser notification
-        if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window) {
-          const msg = newStatus === 'ready'
-            ? '✅ Your order is ready to pick up!'
-            : '🔥 The canteen is now preparing your order!';
-          if (Notification.permission === 'granted') {
-            new Notification('CLIMBS Canteen', { body: msg, icon: '🍽️' });
-          } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission().then(p => {
-              if (p === 'granted') new Notification('CLIMBS Canteen', { body: msg });
-            });
-          }
-        }
-      }
-      if (newStatus === 'done') {
-        setQueueMinimized(false);
-        // Auto-close after 2.5s when admin marks done
-        setTimeout(() => {
-          setQueueVisible(false);
-          setTrackedOrderId(null);
-        }, 2500);
-      }
-    }
-  }, [orders, trackedOrderId]);
+    const doneIds = activeOrders.filter(o => o.status === 'done').map(o => o.id);
+    if (doneIds.length === 0) return;
+    const timer = setTimeout(() => {
+      setActiveOrders(prev => prev.filter(o => !doneIds.includes(o.id)));
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [activeOrders.filter(o => o.status === 'done').map(o => o.id).join(',')]);
 
   const addToCart = (item) => setCart(prev => ({
     ...prev,
@@ -1571,12 +1947,17 @@ export default function CanteenVisitor({ navigation }) {
       return updated;
     });
 
-    // Start tracking with the real Firestore ID
-    setTrackedOrderId(trackedId);
-    setLiveStatus('pending');
-    prevStatusRef.current = 'pending';
-    setQueueMinimized(false);
-    setTimeout(() => setQueueVisible(true), 300);
+    // ── Push new order as minimized — show toast instead of modal ────────────
+    setActiveOrders(prev => {
+      const collapsed = prev.map(o => ({ ...o, expanded: false }));
+      return [...collapsed, { id: trackedId, orderNo, status: 'pending', expanded: false }];
+    });
+
+    // Start live Firestore tracking for this specific order
+    subscribeToOrder(trackedId, orderNo);
+
+    // Show brief order-placed toast
+    showOrderToast(orderNo, 'Track it in "Placed Orders" tab 📋', '✅', '#1a3a6b');
 
     // Request notification permission early
     if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window
@@ -1692,7 +2073,7 @@ export default function CanteenVisitor({ navigation }) {
   });
 
   // Grid cols — COLS fixed per platform, CARD_W fills available space
-  const CART_W  = isWide ? 230 : 0;
+  const CART_W  = isWide ? 320 : 0;
   const CAT_W   = isWide ? 170 : 0;
   const MARGIN  = isWide ? 80 : 20;  // centerPanel paddingH(10)*2
   const GAP_C   = Platform.OS === 'web' ? 10 : 5;
@@ -1828,14 +2209,25 @@ export default function CanteenVisitor({ navigation }) {
           )}
 
           {/* ── Ad Banner ── */}
-          <View style={{ marginBottom: isWide ? 12 : 0 }}>
+          <View style={{ marginBottom: isWide ? 12 : 8 }}>
             <AdBanner isWide={isWide} adAnim={adVisible} ads={CONTEXT_ADS} navigation={navigation} />
           </View>
 
-          {/* Items panel — fills remaining space */}
-          <View style={styles.itemsPanel}>
-            {/* Label LEFT + Search RIGHT — same row, both web and mobile */}
-            <View style={{ flexDirection:'row', alignItems:'center', marginBottom:6, gap:8 }}>
+          {/* Items panel — fills remaining space, expands when header swiped up */}
+          <View style={[styles.itemsPanel, !isWide && panelExpanded && { flex: 3 }]}>
+            {/* Panel header — drag handle area, ONLY trigger for swipe up/down on mobile */}
+            <View
+              {...(!isWide ? panelPanResponder.panHandlers : {})}
+              style={{ flexDirection:'row', alignItems:'center', marginBottom:6, gap:8,
+                paddingVertical: !isWide ? 6 : 0,  // larger touch target on mobile
+              }}
+            >
+              {/* Drag indicator pill — mobile only */}
+              {!isWide && (
+                <View style={{ position:'absolute', top:-10, left:0, right:0, alignItems:'center' }}>
+                  <View style={{ width:36, height:4, borderRadius:2, backgroundColor:'rgba(1,31,75,0.18)' }} />
+                </View>
+              )}
               <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#011f4b', letterSpacing:2, flexShrink:0 }}>
                 {activeCategory === 'All' ? 'ALL ITEMS' : activeCategory.toUpperCase()}
               </Text>
@@ -1859,17 +2251,6 @@ export default function CanteenVisitor({ navigation }) {
             <ScrollView
               showsVerticalScrollIndicator={true}
               nestedScrollEnabled={true}
-              scrollEventThrottle={16}
-              onScroll={Platform.OS !== 'web' ? (e) => {
-                const y = e.nativeEvent.contentOffset.y;
-                const goingDown = y > lastScrollY.current;
-                lastScrollY.current = y;
-                const target = !(goingDown && y > 10);
-                if (target !== adVisibleRef.current) {
-                  adVisibleRef.current = target;
-                  setAdVisible(target);
-                }
-              } : undefined}
               style={{ flex:1, minHeight:0 }}
               contentContainerStyle={[styles.menuGrid, { gap: Platform.OS==='web' ? 10 : 5, paddingBottom: Platform.OS !== 'web' ? 90 : 20 }]}
             >
@@ -1904,6 +2285,7 @@ export default function CanteenVisitor({ navigation }) {
             onClear={clearCart} onOrder={placeOrder} isWide={isWide}
             hideTitle={false} onPlaceOrder={handlePlaceOrder}
             lastOrder={lastOrder} onShowReceipt={handleShowReceipt}
+            orderHistory={orderHistory}
           />
         )}
         {/* Mobile floating cart button — inside body so it overlays itemsPanel */}
@@ -1932,6 +2314,7 @@ export default function CanteenVisitor({ navigation }) {
           onClose={() => setCartOpen(false)}
           onPlaceOrder={handlePlaceOrder}
           lastOrder={lastOrder} onShowReceipt={handleShowReceipt}
+          orderHistory={orderHistory}
         />
       )}
 
@@ -1948,29 +2331,62 @@ export default function CanteenVisitor({ navigation }) {
         receiptViewRef={receiptViewRef}
       />
 
-      {/* ── QUEUE STATUS — shown after placing order, minimizes to pill ── */}
-      {queueVisible && !queueMinimized && (
-        <QueueStatusModal
-          visible={queueVisible}
-          minimized={false}
-          orderId={trackedOrderId}
-          orderNo={lastOrder?.orderNo}
-          currentStatus={liveStatus}
-          onClose={() => { setQueueVisible(false); setTrackedOrderId(null); }}
-          onMinimize={() => setQueueMinimized(true)}
-        />
+      {/* ── QUEUE STATUS — minimized only, tracking in Placed Orders tab ── */}
+      {activeOrders.map((ao) => {
+        const pillOrders = activeOrders.filter(o => !o.expanded && o.status !== 'done');
+        const pillIndex  = pillOrders.findIndex(o => o.id === ao.id);
+        return (
+          <QueueStatusModal
+            key={ao.id}
+            visible={true}
+            minimized={!ao.expanded}
+            pillIndex={pillIndex >= 0 ? pillIndex : 0}
+            orderId={ao.id}
+            orderNo={ao.orderNo}
+            currentStatus={ao.status}
+            onClose={() => setActiveOrders(prev => prev.filter(o => o.id !== ao.id))}
+            onMinimize={() => setActiveOrders(prev => prev.map(o =>
+              o.id === ao.id
+                ? { ...o, expanded: !o.expanded }
+                : { ...o, expanded: false }
+            ))}
+          />
+        );
+      })}
+
+      {/* ── ORDER TOAST ── */}
+      {orderToast && (
+        <Animated.View style={{
+          position:'absolute', top: Platform.OS === 'web' ? 24 : 54,
+          left:0, right:0, alignItems:'center', zIndex:9999,
+          opacity: orderToastAnim,
+          transform:[
+            { scale: orderToastAnim.interpolate({ inputRange:[0,1], outputRange:[0.88,1] }) },
+            { translateY: orderToastAnim.interpolate({ inputRange:[0,1], outputRange:[-16,0] }) },
+          ],
+        }}>
+          <View style={{
+            flexDirection:'row', alignItems:'center', gap:10,
+            backgroundColor: orderToast.color || '#1a3a6b', borderRadius:30,
+            paddingVertical:12, paddingHorizontal:20,
+            shadowColor:'#000', shadowOpacity:0.25, shadowRadius:16,
+            shadowOffset:{width:0,height:4}, elevation:16,
+            borderWidth:1.5, borderColor:'#c9a84c',
+            maxWidth:340,
+          }}>
+            <Text style={{ fontSize:20 }}>{orderToast.icon || '✅'}</Text>
+            <View style={{ flex:1 }}>
+              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#fff', lineHeight:18 }}>
+                {orderToast.title}
+              </Text>
+              <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'rgba(255,255,255,0.80)', marginTop:1 }}>
+                {orderToast.message}
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
       )}
-      {queueVisible && queueMinimized && (
-        <QueueStatusModal
-          visible={true}
-          minimized={true}
-          orderId={trackedOrderId}
-          orderNo={lastOrder?.orderNo}
-          currentStatus={liveStatus}
-          onClose={() => { setQueueVisible(false); setTrackedOrderId(null); }}
-          onMinimize={() => setQueueMinimized(false)}
-        />
-      )}
+
     </View>
   );
 }
@@ -2195,7 +2611,7 @@ const styles = StyleSheet.create({
 
   // RIGHT — Cart panel
   cartPanel: {
-    width:230, backgroundColor:'rgba(255,255,255,0.22)',
+    width:320, backgroundColor:'rgba(255,255,255,0.22)',
     borderRadius:16, marginRight:20, marginBottom:16,
     padding:14, gap:8,
     borderWidth:1, borderColor:'rgba(255,255,255,0.45)',

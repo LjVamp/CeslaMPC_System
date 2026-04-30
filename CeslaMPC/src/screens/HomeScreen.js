@@ -93,6 +93,10 @@ const FEEDBACK_SUBJECTS = {
   'Other':      'Other – Miscellaneous feedback',
 };
 
+// ── MASCOT IMAGE (safe require — won't crash if file missing) ─────────────────
+let MORDI_IMAGE = null;
+try { MORDI_IMAGE = require('../../assets/mordi.png'); } catch (_) {}
+
 const MODULES = [
   {
     id: 'coop',
@@ -117,6 +121,7 @@ const MODULES = [
     title: 'Merchandise\nOrdering System',
     description: 'Place, track & manage merchandise orders with real-time status',
     icon: '📦',
+    image: MORDI_IMAGE,
     isNew: false,
     screen: 'MerchandisePortalScreen',
     accent: '#c9a84c',
@@ -173,7 +178,38 @@ const ModuleCard = ({ mod, onPress, delay, isWide, layout }) => {
   const ICON_SIZE = isWide ? 72 : isMobileHalf ? 44 : 52;
   const RING_SIZE = ICON_SIZE + 14;
 
-  const iconNode = (
+  const iconNode = mod.image ? (
+    // ── Custom mascot image — clipped inside circle same as emoji icons ──
+    <View style={[styles.iconCircle, {
+      width: ICON_SIZE,
+      height: ICON_SIZE,
+      borderRadius: ICON_SIZE / 2,
+      flexShrink: 0,
+      overflow: 'hidden',
+    }]}>
+      <Image
+        source={mod.image}
+        style={{
+          width: ICON_SIZE * 1.1,
+          height: ICON_SIZE * 1.1,
+          resizeMode: 'cover',
+        }}
+      />
+      <Animated.View style={{
+        position: 'absolute',
+        width: RING_SIZE,
+        height: RING_SIZE,
+        borderRadius: RING_SIZE / 2,
+        top: -(RING_SIZE - ICON_SIZE) / 2,
+        left: -(RING_SIZE - ICON_SIZE) / 2,
+        borderWidth: 1.5,
+        borderColor: 'rgba(201,168,76,0.40)',
+        borderStyle: 'dashed',
+        backgroundColor: 'transparent',
+        transform: [{ rotate: rotation }],
+      }} />
+    </View>
+  ) : (
     <View style={[styles.iconCircle, {
       width: ICON_SIZE,
       height: ICON_SIZE,
@@ -487,22 +523,21 @@ export default function HomeScreen({ navigation }) {
             </View>
           </View>
         ) : (
-          // ── MOBILE: Row1 Coop full | Row2 Canteen+Merch half | Row3 Grocery full ──
+          // ── MOBILE: 2 cards per row ──
           <View style={[styles.grid, {
             paddingHorizontal: PAD,
             flexDirection: 'column',
             gap: GAP,
           }]}>
-            {/* Row 1 — Coop: full width */}
-            <ModuleCard
-              mod={MODULES[0]}
-              onPress={handlePress}
-              delay={150}
-              isWide={false}
-              layout="mobile-full"
-            />
-            {/* Row 2 — Canteen + Merchandise: side by side */}
+            {/* Row 1 — Coop + Canteen */}
             <View style={{ flexDirection: 'row', gap: GAP }}>
+              <ModuleCard
+                mod={MODULES[0]}
+                onPress={handlePress}
+                delay={150}
+                isWide={false}
+                layout="mobile-half"
+              />
               <ModuleCard
                 mod={MODULES[1]}
                 onPress={handlePress}
@@ -510,6 +545,9 @@ export default function HomeScreen({ navigation }) {
                 isWide={false}
                 layout="mobile-half"
               />
+            </View>
+            {/* Row 2 — Merchandise + Grocery */}
+            <View style={{ flexDirection: 'row', gap: GAP }}>
               <ModuleCard
                 mod={MODULES[2]}
                 onPress={handlePress}
@@ -517,15 +555,14 @@ export default function HomeScreen({ navigation }) {
                 isWide={false}
                 layout="mobile-half"
               />
+              <ModuleCard
+                mod={MODULES[3]}
+                onPress={handlePress}
+                delay={540}
+                isWide={false}
+                layout="mobile-half"
+              />
             </View>
-            {/* Row 3 — Grocery: full width */}
-            <ModuleCard
-              mod={MODULES[3]}
-              onPress={handlePress}
-              delay={540}
-              isWide={false}
-              layout="mobile-full"
-            />
           </View>
         )}
 
