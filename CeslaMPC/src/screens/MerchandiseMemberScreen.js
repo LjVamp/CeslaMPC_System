@@ -714,8 +714,10 @@ const LocationPickerModal = ({ visible, onClose, onConfirm, deliveryType }) => {
         const msg = JSON.parse(e.data); if (msg.type !== 'coords') return;
         const { lat, lng } = msg; setCoords({ lat, lng });
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: { 'Accept-Language': 'en' } });
-          const data = await res.json(); if (data.display_name) setAddress(data.display_name);
+          const res = await fetch(`https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&lang=en&apiKey=${GEOAPIFY_KEY}`);
+          const data = await res.json();
+          const addr = data.features?.[0]?.properties?.formatted;
+          setAddress(addr || `${lat.toFixed(6)}, ${lng.toFixed(6)}`);
         } catch (_) { setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`); }
       } catch (_) {}
     };
@@ -723,23 +725,76 @@ const LocationPickerModal = ({ visible, onClose, onConfirm, deliveryType }) => {
     return () => window.removeEventListener('message', handler);
   }, []);
 
+  const GEOAPIFY_KEY = 'a331c3962fec4895bf75aa4947d35fbc';
+  const CDO_LAT  = 8.4822;
+  const CDO_LNG  = 124.6472;
+  const CDO_BBOX = '124.55,8.37,124.78,8.58';
+
+  // Photon search (primary, fully free, OSM-based)
+  const searchPhoton = async (text) => {
+    const res = await fetch(
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(text)},Cagayan de Oro`
+      + `&lat=${CDO_LAT}&lon=${CDO_LNG}&limit=6&lang=en`
+    );
+    const data = await res.json();
+    return (data.features || [])
+      .filter(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        return lat >= 8.37 && lat <= 8.58 && lng >= 124.55 && lng <= 124.78;
+      })
+      .map(f => ({
+        display_name: [
+          f.properties.name,
+          f.properties.street,
+          f.properties.district,
+          f.properties.city,
+        ].filter(Boolean).join(', '),
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0],
+        place_id: null,
+      }));
+  };
+
+  // Geoapify search (fallback, 3000 req/day free)
+  const searchGeoapify = async (text) => {
+    const res = await fetch(
+      `https://api.geoapify.com/v1/geocode/autocomplete`
+      + `?text=${encodeURIComponent(text)}`
+      + `&bias=proximity:${CDO_LNG},${CDO_LAT}`
+      + `&filter=rect:${CDO_BBOX}`
+      + `&limit=6&lang=en&apiKey=${GEOAPIFY_KEY}`
+    );
+    const data = await res.json();
+    return (data.features || []).map(f => ({
+      display_name: f.properties.formatted,
+      lat: f.geometry.coordinates[1],
+      lng: f.geometry.coordinates[0],
+      place_id: null,
+    }));
+  };
+
   const handleSearchChange = (text) => {
     setSearchQuery(text); clearTimeout(searchTimer.current);
-    if (text.length < 3) { setSuggestions([]); return; }
+    if (text.length < 2) { setSuggestions([]); return; }
     searchTimer.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)},+Cagayan+de+Oro&format=json&limit=8&addressdetails=1&countrycodes=ph&viewbox=124.55,8.37,124.78,8.58`, { headers: { 'Accept-Language': 'en' } });
-        const data = await res.json();
-        setSuggestions(data.map(r => ({ display_name: r.display_name, lat: parseFloat(r.lat), lng: parseFloat(r.lon) })));
-      } catch (_) { setSuggestions([]); }
+        let results = await searchPhoton(text);
+        if (results.length === 0) results = await searchGeoapify(text);
+        setSuggestions(results);
+      } catch (_) {
+        try {
+          const results = await searchGeoapify(text);
+          setSuggestions(results);
+        } catch (__) { setSuggestions([]); }
+      }
       setSearching(false);
-    }, 600);
+    }, 400);
   };
 
   const handleSelectSuggestion = (s) => {
     setCoords({ lat: s.lat, lng: s.lng }); setAddress(s.display_name); setSearchQuery(''); setSuggestions([]);
-    if (Platform.OS !== 'web') { setRegion({ latitude:s.lat, longitude:s.lng, latitudeDelta:0.005, longitudeDelta:0.005 }); }
+    if (Platform.OS !== 'web') { setRegion({ latitude:s.lat, longitude:s.lng, latitudeDelta:0.003, longitudeDelta:0.003 }); }
     else { setMapKey(k => k + 1); }
   };
 
@@ -748,31 +803,41 @@ const LocationPickerModal = ({ visible, onClose, onConfirm, deliveryType }) => {
     try {
       let latitude, longitude;
       if (Platform.OS === 'web') {
-        if (!navigator.geolocation) { Alert.alert('Not Supported', 'Geolocation not supported.'); setLocLoading(false); return; }
-        await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(p => { latitude = p.coords.latitude; longitude = p.coords.longitude; res(); }, rej, { enableHighAccuracy: true, timeout: 12000 }));
+        if (!navigator.geolocation) { Alert.alert('Not Supported', 'Geolocation not supported by this browser.'); setLocLoading(false); return; }
+        await new Promise((res, rej) => {
+          navigator.geolocation.getCurrentPosition(
+            p => { latitude = p.coords.latitude; longitude = p.coords.longitude; res(); },
+            e => rej(e),
+            { enableHighAccuracy: true, timeout: 12000 }
+          );
+        });
       } else {
         const Loc = require('expo-location');
         const { status } = await Loc.requestForegroundPermissionsAsync();
-        if (status !== 'granted') { Alert.alert('Permission Denied', 'Location permission required.'); setLocLoading(false); return; }
+        if (status !== 'granted') { Alert.alert('Permission Denied', 'Location permission is required.'); setLocLoading(false); return; }
         const loc = await Loc.getCurrentPositionAsync({ accuracy: Loc.Accuracy.High });
         latitude = loc.coords.latitude; longitude = loc.coords.longitude;
       }
       setCoords({ lat: latitude, lng: longitude });
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, { headers: { 'Accept-Language': 'en' } });
-        const data = await res.json(); setAddress(data.display_name || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+        const res = await fetch(`https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&lang=en&apiKey=${GEOAPIFY_KEY}`);
+        const data = await res.json();
+        const addr = data.features?.[0]?.properties?.formatted;
+        setAddress(addr || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
       } catch (_) { setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`); }
-      if (Platform.OS !== 'web') { setRegion({ latitude, longitude, latitudeDelta:0.005, longitudeDelta:0.005 }); }
+      if (Platform.OS !== 'web') { setRegion({ latitude, longitude, latitudeDelta:0.003, longitudeDelta:0.003 }); }
       else { setMapKey(k => k + 1); }
-    } catch (e) { Alert.alert('Error', 'Could not get location. Please enable GPS.'); }
+    } catch (e) { Alert.alert('Error', 'Could not get location. Please enable GPS and try again.'); }
     setLocLoading(false);
   };
 
   const handleMarkerDrag = async (e) => {
     const { latitude, longitude } = e.nativeEvent.coordinate; setCoords({ lat: latitude, lng: longitude });
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, { headers: { 'Accept-Language': 'en' } });
-      const data = await res.json(); setAddress(data.display_name || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      const res = await fetch(`https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&lang=en&apiKey=${GEOAPIFY_KEY}`);
+      const data = await res.json();
+      const addr = data.features?.[0]?.properties?.formatted;
+      setAddress(addr || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
     } catch (_) { setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`); }
   };
 
@@ -1123,13 +1188,15 @@ const ReceiptModal = ({ visible, orderData, onClose, onPrint, receiptViewRef }) 
 };
 
 // ─── CART PANEL ───────────────────────────────────────────────────────────────
-const CartPanel = ({ cart, onAdd, onRemove, onClear, isWide, hideTitle, lastOrder, onShowReceipt, onPlaceOrder, member }) => {
+const CartPanel = ({ cart, onAdd, onRemove, onClear, isWide, hideTitle, lastOrder, onShowReceipt, onPlaceOrder, member, orderHistory = [] }) => {
   const [checked, setChecked]       = useState({});
   const [paymentMode, setPaymentMode] = useState('cash');
   const [deliveryType, setDeliveryType] = useState('pickup');
   const [deliveryLocation, setDeliveryLocation] = useState('');
   const [deliveryCoords, setDeliveryCoords] = useState(null);
   const [locPickerVisible, setLocPickerVisible] = useState(false);
+  const [activePanelTab, setActivePanelTab] = useState('cart'); // 'cart' | 'placed'
+  const pendingCount = orderHistory.filter(o => { const s = o.status || 'done'; return s === 'pending' || s === 'preparing' || s === 'ready'; }).length;
 
   const MERCH_LAT = 8.4748;
   const MERCH_LNG = 124.6465;
@@ -1187,20 +1254,44 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, isWide, hideTitle, lastOrde
     onPlaceOrder({ items: checkedItems, subtotal, deliveryFee, total, amountPaid: total, change: 0, orderNo, time, paymentMode, member, deliveryType, deliveryLocation });
   };
 
+  // ── Placed Orders tab date formatter ──────────────────────────────────────
+  const fmtDatePanel = ts => {
+    if (!ts) return '';
+    try { const d = ts?.toDate?.() || new Date(ts); return d.toLocaleDateString('en-PH', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); } catch { return ''; }
+  };
+
   return (
     <>
     <View style={[styles.cartPanel, !isWide && styles.cartPanelMobile]}>
+
+      {/* ── Tab row: Cart | Placed Orders ── */}
       {!hideTitle && (
-        <>
-          <Text style={styles.cartPanelTitle}>CART</Text>
-          {/* Member chip */}
-          {member && (
-            <View style={styles.memberChip}>
-              <Text style={styles.memberChipText}>👤 {member.fullName || member.name || member.userId}</Text>
-            </View>
-          )}
-        </>
+        <View style={{ flexDirection:'row', backgroundColor:'rgba(1,31,75,0.08)', borderRadius:10, padding:3, gap:3, marginBottom:10 }}>
+          {[['cart','🛒 Cart'],['placed','📋 Placed Orders']].map(([key, label]) => (
+            <TouchableOpacity key={key} onPress={() => setActivePanelTab(key)}
+              style={[{ flex:1, paddingVertical:7, alignItems:'center', borderRadius:8, flexDirection:'row', justifyContent:'center', gap:5 },
+                activePanelTab === key && { backgroundColor:'#fff', shadowColor:'#000', shadowOpacity:0.10, shadowRadius:4, elevation:2 }]}
+              activeOpacity={0.80}
+            >
+              <Text style={{ fontFamily: activePanelTab === key ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize:11, color: activePanelTab === key ? '#0f1e35' : 'rgba(1,31,75,0.55)' }}>{label}</Text>
+              {key === 'placed' && pendingCount > 0 && (
+                <View style={{ backgroundColor:'#e74c3c', borderRadius:10, minWidth:18, height:18, alignItems:'center', justifyContent:'center', paddingHorizontal:4 }}>
+                  <Text style={{ color:'#fff', fontSize:10, fontFamily:'GoogleSans_700Bold', lineHeight:12 }}>{pendingCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
       )}
+      {/* Member chip — always visible */}
+      {!hideTitle && member && (
+        <View style={styles.memberChip}>
+          <Text style={styles.memberChipText}>👤 {member.fullName || member.name || member.userId}</Text>
+        </View>
+      )}
+
+      {/* ══ CART TAB ══ */}
+      {activePanelTab === 'cart' && (<>
 
       <View style={styles.cartItemsBox}>
         {cartItems.length === 0 ? (
@@ -1346,6 +1437,105 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, isWide, hideTitle, lastOrde
         <Text style={styles.printBtnIcon}>⬇️</Text>
         <Text style={styles.printBtnText}>Download Receipt</Text>
       </TouchableOpacity>
+
+      </>)}
+
+      {/* ══ PLACED ORDERS TAB ══ */}
+      {activePanelTab === 'placed' && (
+        <ScrollView showsVerticalScrollIndicator={false} style={{ flex:1 }} contentContainerStyle={{ paddingBottom:12 }}>
+          {orderHistory.length === 0 ? (
+            <View style={{ alignItems:'center', paddingVertical:40 }}>
+              <Text style={{ fontSize:32, marginBottom:10 }}>📋</Text>
+              <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:12, color:'rgba(1,31,75,0.45)', textAlign:'center' }}>No placed orders yet.</Text>
+            </View>
+          ) : (
+            orderHistory.map((order, idx) => {
+              const items  = order.items || [];
+              const total  = order.total || 0;
+              const pm     = order.payment || order.paymentMode || order.paymentMethod || 'cash';
+              const pmBg   = pm === 'credits' || pm === 'credit' ? 'rgba(245,166,35,0.20)' : pm === 'gcash' || pm === 'GCash' ? 'rgba(111,163,247,0.20)' : 'rgba(46,204,113,0.20)';
+              const pmBorder = pm === 'credits' || pm === 'credit' ? 'rgba(245,166,35,0.55)' : pm === 'gcash' || pm === 'GCash' ? 'rgba(111,163,247,0.55)' : 'rgba(46,204,113,0.55)';
+              const status = order.status || 'done';
+              const statusConfig = {
+                pending:   { label:'Order Placed',      icon:'🕐', color:'#95a5a6', bg:'rgba(149,165,166,0.15)', border:'rgba(149,165,166,0.35)' },
+                preparing: { label:'Preparing',         icon:'🔥', color:'#e67e22', bg:'rgba(230,126,34,0.15)',  border:'rgba(230,126,34,0.40)'  },
+                ready:     { label:'Ready for Pick Up', icon:'✅', color:'#27ae60', bg:'rgba(39,174,96,0.15)',   border:'rgba(39,174,96,0.40)'   },
+                done:      { label:'Completed',         icon:'🎉', color:'#2980b9', bg:'rgba(41,128,185,0.12)', border:'rgba(41,128,185,0.30)'  },
+              };
+              const stCfg    = statusConfig[status] || statusConfig.done;
+              const isActive = status === 'pending' || status === 'preparing' || status === 'ready';
+              const STEPS    = ['pending','preparing','ready'];
+              const stepIdx  = STEPS.indexOf(status);
+              const stepLabels = { pending:'Placed', preparing:'Preparing', ready:'Ready' };
+              return (
+                <View key={order.docId || idx} style={{
+                  backgroundColor: isActive ? 'rgba(255,255,255,0.62)' : 'rgba(255,255,255,0.38)',
+                  borderRadius:12, padding:10, marginBottom:8,
+                  borderWidth: isActive ? 2 : 1.5,
+                  borderColor: isActive ? stCfg.border : 'rgba(255,255,255,0.70)',
+                  shadowColor: isActive ? stCfg.color : 'transparent',
+                  shadowOpacity: isActive ? 0.15 : 0,
+                  shadowRadius:6, elevation: isActive ? 3 : 0,
+                }}>
+                  <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
+                    <View style={{ flex:1 }}>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#0f1e35' }}>#{order.orderNo || '—'}</Text>
+                      <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:9, color:'rgba(1,31,75,0.50)', marginTop:1 }}>{fmtDatePanel(order.createdAt || order.time)}</Text>
+                    </View>
+                    <View style={{ paddingHorizontal:8, paddingVertical:3, borderRadius:16, backgroundColor: stCfg.bg, borderWidth:1, borderColor: stCfg.border, flexDirection:'row', alignItems:'center', gap:3 }}>
+                      <Text style={{ fontSize:10 }}>{stCfg.icon}</Text>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:9, color: stCfg.color, letterSpacing:0.3 }}>{stCfg.label}</Text>
+                    </View>
+                  </View>
+                  {isActive && (
+                    <View style={{ flexDirection:'row', alignItems:'center', marginBottom:8, paddingHorizontal:2 }}>
+                      {STEPS.map((step, i) => {
+                        const sCfg   = statusConfig[step];
+                        const isDone = i < stepIdx;
+                        const isNow  = i === stepIdx;
+                        return (
+                          <React.Fragment key={step}>
+                            <View style={{ alignItems:'center', gap:2 }}>
+                              <View style={{ width:24, height:24, borderRadius:12, backgroundColor: isDone ? '#27ae60' : isNow ? stCfg.color : 'rgba(1,31,75,0.10)', borderWidth:2, borderColor: isDone ? '#27ae60' : isNow ? stCfg.color : 'rgba(1,31,75,0.15)', justifyContent:'center', alignItems:'center' }}>
+                                <Text style={{ fontSize:10 }}>{isDone ? '✓' : sCfg.icon}</Text>
+                              </View>
+                              <Text style={{ fontFamily: isNow ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize:7, color: isNow ? stCfg.color : 'rgba(1,31,75,0.40)', textAlign:'center', maxWidth:38 }}>{stepLabels[step]}</Text>
+                            </View>
+                            {i < STEPS.length - 1 && <View style={{ flex:1, height:2, backgroundColor: isDone ? '#27ae60' : 'rgba(1,31,75,0.12)', marginHorizontal:2, marginBottom:12 }} />}
+                          </React.Fragment>
+                        );
+                      })}
+                    </View>
+                  )}
+                  <View style={{ flexDirection:'row', alignItems:'center', marginBottom:6, gap:4, flexWrap:'wrap' }}>
+                    <View style={{ paddingHorizontal:6, paddingVertical:2, borderRadius:10, backgroundColor: pmBg, borderWidth:1, borderColor: pmBorder }}>
+                      <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#0f1e35', letterSpacing:0.6, textTransform:'uppercase' }}>{pm}</Text>
+                    </View>
+                    {order.deliveryType === 'deliver' && (
+                      <View style={{ paddingHorizontal:6, paddingVertical:2, borderRadius:10, backgroundColor:'rgba(231,76,60,0.12)', borderWidth:1, borderColor:'rgba(231,76,60,0.35)' }}>
+                        <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#c0392b' }}>🛵 Delivery</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ marginBottom:6, paddingBottom:6, borderBottomWidth:1, borderColor:'rgba(1,31,75,0.07)' }}>
+                    {items.map((it, j) => {
+                      const item = it.item || it;
+                      const qty  = it.qty || it.quantity || 1;
+                      return (
+                        <Text key={j} style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#0f1e35', marginBottom:2, lineHeight:16 }} numberOfLines={1}>
+                          {item.emoji || '🛍️'} {item.name} x{qty} — ₱{(item.price * qty).toFixed(2)}
+                        </Text>
+                      );
+                    })}
+                  </View>
+                  <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#c9a84c' }}>Total: ₱{Number(total).toFixed(2)}</Text>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      )}
+
     </View>
 
       {/* Location Picker Modal */}
@@ -1360,35 +1550,151 @@ const CartPanel = ({ cart, onAdd, onRemove, onClear, isWide, hideTitle, lastOrde
 };
 
 // ─── MOBILE CART BOTTOM SHEET ─────────────────────────────────────────────────
-const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onClose, onPlaceOrder, lastOrder, onShowReceipt, member }) => {
+const CartBottomSheet = ({ cart, onAdd, onRemove, onClear, onClose, onPlaceOrder, lastOrder, onShowReceipt, member, orderHistory = [] }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const [activeSheetTab, setActiveSheetTab] = useState('cart');
+  const pendingCount = orderHistory.filter(o => { const s = o.status || 'done'; return s === 'pending' || s === 'preparing' || s === 'ready'; }).length;
+
   useEffect(() => {
     Animated.spring(slideAnim, { toValue: 1, tension: 65, friction: 11, useNativeDriver: true }).start();
   }, []);
   const translateY = slideAnim.interpolate({ inputRange: [0, 1], outputRange: [600, 0] });
+
+  const fmtDate = ts => {
+    if (!ts) return '';
+    try { const d = ts?.toDate?.() || new Date(ts); return d.toLocaleDateString('en-PH', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); } catch { return ''; }
+  };
 
   return (
     <View style={styles.sheetOverlay}>
       <TouchableOpacity style={styles.sheetBackdrop} onPress={onClose} activeOpacity={1} />
       <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
         <View style={styles.sheetHandle} />
+        {/* Tab row: Cart | Placed Orders */}
         <View style={styles.sheetHeader}>
-          <View>
-            <Text style={styles.cartPanelTitle}>CART</Text>
-            {member && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.55)', marginTop: 2 }}>👤 {member.fullName || member.userId}</Text>}
+          <View style={{ flexDirection:'row', flex:1, backgroundColor:'rgba(1,31,75,0.08)', borderRadius:10, padding:3, gap:3 }}>
+            {[['cart','🛒 Cart'],['placed','📋 Placed Orders']].map(([key, label]) => (
+              <TouchableOpacity key={key} onPress={() => setActiveSheetTab(key)}
+                style={[{ flex:1, paddingVertical:7, alignItems:'center', borderRadius:8, flexDirection:'row', justifyContent:'center', gap:5 },
+                  activeSheetTab === key && { backgroundColor:'#fff', shadowColor:'#000', shadowOpacity:0.10, shadowRadius:4, elevation:2 }]}>
+                <Text style={{ fontFamily: activeSheetTab === key ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize:12, color: activeSheetTab === key ? '#0f1e35' : 'rgba(1,31,75,0.55)' }}>{label}</Text>
+                {key === 'placed' && pendingCount > 0 && (
+                  <View style={{ backgroundColor:'#e74c3c', borderRadius:10, minWidth:18, height:18, alignItems:'center', justifyContent:'center', paddingHorizontal:4 }}>
+                    <Text style={{ color:'#fff', fontSize:10, fontFamily:'GoogleSans_700Bold', lineHeight:12 }}>{pendingCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
           </View>
           <TouchableOpacity onPress={onClose} style={styles.sheetClose}>
             <Text style={{ color: 'rgba(1,31,75,0.6)', fontSize: 14 }}>✕</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }}>
-          <CartPanel
-            cart={cart} onAdd={onAdd} onRemove={onRemove} onClear={onClear}
-            isWide={false} hideTitle={true}
-            onPlaceOrder={onPlaceOrder} lastOrder={lastOrder} onShowReceipt={onShowReceipt}
-            member={member}
-          />
-        </ScrollView>
+
+        {/* Tab content */}
+        {activeSheetTab === 'cart' ? (
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }}>
+            <CartPanel
+              cart={cart} onAdd={onAdd} onRemove={onRemove} onClear={onClear}
+              isWide={false} hideTitle={true}
+              onPlaceOrder={onPlaceOrder} lastOrder={lastOrder} onShowReceipt={onShowReceipt}
+              member={member} orderHistory={orderHistory}
+            />
+          </ScrollView>
+        ) : (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding:14, flexGrow:1 }}>
+            {orderHistory.length === 0 ? (
+              <View style={{ alignItems:'center', paddingVertical:40 }}>
+                <Text style={{ fontSize:36, marginBottom:10 }}>📋</Text>
+                <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:13, color:'rgba(1,31,75,0.45)', textAlign:'center' }}>No placed orders yet.</Text>
+              </View>
+            ) : (
+              orderHistory.map((order, idx) => {
+                const items = order.items || [];
+                const total = order.total || 0;
+                const pm    = order.payment || order.paymentMode || order.paymentMethod || 'cash';
+                const pmBg  = pm === 'credits' || pm === 'credit' ? 'rgba(245,166,35,0.20)' : pm === 'gcash' || pm === 'GCash' ? 'rgba(111,163,247,0.20)' : 'rgba(46,204,113,0.20)';
+                const pmBorder = pm === 'credits' || pm === 'credit' ? 'rgba(245,166,35,0.55)' : pm === 'gcash' || pm === 'GCash' ? 'rgba(111,163,247,0.55)' : 'rgba(46,204,113,0.55)';
+                const status = order.status || 'done';
+                const statusConfig = {
+                  pending:   { label:'Order Placed',      icon:'🕐', color:'#95a5a6', bg:'rgba(149,165,166,0.15)', border:'rgba(149,165,166,0.35)' },
+                  preparing: { label:'Preparing',         icon:'🔥', color:'#e67e22', bg:'rgba(230,126,34,0.15)',  border:'rgba(230,126,34,0.40)'  },
+                  ready:     { label:'Ready for Pick Up', icon:'✅', color:'#27ae60', bg:'rgba(39,174,96,0.15)',   border:'rgba(39,174,96,0.40)'   },
+                  done:      { label:'Completed',         icon:'🎉', color:'#2980b9', bg:'rgba(41,128,185,0.12)', border:'rgba(41,128,185,0.30)'  },
+                };
+                const stCfg  = statusConfig[status] || statusConfig.done;
+                const isActive = status === 'pending' || status === 'preparing' || status === 'ready';
+                const STEPS = ['pending','preparing','ready'];
+                const stepIdx = STEPS.indexOf(status);
+                const stepLabels = { pending:'Placed', preparing:'Preparing', ready:'Ready' };
+                return (
+                  <View key={order.docId || idx} style={{
+                    backgroundColor: isActive ? 'rgba(255,255,255,0.62)' : 'rgba(255,255,255,0.38)',
+                    borderRadius:14, padding:14, marginBottom:10,
+                    borderWidth: isActive ? 2 : 1.5,
+                    borderColor: isActive ? stCfg.border : 'rgba(255,255,255,0.70)',
+                    shadowColor: isActive ? stCfg.color : 'transparent',
+                    shadowOpacity: isActive ? 0.15 : 0,
+                    shadowRadius: 8, elevation: isActive ? 3 : 0,
+                  }}>
+                    <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                      <View style={{ flex:1 }}>
+                        <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:13, color:'#0f1e35' }}>#{order.orderNo || order.orderId || '—'}</Text>
+                        <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:10, color:'rgba(1,31,75,0.50)', marginTop:2 }}>{fmtDate(order.createdAt || order.time)}</Text>
+                      </View>
+                      <View style={{ paddingHorizontal:10, paddingVertical:4, borderRadius:20, backgroundColor: stCfg.bg, borderWidth:1, borderColor: stCfg.border, flexDirection:'row', alignItems:'center', gap:4 }}>
+                        <Text style={{ fontSize:11 }}>{stCfg.icon}</Text>
+                        <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color: stCfg.color, letterSpacing:0.4 }}>{stCfg.label}</Text>
+                      </View>
+                    </View>
+                    {isActive && (
+                      <View style={{ flexDirection:'row', alignItems:'center', marginBottom:10, paddingHorizontal:4 }}>
+                        {STEPS.map((step, i) => {
+                          const sCfg   = statusConfig[step];
+                          const isDone = i < stepIdx;
+                          const isNow  = i === stepIdx;
+                          return (
+                            <React.Fragment key={step}>
+                              <View style={{ alignItems:'center', gap:2 }}>
+                                <View style={{ width:28, height:28, borderRadius:14, backgroundColor: isDone ? '#27ae60' : isNow ? stCfg.color : 'rgba(1,31,75,0.10)', borderWidth:2, borderColor: isDone ? '#27ae60' : isNow ? stCfg.color : 'rgba(1,31,75,0.15)', justifyContent:'center', alignItems:'center' }}>
+                                  <Text style={{ fontSize:12 }}>{isDone ? '✓' : sCfg.icon}</Text>
+                                </View>
+                                <Text style={{ fontFamily: isNow ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular', fontSize:8, color: isNow ? stCfg.color : 'rgba(1,31,75,0.40)', textAlign:'center', maxWidth:44 }}>{stepLabels[step]}</Text>
+                              </View>
+                              {i < STEPS.length - 1 && <View style={{ flex:1, height:2, backgroundColor: isDone ? '#27ae60' : 'rgba(1,31,75,0.12)', marginHorizontal:3, marginBottom:14 }} />}
+                            </React.Fragment>
+                          );
+                        })}
+                      </View>
+                    )}
+                    <View style={{ flexDirection:'row', alignItems:'center', marginBottom:6, gap:4, flexWrap:'wrap' }}>
+                      <View style={{ paddingHorizontal:6, paddingVertical:2, borderRadius:10, backgroundColor: pmBg, borderWidth:1, borderColor: pmBorder }}>
+                        <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#0f1e35', letterSpacing:0.6, textTransform:'uppercase' }}>{pm}</Text>
+                      </View>
+                      {order.deliveryType === 'deliver' && (
+                        <View style={{ paddingHorizontal:6, paddingVertical:2, borderRadius:10, backgroundColor:'rgba(231,76,60,0.12)', borderWidth:1, borderColor:'rgba(231,76,60,0.35)' }}>
+                          <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color:'#c0392b' }}>🛵 Delivery</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={{ marginBottom:6, paddingBottom:6, borderBottomWidth:1, borderColor:'rgba(1,31,75,0.07)' }}>
+                      {items.map((it, j) => {
+                        const item = it.item || it;
+                        const qty  = it.qty || it.quantity || 1;
+                        return (
+                          <Text key={j} style={{ fontFamily:'GoogleSans_400Regular', fontSize:11, color:'#0f1e35', marginBottom:2, lineHeight:16 }} numberOfLines={1}>
+                            {item.emoji || '🛍️'} {item.name} x{qty} — ₱{(item.price * qty).toFixed(2)}
+                          </Text>
+                        );
+                      })}
+                    </View>
+                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#c9a84c' }}>Total: ₱{Number(total).toFixed(2)}</Text>
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        )}
       </Animated.View>
     </View>
   );
@@ -2387,7 +2693,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
 
   const totalItems = Object.values(cart).reduce((s, { qty }) => s + qty, 0);
 
-  const CART_W = isWide ? 230 : 0;
+  const CART_W = isWide ? 280 : 0;
   const CAT_W  = isWide ? 170 : 0;
   const MARGIN = isWide ? 80 : 20;
   const GAP_C  = Platform.OS === 'web' ? 10 : 5;
@@ -2749,6 +3055,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
                 onClear={clearCart} isWide={isWide} hideTitle={false}
                 onPlaceOrder={handlePlaceOrder} lastOrder={lastOrder}
                 onShowReceipt={() => setReceiptVisible(true)} member={member}
+                orderHistory={orderHistory}
               />
             )}
 
@@ -2774,6 +3081,7 @@ export default function MerchandiseMemberScreen({ navigation }) {
           onClear={clearCart} onClose={() => setCartOpen(false)}
           onPlaceOrder={handlePlaceOrder} lastOrder={lastOrder}
           onShowReceipt={() => setReceiptVisible(true)} member={member}
+          orderHistory={orderHistory}
         />
       )}
 
@@ -2980,7 +3288,7 @@ const styles = StyleSheet.create({
   addBtnText: { fontFamily: 'GoogleSans_700Bold', fontSize: Platform.OS === 'web' ? 10 : 9, color: '#ffffff', letterSpacing: 0.3 },
 
   cartPanel: {
-    width: 230, backgroundColor: 'rgba(255,255,255,0.22)',
+    width: 280, backgroundColor: 'rgba(255,255,255,0.22)',
     borderRadius: 16, marginRight: 20, marginBottom: 16,
     padding: 14, gap: 8,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)',

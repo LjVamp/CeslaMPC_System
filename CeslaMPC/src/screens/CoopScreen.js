@@ -331,17 +331,6 @@ const MemberSidebar = ({ active, onNav, onClose, unread, onLogout, onBack, canGo
         <Text style={s.sideNotifTxt}>🔔 {unread} unread notification{unread !== 1 ? 's' : ''}</Text>
       </TouchableOpacity>
     )}
-    {/* Logout button at bottom of sidebar */}
-    {onLogout && (
-      <TouchableOpacity
-        onPress={onLogout}
-        style={{ margin: 10, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)' }}
-        activeOpacity={0.8}
-      >
-        <Text style={{ fontSize: 14 }}>↩</Text>
-        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e8c87a' }}>Logout</Text>
-      </TouchableOpacity>
-    )}
   </View>
 );
 
@@ -2032,58 +2021,79 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
 
   return (
     <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-      <Text style={s.pageTitle}>{title}</Text>
 
-      {/* ── Balance Card ── */}
-      <GCard style={{ alignItems: 'center', padding: 24, borderTopWidth: 4, borderTopColor: color, marginBottom: 12 }}>
-        <Text style={{ fontSize: 30, marginBottom: 8 }}>{icon}</Text>
-        <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 30, color, marginBottom: 4 }}>{fmtCur(curBal)}</Text>
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec }}>{label}</Text>
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 3 }}>Last updated: {fmtDate(member.updatedAt)}</Text>
-      </GCard>
+      {/* ── Hero Balance Panel ── */}
+      <View style={{ borderRadius: 20, overflow: 'hidden', marginBottom: 14, shadowColor: '#1a2d4e', shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 5 }, elevation: 8 }}>
+        <LinearGradient
+          colors={color === C.green ? ['#0f3d22', '#1a5c33', '#1a8a4a'] : color === C.gold ? ['#3d2a00', '#5e4200', '#c9a84c'] : ['#0d2b4e', '#1a3d6e', '#2563b0']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={{ padding: 28, alignItems: 'center' }}>
+          {/* Icon row */}
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.30)', justifyContent: 'center', alignItems: 'center', marginBottom: 14 }}>
+            <Text style={{ fontSize: 30 }}>{icon}</Text>
+          </View>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.60)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>{label}</Text>
+          <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 36, color: '#fff', marginBottom: 4, letterSpacing: 0.5 }}>{fmtCur(curBal)}</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>Last updated: {fmtDate(member.updatedAt)}</Text>
+
+          {/* Action buttons inside panel — only for savings, not shares */}
+          {mode === null && type !== 'shares' && (
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 22, width: '100%', maxWidth: 280 }}>
+              <TouchableOpacity
+                onPress={() => { setMode('deposit'); setErrMsg(''); }}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(26,138,74,0.35)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(76,222,138,0.50)', paddingVertical: 13 }}
+                activeOpacity={0.8}>
+                <Image source={require('../../assets/wallet.png')} style={{ width: 20, height: 20, tintColor: '#4cde8a' }} />
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#4cde8a' }}>Deposit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { setMode('withdraw'); setErrMsg(''); }}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(192,57,43,0.30)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(232,120,120,0.50)', paddingVertical: 13 }}
+                activeOpacity={0.8}>
+                <Image source={require('../../assets/withdraw.png')} style={{ width: 20, height: 20, tintColor: '#e87a7a' }} />
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e87a7a' }}>Withdraw</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </LinearGradient>
+      </View>
 
       {/* ── Success message ── */}
       {doneMsg ? (
-        <View style={{ backgroundColor: 'rgba(26,138,74,0.14)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(26,138,74,0.40)', padding: 12, marginBottom: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-          <Text style={{ fontSize: 16 }}>✅</Text>
+        <View style={{ backgroundColor: 'rgba(26,138,74,0.14)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(26,138,74,0.40)', padding: 14, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Text style={{ fontSize: 18 }}>✅</Text>
           <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, flex: 1, lineHeight: 18 }}>{doneMsg}</Text>
         </View>
       ) : null}
 
       {/* ── Pending withdrawal notice ── */}
       {pendingWithdrawals.length > 0 && (
-        <View style={{ backgroundColor: 'rgba(196,125,14,0.12)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(196,125,14,0.35)', padding: 12, marginBottom: 12 }}>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.orange, marginBottom: 4 }}>⏳ Pending Withdrawal Request</Text>
-          {pendingWithdrawals.map(w => (
-            <Text key={w.id} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
-              {fmtCur(w.amount)} — Awaiting admin approval{w.remarks ? ` · "${w.remarks}"` : ''}{'\n'}
-              <Text style={{ fontSize: 10, color: C.textMuted }}>Submitted: {fmtTime(w.createdAt)}</Text>
-            </Text>
-          ))}
+        <View style={{ backgroundColor: 'rgba(196,125,14,0.12)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(196,125,14,0.35)', padding: 13, marginBottom: 12, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+          <Text style={{ fontSize: 16 }}>⏳</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.orange, marginBottom: 4 }}>Pending Withdrawal Request</Text>
+            {pendingWithdrawals.map(w => (
+              <Text key={w.id} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
+                {fmtCur(w.amount)} — Awaiting admin approval{w.remarks ? ` · "${w.remarks}"` : ''}{'\n'}
+                <Text style={{ fontSize: 10, color: C.textMuted }}>Submitted: {fmtTime(w.createdAt)}</Text>
+              </Text>
+            ))}
+          </View>
         </View>
       )}
 
-      {/* ── Action buttons or form ── */}
-      {mode === null ? (
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-          <TouchableOpacity
-            onPress={() => { setMode('deposit'); setErrMsg(''); }}
-            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(26,138,74,0.15)', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(26,138,74,0.50)', paddingVertical: 13 }}>
-            <Text style={{ fontSize: 16 }}>⬆️</Text>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.green }}>Deposit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => { setMode('withdraw'); setErrMsg(''); }}
-            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(192,57,43,0.40)', paddingVertical: 13 }}>
-            <Text style={{ fontSize: 16 }}>⬇️</Text>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.red }}>Withdraw</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
+      {/* ── Transaction form (when mode is active) ── */}
+      {mode !== null && (
         <GCard style={{ borderTopWidth: 3, borderTopColor: mode === 'deposit' ? C.green : C.red, marginBottom: 14 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: mode === 'deposit' ? C.green : C.red }}>
-              {mode === 'deposit' ? '📥 Deposit' : '📤 Withdrawal Request'}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: mode === 'deposit' ? 'rgba(26,138,74,0.18)' : 'rgba(192,57,43,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+              <Image
+                source={mode === 'deposit' ? require('../../assets/wallet.png') : require('../../assets/withdraw.png')}
+                style={{ width: 18, height: 18, tintColor: mode === 'deposit' ? C.green : C.red }}
+              />
+            </View>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: mode === 'deposit' ? C.green : C.red, flex: 1 }}>
+              {mode === 'deposit' ? 'Deposit' : 'Withdrawal Request'}
             </Text>
             <TouchableOpacity onPress={resetForm} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: 'rgba(15,30,53,0.07)' }}>
               <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted }}>Cancel</Text>
@@ -2132,12 +2142,18 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
           <TouchableOpacity
             onPress={mode === 'deposit' ? handleDeposit : handleWithdrawRequest}
             disabled={busy}
-            style={{ borderRadius: 10, paddingVertical: 13, alignItems: 'center', backgroundColor: mode === 'deposit' ? C.green : C.red, opacity: busy ? 0.65 : 1 }}>
+            style={{ borderRadius: 12, paddingVertical: 14, alignItems: 'center', backgroundColor: mode === 'deposit' ? C.green : C.red, opacity: busy ? 0.65 : 1, flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
             {busy
               ? <ActivityIndicator color="#fff" />
-              : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff', letterSpacing: 0.5 }}>
-                  {mode === 'deposit' ? 'Confirm Deposit' : 'Submit Withdrawal Request'}
-                </Text>}
+              : <>
+                  <Image
+                    source={mode === 'deposit' ? require('../../assets/wallet.png') : require('../../assets/withdraw.png')}
+                    style={{ width: 16, height: 16, tintColor: '#fff' }}
+                  />
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff', letterSpacing: 0.5 }}>
+                    {mode === 'deposit' ? 'Confirm Deposit' : 'Submit Withdrawal Request'}
+                  </Text>
+                </>}
           </TouchableOpacity>
         </GCard>
       )}
@@ -2147,25 +2163,32 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
       {txnLoad && <ActivityIndicator color={C.gold} style={{ marginVertical: 20 }} />}
       {!txnLoad && txns.length === 0 && (
         <GCard style={{ alignItems: 'center', padding: 32 }}>
-          <Text style={{ fontSize: 32, marginBottom: 10 }}>📄</Text>
+          <MaterialIcons name="receipt-long" size={38} color={C.textMuted} style={{ marginBottom: 10 }} />
           <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>No transactions yet.</Text>
         </GCard>
       )}
       {!txnLoad && txns.map(txn => {
         const isCredit = txn.amount > 0;
         return (
-          <GCard key={txn.id} style={{ padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: isCredit ? C.green : C.red }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>{txn.description || (isCredit ? 'Credit' : 'Debit')}</Text>
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 2 }}>TXN# {txn.txnNo}</Text>
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>{fmtTime(txn.createdAt)}</Text>
+          <GCard key={txn.id} style={{ padding: 13, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: isCredit ? C.green : C.red }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isCredit ? 'rgba(26,138,74,0.12)' : 'rgba(192,57,43,0.10)', justifyContent: 'center', alignItems: 'center' }}>
+                  <Image
+                    source={isCredit ? require('../../assets/wallet.png') : require('../../assets/withdraw.png')}
+                    style={{ width: 18, height: 18, tintColor: isCredit ? C.green : C.red }}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>{txn.description || (isCredit ? 'Credit' : 'Debit')}</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 1 }}>TXN# {txn.txnNo} · {fmtTime(txn.createdAt)}</Text>
+                </View>
               </View>
               <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 15, color: isCredit ? C.green : C.red }}>
                 {isCredit ? '+' : ''}{fmtCur(txn.amount)}
               </Text>
             </View>
-            {txn.remarks ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, marginTop: 6, fontStyle: 'italic' }}>{txn.remarks}</Text> : null}
+            {txn.remarks ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, marginTop: 8, fontStyle: 'italic', paddingLeft: 46 }}>{txn.remarks}</Text> : null}
           </GCard>
         );
       })}
@@ -2173,44 +2196,727 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
   );
 };
 
+
 const ApplyLoanView = ({ member, contentHeight }) => {
-  const [amount, setAmount] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [term, setTerm] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState('');
-  const submit = async () => {
-    if (!amount || !purpose || !term) { setError('Please fill in all fields.'); return; }
-    const amt = parseFloat(amount.replace(/,/g, ''));
-    if (isNaN(amt) || amt <= 0) { setError('Please enter a valid amount.'); return; }
+  // ── Step navigation: 'loan' | 'comaker' | 'done' ────────────────────────
+  const [step, setStep] = useState('loan');
+
+  // ── STEP 1 — Loan Application fields ────────────────────────────────────
+  // Loan Type
+  const [loanType, setLoanType]     = useState(''); // 'Housing Loan' | 'Vehicle Loan' | 'Salary Loan' | 'Buy-Out'
+  const [isRenewal, setIsRenewal]   = useState(false); // for Salary Loan & Buy-Out
+  const [loanAmount, setLoanAmount] = useState('');
+
+  // Personal Data
+  const [lastName, setLastName]         = useState('');
+  const [firstName, setFirstName]       = useState('');
+  const [middleName, setMiddleName]     = useState('');
+  const [birthdate, setBirthdate]       = useState('');
+  const [civilStatus, setCivilStatus]   = useState('');
+  const [gender, setGender]             = useState('');
+  const [citizenship, setCitizenship]   = useState('');
+  const [religion, setReligion]         = useState('');
+  const [address, setAddress]           = useState('');
+  const [cellphone, setCellphone]       = useState('');
+  const [email, setEmail]               = useState('');
+
+  // Spouse
+  const [spouseName, setSpouseName]           = useState('');
+  const [spouseOccupation, setSpouseOccupation] = useState('');
+  const [spouseEmployer, setSpouseEmployer]   = useState('');
+  const [spouseLengthService, setSpouseLengthService] = useState('');
+  const [spouseMonthlyIncome, setSpouseMonthlyIncome] = useState('');
+  const [spouseEmployerAddr, setSpouseEmployerAddr]   = useState('');
+  const [spouseCellphone, setSpouseCellphone] = useState('');
+  const [spouseEmail, setSpouseEmail]         = useState('');
+  const [numChildren, setNumChildren]         = useState('');
+  const [nearestRelative, setNearestRelative] = useState('');
+
+  // Other Properties
+  const [hasHouseLot, setHasHouseLot] = useState(false);
+  const [hasLot, setHasLot]           = useState(false);
+  const [hasCar, setHasCar]           = useState(false);
+  const [hasMotorcycle, setHasMotorcycle] = useState(false);
+  const [hasPUV, setHasPUV]           = useState(false);
+  const [propLocation, setPropLocation] = useState('');
+  const [propTaxDecNo, setPropTaxDecNo] = useState('');
+  const [propAssessedVal, setPropAssessedVal] = useState('');
+  const [propMarketVal, setPropMarketVal]     = useState('');
+  const [propMortgageTo, setPropMortgageTo]   = useState('');
+  const [vehicleMakeBrand, setVehicleMakeBrand] = useState('');
+  const [vehicleAmount, setVehicleAmount]       = useState('');
+
+  // Application Agreement
+  const [agreementMonths, setAgreementMonths]   = useState('');
+  const [agreementStartDate, setAgreementStartDate] = useState('');
+  const [agreementMaturity, setAgreementMaturity]   = useState('');
+  const [agreementPenalty, setAgreementPenalty]     = useState('');
+
+  // ── STEP 2 — Co-Maker fields ─────────────────────────────────────────────
+  const [cmLastName, setCmLastName]       = useState('');
+  const [cmFirstName, setCmFirstName]     = useState('');
+  const [cmMiddleName, setCmMiddleName]   = useState('');
+  const [cmBirthdate, setCmBirthdate]     = useState('');
+  const [cmCivilStatus, setCmCivilStatus] = useState('');
+  const [cmGender, setCmGender]           = useState('');
+  const [cmCitizenship, setCmCitizenship] = useState('');
+  const [cmReligion, setCmReligion]       = useState('');
+  const [cmAddress, setCmAddress]         = useState('');
+  const [cmCellphone, setCmCellphone]     = useState('');
+  const [cmEmail, setCmEmail]             = useState('');
+  const [cmLengthOfStay, setCmLengthOfStay] = useState('');
+  const [cmHousingStatus, setCmHousingStatus] = useState(''); // 'Owned' | 'Living w/ Parents/Relatives' | 'Rented'
+  const [cmLandlordName, setCmLandlordName] = useState('');
+  const [cmLandlordAddress, setCmLandlordAddress] = useState('');
+  const [cmLandlordContact, setCmLandlordContact] = useState('');
+  const [cmEmployer, setCmEmployer]       = useState('');
+  const [cmTIN, setCmTIN]                 = useState('');
+  const [cmSSS, setCmSSS]                 = useState('');
+  const [cmLengthService, setCmLengthService] = useState('');
+  const [cmMonthlySalary, setCmMonthlySalary] = useState('');
+  const [cmOtherIncome, setCmOtherIncome] = useState('');
+  const [cmSpouseName, setCmSpouseName]   = useState('');
+  const [cmSpouseContact, setCmSpouseContact] = useState('');
+  const [cmSpouseEmployer, setCmSpouseEmployer] = useState('');
+  const [cmSpouseEmail, setCmSpouseEmail] = useState('');
+  // Children (up to 5 rows)
+  const [cmChildren, setCmChildren]       = useState([
+    { name: '', age: '', birthday: '' },
+    { name: '', age: '', birthday: '' },
+    { name: '', age: '', birthday: '' },
+    { name: '', age: '', birthday: '' },
+    { name: '', age: '', birthday: '' },
+  ]);
+  const [cmMotherName, setCmMotherName]   = useState('');
+  const [cmMotherContact, setCmMotherContact] = useState('');
+  const [cmFatherName, setCmFatherName]   = useState('');
+  const [cmFatherContact, setCmFatherContact] = useState('');
+
+  // ── Shared state ──────────────────────────────────────────────────────────
+  const [loading, setLoading]   = useState(false);
+  const [done, setDone]         = useState(false);
+  const [error, setError]       = useState('');
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const RadioGroup = ({ options, value, onSelect, row = true }) => (
+    <View style={{ flexDirection: row ? 'row' : 'column', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
+      {options.map(opt => (
+        <TouchableOpacity
+          key={opt}
+          onPress={() => onSelect(opt)}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20,
+            borderWidth: 1.5,
+            borderColor: value === opt ? C.gold : 'rgba(15,30,53,0.18)',
+            backgroundColor: value === opt ? 'rgba(201,168,76,0.15)' : C.surface,
+          }}>
+          <View style={{
+            width: 14, height: 14, borderRadius: 7,
+            borderWidth: 1.5,
+            borderColor: value === opt ? C.gold : 'rgba(15,30,53,0.30)',
+            backgroundColor: value === opt ? C.gold : 'transparent',
+            justifyContent: 'center', alignItems: 'center',
+          }}>
+            {value === opt && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' }} />}
+          </View>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
+  const CheckItem = ({ label, checked, onToggle }) => (
+    <TouchableOpacity onPress={onToggle}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: 10, marginBottom: 6 }}>
+      <View style={{
+        width: 16, height: 16, borderRadius: 3, borderWidth: 1.5,
+        borderColor: checked ? C.gold : 'rgba(15,30,53,0.30)',
+        backgroundColor: checked ? C.gold : 'transparent',
+        justifyContent: 'center', alignItems: 'center',
+      }}>
+        {checked && <Text style={{ fontSize: 10, color: '#fff', fontWeight: '800', lineHeight: 13 }}>✓</Text>}
+      </View>
+      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{label}</Text>
+    </TouchableOpacity>
+  );
+
+  const FieldLabel = ({ label }) => (
+    <Text style={s.fieldLabel}>{label}</Text>
+  );
+
+  // Step indicator
+  const StepIndicator = () => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+      {[
+        { key: 'loan', num: '1', label: 'Loan Application' },
+        { key: 'comaker', num: '2', label: 'Co-Maker Statement' },
+      ].map((st, idx) => {
+        const isActive = step === st.key;
+        const isDone   = step === 'done' || (step === 'comaker' && idx === 0);
+        return (
+          <View key={st.key} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ alignItems: 'center' }}>
+              <View style={{
+                width: 32, height: 32, borderRadius: 16,
+                backgroundColor: isDone ? C.green : isActive ? C.gold : 'rgba(15,30,53,0.12)',
+                justifyContent: 'center', alignItems: 'center',
+                borderWidth: 2, borderColor: isDone ? C.green : isActive ? C.gold : 'rgba(15,30,53,0.20)',
+              }}>
+                <Text style={{
+                  fontFamily: 'GoogleSans_700Bold', fontSize: 13,
+                  color: isDone || isActive ? (isDone ? '#fff' : C.navy) : C.textMuted,
+                }}>
+                  {isDone ? '✓' : st.num}
+                </Text>
+              </View>
+              <Text style={{
+                fontFamily: 'GoogleSans_500Medium', fontSize: 10,
+                color: isActive ? C.navy : C.textMuted,
+                marginTop: 4, textAlign: 'center', width: 80,
+              }}>{st.label}</Text>
+            </View>
+            {idx < 1 && (
+              <View style={{ width: 40, height: 2, backgroundColor: isDone ? C.green : 'rgba(15,30,53,0.12)', marginHorizontal: 4, marginBottom: 22 }} />
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+
+  // ── Validate & advance step 1 → step 2 ───────────────────────────────────
+  const handleNextStep = () => {
+    if (!loanType)    { setError('Please select a Loan Type.'); return; }
+    if (!loanAmount)  { setError('Please enter the Loan Amount.'); return; }
+    if (!lastName || !firstName) { setError('Please enter the applicant\'s full name.'); return; }
+    setError('');
+    setStep('comaker');
+  };
+
+  // ── Final submit ──────────────────────────────────────────────────────────
+  const handleSubmit = async () => {
+    if (!cmLastName || !cmFirstName) { setError('Please enter the Co-Maker\'s full name.'); return; }
     setLoading(true); setError('');
     try {
-      await addDoc(collection(db, 'loanApplications'), { memberId: member.uid, memberName: member.name, memberUserId: member.userId, amount: amt, purpose, term, status: 'Pending', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      await addDoc(collection(db, 'adminNotifications'), { type: 'loan', icon: '💳', title: 'New Loan Application', message: `${member.name} applied for a loan of ${fmtCur(amt)}.`, memberId: member.uid, memberUserId: member.userId, createdAt: serverTimestamp(), read: false });
-      setDone(true); setAmount(''); setPurpose(''); setTerm('');
-      setTimeout(() => setDone(false), 3000);
-    } catch (e) { setError(e.message || 'Submission failed.'); }
-    finally { setLoading(false); }
+      const amt = parseFloat(loanAmount.replace(/,/g, ''));
+      const loanTypeLabel = loanType + (isRenewal ? ' (Renewal)' : ' (New)');
+
+      // Main loan application document
+      await addDoc(collection(db, 'loanApplications'), {
+        memberId: member.uid,
+        memberName: member.name,
+        memberUserId: member.userId,
+        amount: isNaN(amt) ? 0 : amt,
+        loanType: loanTypeLabel,
+        purpose: loanType,
+        term: agreementMonths ? `${agreementMonths} months` : '',
+        status: 'Pending',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+
+        // Full loan form data
+        applicant: {
+          lastName, firstName, middleName,
+          birthdate, civilStatus, gender, citizenship, religion,
+          address, cellphone, email,
+          spouseName, spouseOccupation, spouseEmployer,
+          spouseLengthService, spouseMonthlyIncome, spouseEmployerAddr,
+          spouseCellphone, spouseEmail, numChildren, nearestRelative,
+        },
+        properties: {
+          hasHouseLot, hasLot, hasCar, hasMotorcycle, hasPUV,
+          propLocation, propTaxDecNo, propAssessedVal, propMarketVal, propMortgageTo,
+          vehicleMakeBrand, vehicleAmount,
+        },
+        agreement: {
+          months: agreementMonths,
+          startDate: agreementStartDate,
+          maturity: agreementMaturity,
+          penaltyPercent: agreementPenalty,
+        },
+
+        // Co-maker data
+        coMaker: {
+          lastName: cmLastName, firstName: cmFirstName, middleName: cmMiddleName,
+          birthdate: cmBirthdate, civilStatus: cmCivilStatus, gender: cmGender,
+          citizenship: cmCitizenship, religion: cmReligion,
+          address: cmAddress, cellphone: cmCellphone, email: cmEmail,
+          lengthOfStay: cmLengthOfStay, housingStatus: cmHousingStatus,
+          landlordName: cmLandlordName, landlordAddress: cmLandlordAddress, landlordContact: cmLandlordContact,
+          employer: cmEmployer, TIN: cmTIN, SSS: cmSSS,
+          lengthService: cmLengthService, monthlySalary: cmMonthlySalary, otherIncome: cmOtherIncome,
+          spouseName: cmSpouseName, spouseContact: cmSpouseContact,
+          spouseEmployer: cmSpouseEmployer, spouseEmail: cmSpouseEmail,
+          children: cmChildren.filter(c => c.name),
+          motherName: cmMotherName, motherContact: cmMotherContact,
+          fatherName: cmFatherName, fatherContact: cmFatherContact,
+        },
+      });
+
+      // Admin notification
+      await addDoc(collection(db, 'adminNotifications'), {
+        type: 'loan', icon: '💳',
+        title: 'New Loan Application',
+        message: `${member.name} applied for a ${loanTypeLabel} of ${fmtCur(isNaN(amt) ? 0 : amt)}.`,
+        memberId: member.uid, memberUserId: member.userId,
+        createdAt: serverTimestamp(), read: false,
+      });
+
+      setDone(true);
+      setStep('done');
+    } catch (e) {
+      setError(e.message || 'Submission failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // ── DONE screen ───────────────────────────────────────────────────────────
+  if (step === 'done') {
+    return (
+      <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator style={contentHeight ? { height: contentHeight } : undefined}>
+        <GCard style={{ alignItems: 'center', padding: 32 }}>
+          <Text style={{ fontSize: 52, marginBottom: 16 }}>✅</Text>
+          <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: C.green, textAlign: 'center', marginBottom: 8 }}>Application Submitted!</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec, textAlign: 'center', lineHeight: 20 }}>
+            Your loan application with co-maker statement has been submitted. The admin will review your application shortly.
+          </Text>
+          <View style={{ marginTop: 20, width: '100%', backgroundColor: 'rgba(26,138,74,0.10)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(26,138,74,0.30)', padding: 14 }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, marginBottom: 4 }}>What's next?</Text>
+            {['Your application is now under review.','The admin will contact you for additional documents if needed.','Check "My Loans" for status updates.'].map((t, i) => (
+              <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 20 }}>• {t}</Text>
+            ))}
+          </View>
+          <TouchableOpacity
+            onPress={() => { setStep('loan'); setDone(false); }}
+            style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20, borderWidth: 1.5, borderColor: C.navy }}>
+            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>Submit Another Application</Text>
+          </TouchableOpacity>
+        </GCard>
+      </ScrollView>
+    );
+  }
+
+  // ── STEP 2 — Co-Maker Statement ───────────────────────────────────────────
+  if (step === 'comaker') {
+    return (
+      <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator style={contentHeight ? { height: contentHeight } : undefined}>
+        <Text style={s.pageTitle}>📋 Co-Maker Statement</Text>
+        <Text style={s.pageSub}>Form:004 — Fill out co-maker's information completely and accurately.</Text>
+        <StepIndicator />
+
+        {/* Back button */}
+        <TouchableOpacity onPress={() => { setStep('loan'); setError(''); }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(15,30,53,0.18)' }}>
+          <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.textSec }}>← Back to Loan Form</Text>
+        </TouchableOpacity>
+
+        {/* ── Personal Data ── */}
+        <GCard>
+          <Text style={s.secTitle}>Personal Data</Text>
+          <Text style={[s.fieldLabel, { marginBottom: 4 }]}>APPLICANT'S NAME</Text>
+          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 11 }}>
+            <View style={{ flex: 1 }}><DField label="LAST NAME" value={cmLastName} onChangeText={v => { setCmLastName(v); setError(''); }} placeholder="Last Name" /></View>
+            <View style={{ flex: 1 }}><DField label="FIRST NAME" value={cmFirstName} onChangeText={v => { setCmFirstName(v); setError(''); }} placeholder="First Name" /></View>
+            <View style={{ flex: 1 }}><DField label="MIDDLE NAME" value={cmMiddleName} onChangeText={setCmMiddleName} placeholder="Middle Name" /></View>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <DField label="BIRTHDATE (MM/DD/YYYY)" value={cmBirthdate} onChangeText={setCmBirthdate} placeholder="MM/DD/YYYY" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <FieldLabel label="CIVIL STATUS" />
+              <RadioGroup options={['Single', 'Married', 'Widowed', 'Separated']} value={cmCivilStatus} onSelect={setCmCivilStatus} row={false} />
+            </View>
+          </View>
+
+          <FieldLabel label="GENDER" />
+          <RadioGroup options={['Male', 'Female']} value={cmGender} onSelect={setCmGender} />
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}><DField label="CITIZENSHIP" value={cmCitizenship} onChangeText={setCmCitizenship} placeholder="e.g. Filipino" /></View>
+            <View style={{ flex: 1 }}><DField label="RELIGION" value={cmReligion} onChangeText={setCmReligion} placeholder="e.g. Roman Catholic" /></View>
+          </View>
+
+          <DField label="COMPLETE HOME/PRESENT ADDRESS" value={cmAddress} onChangeText={setCmAddress} placeholder="House No., Street, Barangay, City" />
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}><DField label="CELLPHONE NUMBER" value={cmCellphone} onChangeText={setCmCellphone} placeholder="09XX-XXX-XXXX" keyboardType="phone-pad" /></View>
+            <View style={{ flex: 1 }}><DField label="EMAIL ADDRESS" value={cmEmail} onChangeText={setCmEmail} placeholder="email@example.com" keyboardType="email-address" /></View>
+          </View>
+
+          <DField label="LENGTH OF STAY (years)" value={cmLengthOfStay} onChangeText={setCmLengthOfStay} placeholder="e.g. 5 years" />
+
+          <FieldLabel label="HOUSING STATUS" />
+          <RadioGroup options={['Owned', 'Living w/ Parents/Relatives', 'Rented']} value={cmHousingStatus} onSelect={setCmHousingStatus} row={false} />
+
+          {cmHousingStatus === 'Rented' && (
+            <>
+              <DField label="NAME OF LANDLORD" value={cmLandlordName} onChangeText={setCmLandlordName} placeholder="Landlord's full name" />
+              <DField label="LANDLORD ADDRESS" value={cmLandlordAddress} onChangeText={setCmLandlordAddress} placeholder="Address" />
+              <DField label="LANDLORD CONTACT NUMBER" value={cmLandlordContact} onChangeText={setCmLandlordContact} placeholder="Contact number" keyboardType="phone-pad" />
+            </>
+          )}
+        </GCard>
+
+        {/* ── Employment ── */}
+        <GCard>
+          <Text style={s.secTitle}>Employment</Text>
+          <DField label="PRESENT EMPLOYER" value={cmEmployer} onChangeText={setCmEmployer} placeholder="Company / Employer name" />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}><DField label="TIN" value={cmTIN} onChangeText={setCmTIN} placeholder="TIN Number" /></View>
+            <View style={{ flex: 1 }}><DField label="SSS/GSIS #" value={cmSSS} onChangeText={setCmSSS} placeholder="SSS or GSIS #" /></View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}><DField label="LENGTH OF SERVICE" value={cmLengthService} onChangeText={setCmLengthService} placeholder="e.g. 3 years" /></View>
+            <View style={{ flex: 1 }}><DField label="MONTHLY SALARY (₱)" value={cmMonthlySalary} onChangeText={setCmMonthlySalary} placeholder="0.00" keyboardType="numeric" /></View>
+          </View>
+          <DField label="OTHER SOURCE OF INCOME" value={cmOtherIncome} onChangeText={setCmOtherIncome} placeholder="e.g. Business, Rental (optional)" />
+        </GCard>
+
+        {/* ── Spouse ── */}
+        <GCard>
+          <Text style={s.secTitle}>Spouse Information</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginBottom: 10 }}>Leave blank if not applicable.</Text>
+          <DField label="NAME OF SPOUSE (Last, First, Middle)" value={cmSpouseName} onChangeText={setCmSpouseName} placeholder="Spouse's full name" />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}><DField label="CONTACT NO." value={cmSpouseContact} onChangeText={setCmSpouseContact} placeholder="Cellphone number" keyboardType="phone-pad" /></View>
+            <View style={{ flex: 1 }}><DField label="EMAIL ADDRESS" value={cmSpouseEmail} onChangeText={setCmSpouseEmail} placeholder="email@example.com" /></View>
+          </View>
+          <DField label="PRESENT EMPLOYER" value={cmSpouseEmployer} onChangeText={setCmSpouseEmployer} placeholder="Spouse's employer" />
+        </GCard>
+
+        {/* ── Children ── */}
+        <GCard>
+          <Text style={s.secTitle}>Name of Children</Text>
+          {cmChildren.map((child, idx) => (
+            <View key={idx} style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+              <View style={{ flex: 3 }}>
+                <TextInput
+                  style={[s.fieldInput, { marginBottom: 0 }]}
+                  value={child.name}
+                  onChangeText={v => {
+                    const updated = [...cmChildren];
+                    updated[idx] = { ...updated[idx], name: v };
+                    setCmChildren(updated);
+                  }}
+                  placeholder={`Child ${idx + 1} full name`}
+                  placeholderTextColor={C.textMuted}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <TextInput
+                  style={[s.fieldInput, { marginBottom: 0 }]}
+                  value={child.age}
+                  onChangeText={v => {
+                    const updated = [...cmChildren];
+                    updated[idx] = { ...updated[idx], age: v };
+                    setCmChildren(updated);
+                  }}
+                  placeholder="Age"
+                  placeholderTextColor={C.textMuted}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={{ flex: 2 }}>
+                <TextInput
+                  style={[s.fieldInput, { marginBottom: 0 }]}
+                  value={child.birthday}
+                  onChangeText={v => {
+                    const updated = [...cmChildren];
+                    updated[idx] = { ...updated[idx], birthday: v };
+                    setCmChildren(updated);
+                  }}
+                  placeholder="Birthday"
+                  placeholderTextColor={C.textMuted}
+                />
+              </View>
+            </View>
+          ))}
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 4 }}>
+            Column order: Full Name (Last, First, Middle) · Age · Birthday
+          </Text>
+        </GCard>
+
+        {/* ── Parents ── */}
+        <GCard>
+          <Text style={s.secTitle}>Parents</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}><DField label="NAME OF MOTHER (Last, First, Middle)" value={cmMotherName} onChangeText={setCmMotherName} placeholder="Mother's full name" /></View>
+            <View style={{ flex: 1 }}><DField label="CONTACT NO." value={cmMotherContact} onChangeText={setCmMotherContact} placeholder="Contact number" keyboardType="phone-pad" /></View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}><DField label="NAME OF FATHER (Last, First, Middle)" value={cmFatherName} onChangeText={setCmFatherName} placeholder="Father's full name" /></View>
+            <View style={{ flex: 1 }}><DField label="CONTACT NO." value={cmFatherContact} onChangeText={setCmFatherContact} placeholder="Contact number" keyboardType="phone-pad" /></View>
+          </View>
+        </GCard>
+
+        {/* ── Undertaking Notice ── */}
+        <GCard style={{ backgroundColor: 'rgba(37,99,176,0.08)', borderColor: 'rgba(37,99,176,0.28)' }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.blue, marginBottom: 8 }}>📋 Undertaking</Text>
+          {[
+            'I certify that all information provided in this application is true and correct.',
+            'I agree to comply with the loan\'s terms and conditions as approved under the Cooperative\'s Credit Policy.',
+            'I agree to become the co-maker of the applicant in signing the Promissory Note and shall be jointly and severally liable.',
+          ].map((t, i) => (
+            <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, lineHeight: 18, marginBottom: 4 }}>• {t}</Text>
+          ))}
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginTop: 8, fontStyle: 'italic' }}>
+            By submitting, you acknowledge and agree to the above undertaking on behalf of the co-maker.
+          </Text>
+        </GCard>
+
+        {error ? (
+          <View style={{ backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(192,57,43,0.28)', padding: 10, marginBottom: 8 }}>
+            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.red }}>{error}</Text>
+          </View>
+        ) : null}
+
+        <SaveBtn onPress={handleSubmit} loading={loading} done={done} label="Submit Both Applications" doneLabel="Submitted Successfully!" />
+      </ScrollView>
+    );
+  }
+
+  // ── STEP 1 — Main Loan Application ───────────────────────────────────────
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator style={contentHeight ? { height: contentHeight } : undefined}>
       <Text style={s.pageTitle}>📝 Apply for a Loan</Text>
-      <Text style={s.pageSub}>Your application will be reviewed by the admin.</Text>
+      <Text style={s.pageSub}>Form:003 — Fill out all fields completely and accurately.</Text>
+      <StepIndicator />
+
+      {/* ── Before You Apply ── */}
       <GCard style={{ backgroundColor: 'rgba(37,99,176,0.10)', borderColor: 'rgba(37,99,176,0.30)' }}>
         <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.blue, marginBottom: 6 }}>📌 Before You Apply</Text>
-        {['Must be active for at least 3 months.', 'Loan is up to 3x your share capital.', `Your share capital: ${fmtCur(member.shares)}`, `Estimated max loan: ${fmtCur((member.shares || 0) * 3)}`].map((t, i) => (
+        {[
+          'Must be active for at least 3 months.',
+          'Loan is up to 3x your share capital.',
+          `Your share capital: ${fmtCur(member.shares)}`,
+          `Estimated max loan: ${fmtCur((member.shares || 0) * 3)}`,
+          'A co-maker statement is required (Step 2).',
+        ].map((t, i) => (
           <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 19 }}>• {t}</Text>
         ))}
       </GCard>
+
+      {/* ── Loan Type ── */}
       <GCard>
-        <Text style={s.secTitle}>Loan Details</Text>
-        <DField label="LOAN AMOUNT (₱)" value={amount}  onChangeText={v => { setAmount(v);  setError(''); }} placeholder="e.g. 10000" keyboardType="numeric" />
-        <DField label="PURPOSE"          value={purpose} onChangeText={v => { setPurpose(v); setError(''); }} placeholder="e.g. Business Capital, Medical" />
-        <DField label="REPAYMENT TERM"   value={term}    onChangeText={v => { setTerm(v);    setError(''); }} placeholder="e.g. 12 months" />
-        {error ? <View style={{ backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(192,57,43,0.28)', padding: 10, marginBottom: 8 }}><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.red }}>{error}</Text></View> : null}
-        <SaveBtn onPress={submit} loading={loading} done={done} label="Submit Application" doneLabel="Application Submitted!" />
+        <Text style={s.secTitle}>Loan Type</Text>
+
+        {/* Housing / Vehicle */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          {['Housing Loan', 'Vehicle Loan'].map(lt => (
+            <TouchableOpacity key={lt} onPress={() => { setLoanType(lt); setIsRenewal(false); setError(''); }}
+              style={{
+                paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+                borderWidth: 1.5,
+                borderColor: loanType === lt ? C.gold : 'rgba(15,30,53,0.18)',
+                backgroundColor: loanType === lt ? 'rgba(201,168,76,0.15)' : C.surface,
+              }}>
+              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.navy }}>{lt}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Salary Loan with New/Renewal */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+          <TouchableOpacity
+            onPress={() => { setLoanType('Salary Loan'); setError(''); }}
+            style={{
+              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+              borderWidth: 1.5,
+              borderColor: loanType === 'Salary Loan' ? C.gold : 'rgba(15,30,53,0.18)',
+              backgroundColor: loanType === 'Salary Loan' ? 'rgba(201,168,76,0.15)' : C.surface,
+            }}>
+            <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.navy }}>Salary Loan</Text>
+          </TouchableOpacity>
+          {loanType === 'Salary Loan' && (
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {['New', 'Renewal'].map(opt => (
+                <TouchableOpacity key={opt} onPress={() => setIsRenewal(opt === 'Renewal')}
+                  style={{
+                    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16,
+                    borderWidth: 1.5,
+                    borderColor: (isRenewal ? 'Renewal' : 'New') === opt ? C.navy : 'rgba(15,30,53,0.18)',
+                    backgroundColor: (isRenewal ? 'Renewal' : 'New') === opt ? 'rgba(15,30,53,0.10)' : 'transparent',
+                  }}>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.navy }}>{opt}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* Buy-Out with New/Renewal */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          <TouchableOpacity
+            onPress={() => { setLoanType('Buy-Out'); setError(''); }}
+            style={{
+              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+              borderWidth: 1.5,
+              borderColor: loanType === 'Buy-Out' ? C.gold : 'rgba(15,30,53,0.18)',
+              backgroundColor: loanType === 'Buy-Out' ? 'rgba(201,168,76,0.15)' : C.surface,
+            }}>
+            <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.navy }}>Buy-Out</Text>
+          </TouchableOpacity>
+          {loanType === 'Buy-Out' && (
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {['New', 'Renewal'].map(opt => (
+                <TouchableOpacity key={opt} onPress={() => setIsRenewal(opt === 'Renewal')}
+                  style={{
+                    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16,
+                    borderWidth: 1.5,
+                    borderColor: (isRenewal ? 'Renewal' : 'New') === opt ? C.navy : 'rgba(15,30,53,0.18)',
+                    backgroundColor: (isRenewal ? 'Renewal' : 'New') === opt ? 'rgba(15,30,53,0.10)' : 'transparent',
+                  }}>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.navy }}>{opt}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <DField label="LOAN AMOUNT (₱)" value={loanAmount} onChangeText={v => { setLoanAmount(v); setError(''); }} placeholder="e.g. 50000" keyboardType="numeric" />
       </GCard>
+
+      {/* ── Personal Data ── */}
+      <GCard>
+        <Text style={s.secTitle}>Personal Data</Text>
+        <Text style={[s.fieldLabel, { marginBottom: 4 }]}>APPLICANT'S NAME (Last Name, First Name, Middle Name)</Text>
+        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 11 }}>
+          <View style={{ flex: 1 }}><DField label="LAST NAME" value={lastName} onChangeText={v => { setLastName(v); setError(''); }} placeholder="Last Name" /></View>
+          <View style={{ flex: 1 }}><DField label="FIRST NAME" value={firstName} onChangeText={v => { setFirstName(v); setError(''); }} placeholder="First Name" /></View>
+          <View style={{ flex: 1 }}><DField label="MIDDLE NAME" value={middleName} onChangeText={setMiddleName} placeholder="Middle Name" /></View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <DField label="BIRTHDATE (Month/Day/Year)" value={birthdate} onChangeText={setBirthdate} placeholder="MM/DD/YYYY" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <FieldLabel label="CIVIL STATUS" />
+            <RadioGroup options={['Single', 'Married', 'Widowed', 'Separated']} value={civilStatus} onSelect={setCivilStatus} row={false} />
+          </View>
+        </View>
+
+        <FieldLabel label="GENDER" />
+        <RadioGroup options={['Male', 'Female']} value={gender} onSelect={setGender} />
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}><DField label="CITIZENSHIP" value={citizenship} onChangeText={setCitizenship} placeholder="e.g. Filipino" /></View>
+          <View style={{ flex: 1 }}><DField label="RELIGION" value={religion} onChangeText={setReligion} placeholder="e.g. Roman Catholic" /></View>
+        </View>
+
+        <DField label="COMPLETE HOME/PRESENT ADDRESS" value={address} onChangeText={setAddress} placeholder="House No., Street, Barangay, City" />
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}><DField label="CELLPHONE NUMBER" value={cellphone} onChangeText={setCellphone} placeholder="09XX-XXX-XXXX" keyboardType="phone-pad" /></View>
+          <View style={{ flex: 1 }}><DField label="EMAIL ADDRESS" value={email} onChangeText={setEmail} placeholder="email@example.com" keyboardType="email-address" /></View>
+        </View>
+      </GCard>
+
+      {/* ── Spouse Info ── */}
+      <GCard>
+        <Text style={s.secTitle}>Spouse Information</Text>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginBottom: 10 }}>Leave blank if not applicable.</Text>
+        <DField label="SPOUSE NAME (Last, First, Middle)" value={spouseName} onChangeText={setSpouseName} placeholder="Spouse's full name" />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}><DField label="SPOUSE OCCUPATION" value={spouseOccupation} onChangeText={setSpouseOccupation} placeholder="Occupation (if employed)" /></View>
+          <View style={{ flex: 1 }}><DField label="SPOUSE EMPLOYER" value={spouseEmployer} onChangeText={setSpouseEmployer} placeholder="Employer (if employed)" /></View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}><DField label="SPOUSE LENGTH OF SERVICE" value={spouseLengthService} onChangeText={setSpouseLengthService} placeholder="e.g. 3 years" /></View>
+          <View style={{ flex: 1 }}><DField label="SPOUSE MONTHLY INCOME (₱)" value={spouseMonthlyIncome} onChangeText={setSpouseMonthlyIncome} placeholder="0.00" keyboardType="numeric" /></View>
+        </View>
+        <DField label="SPOUSE EMPLOYER ADDRESS" value={spouseEmployerAddr} onChangeText={setSpouseEmployerAddr} placeholder="Employer address" />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}><DField label="SPOUSE CELLPHONE" value={spouseCellphone} onChangeText={setSpouseCellphone} placeholder="09XX-XXX-XXXX" keyboardType="phone-pad" /></View>
+          <View style={{ flex: 1 }}><DField label="SPOUSE EMAIL" value={spouseEmail} onChangeText={setSpouseEmail} placeholder="email@example.com" /></View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}><DField label="NO. OF CHILDREN" value={numChildren} onChangeText={setNumChildren} placeholder="0" keyboardType="numeric" /></View>
+          <View style={{ flex: 1 }}><DField label="NEAREST RELATIVE" value={nearestRelative} onChangeText={setNearestRelative} placeholder="Name of nearest relative" /></View>
+        </View>
+      </GCard>
+
+      {/* ── Other Properties / Real Estate ── */}
+      <GCard>
+        <Text style={s.secTitle}>Other Properties Owned / Real Estate</Text>
+        <FieldLabel label="REAL ESTATE" />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 }}>
+          <CheckItem label="House & Lot" checked={hasHouseLot} onToggle={() => setHasHouseLot(p => !p)} />
+          <CheckItem label="Lot" checked={hasLot} onToggle={() => setHasLot(p => !p)} />
+        </View>
+        {(hasHouseLot || hasLot) && (
+          <>
+            <DField label="LOCATION" value={propLocation} onChangeText={setPropLocation} placeholder="Location of property" />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}><DField label="TAX DECLARATION NO." value={propTaxDecNo} onChangeText={setPropTaxDecNo} placeholder="Tax Dec. No." /></View>
+              <View style={{ flex: 1 }}><DField label="ASSESSED VALUE (₱)" value={propAssessedVal} onChangeText={setPropAssessedVal} placeholder="0.00" keyboardType="numeric" /></View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}><DField label="MARKET VALUE (₱)" value={propMarketVal} onChangeText={setPropMarketVal} placeholder="0.00" keyboardType="numeric" /></View>
+              <View style={{ flex: 1 }}><DField label="MORTGAGE TO" value={propMortgageTo} onChangeText={setPropMortgageTo} placeholder="Mortgaged to (if any)" /></View>
+            </View>
+          </>
+        )}
+
+        <FieldLabel label="VEHICLE" />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 }}>
+          <CheckItem label="Car" checked={hasCar} onToggle={() => setHasCar(p => !p)} />
+          <CheckItem label="Motorcycle" checked={hasMotorcycle} onToggle={() => setHasMotorcycle(p => !p)} />
+          <CheckItem label="PUV" checked={hasPUV} onToggle={() => setHasPUV(p => !p)} />
+        </View>
+        {(hasCar || hasMotorcycle || hasPUV) && (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}><DField label="MAKE/BRAND" value={vehicleMakeBrand} onChangeText={setVehicleMakeBrand} placeholder="e.g. Toyota Fortuner" /></View>
+            <View style={{ flex: 1 }}><DField label="AMOUNT (₱)" value={vehicleAmount} onChangeText={setVehicleAmount} placeholder="0.00" keyboardType="numeric" /></View>
+          </View>
+        )}
+      </GCard>
+
+      {/* ── Application Agreement ── */}
+      <GCard>
+        <Text style={s.secTitle}>Application Agreement</Text>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, lineHeight: 18, marginBottom: 12 }}>
+          I desire to borrow the said amount and promise to pay CESLA Multipurpose Cooperative, plus interest, in equal monthly/semi-monthly/amortization over the period specified.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}><DField label="REPAYMENT PERIOD (months)" value={agreementMonths} onChangeText={setAgreementMonths} placeholder="e.g. 12" keyboardType="numeric" /></View>
+          <View style={{ flex: 1 }}><DField label="PENALTY % PER ANNUM" value={agreementPenalty} onChangeText={setAgreementPenalty} placeholder="e.g. 2" keyboardType="numeric" /></View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}><DField label="PAYMENT START DATE" value={agreementStartDate} onChangeText={setAgreementStartDate} placeholder="MM/DD/YYYY" /></View>
+          <View style={{ flex: 1 }}><DField label="MATURITY DATE" value={agreementMaturity} onChangeText={setAgreementMaturity} placeholder="MM/DD/YYYY" /></View>
+        </View>
+      </GCard>
+
+      {/* ── Note about co-maker ── */}
+      <GCard style={{ backgroundColor: 'rgba(196,125,14,0.10)', borderColor: 'rgba(196,125,14,0.35)' }}>
+        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.orange, marginBottom: 6 }}>⚠️ Co-Maker Required</Text>
+        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
+          After completing this form, you will be asked to fill out the Co-Maker Statement (Form:004) on the next step. Please have your co-maker's details ready.
+        </Text>
+      </GCard>
+
+      {error ? (
+        <View style={{ backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(192,57,43,0.28)', padding: 10, marginBottom: 8 }}>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.red }}>{error}</Text>
+        </View>
+      ) : null}
+
+      {/* Next Step Button */}
+      <TouchableOpacity
+        onPress={handleNextStep}
+        style={{ borderRadius: 14, overflow: 'hidden', marginTop: 6, shadowColor: C.gold, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 5 }}>
+        <LinearGradient colors={[C.gold, C.goldLt]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy, letterSpacing: 1.5 }}>
+            NEXT: CO-MAKER STATEMENT →
+          </Text>
+        </LinearGradient>
+      </TouchableOpacity>
     </ScrollView>
   );
 };
@@ -2218,39 +2924,226 @@ const ApplyLoanView = ({ member, contentHeight }) => {
 const MyLoansView = ({ member, contentHeight }) => {
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawAmt, setWithdrawAmt] = useState('');
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [withdrawDone, setWithdrawDone] = useState('');
+  const [withdrawErr, setWithdrawErr] = useState('');
+
   useEffect(() => {
     return onSnapshot(query(collection(db, 'loanApplications'), where('memberId', '==', member.uid), orderBy('createdAt', 'desc')), snap => { setApps(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); });
   }, [member.uid]);
-  const prog = member.loan > 0 ? (member.loan - (member.loanBalance || 0)) / member.loan : 0;
+
+  const loanBalance = Number(member.loanBalance || 0);
+  const loanTotal   = Number(member.loan || 0);
+  const prog = loanTotal > 0 ? (loanTotal - loanBalance) / loanTotal : 0;
+
+  const handleLoanWithdraw = async () => {
+    const amt = parseFloat(withdrawAmt);
+    if (!amt || amt <= 0)     { setWithdrawErr('Enter a valid amount.'); return; }
+    if (amt > loanBalance)    { setWithdrawErr(`Exceeds Loan Wallet balance (${fmtCur(loanBalance)}).`); return; }
+    if (amt > 9999999)        { setWithdrawErr('Amount too large.'); return; }
+    setWithdrawBusy(true); setWithdrawErr('');
+    try {
+      const existingPending = await getDocs(query(
+        collection(db, 'withdrawalRequests'),
+        where('memberId', '==', member.uid),
+        where('type', '==', 'loan'),
+        where('status', '==', 'Pending')
+      ));
+      if (!existingPending.empty) { setWithdrawErr('You already have a pending loan withdrawal. Wait for admin approval.'); setWithdrawBusy(false); return; }
+      await addDoc(collection(db, 'withdrawalRequests'), {
+        memberId: member.uid, memberName: member.name, memberUserId: member.userId,
+        type: 'loan', amount: amt, remarks: 'Loan Wallet Withdrawal', status: 'Pending',
+        createdAt: serverTimestamp(),
+      });
+      await addDoc(collection(db, 'adminNotifications'), {
+        type: 'withdrawal_request', icon: '📤',
+        title: `Loan Wallet Withdrawal — ${member.name}`,
+        message: `${member.name} (${member.userId}) requesting loan wallet withdrawal of ${fmtCur(amt)}.`,
+        memberId: member.uid, memberUserId: member.userId,
+        createdAt: serverTimestamp(), read: false,
+      });
+      setWithdrawDone(`✓ Withdrawal request of ${fmtCur(amt)} submitted! Awaiting admin approval.`);
+      setWithdrawAmt('');
+      setTimeout(() => { setShowWithdrawModal(false); setWithdrawDone(''); }, 2500);
+    } catch (e) { setWithdrawErr(e.message || 'Request failed.'); }
+    finally { setWithdrawBusy(false); }
+  };
+
   return (
     <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-      <Text style={s.pageTitle}>💳 My Loans</Text>
-      {member.loan > 0 ? (
-        <GCard style={{ borderTopWidth: 4, borderTopColor: C.orange }}>
-          <Text style={s.secTitle}>Active Loan</Text>
-          {[['Total Loan', fmtCur(member.loan), C.orange], ['Remaining', fmtCur(member.loanBalance), C.red], ['Paid', fmtCur(member.loan - (member.loanBalance || 0)), C.green]].map(([l, v, c]) => (
-            <View key={l} style={s.infoRow}><Text style={s.infoLabel}>{l}</Text><Text style={[s.infoVal, { color: c, fontFamily: 'GoogleSans_700Bold' }]}>{v}</Text></View>
+
+      {/* ── Page header ── */}
+      <View style={{ marginBottom: 16 }}>
+        <Text style={s.pageTitle}>💳 My Loans</Text>
+        <Text style={s.pageSub}>View your active loan and loan wallet balance.</Text>
+      </View>
+
+      {/* ── Loan Wallet Card ── */}
+      <View style={{ borderRadius: 20, overflow: 'hidden', marginBottom: 14, shadowColor: '#0d2b4e', shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 10 }}>
+        <LinearGradient colors={['#0d2b4e', '#1a3d6e', '#2563b0']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: 24, alignItems: 'center' }}>
+          <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.30)', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+            <Text style={{ fontSize: 28 }}>💼</Text>
+          </View>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.60)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 }}>Loan Wallet</Text>
+          <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 34, color: '#fff', letterSpacing: 0.5 }}>{fmtCur(loanBalance)}</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>Available to withdraw</Text>
+
+          {/* Withdraw button */}
+          {loanBalance > 0 && (
+            <TouchableOpacity
+              onPress={() => { setShowWithdrawModal(true); setWithdrawAmt(''); setWithdrawErr(''); setWithdrawDone(''); }}
+              style={{ marginTop: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(192,57,43,0.30)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(232,120,120,0.55)', paddingVertical: 12, paddingHorizontal: 32 }}
+              activeOpacity={0.8}>
+              <Image source={require('../../assets/withdraw.png')} style={{ width: 18, height: 18, tintColor: '#e87a7a' }} />
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e87a7a' }}>Withdraw Loan</Text>
+            </TouchableOpacity>
+          )}
+        </LinearGradient>
+      </View>
+
+      {/* ── Active Loan Card ── */}
+      <Text style={s.sHead}>📊 ACTIVE LOAN STATUS</Text>
+      {loanTotal > 0 ? (
+        <GCard style={{ borderTopWidth: 4, borderTopColor: C.orange, marginBottom: 16 }}>
+          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 12 }}>Active Loan</Text>
+          {[
+            ['Total Loan Amount', fmtCur(loanTotal), C.orange],
+            ['Remaining Balance', fmtCur(loanBalance), C.red],
+            ['Total Paid',        fmtCur(loanTotal - loanBalance), C.green],
+          ].map(([l, v, c]) => (
+            <View key={l} style={[s.infoRow, { paddingVertical: 11 }]}>
+              <Text style={s.infoLabel}>{l}</Text>
+              <Text style={[s.infoVal, { color: c, fontFamily: 'GoogleSans_700Bold', fontSize: 14 }]}>{v}</Text>
+            </View>
           ))}
-          <View style={{ marginTop: 12 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec }}>Repayment Progress</Text><Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green }}>{Math.round(prog * 100)}%</Text></View>
-            <View style={{ height: 10, backgroundColor: 'rgba(15,30,53,0.12)', borderRadius: 5, overflow: 'hidden' }}><View style={{ height: 10, backgroundColor: C.green, borderRadius: 5, width: `${Math.round(prog * 100)}%` }} /></View>
+          <View style={{ marginTop: 14 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec }}>Repayment Progress</Text>
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green }}>{Math.round(prog * 100)}%</Text>
+            </View>
+            <View style={{ height: 12, backgroundColor: 'rgba(15,30,53,0.12)', borderRadius: 6, overflow: 'hidden' }}>
+              <View style={{ height: 12, backgroundColor: C.green, borderRadius: 6, width: `${Math.round(prog * 100)}%` }} />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>Paid: {fmtCur(loanTotal - loanBalance)}</Text>
+              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>Left: {fmtCur(loanBalance)}</Text>
+            </View>
           </View>
         </GCard>
       ) : (
-        <GCard style={{ alignItems: 'center', padding: 32 }}><Text style={{ fontSize: 36, marginBottom: 10 }}>📋</Text><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: C.textMuted, textAlign: 'center' }}>No active loan.</Text></GCard>
+        <GCard style={{ alignItems: 'center', padding: 32, marginBottom: 16 }}>
+          <Text style={{ fontSize: 36, marginBottom: 10 }}>📋</Text>
+          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: C.textMuted, textAlign: 'center' }}>No active loan.</Text>
+        </GCard>
       )}
+
+      {/* ── Loan Applications ── */}
       {!loading && apps.length > 0 && (
         <>
           <Text style={s.sHead}>📄 LOAN APPLICATIONS</Text>
-          {apps.map(app => { const sc = app.status === 'Approved' ? C.green : app.status === 'Rejected' ? C.red : C.orange; return (
-            <GCard key={app.id} style={{ borderLeftWidth: 3, borderLeftColor: sc }}>
-              {[['Amount', fmtCur(app.amount)], ['Purpose', app.purpose], ['Term', app.term], ['Filed', fmtDate(app.createdAt)], ['Status', app.status]].map(([l, v]) => (<View key={l} style={s.infoRow}><Text style={s.infoLabel}>{l}</Text><Text style={[s.infoVal, l === 'Status' && { color: sc, fontFamily: 'GoogleSans_700Bold' }]}>{v}</Text></View>))}
-              {app.adminRemarks ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#9a7230', fontStyle: 'italic', marginTop: 6 }}>Admin: {app.adminRemarks}</Text> : null}
-            </GCard>
-          ); })}
+          {apps.map(app => {
+            const sc = app.status === 'Approved' ? C.green : app.status === 'Rejected' ? C.red : C.orange;
+            return (
+              <GCard key={app.id} style={{ borderLeftWidth: 3, borderLeftColor: sc, marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>Loan Application</Text>
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: sc + '20', borderWidth: 1, borderColor: sc + '60' }}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: sc }}>{app.status}</Text>
+                  </View>
+                </View>
+                {[['Amount', fmtCur(app.amount)], ['Purpose', app.purpose], ['Term', app.term], ['Filed', fmtDate(app.createdAt)]].map(([l, v]) => (
+                  <View key={l} style={s.infoRow}>
+                    <Text style={s.infoLabel}>{l}</Text>
+                    <Text style={s.infoVal}>{v}</Text>
+                  </View>
+                ))}
+                {app.adminRemarks ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#9a7230', fontStyle: 'italic', marginTop: 8 }}>Admin: {app.adminRemarks}</Text> : null}
+              </GCard>
+            );
+          })}
         </>
       )}
       {loading && <Spinner msg="Loading..." />}
+
+      {/* ── Withdraw Loan Wallet Modal ── */}
+      <Modal visible={showWithdrawModal} transparent animationType="fade" onRequestClose={() => setShowWithdrawModal(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ width: '100%', maxWidth: 400, backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.30, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
+            {/* Modal header */}
+            <LinearGradient colors={['#1a2d4e', '#243554']} style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(192,57,43,0.30)', justifyContent: 'center', alignItems: 'center' }}>
+                <Image source={require('../../assets/withdraw.png')} style={{ width: 20, height: 20, tintColor: '#e87a7a' }} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#fff' }}>Withdraw Loan Wallet</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.50)', marginTop: 1 }}>Requires admin approval</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowWithdrawModal(false)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ color: '#fff', fontSize: 14, lineHeight: 18 }}>✕</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+
+            <View style={{ padding: 18 }}>
+              {/* Balance display */}
+              <View style={{ backgroundColor: 'rgba(37,99,176,0.10)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(37,99,176,0.25)', padding: 12, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={{ fontSize: 22 }}>💼</Text>
+                <View>
+                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, letterSpacing: 1 }}>LOAN WALLET BALANCE</Text>
+                  <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: C.blue }}>{fmtCur(loanBalance)}</Text>
+                </View>
+              </View>
+
+              {/* Admin approval warning */}
+              <View style={{ backgroundColor: 'rgba(196,125,14,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(196,125,14,0.35)', padding: 10, marginBottom: 14, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                <Text style={{ fontSize: 13 }}>⚠️</Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.orange, flex: 1, lineHeight: 16 }}>
+                  Withdrawal needs <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>admin approval</Text> before processing.
+                </Text>
+              </View>
+
+              <Text style={[s.fieldLabel, { marginBottom: 6 }]}>AMOUNT (₱)</Text>
+              <View style={[s.fieldRow, { marginBottom: 14 }]}>
+                <TextInput
+                  style={[s.fieldInput, { flex: 1, fontSize: 18, fontFamily: 'NotoSerif_700Bold', color: C.red }]}
+                  value={withdrawAmt}
+                  onChangeText={v => { setWithdrawAmt(v.replace(/[^0-9.]/g, '')); setWithdrawErr(''); }}
+                  placeholder="0.00"
+                  placeholderTextColor={C.textMuted}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                />
+              </View>
+
+              {withdrawErr ? (
+                <View style={[s.errorBox, { marginBottom: 12 }]}>
+                  <MaterialIcons name="error-outline" size={14} color={C.red} />
+                  <Text style={s.errorTxt}>{withdrawErr}</Text>
+                </View>
+              ) : null}
+
+              {withdrawDone ? (
+                <View style={{ backgroundColor: 'rgba(26,138,74,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(26,138,74,0.40)', padding: 10, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                  <Text style={{ fontSize: 14 }}>✅</Text>
+                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, flex: 1, lineHeight: 17 }}>{withdrawDone}</Text>
+                </View>
+              ) : null}
+
+              {!withdrawDone && (
+                <TouchableOpacity
+                  onPress={handleLoanWithdraw}
+                  disabled={withdrawBusy}
+                  style={{ borderRadius: 12, paddingVertical: 13, alignItems: 'center', backgroundColor: C.red, opacity: withdrawBusy ? 0.65 : 1 }}>
+                  {withdrawBusy
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff', letterSpacing: 0.5 }}>⬇️  Submit Request</Text>}
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -3354,6 +4247,8 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
   const [settingsSaved,  setSettingsSaved]  = useState(false);
   // Archived toggle
   const [showArchived,   setShowArchived]   = useState(false);
+  // Conversation list search
+  const [listSearch,     setListSearch]     = useState('');
   const scrollRef = useRef(null);
 
   // Load settings on mount
@@ -3610,7 +4505,7 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
     right: 8,
     width: panelW,
     maxHeight: panelMaxH,
-    backgroundColor: '#1a2d4e',
+    backgroundColor: '#ffffff',
     borderRadius: 18,
     borderWidth: 1.5,
     borderColor: C.gold,
@@ -3659,7 +4554,7 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
 
       <View style={panelStyle}>
         {/* ── HEADER ──────────────────────────────────────────────────── */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.25)' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.12)', backgroundColor: '#1a2d4e', borderTopLeftRadius: 18, borderTopRightRadius: 18 }}>
           {showBack ? (
             <TouchableOpacity onPress={goBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.70)" />
@@ -3942,37 +4837,55 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
         {/* ── CONVERSATION LIST ─────────────────────────────────────────── */}
         {screen === 'list' && !activeRoom && (
           <ScrollView style={{ maxHeight: listH }} showsVerticalScrollIndicator={false}>
+            {/* Search bar */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(15,30,53,0.07)', borderRadius: 10, marginHorizontal: 12, marginTop: 10, marginBottom: 4, paddingHorizontal: 10, paddingVertical: 7 }}>
+              <MaterialIcons name="search" size={15} color="rgba(15,30,53,0.40)" />
+              <TextInput
+                style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy, paddingHorizontal: 8, paddingVertical: 2 }}
+                value={listSearch ?? ''}
+                onChangeText={setListSearch}
+                placeholder="Search conversations..."
+                placeholderTextColor="rgba(15,30,53,0.35)"
+              />
+              {listSearch ? (
+                <TouchableOpacity onPress={() => setListSearch('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <MaterialIcons name="close" size={14} color="rgba(15,30,53,0.40)" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
             {loadingList ? (
               <View style={{ padding: 24, alignItems: 'center' }}>
                 <ActivityIndicator size="small" color={C.gold} />
               </View>
-            ) : convos.filter(c => !c.archived).length === 0 ? (
+            ) : convos.filter(c => !c.archived && (!listSearch || (c.name || '').toLowerCase().includes((listSearch || '').toLowerCase()))).length === 0 ? (
               <View style={{ padding: 24, alignItems: 'center', gap: 8 }}>
-                <MaterialIcons name="chat-bubble-outline" size={32} color="rgba(255,255,255,0.18)" />
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.38)', textAlign: 'center' }}>No conversations yet.{'\n'}Tap ✏️ to start a new chat.</Text>
+                <MaterialIcons name="chat-bubble-outline" size={32} color="rgba(15,30,53,0.18)" />
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(15,30,53,0.40)', textAlign: 'center' }}>
+                  {listSearch ? `No results for "${listSearch}".` : 'No conversations yet.\nTap ✏️ to start a new chat.'}
+                </Text>
               </View>
             ) : (
-              convos.filter(c => !c.archived).map((c, i, arr) => (
+              convos.filter(c => !c.archived && (!listSearch || (c.name || '').toLowerCase().includes((listSearch || '').toLowerCase()))).map((c, i, arr) => (
                 <TouchableOpacity
                   key={c.roomId}
                   onPress={() => setActiveRoom({ roomId: c.roomId, name: c.name, type: c.type })}
                   onLongPress={() => setCtxMenu({ convo: c })}
                   delayLongPress={400}
                   activeOpacity={0.75}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(255,255,255,0.07)', backgroundColor: ctxMenu?.convo?.roomId === c.roomId ? 'rgba(201,168,76,0.10)' : 'transparent' }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(15,30,53,0.08)', backgroundColor: ctxMenu?.convo?.roomId === c.roomId ? 'rgba(201,168,76,0.10)' : 'transparent' }}
                 >
-                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(201,168,76,0.15)', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
                     <Text style={{ fontSize: 20 }}>{c.icon}</Text>
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff' }} numberOfLines={1}>{c.name}</Text>
-                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 2 }} numberOfLines={1}>
+                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy }} numberOfLines={1}>{c.name}</Text>
+                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, marginTop: 2 }} numberOfLines={1}>
                       {c.lastMsg || 'No messages yet'}
                     </Text>
                   </View>
                   <View style={{ alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                    {c.lastAtMs > 0 && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.30)' }}>{fmtDate(c.lastAtMs)}</Text>}
-                    <MaterialIcons name="chevron-right" size={18} color="rgba(255,255,255,0.28)" />
+                    {c.lastAtMs > 0 && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>{fmtDate(c.lastAtMs)}</Text>}
+                    <MaterialIcons name="chevron-right" size={18} color="rgba(15,30,53,0.28)" />
                   </View>
                 </TouchableOpacity>
               ))
@@ -3982,15 +4895,15 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
             {convos.some(c => c.archived) && (
               <>
                 <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.07)', backgroundColor: 'rgba(255,255,255,0.03)' }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.08)', backgroundColor: 'rgba(15,30,53,0.03)' }}
                   onPress={() => setShowArchived(v => !v)}
                   activeOpacity={0.75}
                 >
-                  <MaterialIcons name="archive" size={16} color={showArchived ? C.gold : 'rgba(255,255,255,0.40)'} />
-                  <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: showArchived ? C.gold : 'rgba(255,255,255,0.45)', flex: 1 }}>
+                  <MaterialIcons name="archive" size={16} color={showArchived ? C.gold : 'rgba(15,30,53,0.40)'} />
+                  <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: showArchived ? C.gold : 'rgba(15,30,53,0.50)', flex: 1 }}>
                     Archived ({convos.filter(c => c.archived).length})
                   </Text>
-                  <MaterialIcons name={showArchived ? 'expand-less' : 'expand-more'} size={18} color="rgba(255,255,255,0.35)" />
+                  <MaterialIcons name={showArchived ? 'expand-less' : 'expand-more'} size={18} color="rgba(15,30,53,0.35)" />
                 </TouchableOpacity>
                 {showArchived && convos.filter(c => c.archived).map((c, i, arr) => (
                   <TouchableOpacity
@@ -3999,23 +4912,23 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
                     onLongPress={() => setCtxMenu({ convo: c })}
                     delayLongPress={400}
                     activeOpacity={0.75}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(255,255,255,0.05)', backgroundColor: 'rgba(0,0,0,0.10)' }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(15,30,53,0.05)', backgroundColor: 'rgba(15,30,53,0.04)' }}
                   >
-                    <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                    <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(15,30,53,0.07)', borderWidth: 1, borderColor: 'rgba(15,30,53,0.15)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
                       <Text style={{ fontSize: 18, opacity: 0.6 }}>{c.icon}</Text>
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: 'rgba(255,255,255,0.50)' }} numberOfLines={1}>{c.name}</Text>
-                        <View style={{ backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
-                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(255,255,255,0.35)', letterSpacing: 0.5 }}>ARCHIVED</Text>
+                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: 'rgba(15,30,53,0.50)' }} numberOfLines={1}>{c.name}</Text>
+                        <View style={{ backgroundColor: 'rgba(15,30,53,0.10)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(15,30,53,0.35)', letterSpacing: 0.5 }}>ARCHIVED</Text>
                         </View>
                       </View>
-                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.28)', marginTop: 2 }} numberOfLines={1}>
+                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(15,30,53,0.35)', marginTop: 2 }} numberOfLines={1}>
                         {c.lastMsg || 'No messages'}
                       </Text>
                     </View>
-                    <MaterialIcons name="chevron-right" size={16} color="rgba(255,255,255,0.20)" />
+                    <MaterialIcons name="chevron-right" size={16} color="rgba(15,30,53,0.25)" />
                   </TouchableOpacity>
                 ))}
               </>
@@ -4171,9 +5084,10 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   const [quickDone,    setQuickDone]    = useState('');
   const [quickErr,     setQuickErr]     = useState('');
   const [showQuickModal, setShowQuickModal] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const openQuickModal = (mode) => {
-    setQuickMode(mode); setQuickType('savings');
+    setQuickMode(mode); setQuickType(mode === 'withdraw' ? 'savings' : 'savings');
     setQuickAmt(''); setQuickErr(''); setQuickDone('');
     setShowQuickModal(true);
   };
@@ -4183,7 +5097,7 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
     const amt = parseFloat(quickAmt);
     if (!amt || amt <= 0)  { setQuickErr('Enter a valid amount.'); return; }
     if (amt > 9999999)     { setQuickErr('Amount too large.'); return; }
-    const curBal = Number((quickType === 'savings' ? member.savings : member.shares) || 0);
+    const curBal = Number((quickType === 'savings' ? member.savings : quickType === 'loan' ? member.loanBalance : member.shares) || 0);
     if (quickMode === 'withdraw' && amt > curBal) { setQuickErr(`Insufficient balance. Current: ${fmtCur(curBal)}`); return; }
     setQuickBusy(true); setQuickErr('');
     try {
@@ -4567,26 +5481,8 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
             )}
           </View>
 
-          {/* RIGHT — deposit + withdraw icons + message + bell + profile */}
+          {/* RIGHT — message + bell + profile dropdown */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {/* Deposit icon */}
-            {!isRegistered && (
-              <TouchableOpacity
-                style={[s.dashRoundBtn, { borderColor: 'rgba(26,138,74,0.50)' }]}
-                onPress={() => openQuickModal('deposit')}
-                activeOpacity={0.8}>
-                <Image source={require('../../assets/wallet.png')} style={{ width: 20, height: 20, tintColor: '#4cde8a' }} />
-              </TouchableOpacity>
-            )}
-            {/* Withdraw icon */}
-            {!isRegistered && (
-              <TouchableOpacity
-                style={[s.dashRoundBtn, { borderColor: 'rgba(192,57,43,0.45)' }]}
-                onPress={() => openQuickModal('withdraw')}
-                activeOpacity={0.8}>
-                <Image source={require('../../assets/withdraw.png')} style={{ width: 20, height: 20, tintColor: '#e87a7a' }} />
-              </TouchableOpacity>
-            )}
             {/* Message icon — open messages dropdown, reset badge */}
             <TouchableOpacity style={s.dashRoundBtn} onPress={() => {
               setShowMsgDropdown(v => !v);
@@ -4604,19 +5500,95 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
               <Text style={{ fontSize: 16, textAlign: 'center', lineHeight: 22, includeFontPadding: false }}>🔔</Text>
               {unread > 0 && <View style={s.bellBadge}><Text style={s.bellBadgeTxt}>{unread > 9 ? '9+' : unread}</Text></View>}
             </TouchableOpacity>
-            {/* Profile pic circle + name */}
-            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }} onPress={() => switchNav('profile')} activeOpacity={0.8}>
+            {/* Profile pic + firstname — tapping opens dropdown */}
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 20, backgroundColor: showProfileMenu ? 'rgba(201,168,76,0.20)' : 'transparent' }}
+              onPress={() => setShowProfileMenu(v => !v)}
+              activeOpacity={0.8}>
               <MemberAvatar member={member} size={34} />
-              {isWide && (
-                <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.90)', maxWidth: 130 }} numberOfLines={1}>
-                  {member.name}
-                </Text>
-              )}
+              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.90)', maxWidth: 90 }} numberOfLines={1}>
+                {member.firstName || member.name?.split(/[\s,]+/).find(w => w) || member.name}
+              </Text>
+              <MaterialIcons name={showProfileMenu ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={16} color="rgba(255,255,255,0.70)" />
             </TouchableOpacity>
           </View>
 
         </View>
       </View>
+
+      {/* Profile dropdown menu */}
+      {showProfileMenu && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 500 }}>
+          {/* Backdrop */}
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            activeOpacity={1} onPress={() => setShowProfileMenu(false)} />
+          {/* Dropdown panel — top-right aligned */}
+          <View style={{
+            position: 'absolute',
+            top: headerMarginTop + headerHeight + 6,
+            right: isSmall ? 8 : 10,
+            width: 210,
+            backgroundColor: '#1a2d4e',
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: 'rgba(201,168,76,0.30)',
+            shadowColor: '#011f4b',
+            shadowOpacity: 0.35,
+            shadowRadius: 20,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 16,
+            overflow: 'hidden',
+          }}>
+            {/* User info header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}>
+              <MemberAvatar member={member} size={38} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }} numberOfLines={1}>
+                  {member.firstName || member.name?.split(/[\s,]+/).find(w => w) || member.name}
+                </Text>
+                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.50)', marginTop: 1 }} numberOfLines={1}>{member.userId}</Text>
+              </View>
+            </View>
+            {/* View Profile */}
+            <TouchableOpacity
+              onPress={() => { setShowProfileMenu(false); switchNav('profile'); }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}
+              activeOpacity={0.75}>
+              <MaterialIcons name="person-outline" size={18} color="rgba(255,255,255,0.70)" />
+              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: '#fff' }}>View Profile</Text>
+            </TouchableOpacity>
+            {/* Deposit */}
+            {!isRegistered && (
+              <TouchableOpacity
+                onPress={() => { setShowProfileMenu(false); openQuickModal('deposit'); }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}
+                activeOpacity={0.75}>
+                <Image source={require('../../assets/wallet.png')} style={{ width: 18, height: 18, tintColor: '#4cde8a' }} />
+                <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: '#4cde8a' }}>Deposit</Text>
+              </TouchableOpacity>
+            )}
+            {/* Withdraw */}
+            {!isRegistered && (
+              <TouchableOpacity
+                onPress={() => { setShowProfileMenu(false); openQuickModal('withdraw'); }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}
+                activeOpacity={0.75}>
+                <Image source={require('../../assets/withdraw.png')} style={{ width: 18, height: 18, tintColor: '#e87a7a' }} />
+                <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: '#e87a7a' }}>Withdraw</Text>
+              </TouchableOpacity>
+            )}
+            {/* Logout */}
+            <TouchableOpacity
+              onPress={() => { setShowProfileMenu(false); onLogout(); }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13 }}
+              activeOpacity={0.75}>
+              <MaterialIcons name="logout" size={18} color="#e8c87a" />
+              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e8c87a' }}>Logout</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Body — full width, no persistent sidebar */}
       <View style={{ flex: 1 }}>
@@ -4703,8 +5675,8 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
                 <Text style={[s.fieldLabel, { marginBottom: 8 }]}>ACCOUNT</Text>
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
                   {[
-                    { key: 'savings', label: 'Savings',      bal: member.savings, color: C.green },
-                    { key: 'shares',  label: 'Share Capital', bal: member.shares,  color: C.gold  },
+                    { key: 'savings',    label: 'Savings',      bal: member.savings,     color: C.green },
+                    ...(quickMode === 'withdraw' ? [{ key: 'loan', label: 'Loan Wallet', bal: member.loanBalance, color: C.blue }] : []),
                   ].map(opt => (
                     <TouchableOpacity key={opt.key} onPress={() => { setQuickType(opt.key); setQuickErr(''); }}
                       style={{ flex: 1, borderRadius: 12, borderWidth: 2, borderColor: quickType === opt.key ? opt.color : 'rgba(15,30,53,0.15)', backgroundColor: quickType === opt.key ? (opt.color + '18') : 'rgba(255,255,255,0.55)', padding: 10, alignItems: 'center' }}>
