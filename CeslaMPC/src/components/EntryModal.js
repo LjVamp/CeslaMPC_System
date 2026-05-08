@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useBilling, DEPARTMENTS, DEPARTMENTS_EXTENDED, todayVal, fmt } from '../context/BillingContext';
+import { useBilling, DEPARTMENTS, todayVal, fmt } from '../context/BillingContext';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const NAVY    = '#304674';
@@ -60,39 +60,25 @@ const calcAmount = (category, form) => {
 
 // ── Floating Dropdown ─────────────────────────────────────────────────────────
 function DropdownField({ value, onChange, options }) {
-  const [open,   setOpen]   = useState(false);
-  const [pos,    setPos]    = useState({ top:0, left:0, width:0 });
-  const btnRef = useRef(null);
-
-  const handleOpen = () => {
-    btnRef.current?.measureInWindow((x, y, w, h) => {
-      setPos({ top: y + h + 2, left: x, width: w });
-      setOpen(true);
-    });
-  };
+  const [open, setOpen] = useState(false);
 
   return (
     <View>
-      <TouchableOpacity ref={btnRef} style={s.dropBtn} onPress={handleOpen} activeOpacity={0.8}>
+      <TouchableOpacity style={s.dropBtn} onPress={() => setOpen(o => !o)} activeOpacity={0.8}>
         <Text style={s.dropBtnTxt}>{value}</Text>
-        <MaterialIcons name="keyboard-arrow-down" size={20} color={TEXT_M} />
+        <MaterialIcons name={open ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={TEXT_M} />
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="none" statusBarTranslucent onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setOpen(false)} />
-        <View style={[s.dropList, { position:'absolute', top:pos.top, left:pos.left, width:pos.width }]}>
-          <FlatList
-            data={options}
-            keyExtractor={o => o}
-            bounces={false}
-            style={{ maxHeight: 260 }}
-            showsVerticalScrollIndicator
-            renderItem={({ item }) => (
+      {open && (
+        <View style={s.dropList}>
+          <ScrollView bounces={false} style={{ maxHeight: 220 }} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+            {(options || []).map(item =>
               item === 'Others'
-                ? <View style={s.dropSectionLabel}>
+                ? <View key={item} style={s.dropSectionLabel}>
                     <Text style={s.dropSectionLabelTxt}>Others</Text>
                   </View>
                 : <TouchableOpacity
+                    key={item}
                     style={[s.dropItem, item === value && s.dropItemActive]}
                     onPress={() => { onChange(item); setOpen(false); }}
                   >
@@ -100,9 +86,9 @@ function DropdownField({ value, onChange, options }) {
                     {item === value && <MaterialIcons name="check" size={14} color={NAVY} />}
                   </TouchableOpacity>
             )}
-          />
+          </ScrollView>
         </View>
-      </Modal>
+      )}
     </View>
   );
 }
@@ -441,11 +427,7 @@ export default function EntryModal({ visible, category, editEntry, presetDept, p
               <DropdownField
                 value={form.dept}
                 onChange={v => update('dept', v)}
-                options={
-                  category === 'freelunch' || category === 'riceallowances' || category === 'ticket'
-                    ? DEPARTMENTS_EXTENDED
-                    : DEPARTMENTS
-                }
+                options={DEPARTMENTS}
               />
             </FieldRow>
 
@@ -554,7 +536,7 @@ const s = StyleSheet.create({
   // Dropdown
   dropBtn:      { flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:GRAY_BG, borderRadius:8, paddingHorizontal:12, paddingVertical:11, borderWidth:1.5, borderColor:GRAY_MD },
   dropBtnTxt:   { fontFamily:'GoogleSans_400Regular', fontSize:14, color:'#011f4b', flex:1 },
-  dropList:     { backgroundColor:WHITE, borderRadius:10, borderWidth:1, borderColor:GRAY_MD, shadowColor:'#000', shadowOpacity:0.18, shadowRadius:12, shadowOffset:{width:0,height:4}, elevation:16, overflow:'hidden' },
+  dropList:     { backgroundColor:WHITE, borderRadius:10, borderWidth:1, borderColor:GRAY_MD, marginTop:2 },
   dropItem:     { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal:16, paddingVertical:13, borderBottomWidth:1, borderBottomColor:'#f0f2f8' },
   dropItemActive:   { backgroundColor:'rgba(48,70,116,0.07)' },
   dropItemTxt:      { fontFamily:'GoogleSans_400Regular', fontSize:14, color:'#011f4b' },
