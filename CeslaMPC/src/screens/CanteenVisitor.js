@@ -641,21 +641,22 @@ const ImageZoomModal = ({ visible, item, onClose }) => {
 };
 
 // ─── FOOD CARD — static Add To Cart only, no inline qty ───────────────────────
-const FoodCard = ({ item, onAdd }) => {
+const FoodCard = ({ item, onAdd, isWide }) => {
   const [zoomed, setZoomed] = useState(false);
+  const innerStyle = isWide ? { padding: 14, gap: 4 } : { padding: 8, gap: 3 };
   return (
     <View style={styles.foodCard}>
       {Platform.OS === 'web' ? (
         <LinearGradient
           colors={['rgba(220,232,242,0.80)','rgba(200,218,235,0.60)']}
           start={{x:0,y:0}} end={{x:0,y:1}}
-          style={styles.foodCardInner}
+          style={[styles.foodCardInner, innerStyle]}
         >
-          <FoodCardBody item={item} onAdd={onAdd} onZoom={() => setZoomed(true)} />
+          <FoodCardBody item={item} onAdd={onAdd} onZoom={() => setZoomed(true)} isWide={isWide} />
         </LinearGradient>
       ) : (
-        <View style={[styles.foodCardInner, { backgroundColor:'rgba(225,238,248,0.85)' }]}>
-          <FoodCardBody item={item} onAdd={onAdd} onZoom={() => setZoomed(true)} />
+        <View style={[styles.foodCardInner, innerStyle, { backgroundColor:'rgba(225,238,248,0.85)' }]}>
+          <FoodCardBody item={item} onAdd={onAdd} onZoom={() => setZoomed(true)} isWide={isWide} />
         </View>
       )}
       <ImageZoomModal visible={zoomed} item={item} onClose={() => setZoomed(false)} />
@@ -663,19 +664,22 @@ const FoodCard = ({ item, onAdd }) => {
   );
 };
 
-const FoodCardBody = ({ item, onAdd, onZoom }) => (
+const FoodCardBody = ({ item, onAdd, onZoom, isWide }) => (
   <>
-    <TouchableOpacity style={styles.emojiCircle} onPress={onZoom} activeOpacity={0.80}>
+    <TouchableOpacity
+      style={[styles.emojiCircle, isWide ? styles.emojiCircleWide : styles.emojiCircleMobile]}
+      onPress={onZoom} activeOpacity={0.80}
+    >
       {item.image
         ? <Image source={{ uri: item.image }} style={{ width:'100%', height:'100%', borderRadius:99 }} resizeMode="cover" />
-        : <Text style={styles.emojiText}>{item.emoji}</Text>
+        : <Text style={[styles.emojiText, { fontSize: isWide ? 34 : 24 }]}>{item.emoji}</Text>
       }
     </TouchableOpacity>
-    <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
-    <Text style={styles.itemStock}>Stock: {item.stock}</Text>
-    <Text style={styles.itemPrice}>₱{item.price}.00</Text>
-    <TouchableOpacity style={styles.addBtn} onPress={onAdd}>
-      <Text style={styles.addBtnText}>Add To Cart</Text>
+    <Text style={[styles.itemName, { fontSize: isWide ? 11 : 9, lineHeight: isWide ? 15 : 12, minHeight: isWide ? 15 : 24 }]} numberOfLines={2}>{item.name}</Text>
+    <Text style={[styles.itemStock, { fontSize: isWide ? 10 : 9 }]}>Stock: {item.stock}</Text>
+    <Text style={[styles.itemPrice, { fontSize: isWide ? 14 : 12 }]}>₱{item.price}.00</Text>
+    <TouchableOpacity style={[styles.addBtn, { paddingVertical: isWide ? 8 : 6 }]} onPress={onAdd}>
+      <Text style={[styles.addBtnText, { fontSize: isWide ? 10 : 9 }]}>Add To Cart</Text>
     </TouchableOpacity>
   </>
 );
@@ -2072,13 +2076,13 @@ export default function CanteenVisitor({ navigation }) {
     return (activeCategory === 'All' || i.cat === activeCategory);
   });
 
-  // Grid cols — COLS fixed per platform, CARD_W fills available space
+  // Grid cols — COLS based on actual screen width, not platform
   const CART_W  = isWide ? 320 : 0;
   const CAT_W   = isWide ? 170 : 0;
   const MARGIN  = isWide ? 80 : 20;  // centerPanel paddingH(10)*2
-  const GAP_C   = Platform.OS === 'web' ? 10 : 5;
-  const COLS    = Platform.OS === 'web' ? 5 : 3;
-  const AVAIL   = width - CAT_W - CART_W - MARGIN - (Platform.OS==='web' ? 24 : 12);  // padding*2
+  const GAP_C   = isWide ? 10 : 5;
+  const COLS    = isWide ? 5 : 3;
+  const AVAIL   = width - CAT_W - CART_W - MARGIN - (isWide ? 24 : 12);  // padding*2
   const CARD_W  = Math.floor((AVAIL - (COLS - 1) * GAP_C) / COLS);
 
   return (
@@ -2252,18 +2256,19 @@ export default function CanteenVisitor({ navigation }) {
               showsVerticalScrollIndicator={true}
               nestedScrollEnabled={true}
               style={{ flex:1, minHeight:0 }}
-              contentContainerStyle={[styles.menuGrid, { gap: Platform.OS==='web' ? 10 : 5, paddingBottom: Platform.OS !== 'web' ? 90 : 20 }]}
+              contentContainerStyle={[styles.menuGrid, { gap: isWide ? 10 : 5, paddingBottom: !isWide ? 90 : 20 }]}
             >
               {filtered.length === 0 ? (
                 <Text style={styles.emptyText}>No items found.</Text>
               ) : (
                 Array.from({ length: Math.ceil(filtered.length / COLS) }, (_, rowIdx) => (
-                  <View key={rowIdx} style={{ flexDirection:'row', gap: Platform.OS==='web' ? 10 : 5, marginBottom: Platform.OS==='web' ? 0 : 5 }}>
+                  <View key={rowIdx} style={{ flexDirection:'row', gap: isWide ? 10 : 5, marginBottom: isWide ? 0 : 5 }}>
                     {filtered.slice(rowIdx * COLS, rowIdx * COLS + COLS).map(item => (
                       <View key={item.id} style={{ flex:1 }}>
                         <FoodCard
                           item={item}
                           onAdd={() => addToCart(item)}
+                          isWide={isWide}
                         />
                       </View>
                     ))}
@@ -2558,45 +2563,49 @@ const styles = StyleSheet.create({
     flex:1,
   },
   foodCardInner: {
-    borderRadius:14, padding: Platform.OS==='web' ? 14 : 8,
+    borderRadius:14, padding: 8,
     borderWidth:1.5, borderColor:'rgba(255,255,255,0.75)',
-    alignItems:'center', gap: Platform.OS==='web' ? 4 : 3,
+    alignItems:'center', gap: 3,
     flex:1,
     justifyContent:'space-between',
   },
   emojiCircle: {
-    width: Platform.OS==='web' ? 72 : 52,
-    height: Platform.OS==='web' ? 72 : 52,
-    borderRadius: Platform.OS==='web' ? 36 : 26,
+    borderRadius: 26,
     backgroundColor:'rgba(240,246,252,0.90)',
     borderWidth:1.5, borderColor:'rgba(255,255,255,0.85)',
     justifyContent:'center', alignItems:'center',
-    marginBottom: Platform.OS==='web' ? 6 : 3,
+    marginBottom: 3,
     shadowColor:'#011f4b', shadowOpacity:0.08,
     shadowRadius:6, shadowOffset:{width:0,height:2},
     overflow:'hidden',
   },
-  emojiText: { fontSize: Platform.OS==='web' ? 34 : 24 },
+  emojiCircleWide: {
+    width: 72, height: 72, borderRadius: 36, marginBottom: 6,
+  },
+  emojiCircleMobile: {
+    width: 52, height: 52, borderRadius: 26, marginBottom: 3,
+  },
+  emojiText: { fontSize: 24 },
   itemName: {
     fontFamily:'GoogleSans_700Bold',
-    fontSize: Platform.OS==='web' ? 11 : 9,
+    fontSize: 9,
     color:'#1a2d4e', textAlign:'center', fontWeight:'700',
-    lineHeight: Platform.OS==='web' ? 15 : 12,
-    minHeight: Platform.OS==='web' ? 15 : 24,
+    lineHeight: 12,
+    minHeight: 24,
   },
   itemStock: {
     fontFamily:'GoogleSans_400Regular',
-    fontSize: Platform.OS==='web' ? 10 : 9,
+    fontSize: 9,
     color:'rgba(1,31,75,0.45)', letterSpacing:0.2,
   },
   itemPrice: {
     fontFamily:'NotoSerif_700Bold',
-    fontSize: Platform.OS==='web' ? 14 : 12,
+    fontSize: 12,
     color:'#c9a84c', fontWeight:'700', letterSpacing:0.3,
   },
   addBtn: {
     backgroundColor:'#1a3a6b', borderRadius:7,
-    paddingVertical: Platform.OS==='web' ? 8 : 6,
+    paddingVertical: 6,
     paddingHorizontal:4,
     marginTop:2, alignItems:'center',
     width:'100%',
@@ -2605,7 +2614,7 @@ const styles = StyleSheet.create({
   },
   addBtnText: {
     fontFamily:'GoogleSans_700Bold',
-    fontSize: Platform.OS==='web' ? 10 : 9,
+    fontSize: 9,
     color:'#ffffff', fontWeight:'700', letterSpacing:0.3,
   },
 

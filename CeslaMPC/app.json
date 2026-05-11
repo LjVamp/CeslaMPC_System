@@ -31,7 +31,9 @@
       }
     },
     "web": {
-      "favicon": "./assets/CESLA_logo.png"
+      "favicon": "./assets/CESLA_logo.png",
+      "bundler": "metro",
+      "output": "single-page"
     },
     "plugins": [
       "expo-font",

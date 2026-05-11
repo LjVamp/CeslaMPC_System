@@ -5,23 +5,43 @@
 // After login, member stays in this screen — no navigation needed
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Animated, StatusBar, useWindowDimensions, Platform,
-  TextInput, ActivityIndicator, KeyboardAvoidingView, Image, Alert, BackHandler, Modal,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useFonts } from 'expo-font';
-import { NotoSerif_700Bold, NotoSerif_700Bold_Italic } from '@expo-google-fonts/noto-serif';
-import { GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold } from '@expo-google-fonts/google-sans';
-import * as Clipboard from 'expo-clipboard';
-import * as ImagePicker from 'expo-image-picker';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Animated,
+  StatusBar,
+  useWindowDimensions,
+  Platform,
+  TextInput,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Image,
+  Alert,
+  BackHandler,
+  Modal,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useFonts } from "expo-font";
+import {
+  NotoSerif_700Bold,
+  NotoSerif_700Bold_Italic,
+} from "@expo-google-fonts/noto-serif";
+import {
+  GoogleSans_400Regular,
+  GoogleSans_500Medium,
+  GoogleSans_700Bold,
+} from "@expo-google-fonts/google-sans";
+import * as Clipboard from "expo-clipboard";
+import * as ImagePicker from "expo-image-picker";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Notifications from "expo-notifications";
 // ChatSystem replaced by built-in FloatingChat below
 
 // ─── Notification handler — must be set before any notification fires ─────────
@@ -29,45 +49,62 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge:  true,
+    shouldSetBadge: true,
   }),
 });
 
 // ─── Firebase ────────────────────────────────────────────────────────────────
 import {
-  collection, query, where, getDocs, addDoc, doc,
-  updateDoc, serverTimestamp, orderBy, limit, onSnapshot, setDoc,
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
+  collection,
+  query,
+  where,
+  getDocs,
+  addDoc,
+  doc,
+  updateDoc,
+  serverTimestamp,
+  orderBy,
+  limit,
+  onSnapshot,
+  setDoc,
+} from "firebase/firestore";
+import { db } from "../config/firebase";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PALETTE — #98bad5 light steel-blue background
 // ═════════════════════════════════════════════════════════════════════════════
 const C = {
-  navy:      '#0f1e35', navyMid:  '#1a2d4e', navyDeep: '#243554',
-  gold:      '#c9a84c', goldLt:   '#e8c87a',
-  green:     '#1a8a4a', greenLt:  '#25a85a',
-  red:       '#c0392b', redLt:    '#e74c3c',
-  orange:    '#c47d0e', orangeLt: '#e8960f',
-  blue:      '#2563b0', blueLt:   '#3b7dd8',
-  surface:   'rgba(255,255,255,0.50)',
-  border:    'rgba(15,30,53,0.14)',
-  text:      '#0f1e35',
-  textSec:   'rgba(15,30,53,0.65)',
-  textMuted: 'rgba(15,30,53,0.42)',
+  navy: "#0f1e35",
+  navyMid: "#1a2d4e",
+  navyDeep: "#243554",
+  gold: "#c9a84c",
+  goldLt: "#e8c87a",
+  green: "#1a8a4a",
+  greenLt: "#25a85a",
+  red: "#c0392b",
+  redLt: "#e74c3c",
+  orange: "#c47d0e",
+  orangeLt: "#e8960f",
+  blue: "#2563b0",
+  blueLt: "#3b7dd8",
+  surface: "rgba(255,255,255,0.50)",
+  border: "rgba(15,30,53,0.14)",
+  text: "#0f1e35",
+  textSec: "rgba(15,30,53,0.65)",
+  textMuted: "rgba(15,30,53,0.42)",
 };
 
 // ── Persistent session key ────────────────────────────────────────────────────
-const SESSION_KEY = '@cesla_member_session_v1';
+const SESSION_KEY = "@cesla_member_session_v1";
 // ── Message settings key ──────────────────────────────────────────────────────
-const MSG_SETTINGS_KEY = '@cesla_msg_settings_v1';
+const MSG_SETTINGS_KEY = "@cesla_msg_settings_v1";
 const DEFAULT_MSG_SETTINGS = {
-  activeNow:         true,   // show online/active dot to others
-  notifSound:        true,   // play sound on incoming message
-  notifVibrate:      true,   // vibrate on incoming message
-  notifPreview:      true,   // show message preview in notification
-  notifAdminOnly:    false,  // only notify for admin messages
-  notifMuted:        false,  // mute all message notifications
+  activeNow: true, // show online/active dot to others
+  notifSound: true, // play sound on incoming message
+  notifVibrate: true, // vibrate on incoming message
+  notifPreview: true, // show message preview in notification
+  notifAdminOnly: false, // only notify for admin messages
+  notifMuted: false, // mute all message notifications
 };
 
 // ── Responsive hook — use anywhere ──────────────────────────────────────────
@@ -75,31 +112,94 @@ const useRwd = () => {
   const { width, height } = useWindowDimensions();
   const isMobile = width < 600;
   return {
-    width, height,
-    isWide:   width >= 768,
+    width,
+    height,
+    isWide: width >= 768,
     isMobile,
-    isSmall:  width < 400,
+    isSmall: width < 400,
     // 'column' on mobile, 'row' on wide — use for side-by-side field rows
-    rowDir:   isMobile ? 'column' : 'row',
+    rowDir: isMobile ? "column" : "row",
     // pass to a View child instead of `half` prop when in a row
-    halfStyle: isMobile ? { width: '100%' } : { flex: 1 },
-    col: (wide, mobile) => width >= 600 ? wide : mobile,
+    halfStyle: isMobile ? { width: "100%" } : { flex: 1 },
+    col: (wide, mobile) => (width >= 600 ? wide : mobile),
   };
 };
-const fmtCur  = v => '₱' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 });
-const fmtDate = ts => { if (!ts) return '—'; const d = ts?.toDate?.() || new Date(ts); return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }); };
-const fmtTime = ts => { if (!ts) return '—'; const d = ts?.toDate?.() || new Date(ts); return d.toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); };
-const mkInit  = name => (name || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+const fmtCur = (v) =>
+  "₱" + Number(v || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 });
+const fmtDate = (ts) => {
+  if (!ts) return "—";
+  const d = ts?.toDate?.() || new Date(ts);
+  return d.toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+const fmtTime = (ts) => {
+  if (!ts) return "—";
+  const d = ts?.toDate?.() || new Date(ts);
+  return d.toLocaleString("en-PH", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+const mkInit = (name) =>
+  (name || "?")
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
 // Photo-aware avatar — shows profile picture if set, else initials circle
 const MemberAvatar = ({ member, size = 52, style }) => {
   const r = size / 2;
   if (member?.photoURL) {
-    return <Image source={{ uri: member.photoURL }} style={[{ width: size, height: size, borderRadius: r, borderWidth: 2, borderColor: C.gold }, style]} />;
+    return (
+      <Image
+        source={{ uri: member.photoURL }}
+        style={[
+          {
+            width: size,
+            height: size,
+            borderRadius: r,
+            borderWidth: 2,
+            borderColor: C.gold,
+          },
+          style,
+        ]}
+      />
+    );
   }
   return (
-    <View style={[{ width: size, height: size, borderRadius: r, backgroundColor: 'rgba(201,168,76,0.25)', borderWidth: 2, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }, style]}>
-      <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: size * 0.34, color: C.gold }}>{mkInit(member?.name)}</Text>
+    <View
+      style={[
+        {
+          width: size,
+          height: size,
+          borderRadius: r,
+          backgroundColor: "rgba(201,168,76,0.25)",
+          borderWidth: 2,
+          borderColor: C.gold,
+          justifyContent: "center",
+          alignItems: "center",
+        },
+        style,
+      ]}
+    >
+      <Text
+        style={{
+          fontFamily: "NotoSerif_700Bold",
+          fontSize: size * 0.34,
+          color: C.gold,
+        }}
+      >
+        {mkInit(member?.name)}
+      </Text>
     </View>
   );
 };
@@ -107,47 +207,113 @@ const MemberAvatar = ({ member, size = 52, style }) => {
 // ═════════════════════════════════════════════════════════════════════════════
 // FIRESTORE HELPERS
 // ═════════════════════════════════════════════════════════════════════════════
-const hashPw = pw => { let h = 0; for (let i = 0; i < pw.length; i++) { h = (h << 5) - h + pw.charCodeAt(i); h |= 0; } return 'h_' + Math.abs(h).toString(36) + pw.length; };
+const hashPw = (pw) => {
+  let h = 0;
+  for (let i = 0; i < pw.length; i++) {
+    h = (h << 5) - h + pw.charCodeAt(i);
+    h |= 0;
+  }
+  return "h_" + Math.abs(h).toString(36) + pw.length;
+};
 
 const generateNextUserId = async () => {
   const year = new Date().getFullYear();
   const prefix = `CESLA-${year}-`;
-  const snap = await getDocs(query(collection(db, 'members'), where('userId', '>=', prefix), where('userId', '<', `CESLA-${year + 1}-`), orderBy('userId', 'desc'), limit(1)));
+  const snap = await getDocs(
+    query(
+      collection(db, "members"),
+      where("userId", ">=", prefix),
+      where("userId", "<", `CESLA-${year + 1}-`),
+      orderBy("userId", "desc"),
+      limit(1),
+    ),
+  );
   if (snap.empty) return `${prefix}00001`;
-  return `${prefix}${String(parseInt(snap.docs[0].data().userId.replace(prefix, ''), 10) + 1).padStart(5, '0')}`;
+  return `${prefix}${String(parseInt(snap.docs[0].data().userId.replace(prefix, ""), 10) + 1).padStart(5, "0")}`;
 };
 
-const registerMemberFS = async ({ lastName, firstName, middleName, password }) => {
+const fmtChatName = (name, firstName, lastName) => {
+  // prefer "Firstname Lastname", fallback to stored name
+  if (firstName && lastName) return `${firstName} ${lastName}`;
+  if (firstName) return firstName;
+  // stored name is usually "Last, First M." — convert to "First Last"
+  if (name) {
+    const parts = name.split(/,\s*/);
+    if (parts.length >= 2) {
+      const first = parts[1].trim().split(/\s+/)[0]; // drop middle initial
+      return `${first} ${parts[0].trim()}`;
+    }
+    return name;
+  }
+  return "?";
+};
+
+const registerMemberFS = async ({
+  lastName,
+  firstName,
+  middleName,
+  password,
+}) => {
   const userId = await generateNextUserId();
-  const mid  = middleName?.trim() ? ' ' + middleName.trim()[0].toUpperCase() + '.' : '';
+  const mid = middleName?.trim()
+    ? " " + middleName.trim()[0].toUpperCase() + "."
+    : "";
   const name = `${lastName.trim()}, ${firstName.trim()}${mid}`;
-  const ref  = await addDoc(collection(db, 'members'), {
-    userId, name, lastName: lastName.trim(), firstName: firstName.trim(), middleName: middleName?.trim() || '',
-    passwordHash: hashPw(password), role: 'member', status: 'Registered',
-    shares: 0, savings: 0, loan: 0, loanBalance: 0, creditBalance: 0,
-    contact: '', email: '', address: '', appForm: {},
-    createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-    approvedAt: null, lastLogin: null, overdue: false, daysOverdue: 0,
+  const ref = await addDoc(collection(db, "members"), {
+    userId,
+    name,
+    lastName: lastName.trim(),
+    firstName: firstName.trim(),
+    middleName: middleName?.trim() || "",
+    passwordHash: hashPw(password),
+    role: "member",
+    status: "Registered",
+    shares: 0,
+    savings: 0,
+    loan: 0,
+    loanBalance: 0,
+    creditBalance: 0,
+    contact: "",
+    email: "",
+    address: "",
+    appForm: {},
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    approvedAt: null,
+    lastLogin: null,
+    overdue: false,
+    daysOverdue: 0,
   });
-  await addDoc(collection(db, 'adminNotifications'), {
-    type: 'registration', icon: '🆕', title: 'New Member Registration',
+  await addDoc(collection(db, "adminNotifications"), {
+    type: "registration",
+    icon: "🆕",
+    title: "New Member Registration",
     message: `${name} (${userId}) registered and has limited access. Awaiting application form approval.`,
-    memberId: ref.id, memberUserId: userId, createdAt: serverTimestamp(), read: false,
+    memberId: ref.id,
+    memberUserId: userId,
+    createdAt: serverTimestamp(),
+    read: false,
   });
   return { uid: ref.id, userId, name };
 };
 
 const loginByUserIdFS = async (userId, password) => {
-  const snap = await getDocs(query(collection(db, 'members'), where('userId', '==', userId.trim())));
-  if (snap.empty) throw new Error('User ID not found. Please check your ID.');
+  const snap = await getDocs(
+    query(collection(db, "members"), where("userId", "==", userId.trim())),
+  );
+  if (snap.empty) throw new Error("User ID not found. Please check your ID.");
   const d = snap.docs[0];
   const m = { uid: d.id, ...d.data() };
-  if (hashPw(password) !== m.passwordHash) throw new Error('Incorrect password. Please try again.');
+  if (hashPw(password) !== m.passwordHash)
+    throw new Error("Incorrect password. Please try again.");
   // 'Registered' is allowed — they get limited access (appform only)
-  if (m.status === 'Pending')  throw new Error('Your account is pending admin approval. Please wait.');
-  if (m.status === 'Rejected') throw new Error('Your registration was rejected. Please contact admin.');
-  if (m.status === 'Inactive') throw new Error('Your account is inactive. Please contact admin.');
-  await updateDoc(doc(db, 'members', d.id), { lastLogin: serverTimestamp() });
+  if (m.status === "Pending")
+    throw new Error("Your account is pending admin approval. Please wait.");
+  if (m.status === "Rejected")
+    throw new Error("Your registration was rejected. Please contact admin.");
+  if (m.status === "Inactive")
+    throw new Error("Your account is inactive. Please contact admin.");
+  await updateDoc(doc(db, "members", d.id), { lastLogin: serverTimestamp() });
   const { passwordHash, ...safe } = m;
   return safe;
 };
@@ -155,7 +321,7 @@ const loginByUserIdFS = async (userId, password) => {
 // ── Online presence helpers ───────────────────────────────────────────────────
 const setOnlineStatus = async (uid, isOnline) => {
   try {
-    await updateDoc(doc(db, 'members', uid), {
+    await updateDoc(doc(db, "members", uid), {
       isOnline,
       lastSeen: serverTimestamp(),
     });
@@ -167,63 +333,219 @@ const setOnlineStatus = async (uid, isOnline) => {
 // ═════════════════════════════════════════════════════════════════════════════
 const AppBg = () => (
   <>
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#98bad5' }]} />
-    <LinearGradient colors={['rgba(198,220,235,0.85)', 'rgba(152,186,213,0.40)', 'rgba(80,110,150,0.0)']} locations={[0, 0.45, 1]} start={{ x: 0.5, y: 0.1 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFillObject} />
-    <LinearGradient colors={['rgba(50,80,120,0.45)', 'rgba(50,80,120,0.0)', 'rgba(50,80,120,0.45)']} locations={[0, 0.5, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
-    <LinearGradient colors={['rgba(50,80,120,0.0)', 'rgba(60,90,130,0.35)']} locations={[0.4, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFillObject} />
+    <View
+      style={[StyleSheet.absoluteFillObject, { backgroundColor: "#98bad5" }]}
+    />
+    <LinearGradient
+      colors={[
+        "rgba(198,220,235,0.85)",
+        "rgba(152,186,213,0.40)",
+        "rgba(80,110,150,0.0)",
+      ]}
+      locations={[0, 0.45, 1]}
+      start={{ x: 0.5, y: 0.1 }}
+      end={{ x: 0.5, y: 1 }}
+      style={StyleSheet.absoluteFillObject}
+    />
+    <LinearGradient
+      colors={[
+        "rgba(50,80,120,0.45)",
+        "rgba(50,80,120,0.0)",
+        "rgba(50,80,120,0.45)",
+      ]}
+      locations={[0, 0.5, 1]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={StyleSheet.absoluteFillObject}
+    />
+    <LinearGradient
+      colors={["rgba(50,80,120,0.0)", "rgba(60,90,130,0.35)"]}
+      locations={[0.4, 1]}
+      start={{ x: 0.5, y: 0 }}
+      end={{ x: 0.5, y: 1 }}
+      style={StyleSheet.absoluteFillObject}
+    />
   </>
 );
 
-const Spinner = ({ msg = 'Loading...' }) => (
-  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 }}>
+const Spinner = ({ msg = "Loading..." }) => (
+  <View
+    style={{ flex: 1, justifyContent: "center", alignItems: "center", gap: 12 }}
+  >
     <ActivityIndicator size="large" color={C.gold} />
-    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec }}>{msg}</Text>
+    <Text
+      style={{
+        fontFamily: "GoogleSans_400Regular",
+        fontSize: 13,
+        color: C.textSec,
+      }}
+    >
+      {msg}
+    </Text>
   </View>
 );
 
 const GCard = ({ style, children }) => (
-  <View style={[{ backgroundColor: C.surface, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.78)', padding: 14, marginBottom: 12, shadowColor: '#1a2d4e', shadowOpacity: 0.07, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }, style]}>
+  <View
+    style={[
+      {
+        backgroundColor: C.surface,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: "rgba(255,255,255,0.78)",
+        padding: 14,
+        marginBottom: 12,
+        shadowColor: "#1a2d4e",
+        shadowOpacity: 0.07,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+      },
+      style,
+    ]}
+  >
     {children}
   </View>
 );
 
 // Field for auth screens
-const Field = ({ label, value, onChangeText, placeholder, secureEntry, showToggle, onToggle, error, autoCapitalize, keyboardType }) => (
+const Field = ({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  secureEntry,
+  showToggle,
+  onToggle,
+  error,
+  autoCapitalize,
+  keyboardType,
+}) => (
   <View style={s.fieldGroup}>
     <Text style={s.fieldLabel}>{label}</Text>
     <View style={[s.fieldRow, error && s.fieldRowErr]}>
-      <TextInput style={[s.fieldInput, { flex: 1 }]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(15,30,53,0.35)" secureTextEntry={!!secureEntry} autoCapitalize={autoCapitalize || 'none'} autoCorrect={false} keyboardType={keyboardType || 'default'} />
-      {showToggle && <TouchableOpacity onPress={onToggle} style={{ padding: 6 }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}><MaterialIcons name={!secureEntry ? 'visibility-off' : 'visibility'} size={20} color="rgba(15,30,53,0.40)" /></TouchableOpacity>}
+      <TextInput
+        style={[s.fieldInput, { flex: 1 }]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="rgba(15,30,53,0.35)"
+        secureTextEntry={!!secureEntry}
+        autoCapitalize={autoCapitalize || "none"}
+        autoCorrect={false}
+        keyboardType={keyboardType || "default"}
+      />
+      {showToggle && (
+        <TouchableOpacity
+          onPress={onToggle}
+          style={{ padding: 6 }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        >
+          <MaterialIcons
+            name={!secureEntry ? "visibility-off" : "visibility"}
+            size={20}
+            color="rgba(15,30,53,0.40)"
+          />
+        </TouchableOpacity>
+      )}
     </View>
     {error ? <Text style={s.fieldErr}>{error}</Text> : null}
   </View>
 );
 
-const FieldReg = ({ label, value, onChangeText, placeholder, secureEntry, showToggle, onToggle, error, autoCapitalize }) => (
+const FieldReg = ({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  secureEntry,
+  showToggle,
+  onToggle,
+  error,
+  autoCapitalize,
+}) => (
   <View style={[s.fieldGroup, { flex: 1, minWidth: 0 }]}>
-    <Text style={s.fieldLabel} numberOfLines={1}>{label}</Text>
+    <Text style={s.fieldLabel} numberOfLines={1}>
+      {label}
+    </Text>
     <View style={[s.fieldRow, error && s.fieldRowErr]}>
-      <TextInput style={[s.fieldInput, { flex: 1, minWidth: 0 }]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(15,30,53,0.35)" secureTextEntry={!!secureEntry} autoCapitalize={autoCapitalize || 'none'} autoCorrect={false} />
-      {showToggle && <TouchableOpacity onPress={onToggle} style={{ padding: 3 }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}><MaterialIcons name={secureEntry ? 'visibility' : 'visibility-off'} size={16} color="rgba(15,30,53,0.40)" /></TouchableOpacity>}
+      <TextInput
+        style={[s.fieldInput, { flex: 1, minWidth: 0 }]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="rgba(15,30,53,0.35)"
+        secureTextEntry={!!secureEntry}
+        autoCapitalize={autoCapitalize || "none"}
+        autoCorrect={false}
+      />
+      {showToggle && (
+        <TouchableOpacity
+          onPress={onToggle}
+          style={{ padding: 3 }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        >
+          <MaterialIcons
+            name={secureEntry ? "visibility" : "visibility-off"}
+            size={16}
+            color="rgba(15,30,53,0.40)"
+          />
+        </TouchableOpacity>
+      )}
     </View>
     {error ? <Text style={s.fieldErr}>{error}</Text> : null}
   </View>
 );
 
 // Field for dashboard forms
-const DField = ({ label, value, onChangeText, placeholder, secureEntry, showToggle, onToggle, editable = true, keyboardType }) => (
+const DField = ({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  secureEntry,
+  showToggle,
+  onToggle,
+  editable = true,
+  keyboardType,
+}) => (
   <View style={{ marginBottom: 11 }}>
     <Text style={s.fieldLabel}>{label}</Text>
     <View style={[s.fieldRow, !editable && { opacity: 0.55 }]}>
-      <TextInput style={[s.fieldInput, { flex: 1 }]} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.textMuted} secureTextEntry={!!secureEntry} editable={editable} keyboardType={keyboardType || 'default'} autoCapitalize="none" autoCorrect={false} />
-      {showToggle && <TouchableOpacity onPress={onToggle} style={{ padding: 8 }}><Text style={{ fontSize: 16 }}>{secureEntry ? '👁' : '🙈'}</Text></TouchableOpacity>}
+      <TextInput
+        style={[s.fieldInput, { flex: 1 }]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={C.textMuted}
+        secureTextEntry={!!secureEntry}
+        editable={editable}
+        keyboardType={keyboardType || "default"}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      {showToggle && (
+        <TouchableOpacity onPress={onToggle} style={{ padding: 8 }}>
+          <Text style={{ fontSize: 16 }}>{secureEntry ? "👁" : "🙈"}</Text>
+        </TouchableOpacity>
+      )}
     </View>
   </View>
 );
 
 const SaveBtn = ({ onPress, loading, done, label, doneLabel }) => (
-  <TouchableOpacity style={[s.saveBtn, done && { backgroundColor: C.green }]} onPress={onPress} disabled={loading} activeOpacity={0.85}>
-    {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtnTxt}>{done ? `✓ ${doneLabel || 'Saved!'}` : label}</Text>}
+  <TouchableOpacity
+    style={[s.saveBtn, done && { backgroundColor: C.green }]}
+    onPress={onPress}
+    disabled={loading}
+    activeOpacity={0.85}
+  >
+    {loading ? (
+      <ActivityIndicator color="#fff" />
+    ) : (
+      <Text style={s.saveBtnTxt}>
+        {done ? `✓ ${doneLabel || "Saved!"}` : label}
+      </Text>
+    )}
   </TouchableOpacity>
 );
 
@@ -231,67 +553,190 @@ const SaveBtn = ({ onPress, loading, done, label, doneLabel }) => (
 // SIDEBAR
 // ═════════════════════════════════════════════════════════════════════════════
 const NAV = [
-  { key: 'overview',     label: 'Overview',         icon: '⊞', single: true },
-  { key: 'acct_grp',     label: 'My Account',       icon: '👤', children: [
-    { key: 'profile',    label: 'My Profile',       icon: '👤' },
-    { key: 'appform',    label: 'Application Form', icon: '📋', registeredOk: true },
-  ]},
-  { key: 'fin_grp',      label: 'Savings & Shares', icon: '💰', children: [
-    { key: 'savings',    label: 'Savings',          icon: '💰' },
-    { key: 'sharecap',   label: 'Share Capital',    icon: '📊' },
-    { key: 'timedeposit',label: 'Time Deposit',     icon: '🏦' },
-  ]},
-  { key: 'loans_grp',    label: 'Loans',            icon: '💳', children: [
-    { key: 'applyloan',  label: 'Apply for Loan',   icon: '📝' },
-    { key: 'myloans',    label: 'My Loans',         icon: '💳' },
-    { key: 'guidelines', label: 'Guidelines',       icon: '📖' },
-  ]},
-  { key: 'settings_grp', label: 'Settings',         icon: '⚙️', children: [
-    { key: 'editprofile',label: 'Edit Profile',     icon: '✏️' },
-    { key: 'changepw',   label: 'Change Password',  icon: '🔑' },
-    { key: 'notifs',     label: 'Notifications',    icon: '🔔' },
-  ]},
-
+  { key: "overview", label: "Overview", icon: "⊞", single: true },
+  {
+    key: "acct_grp",
+    label: "My Account",
+    icon: "👤",
+    children: [
+      { key: "profile", label: "My Profile", icon: "👤" },
+      {
+        key: "appform",
+        label: "Application Form",
+        icon: "📋",
+        registeredOk: true,
+      },
+    ],
+  },
+  {
+    key: "fin_grp",
+    label: "Savings & Shares",
+    icon: "💰",
+    children: [
+      { key: "savings", label: "Savings", icon: "💰" },
+      { key: "sharecap", label: "Share Capital", icon: "📊" },
+      { key: "timedeposit", label: "Time Deposit", icon: "🏦" },
+    ],
+  },
+  {
+    key: "loans_grp",
+    label: "Loans",
+    icon: "💳",
+    children: [
+      { key: "applyloan", label: "Apply for Loan", icon: "📝" },
+      { key: "myloans", label: "My Loans", icon: "💳" },
+      { key: "guidelines", label: "Guidelines", icon: "📖" },
+    ],
+  },
+  {
+    key: "settings_grp",
+    label: "Settings",
+    icon: "⚙️",
+    children: [
+      { key: "editprofile", label: "Edit Profile", icon: "✏️" },
+      { key: "changepw", label: "Change Password", icon: "🔑" },
+      { key: "notifs", label: "Notifications", icon: "🔔" },
+    ],
+  },
 ];
 
 const SidebarGroup = ({ group, active, onNav, onClose, isRegistered }) => {
-  const isActive = group.single ? active === group.key : !!(group.children?.find(c => c.key === active));
+  const isActive = group.single
+    ? active === group.key
+    : !!group.children?.find((c) => c.key === active);
   const [open, setOpen] = useState(isActive && !group.single);
-  const anim    = useRef(new Animated.Value(isActive && !group.single ? 1 : 0)).current;
+  const anim = useRef(
+    new Animated.Value(isActive && !group.single ? 1 : 0),
+  ).current;
 
   // For Registered members: only appform child is accessible
-  const isGroupLocked = isRegistered && !group.single && !group.children?.some(c => c.registeredOk);
-  const isSingleLocked = isRegistered && group.single && group.key !== 'overview';
+  const isGroupLocked =
+    isRegistered &&
+    !group.single &&
+    !group.children?.some((c) => c.registeredOk);
+  const isSingleLocked =
+    isRegistered && group.single && group.key !== "overview";
 
-  const toggle  = () => {
+  const toggle = () => {
     if (isGroupLocked || isSingleLocked) return; // locked — do nothing
-    if (group.single) { onNav(group.key); onClose?.(); return; }
-    const next = !open; setOpen(next); Animated.timing(anim, { toValue: next ? 1 : 0, duration: 200, useNativeDriver: false }).start();
+    if (group.single) {
+      onNav(group.key);
+      onClose?.();
+      return;
+    }
+    const next = !open;
+    setOpen(next);
+    Animated.timing(anim, {
+      toValue: next ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
   };
-  const maxH    = anim.interpolate({ inputRange: [0, 1], outputRange: [0, (group.children?.length || 0) * 42] });
-  const chevRot = anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '90deg'] });
-  const locked  = isGroupLocked || isSingleLocked;
+  const maxH = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, (group.children?.length || 0) * 42],
+  });
+  const chevRot = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "90deg"],
+  });
+  const locked = isGroupLocked || isSingleLocked;
 
   return (
     <View style={{ marginHorizontal: 6, marginBottom: 1 }}>
-      <TouchableOpacity style={[s.sideHead, group.single && active === group.key && s.sideActive, locked && { opacity: 0.38 }]} onPress={toggle} activeOpacity={locked ? 1 : 0.8}>
-        <Text style={[s.sideIcon, group.single && active === group.key && { color: C.navy }]}>{group.icon}</Text>
-        <Text style={[s.sideLabel, group.single && active === group.key && { color: C.navy, fontFamily: 'GoogleSans_700Bold' }, !group.single && isActive && { color: C.gold }]}>{group.label}</Text>
-        {locked && <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.30)' }}>🔒</Text>}
-        {!group.single && !locked && <Animated.Text style={[{ color: 'rgba(255,255,255,0.40)', fontSize: 17 }, { transform: [{ rotate: chevRot }] }]}>›</Animated.Text>}
+      <TouchableOpacity
+        style={[
+          s.sideHead,
+          group.single && active === group.key && s.sideActive,
+          locked && { opacity: 0.38 },
+        ]}
+        onPress={toggle}
+        activeOpacity={locked ? 1 : 0.8}
+      >
+        <Text
+          style={[
+            s.sideIcon,
+            group.single && active === group.key && { color: C.navy },
+          ]}
+        >
+          {group.icon}
+        </Text>
+        <Text
+          style={[
+            s.sideLabel,
+            group.single &&
+              active === group.key && {
+                color: C.navy,
+                fontFamily: "GoogleSans_700Bold",
+              },
+            !group.single && isActive && { color: C.gold },
+          ]}
+        >
+          {group.label}
+        </Text>
+        {locked && (
+          <Text style={{ fontSize: 11, color: "rgba(255,255,255,0.30)" }}>
+            🔒
+          </Text>
+        )}
+        {!group.single && !locked && (
+          <Animated.Text
+            style={[
+              { color: "rgba(255,255,255,0.40)", fontSize: 17 },
+              { transform: [{ rotate: chevRot }] },
+            ]}
+          >
+            ›
+          </Animated.Text>
+        )}
       </TouchableOpacity>
       {!group.single && !isGroupLocked && (
-        <Animated.View style={{ maxHeight: maxH, overflow: 'hidden' }}>
-          {group.children.map(c => {
+        <Animated.View style={{ maxHeight: maxH, overflow: "hidden" }}>
+          {group.children.map((c) => {
             const childLocked = isRegistered && !c.registeredOk;
             return (
-              <TouchableOpacity key={c.key}
-                style={[s.sideChild, active === c.key && s.sideChildActive, childLocked && { opacity: 0.38 }]}
-                onPress={() => { if (childLocked) return; onNav(c.key); onClose?.(); }}
-                activeOpacity={childLocked ? 1 : 0.8}>
-                <Text style={{ fontSize: 7, color: active === c.key ? C.gold : 'rgba(255,255,255,0.30)', width: 12, textAlign: 'center' }}>{active === c.key ? '◆' : '◇'}</Text>
-                <Text style={[s.sideChildTxt, active === c.key && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{c.label}</Text>
-                {childLocked && <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)' }}>🔒</Text>}
+              <TouchableOpacity
+                key={c.key}
+                style={[
+                  s.sideChild,
+                  active === c.key && s.sideChildActive,
+                  childLocked && { opacity: 0.38 },
+                ]}
+                onPress={() => {
+                  if (childLocked) return;
+                  onNav(c.key);
+                  onClose?.();
+                }}
+                activeOpacity={childLocked ? 1 : 0.8}
+              >
+                <Text
+                  style={{
+                    fontSize: 7,
+                    color: active === c.key ? C.gold : "rgba(255,255,255,0.30)",
+                    width: 12,
+                    textAlign: "center",
+                  }}
+                >
+                  {active === c.key ? "◆" : "◇"}
+                </Text>
+                <Text
+                  style={[
+                    s.sideChildTxt,
+                    active === c.key && {
+                      color: C.gold,
+                      fontFamily: "GoogleSans_700Bold",
+                    },
+                  ]}
+                >
+                  {c.label}
+                </Text>
+                {childLocked && (
+                  <Text
+                    style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}
+                  >
+                    🔒
+                  </Text>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -301,34 +746,102 @@ const SidebarGroup = ({ group, active, onNav, onClose, isRegistered }) => {
   );
 };
 
-const MemberSidebar = ({ active, onNav, onClose, unread, onLogout, onBack, canGoBack, isRegistered }) => (
+const MemberSidebar = ({
+  active,
+  onNav,
+  onClose,
+  unread,
+  onLogout,
+  onBack,
+  canGoBack,
+  isRegistered,
+}) => (
   <View style={s.sidebar}>
     <View style={s.sidebarBrand}>
-      <View style={s.sidebarLogo}><Text style={s.sidebarLogoTxt}>CS</Text></View>
+      <View style={s.sidebarLogo}>
+        <Text style={s.sidebarLogoTxt}>CS</Text>
+      </View>
       <View style={{ flex: 1 }}>
         <Text style={s.sidebarName}>CESLA MPC</Text>
         <Text style={s.sidebarRole}>Member Portal</Text>
       </View>
       {onClose && (
-        <TouchableOpacity onPress={onClose}
-          style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: '#fff', fontSize: 14, lineHeight: 18 }}>✕</Text>
+        <TouchableOpacity
+          onPress={onClose}
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 13,
+            backgroundColor: "rgba(255,255,255,0.15)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 14, lineHeight: 18 }}>✕</Text>
         </TouchableOpacity>
       )}
     </View>
     {isRegistered && (
-      <View style={{ marginHorizontal: 10, marginBottom: 6, backgroundColor: 'rgba(201,168,76,0.18)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', padding: 9 }}>
-        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#e8c87a', textAlign: 'center', lineHeight: 15 }}>⚠️ Limited Access{'\n'}Submit Application Form for full access</Text>
+      <View
+        style={{
+          marginHorizontal: 10,
+          marginBottom: 6,
+          backgroundColor: "rgba(201,168,76,0.18)",
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: "rgba(201,168,76,0.40)",
+          padding: 9,
+        }}
+      >
+        <Text
+          style={{
+            fontFamily: "GoogleSans_700Bold",
+            fontSize: 10,
+            color: "#e8c87a",
+            textAlign: "center",
+            lineHeight: 15,
+          }}
+        >
+          ⚠️ Limited Access{"\n"}Submit Application Form for full access
+        </Text>
       </View>
     )}
-    <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 14, marginBottom: 6 }} />
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }} style={{ flex: 1 }}>
-      {NAV.map(g => <SidebarGroup key={g.key} group={g} active={active} onNav={onNav} onClose={onClose} isRegistered={isRegistered} />)}
+    <View
+      style={{
+        height: 1,
+        backgroundColor: "rgba(255,255,255,0.12)",
+        marginHorizontal: 14,
+        marginBottom: 6,
+      }}
+    />
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingVertical: 6 }}
+      style={{ flex: 1 }}
+    >
+      {NAV.map((g) => (
+        <SidebarGroup
+          key={g.key}
+          group={g}
+          active={active}
+          onNav={onNav}
+          onClose={onClose}
+          isRegistered={isRegistered}
+        />
+      ))}
     </ScrollView>
     {/* Notif badge */}
     {unread > 0 && (
-      <TouchableOpacity style={s.sideNotifBadge} onPress={() => { onNav('notifs'); onClose?.(); }}>
-        <Text style={s.sideNotifTxt}>🔔 {unread} unread notification{unread !== 1 ? 's' : ''}</Text>
+      <TouchableOpacity
+        style={s.sideNotifBadge}
+        onPress={() => {
+          onNav("notifs");
+          onClose?.();
+        }}
+      >
+        <Text style={s.sideNotifTxt}>
+          🔔 {unread} unread notification{unread !== 1 ? "s" : ""}
+        </Text>
       </TouchableOpacity>
     )}
   </View>
@@ -339,10 +852,46 @@ const MemberSidebar = ({ active, onNav, onClose, unread, onLogout, onBack, canGo
 // ═════════════════════════════════════════════════════════════════════════════
 
 const TIPS = [
-  { icon: '💡', title: 'Quick Tips', bullets: ['Fill your Application Form to complete membership.', 'Monitor savings and shares regularly.', 'Check guidelines before applying for a loan.'], colors: ['#1a3a6b', '#304674'] },
-  { icon: '💰', title: 'Savings', bullets: ['Regular savings strengthen your standing.', 'Maintain your minimum monthly savings.', 'Contact admin for inquiries.'], colors: ['#1a6b3a', '#1a8a4a'] },
-  { icon: '💳', title: 'Loan Tips', bullets: ['Loan amount is based on your share capital.', 'Timely payments maintain good standing.', 'Late payments may incur penalties.'], colors: ['#6b1a1a', '#c0392b'] },
-  { icon: '📋', title: 'App Form', bullets: ['Complete all fields accurately.', 'Submit supporting documents if needed.', 'Wait for admin processing.'], colors: ['#6b440a', '#c47d0e'] },
+  {
+    icon: "💡",
+    title: "Quick Tips",
+    bullets: [
+      "Fill your Application Form to complete membership.",
+      "Monitor savings and shares regularly.",
+      "Check guidelines before applying for a loan.",
+    ],
+    colors: ["#1a3a6b", "#304674"],
+  },
+  {
+    icon: "💰",
+    title: "Savings",
+    bullets: [
+      "Regular savings strengthen your standing.",
+      "Maintain your minimum monthly savings.",
+      "Contact admin for inquiries.",
+    ],
+    colors: ["#1a6b3a", "#1a8a4a"],
+  },
+  {
+    icon: "💳",
+    title: "Loan Tips",
+    bullets: [
+      "Loan amount is based on your share capital.",
+      "Timely payments maintain good standing.",
+      "Late payments may incur penalties.",
+    ],
+    colors: ["#6b1a1a", "#c0392b"],
+  },
+  {
+    icon: "📋",
+    title: "App Form",
+    bullets: [
+      "Complete all fields accurately.",
+      "Submit supporting documents if needed.",
+      "Wait for admin processing.",
+    ],
+    colors: ["#6b440a", "#c47d0e"],
+  },
 ];
 
 const TipsCarousel = () => {
@@ -350,7 +899,18 @@ const TipsCarousel = () => {
   const fade = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     const t = setInterval(() => {
-      Animated.timing(fade, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => { setIdx(i => (i + 1) % TIPS.length); Animated.timing(fade, { toValue: 1, duration: 200, useNativeDriver: true }).start(); });
+      Animated.timing(fade, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        setIdx((i) => (i + 1) % TIPS.length);
+        Animated.timing(fade, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      });
     }, 4500);
     return () => clearInterval(t);
   }, []);
@@ -358,50 +918,235 @@ const TipsCarousel = () => {
   return (
     <View style={{ padding: 14 }}>
       <Animated.View style={{ opacity: fade }}>
-        <LinearGradient colors={tip.colors} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ borderRadius: 18, padding: 22, alignItems: 'center', minHeight: 170, justifyContent: 'center' }}>
+        <LinearGradient
+          colors={tip.colors}
+          start={{ x: 0.1, y: 0 }}
+          end={{ x: 0.9, y: 1 }}
+          style={{
+            borderRadius: 18,
+            padding: 22,
+            alignItems: "center",
+            minHeight: 170,
+            justifyContent: "center",
+          }}
+        >
           <Text style={{ fontSize: 36, marginBottom: 8 }}>{tip.icon}</Text>
-          <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#fff', marginBottom: 12, textAlign: 'center' }}>{tip.title}</Text>
-          {tip.bullets.map((b, i) => (<View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 5, alignSelf: 'flex-start' }}><Text style={{ color: 'rgba(255,255,255,0.70)', fontSize: 14, lineHeight: 20 }}>•</Text><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.92)', lineHeight: 20, flex: 1 }}>{b}</Text></View>))}
+          <Text
+            style={{
+              fontFamily: "NotoSerif_700Bold",
+              fontSize: 16,
+              color: "#fff",
+              marginBottom: 12,
+              textAlign: "center",
+            }}
+          >
+            {tip.title}
+          </Text>
+          {tip.bullets.map((b, i) => (
+            <View
+              key={i}
+              style={{
+                flexDirection: "row",
+                gap: 8,
+                marginBottom: 5,
+                alignSelf: "flex-start",
+              }}
+            >
+              <Text
+                style={{
+                  color: "rgba(255,255,255,0.70)",
+                  fontSize: 14,
+                  lineHeight: 20,
+                }}
+              >
+                •
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.92)",
+                  lineHeight: 20,
+                  flex: 1,
+                }}
+              >
+                {b}
+              </Text>
+            </View>
+          ))}
         </LinearGradient>
       </Animated.View>
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginTop: 12 }}>
-        {TIPS.map((_, i) => <TouchableOpacity key={i} onPress={() => setIdx(i)} style={{ width: i === idx ? 20 : 7, height: 7, borderRadius: 4, backgroundColor: i === idx ? C.gold : 'rgba(15,30,53,0.22)' }} />)}
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "center",
+          gap: 7,
+          marginTop: 12,
+        }}
+      >
+        {TIPS.map((_, i) => (
+          <TouchableOpacity
+            key={i}
+            onPress={() => setIdx(i)}
+            style={{
+              width: i === idx ? 20 : 7,
+              height: 7,
+              borderRadius: 4,
+              backgroundColor: i === idx ? C.gold : "rgba(15,30,53,0.22)",
+            }}
+          />
+        ))}
       </View>
     </View>
   );
 };
 
 const OverviewView = ({ member, onNav, contentHeight, isMobile }) => {
-  const lp = member.loan > 0 ? (member.loan - (member.loanBalance || 0)) / member.loan : 0;
+  const lp =
+    member.loan > 0
+      ? (member.loan - (member.loanBalance || 0)) / member.loan
+      : 0;
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+    <ScrollView
+      contentContainerStyle={s.pageOuter}
+      showsVerticalScrollIndicator={true}
+      style={contentHeight ? { height: contentHeight } : undefined}
+    >
       {/* Welcome */}
-      <View style={{ borderRadius: 16, overflow: 'hidden', marginBottom: 14, shadowColor: '#1a2d4e', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } }}>
-        <LinearGradient colors={['#1a2d4e', '#243554']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: isMobile ? 14 : 18 }}>
+      <View
+        style={{
+          borderRadius: 16,
+          overflow: "hidden",
+          marginBottom: 14,
+          shadowColor: "#1a2d4e",
+          shadowOpacity: 0.15,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 3 },
+        }}
+      >
+        <LinearGradient
+          colors={["#1a2d4e", "#243554"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            padding: isMobile ? 14 : 18,
+          }}
+        >
           <MemberAvatar member={member} size={52} style={{ flexShrink: 0 }} />
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>Welcome back,</Text>
-            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: isMobile ? 14 : 16, color: '#fff', lineHeight: 22 }} numberOfLines={2}>{member.name}</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.50)', marginTop: 2 }}>{member.userId}</Text>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 11,
+                color: "rgba(255,255,255,0.55)",
+              }}
+            >
+              Welcome back,
+            </Text>
+            <Text
+              style={{
+                fontFamily: "NotoSerif_700Bold",
+                fontSize: isMobile ? 14 : 16,
+                color: "#fff",
+                lineHeight: 22,
+              }}
+              numberOfLines={2}
+            >
+              {member.name}
+            </Text>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 10,
+                color: "rgba(255,255,255,0.50)",
+                marginTop: 2,
+              }}
+            >
+              {member.userId}
+            </Text>
           </View>
-          <View style={{ paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, backgroundColor: 'rgba(26,138,74,0.35)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#4cde8a' }}>{member.status || 'Active'}</Text>
+          <View
+            style={{
+              paddingHorizontal: 9,
+              paddingVertical: 5,
+              borderRadius: 20,
+              backgroundColor: "rgba(26,138,74,0.35)",
+              borderWidth: 1,
+              borderColor: "rgba(26,138,74,0.60)",
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 10,
+                color: "#4cde8a",
+              }}
+            >
+              {member.status || "Active"}
+            </Text>
           </View>
         </LinearGradient>
       </View>
 
       {/* Financial tiles — 2x2 on mobile, 4 in a row on wide */}
       <Text style={s.sHead}>💰 FINANCIAL SUMMARY</Text>
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 8,
+          marginBottom: 12,
+          flexWrap: "wrap",
+        }}
+      >
         {[
-          { l: 'Savings',       v: fmtCur(member.savings),      c: C.green },
-          { l: 'Share Capital', v: fmtCur(member.shares),       c: C.gold },
-          { l: 'Total Assets',  v: fmtCur((member.savings || 0) + (member.shares || 0)), c: C.blueLt },
-          { l: 'Loan Balance',  v: fmtCur(member.loanBalance),  c: member.loanBalance > 0 ? C.red : C.green },
-        ].map(t => (
-          <GCard key={t.l} style={{ flexBasis: isMobile ? '47%' : '22%', flex: 1, padding: 12, marginBottom: 0, borderTopWidth: 3, borderTopColor: t.c }}>
-            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: isMobile ? 14 : 17, color: t.c, marginBottom: 3 }} numberOfLines={1} adjustsFontSizeToFit>{t.v}</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec }}>{t.l}</Text>
+          { l: "Savings", v: fmtCur(member.savings), c: C.green },
+          { l: "Share Capital", v: fmtCur(member.shares), c: C.gold },
+          {
+            l: "Total Assets",
+            v: fmtCur((member.savings || 0) + (member.shares || 0)),
+            c: C.blueLt,
+          },
+          {
+            l: "Loan Balance",
+            v: fmtCur(member.loanBalance),
+            c: member.loanBalance > 0 ? C.red : C.green,
+          },
+        ].map((t) => (
+          <GCard
+            key={t.l}
+            style={{
+              flexBasis: isMobile ? "47%" : "22%",
+              flex: 1,
+              padding: 12,
+              marginBottom: 0,
+              borderTopWidth: 3,
+              borderTopColor: t.c,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "NotoSerif_700Bold",
+                fontSize: isMobile ? 14 : 17,
+                color: t.c,
+                marginBottom: 3,
+              }}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {t.v}
+            </Text>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 11,
+                color: C.textSec,
+              }}
+            >
+              {t.l}
+            </Text>
           </GCard>
         ))}
       </View>
@@ -411,16 +1156,76 @@ const OverviewView = ({ member, onNav, contentHeight, isMobile }) => {
         <>
           <Text style={s.sHead}>📈 LOAN REPAYMENT PROGRESS</Text>
           <GCard>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec }}>Repaid</Text>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.green }}>{Math.round(lp * 100)}%</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 13,
+                  color: C.textSec,
+                }}
+              >
+                Repaid
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 13,
+                  color: C.green,
+                }}
+              >
+                {Math.round(lp * 100)}%
+              </Text>
             </View>
-            <View style={{ height: 10, backgroundColor: 'rgba(15,30,53,0.12)', borderRadius: 5, overflow: 'hidden' }}>
-              <View style={{ height: 10, backgroundColor: C.green, borderRadius: 5, width: `${Math.round(lp * 100)}%` }} />
+            <View
+              style={{
+                height: 10,
+                backgroundColor: "rgba(15,30,53,0.12)",
+                borderRadius: 5,
+                overflow: "hidden",
+              }}
+            >
+              <View
+                style={{
+                  height: 10,
+                  backgroundColor: C.green,
+                  borderRadius: 5,
+                  width: `${Math.round(lp * 100)}%`,
+                }}
+              />
             </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, flexWrap: 'wrap', gap: 4 }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted }}>Paid: {fmtCur((member.loan || 0) - (member.loanBalance || 0))}</Text>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted }}>Remaining: {fmtCur(member.loanBalance)}</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 8,
+                flexWrap: "wrap",
+                gap: 4,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 11,
+                  color: C.textMuted,
+                }}
+              >
+                Paid: {fmtCur((member.loan || 0) - (member.loanBalance || 0))}
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 11,
+                  color: C.textMuted,
+                }}
+              >
+                Remaining: {fmtCur(member.loanBalance)}
+              </Text>
             </View>
           </GCard>
         </>
@@ -428,28 +1233,53 @@ const OverviewView = ({ member, onNav, contentHeight, isMobile }) => {
 
       {/* Tips */}
       <Text style={s.sHead}>💡 TIPS & REMINDERS</Text>
-      <GCard style={{ padding: 0, overflow: 'hidden' }}><TipsCarousel /></GCard>
+      <GCard style={{ padding: 0, overflow: "hidden" }}>
+        <TipsCarousel />
+      </GCard>
     </ScrollView>
   );
 };
 
 const ProfileView = ({ member, contentHeight }) => {
   const af = member.appForm || {};
-  const fullName = [af.salutation, member.firstName, member.middleName ? member.middleName + ' ' : '', member.lastName, af.suffix].filter(Boolean).join(' ') || member.name || '—';
-  const address  = af.presentAddress ? `${af.presentAddress}${af.presentZip ? ', ' + af.presentZip : ''}` : (member.address || '—');
-  const contact  = af.contactNo || member.contact || '—';
-  const email    = member.email || '—';
+  const fullName =
+    [
+      af.salutation,
+      member.firstName,
+      member.middleName ? member.middleName + " " : "",
+      member.lastName,
+      af.suffix,
+    ]
+      .filter(Boolean)
+      .join(" ") ||
+    member.name ||
+    "—";
+  const address = af.presentAddress
+    ? `${af.presentAddress}${af.presentZip ? ", " + af.presentZip : ""}`
+    : member.address || "—";
+  const contact = af.contactNo || member.contact || "—";
+  const email = member.email || "—";
 
-  const empLabel = af.empType === 'Employed'
-    ? [af.positionRank, af.employerName].filter(Boolean).join(' @ ') || 'Employed'
-    : af.empType === 'Self-Employed'
-    ? [af.bizName, af.bizNature].filter(Boolean).join(' — ') || 'Self-Employed'
-    : af.unemployedType || af.empType || '—';
+  const empLabel =
+    af.empType === "Employed"
+      ? [af.positionRank, af.employerName].filter(Boolean).join(" @ ") ||
+        "Employed"
+      : af.empType === "Self-Employed"
+        ? [af.bizName, af.bizNature].filter(Boolean).join(" — ") ||
+          "Self-Employed"
+        : af.unemployedType || af.empType || "—";
 
   const InfoRow = ({ label, value, color }) => (
     <View style={s.infoRow}>
       <Text style={s.infoLabel}>{label}</Text>
-      <Text style={[s.infoVal, color && { color, fontFamily: 'GoogleSans_700Bold' }]}>{value || '—'}</Text>
+      <Text
+        style={[
+          s.infoVal,
+          color && { color, fontFamily: "GoogleSans_700Bold" },
+        ]}
+      >
+        {value || "—"}
+      </Text>
     </View>
   );
 
@@ -458,87 +1288,227 @@ const ProfileView = ({ member, contentHeight }) => {
   );
 
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+    <ScrollView
+      contentContainerStyle={s.pageOuter}
+      showsVerticalScrollIndicator={true}
+      style={contentHeight ? { height: contentHeight } : undefined}
+    >
       <Text style={s.pageTitle}>My Profile</Text>
 
       {/* ── Header card ── */}
-      <GCard style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
-        <LinearGradient colors={['#1a2d4e', '#243554']} style={{ padding: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+      <GCard style={{ padding: 0, overflow: "hidden", marginBottom: 12 }}>
+        <LinearGradient colors={["#1a2d4e", "#243554"]} style={{ padding: 20 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
             <MemberAvatar member={member} size={56} style={{ flexShrink: 0 }} />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: '#fff' }} numberOfLines={2}>{fullName}</Text>
-              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>{member.userId}</Text>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.40)', marginTop: 1 }}>Member since {fmtDate(member.approvedAt || member.createdAt)}</Text>
+              <Text
+                style={{
+                  fontFamily: "NotoSerif_700Bold",
+                  fontSize: 18,
+                  color: "#fff",
+                }}
+                numberOfLines={2}
+              >
+                {fullName}
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_500Medium",
+                  fontSize: 11,
+                  color: "rgba(255,255,255,0.55)",
+                  marginTop: 2,
+                }}
+              >
+                {member.userId}
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 10,
+                  color: "rgba(255,255,255,0.40)",
+                  marginTop: 1,
+                }}
+              >
+                Member since {fmtDate(member.approvedAt || member.createdAt)}
+              </Text>
             </View>
-            <View style={{ paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, backgroundColor: 'rgba(26,138,74,0.35)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#4cde8a' }}>{member.status || 'Active'}</Text>
+            <View
+              style={{
+                paddingHorizontal: 9,
+                paddingVertical: 5,
+                borderRadius: 20,
+                backgroundColor: "rgba(26,138,74,0.35)",
+                borderWidth: 1,
+                borderColor: "rgba(26,138,74,0.60)",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 10,
+                  color: "#4cde8a",
+                }}
+              >
+                {member.status || "Active"}
+              </Text>
             </View>
           </View>
         </LinearGradient>
 
         <View style={{ padding: 14 }}>
-
           {/* ── Personal Information ── */}
           <SectionTitle title="👤  Personal Information" />
-          <InfoRow label="Full Name"        value={fullName} />
-          <InfoRow label="Gender"           value={af.gender} />
-          <InfoRow label="Civil Status"     value={af.civilStatus} />
-          <InfoRow label="Date of Birth"    value={af.dob} />
-          <InfoRow label="Place of Birth"   value={af.placeOfBirth || [af.pobMunicipality, af.pobProvince].filter(Boolean).join(', ')} />
-          <InfoRow label="Nationality"      value={af.nationality === 'Others' ? af.nationalityOther : af.nationality} />
-          <InfoRow label="Religion"         value={af.religion === 'Others' ? af.religionOther : af.religion} />
+          <InfoRow label="Full Name" value={fullName} />
+          <InfoRow label="Gender" value={af.gender} />
+          <InfoRow label="Civil Status" value={af.civilStatus} />
+          <InfoRow label="Date of Birth" value={af.dob} />
+          <InfoRow
+            label="Place of Birth"
+            value={
+              af.placeOfBirth ||
+              [af.pobMunicipality, af.pobProvince].filter(Boolean).join(", ")
+            }
+          />
+          <InfoRow
+            label="Nationality"
+            value={
+              af.nationality === "Others" ? af.nationalityOther : af.nationality
+            }
+          />
+          <InfoRow
+            label="Religion"
+            value={af.religion === "Others" ? af.religionOther : af.religion}
+          />
           <InfoRow label="No. of Dependents" value={af.numDependents} />
-          <InfoRow label="Recommended By"  value={af.recommendedBy} />
+          <InfoRow label="Recommended By" value={af.recommendedBy} />
 
           {/* ── Contact Details ── */}
           <SectionTitle title="📞  Contact Details" mt={14} />
-          <InfoRow label="Contact No."     value={contact} />
-          <InfoRow label="Email"           value={email} />
+          <InfoRow label="Contact No." value={contact} />
+          <InfoRow label="Email" value={email} />
           <InfoRow label="Present Address" value={address} />
-          {af.permanentAddress ? <InfoRow label="Permanent Address" value={`${af.permanentAddress}${af.permanentZip ? ', ' + af.permanentZip : ''}`} /> : null}
+          {af.permanentAddress ? (
+            <InfoRow
+              label="Permanent Address"
+              value={`${af.permanentAddress}${af.permanentZip ? ", " + af.permanentZip : ""}`}
+            />
+          ) : null}
 
           {/* ── Government IDs ── */}
           <SectionTitle title="🪪  Government IDs" mt={14} />
-          {(af.govIds && af.govIds.length > 0)
-            ? af.govIds.filter(g => g.type || g.number).map((g, i) => (
-                <InfoRow key={i} label={g.type || `ID #${i + 1}`} value={g.number} />
-              ))
-            : [['SSS / GSIS', af.sssGsis], ['TIN', af.tin], ['PhilHealth', af.philHealth], ['Pag-IBIG', af.pagIbig]]
-                .map(([l, v]) => <InfoRow key={l} label={l} value={v} />)
-          }
+          {af.govIds && af.govIds.length > 0
+            ? af.govIds
+                .filter((g) => g.type || g.number)
+                .map((g, i) => (
+                  <InfoRow
+                    key={i}
+                    label={g.type || `ID #${i + 1}`}
+                    value={g.number}
+                  />
+                ))
+            : [
+                ["SSS / GSIS", af.sssGsis],
+                ["TIN", af.tin],
+                ["PhilHealth", af.philHealth],
+                ["Pag-IBIG", af.pagIbig],
+              ].map(([l, v]) => <InfoRow key={l} label={l} value={v} />)}
 
           {/* ── Employment ── */}
           <SectionTitle title="💼  Employment" mt={14} />
-          <InfoRow label="Status"      value={af.empType} />
-          {af.empType === 'Employed' && <>
-            <InfoRow label="Employer"        value={af.employerName} />
-            <InfoRow label="Office Address"  value={af.officeAddress} />
-            <InfoRow label="Nature of Biz"   value={af.natureOfBiz} />
-            <InfoRow label="Employment Type" value={af.employmentType === 'Others' ? af.employmentTypeOther : af.employmentType} />
-            <InfoRow label="Position / Rank" value={af.positionRank} />
-            <InfoRow label="Monthly Income"  value={af.monthlyIncome ? '₱' + Number(af.monthlyIncome).toLocaleString('en-PH') : undefined} color={C.green} />
-          </>}
-          {af.empType === 'Self-Employed' && <>
-            <InfoRow label="Business Name"   value={af.bizName} />
-            <InfoRow label="Business Type"   value={af.bizType} />
-            <InfoRow label="Nature of Biz"   value={af.bizNature} />
-            <InfoRow label="Asset Size"      value={af.assetSize ? '₱' + Number(af.assetSize).toLocaleString('en-PH') : undefined} />
-            <InfoRow label="Share in Biz"    value={af.shareInBiz ? af.shareInBiz + '%' : undefined} />
-            <InfoRow label="Monthly Income"  value={af.selfMonthlyIncome ? '₱' + Number(af.selfMonthlyIncome).toLocaleString('en-PH') : undefined} color={C.green} />
-          </>}
-          {af.empType === 'Unemployed' && <>
-            <InfoRow label="Type" value={af.unemployedType === 'Others' ? af.unemployedOther : af.unemployedType} />
-          </>}
+          <InfoRow label="Status" value={af.empType} />
+          {af.empType === "Employed" && (
+            <>
+              <InfoRow label="Employer" value={af.employerName} />
+              <InfoRow label="Office Address" value={af.officeAddress} />
+              <InfoRow label="Nature of Biz" value={af.natureOfBiz} />
+              <InfoRow
+                label="Employment Type"
+                value={
+                  af.employmentType === "Others"
+                    ? af.employmentTypeOther
+                    : af.employmentType
+                }
+              />
+              <InfoRow label="Position / Rank" value={af.positionRank} />
+              <InfoRow
+                label="Monthly Income"
+                value={
+                  af.monthlyIncome
+                    ? "₱" + Number(af.monthlyIncome).toLocaleString("en-PH")
+                    : undefined
+                }
+                color={C.green}
+              />
+            </>
+          )}
+          {af.empType === "Self-Employed" && (
+            <>
+              <InfoRow label="Business Name" value={af.bizName} />
+              <InfoRow label="Business Type" value={af.bizType} />
+              <InfoRow label="Nature of Biz" value={af.bizNature} />
+              <InfoRow
+                label="Asset Size"
+                value={
+                  af.assetSize
+                    ? "₱" + Number(af.assetSize).toLocaleString("en-PH")
+                    : undefined
+                }
+              />
+              <InfoRow
+                label="Share in Biz"
+                value={af.shareInBiz ? af.shareInBiz + "%" : undefined}
+              />
+              <InfoRow
+                label="Monthly Income"
+                value={
+                  af.selfMonthlyIncome
+                    ? "₱" + Number(af.selfMonthlyIncome).toLocaleString("en-PH")
+                    : undefined
+                }
+                color={C.green}
+              />
+            </>
+          )}
+          {af.empType === "Unemployed" && (
+            <>
+              <InfoRow
+                label="Type"
+                value={
+                  af.unemployedType === "Others"
+                    ? af.unemployedOther
+                    : af.unemployedType
+                }
+              />
+            </>
+          )}
 
           {/* ── Financial Overview ── */}
           <SectionTitle title="💰  Financial Overview" mt={14} />
-          <InfoRow label="Share Capital"  value={fmtCur(member.shares)}       color={C.gold} />
-          <InfoRow label="Savings"        value={fmtCur(member.savings)}      color={C.green} />
-          <InfoRow label="Active Loan"    value={fmtCur(member.loan)}         color={member.loan > 0 ? C.orange : undefined} />
-          <InfoRow label="Loan Balance"   value={fmtCur(member.loanBalance)}  color={member.loanBalance > 0 ? C.red : C.green} />
-          <InfoRow label="Credit Balance" value={fmtCur(member.creditBalance)} color={C.orange} />
-
+          <InfoRow
+            label="Share Capital"
+            value={fmtCur(member.shares)}
+            color={C.gold}
+          />
+          <InfoRow
+            label="Savings"
+            value={fmtCur(member.savings)}
+            color={C.green}
+          />
+          <InfoRow
+            label="Active Loan"
+            value={fmtCur(member.loan)}
+            color={member.loan > 0 ? C.orange : undefined}
+          />
+          <InfoRow
+            label="Loan Balance"
+            value={fmtCur(member.loanBalance)}
+            color={member.loanBalance > 0 ? C.red : C.green}
+          />
+          <InfoRow
+            label="Credit Balance"
+            value={fmtCur(member.creditBalance)}
+            color={C.orange}
+          />
         </View>
       </GCard>
     </ScrollView>
@@ -549,15 +1519,43 @@ const ProfileView = ({ member, contentHeight }) => {
 const RadioRow = ({ label: rowLabel, options, selected, onSelect }) => (
   <View style={{ marginBottom: 12 }}>
     {rowLabel ? <Text style={af.fieldLabel}>{rowLabel}</Text> : null}
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 5 }}>
-      {options.map(opt => (
-        <TouchableOpacity key={opt} onPress={() => onSelect(opt)}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 20, borderWidth: 1.5, borderColor: selected === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: selected === opt ? 'rgba(201,168,76,0.15)' : 'rgba(255,255,255,0.55)' }}
-          activeOpacity={0.7}>
+    <View
+      style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 5 }}
+    >
+      {options.map((opt) => (
+        <TouchableOpacity
+          key={opt}
+          onPress={() => onSelect(opt)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            paddingVertical: 5,
+            paddingHorizontal: 10,
+            borderRadius: 20,
+            borderWidth: 1.5,
+            borderColor: selected === opt ? C.gold : "rgba(15,30,53,0.18)",
+            backgroundColor:
+              selected === opt
+                ? "rgba(201,168,76,0.15)"
+                : "rgba(255,255,255,0.55)",
+          }}
+          activeOpacity={0.7}
+        >
           <View style={[af.radio, selected === opt && af.radioActive]}>
             {selected === opt && <View style={af.radioDot} />}
           </View>
-          <Text style={[af.radioLabel, selected === opt && { color: C.navyMid, fontFamily: 'GoogleSans_700Bold' }]}>{opt}</Text>
+          <Text
+            style={[
+              af.radioLabel,
+              selected === opt && {
+                color: C.navyMid,
+                fontFamily: "GoogleSans_700Bold",
+              },
+            ]}
+          >
+            {opt}
+          </Text>
         </TouchableOpacity>
       ))}
     </View>
@@ -565,23 +1563,77 @@ const RadioRow = ({ label: rowLabel, options, selected, onSelect }) => (
 );
 
 // ── Dropdown Picker ─────────────────────────────────────────────────────────
-const DropdownPicker = ({ label: l, options, value, onSelect, placeholder, half }) => {
+const DropdownPicker = ({
+  label: l,
+  options,
+  value,
+  onSelect,
+  placeholder,
+  half,
+}) => {
   const [open, setOpen] = useState(false);
   return (
     <View style={[{ marginBottom: 12 }, half && { flex: 1 }]}>
       <Text style={af.fieldLabel}>{l}</Text>
-      <TouchableOpacity style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-        onPress={() => setOpen(o => !o)} activeOpacity={0.8}>
-        <Text style={{ fontFamily: value ? 'GoogleSans_400Regular' : 'GoogleSans_400Regular', fontSize: 13, color: value ? C.navy : C.textMuted, flex: 1 }}>{value || placeholder}</Text>
-        <Text style={{ fontSize: 12, color: C.textMuted }}>{open ? '▲' : '▼'}</Text>
+      <TouchableOpacity
+        style={[
+          af.input,
+          {
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+          },
+        ]}
+        onPress={() => setOpen((o) => !o)}
+        activeOpacity={0.8}
+      >
+        <Text
+          style={{
+            fontFamily: value
+              ? "GoogleSans_400Regular"
+              : "GoogleSans_400Regular",
+            fontSize: 13,
+            color: value ? C.navy : C.textMuted,
+            flex: 1,
+          }}
+        >
+          {value || placeholder}
+        </Text>
+        <Text style={{ fontSize: 12, color: C.textMuted }}>
+          {open ? "▲" : "▼"}
+        </Text>
       </TouchableOpacity>
       {open && (
         <View style={af.dropdownList}>
-          <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled showsVerticalScrollIndicator>
-            {options.map(opt => (
-              <TouchableOpacity key={opt} style={[af.dropdownItem, value === opt && af.dropdownItemActive]}
-                onPress={() => { onSelect(opt); setOpen(false); }} activeOpacity={0.8}>
-                <Text style={[af.dropdownTxt, value === opt && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{opt}</Text>
+          <ScrollView
+            style={{ maxHeight: 180 }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
+            {options.map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                style={[
+                  af.dropdownItem,
+                  value === opt && af.dropdownItemActive,
+                ]}
+                onPress={() => {
+                  onSelect(opt);
+                  setOpen(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    af.dropdownTxt,
+                    value === opt && {
+                      color: C.gold,
+                      fontFamily: "GoogleSans_700Bold",
+                    },
+                  ]}
+                >
+                  {opt}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -593,17 +1645,43 @@ const DropdownPicker = ({ label: l, options, value, onSelect, placeholder, half 
 
 // ── Date Picker (compact) ───────────────────────────────────────────────────
 const DatePicker = ({ label: l, value, onChange, half }) => {
-  const [open,    setOpen]  = useState(false);
-  const [picking, setPicking] = useState('day'); // 'day' | 'month' | 'year'
+  const [open, setOpen] = useState(false);
+  const [picking, setPicking] = useState("day"); // 'day' | 'month' | 'year'
   const currentYear = new Date().getFullYear();
-  const MS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const MF = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const MS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const MF = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
   const years = Array.from({ length: 100 }, (_, i) => currentYear - i);
 
-  const parts  = (value || '').split('/');
-  const initM  = parts[0] ? MF[parseInt(parts[0]) - 1] || '' : '';
-  const initD  = parts[1] ? parseInt(parts[1]) : null;
-  const initY  = parts[2] ? parseInt(parts[2]) : null;
+  const parts = (value || "").split("/");
+  const initM = parts[0] ? MF[parseInt(parts[0]) - 1] || "" : "";
+  const initD = parts[1] ? parseInt(parts[1]) : null;
+  const initY = parts[2] ? parseInt(parts[2]) : null;
 
   const [curM, setCurM] = useState(initM || MF[new Date().getMonth()]);
   const [curY, setCurY] = useState(initY || currentYear);
@@ -612,155 +1690,376 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
   const [selY, setSelY] = useState(initY);
 
   const daysInMonth = new Date(curY, MF.indexOf(curM) + 1, 0).getDate();
-  const firstDay    = new Date(curY, MF.indexOf(curM), 1).getDay();
-  const calCells    = Array.from({ length: firstDay + daysInMonth }, (_, i) =>
-    i < firstDay ? null : i - firstDay + 1
+  const firstDay = new Date(curY, MF.indexOf(curM), 1).getDay();
+  const calCells = Array.from({ length: firstDay + daysInMonth }, (_, i) =>
+    i < firstDay ? null : i - firstDay + 1,
   );
 
   const buildDate = (m, d, y) =>
-    `${String(MF.indexOf(m) + 1).padStart(2,'0')}/${String(d).padStart(2,'0')}/${y}`;
+    `${String(MF.indexOf(m) + 1).padStart(2, "0")}/${String(d).padStart(2, "0")}/${y}`;
 
   const displayVal = value
     ? `${initM} ${initD}, ${initY}`
-    : (selM && selD && selY) ? `${selM} ${selD}, ${selY}` : '';
+    : selM && selD && selY
+      ? `${selM} ${selD}, ${selY}`
+      : "";
 
   // Auto-pick: when day tapped and M+Y already set → done immediately
   const pickDay = (day) => {
-    setSelD(day); setSelM(curM); setSelY(curY);
+    setSelD(day);
+    setSelM(curM);
+    setSelY(curY);
     onChange(buildDate(curM, day, curY));
     setOpen(false);
   };
 
   const navMonth = (dir) => {
     let idx = MF.indexOf(curM) + dir;
-    let y   = curY;
-    if (idx < 0)   { idx = 11; y -= 1; }
-    if (idx > 11)  { idx = 0;  y += 1; }
-    setCurM(MF[idx]); setCurY(y);
+    let y = curY;
+    if (idx < 0) {
+      idx = 11;
+      y -= 1;
+    }
+    if (idx > 11) {
+      idx = 0;
+      y += 1;
+    }
+    setCurM(MF[idx]);
+    setCurY(y);
   };
 
   const isSelected = (day) => selD === day && selM === curM && selY === curY;
-  const isToday    = (day) => {
+  const isToday = (day) => {
     const t = new Date();
-    return day === t.getDate() && MF.indexOf(curM) === t.getMonth() && curY === t.getFullYear();
+    return (
+      day === t.getDate() &&
+      MF.indexOf(curM) === t.getMonth() &&
+      curY === t.getFullYear()
+    );
   };
 
-  const DAY_HDR = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const DAY_HDR = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
   return (
-    <View style={[{ marginBottom: 12, position:'relative', zIndex: open ? 100 : 1 }, half && { flex: 1 }]}>
+    <View
+      style={[
+        { marginBottom: 12, position: "relative", zIndex: open ? 100 : 1 },
+        half && { flex: 1 },
+      ]}
+    >
       <Text style={af.fieldLabel}>{l}</Text>
       <TouchableOpacity
-        style={[af.input, { flexDirection:'row', justifyContent:'space-between', alignItems:'center' }]}
-        onPress={() => { setOpen(o => !o); setPicking('day'); }} activeOpacity={0.8}>
-        <Text style={{ fontFamily:'GoogleSans_400Regular', fontSize:13, color: displayVal ? C.navy : C.textMuted, flex:1 }}>
-          {displayVal || 'Select date'}
+        style={[
+          af.input,
+          {
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+          },
+        ]}
+        onPress={() => {
+          setOpen((o) => !o);
+          setPicking("day");
+        }}
+        activeOpacity={0.8}
+      >
+        <Text
+          style={{
+            fontFamily: "GoogleSans_400Regular",
+            fontSize: 13,
+            color: displayVal ? C.navy : C.textMuted,
+            flex: 1,
+          }}
+        >
+          {displayVal || "Select date"}
         </Text>
-        <Text style={{ fontSize:12, color: C.textMuted }}>📅</Text>
+        <Text style={{ fontSize: 12, color: C.textMuted }}>📅</Text>
       </TouchableOpacity>
 
       {open && (
-        <View style={{ position:'absolute', top:62, left:0, zIndex:999, width:230 }}>
-        <View style={{ borderRadius:10, borderWidth:1.5, borderColor:'rgba(200,218,235,0.90)', backgroundColor:'#fff', overflow:'hidden', shadowColor:'#1a2d4e', shadowOpacity:0.18, shadowRadius:8, shadowOffset:{width:0,height:4}, elevation:10 }}>
+        <View
+          style={{
+            position: "absolute",
+            top: 62,
+            left: 0,
+            zIndex: 999,
+            width: 230,
+          }}
+        >
+          <View
+            style={{
+              borderRadius: 10,
+              borderWidth: 1.5,
+              borderColor: "rgba(200,218,235,0.90)",
+              backgroundColor: "#fff",
+              overflow: "hidden",
+              shadowColor: "#1a2d4e",
+              shadowOpacity: 0.18,
+              shadowRadius: 8,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 10,
+            }}
+          >
+            {/* ── Header bar: ‹ Month Year › */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: "#1a2d4e",
+                paddingHorizontal: 8,
+                paddingVertical: 5,
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => navMonth(-1)}
+                style={{ padding: 3, marginRight: 2 }}
+              >
+                <Text
+                  style={{
+                    fontSize: 15,
+                    color: "rgba(255,255,255,0.70)",
+                    lineHeight: 17,
+                  }}
+                >
+                  ‹
+                </Text>
+              </TouchableOpacity>
 
-          {/* ── Header bar: ‹ Month Year › */}
-          <View style={{ flexDirection:'row', alignItems:'center', backgroundColor:'#1a2d4e', paddingHorizontal:8, paddingVertical:5 }}>
-            <TouchableOpacity onPress={() => navMonth(-1)} style={{ padding:3, marginRight:2 }}>
-              <Text style={{ fontSize:15, color:'rgba(255,255,255,0.70)', lineHeight:17 }}>‹</Text>
-            </TouchableOpacity>
+              {/* Month tap → show month grid */}
+              <TouchableOpacity
+                onPress={() =>
+                  setPicking((p) => (p === "month" ? "day" : "month"))
+                }
+                style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 12,
+                    color: "#fff",
+                  }}
+                >
+                  {curM}
+                </Text>
+                <Text style={{ fontSize: 8, color: "rgba(255,255,255,0.55)" }}>
+                  ▾
+                </Text>
+              </TouchableOpacity>
 
-            {/* Month tap → show month grid */}
-            <TouchableOpacity onPress={() => setPicking(p => p === 'month' ? 'day' : 'month')} style={{ flexDirection:'row', alignItems:'center', gap:2 }}>
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#fff' }}>{curM}</Text>
-              <Text style={{ fontSize:8, color:'rgba(255,255,255,0.55)' }}>▾</Text>
-            </TouchableOpacity>
+              <Text
+                style={{ color: "rgba(255,255,255,0.40)", marginHorizontal: 3 }}
+              >
+                {" "}
+              </Text>
 
-            <Text style={{ color:'rgba(255,255,255,0.40)', marginHorizontal:3 }}> </Text>
+              {/* Year tap → show year grid */}
+              <TouchableOpacity
+                onPress={() =>
+                  setPicking((p) => (p === "year" ? "day" : "year"))
+                }
+                style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 12,
+                    color: "#fff",
+                  }}
+                >
+                  {curY}
+                </Text>
+                <Text style={{ fontSize: 8, color: "rgba(255,255,255,0.55)" }}>
+                  ▾
+                </Text>
+              </TouchableOpacity>
 
-            {/* Year tap → show year grid */}
-            <TouchableOpacity onPress={() => setPicking(p => p === 'year' ? 'day' : 'year')} style={{ flexDirection:'row', alignItems:'center', gap:2 }}>
-              <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:12, color:'#fff' }}>{curY}</Text>
-              <Text style={{ fontSize:8, color:'rgba(255,255,255,0.55)' }}>▾</Text>
-            </TouchableOpacity>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity
+                onPress={() => navMonth(1)}
+                style={{ padding: 3 }}
+              >
+                <Text
+                  style={{
+                    fontSize: 15,
+                    color: "rgba(255,255,255,0.70)",
+                    lineHeight: 17,
+                  }}
+                >
+                  ›
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setOpen(false)}
+                style={{ padding: 3, marginLeft: 4 }}
+              >
+                <Text style={{ fontSize: 11, color: "rgba(255,255,255,0.50)" }}>
+                  ✕
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-            <View style={{ flex:1 }} />
-            <TouchableOpacity onPress={() => navMonth(1)} style={{ padding:3 }}>
-              <Text style={{ fontSize:15, color:'rgba(255,255,255,0.70)', lineHeight:17 }}>›</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setOpen(false)} style={{ padding:3, marginLeft:4 }}>
-              <Text style={{ fontSize:11, color:'rgba(255,255,255,0.50)' }}>✕</Text>
-            </TouchableOpacity>
+            {/* ── MONTH picker overlay */}
+            {picking === "month" && (
+              <View style={{ padding: 6 }}>
+                <View
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 3 }}
+                >
+                  {MS.map((m, i) => (
+                    <TouchableOpacity
+                      key={m}
+                      onPress={() => {
+                        setCurM(MF[i]);
+                        setPicking("day");
+                      }}
+                      style={{
+                        width: "22%",
+                        paddingVertical: 5,
+                        borderRadius: 6,
+                        alignItems: "center",
+                        backgroundColor:
+                          curM === MF[i] ? C.gold : "rgba(15,30,53,0.06)",
+                        borderWidth: 1,
+                        borderColor: curM === MF[i] ? C.gold : "transparent",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 10,
+                          color: curM === MF[i] ? "#fff" : C.navy,
+                        }}
+                      >
+                        {m}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* ── YEAR picker overlay */}
+            {picking === "year" && (
+              <ScrollView
+                style={{ maxHeight: 130, padding: 6 }}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+              >
+                <View
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 3 }}
+                >
+                  {years.map((y) => (
+                    <TouchableOpacity
+                      key={y}
+                      onPress={() => {
+                        setCurY(y);
+                        setPicking("day");
+                      }}
+                      style={{
+                        width: "22%",
+                        paddingVertical: 5,
+                        borderRadius: 6,
+                        alignItems: "center",
+                        backgroundColor:
+                          curY === y ? C.navyMid : "rgba(15,30,53,0.06)",
+                        borderWidth: 1,
+                        borderColor: curY === y ? C.navyMid : "transparent",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 10,
+                          color: curY === y ? "#fff" : C.navy,
+                        }}
+                      >
+                        {y}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
+
+            {/* ── DAY grid */}
+            {picking === "day" && (
+              <View style={{ padding: 6 }}>
+                {/* Day-of-week headers */}
+                <View style={{ flexDirection: "row", marginBottom: 1 }}>
+                  {DAY_HDR.map((d, i) => (
+                    <View
+                      key={d}
+                      style={{
+                        flex: 1,
+                        alignItems: "center",
+                        paddingVertical: 3,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 8,
+                          color:
+                            i === 0 || i === 6
+                              ? "rgba(192,57,43,0.70)"
+                              : C.textMuted,
+                        }}
+                      >
+                        {d}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Calendar squares */}
+                <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                  {calCells.map((day, idx) => (
+                    <View
+                      key={idx}
+                      style={{ width: "14.28%", aspectRatio: 1.1, padding: 1 }}
+                    >
+                      {day ? (
+                        <TouchableOpacity
+                          onPress={() => pickDay(day)}
+                          style={{
+                            flex: 1,
+                            borderRadius: 100,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: isSelected(day)
+                              ? C.navyMid
+                              : isToday(day)
+                                ? "rgba(201,168,76,0.18)"
+                                : "transparent",
+                            borderWidth:
+                              isToday(day) && !isSelected(day) ? 1 : 0,
+                            borderColor: C.gold,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontFamily: isSelected(day)
+                                ? "GoogleSans_700Bold"
+                                : "GoogleSans_400Regular",
+                              fontSize: 10,
+                              color: isSelected(day)
+                                ? "#fff"
+                                : idx % 7 === 0 || idx % 7 === 6
+                                  ? "rgba(192,57,43,0.75)"
+                                  : C.navy,
+                            }}
+                          >
+                            {day}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={{ flex: 1 }} />
+                      )}
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
-
-          {/* ── MONTH picker overlay */}
-          {picking === 'month' && (
-            <View style={{ padding:6 }}>
-              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:3 }}>
-                {MS.map((m, i) => (
-                  <TouchableOpacity key={m}
-                    onPress={() => { setCurM(MF[i]); setPicking('day'); }}
-                    style={{ width:'22%', paddingVertical:5, borderRadius:6, alignItems:'center',
-                      backgroundColor: curM === MF[i] ? C.gold : 'rgba(15,30,53,0.06)',
-                      borderWidth:1, borderColor: curM === MF[i] ? C.gold : 'transparent' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color: curM === MF[i] ? '#fff' : C.navy }}>{m}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* ── YEAR picker overlay */}
-          {picking === 'year' && (
-            <ScrollView style={{ maxHeight:130, padding:6 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:3 }}>
-                {years.map(y => (
-                  <TouchableOpacity key={y}
-                    onPress={() => { setCurY(y); setPicking('day'); }}
-                    style={{ width:'22%', paddingVertical:5, borderRadius:6, alignItems:'center',
-                      backgroundColor: curY === y ? C.navyMid : 'rgba(15,30,53,0.06)',
-                      borderWidth:1, borderColor: curY === y ? C.navyMid : 'transparent' }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:10, color: curY === y ? '#fff' : C.navy }}>{y}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-          )}
-
-          {/* ── DAY grid */}
-          {picking === 'day' && (
-            <View style={{ padding:6 }}>
-              {/* Day-of-week headers */}
-              <View style={{ flexDirection:'row', marginBottom:1 }}>
-                {DAY_HDR.map((d,i) => (
-                  <View key={d} style={{ flex:1, alignItems:'center', paddingVertical:3 }}>
-                    <Text style={{ fontFamily:'GoogleSans_700Bold', fontSize:8, color:(i===0||i===6)?'rgba(192,57,43,0.70)':C.textMuted }}>{d}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* Calendar squares */}
-              <View style={{ flexDirection:'row', flexWrap:'wrap' }}>
-                {calCells.map((day, idx) => (
-                  <View key={idx} style={{ width:'14.28%', aspectRatio:1.1, padding:1 }}>
-                    {day ? (
-                      <TouchableOpacity
-                        onPress={() => pickDay(day)}
-                        style={{ flex:1, borderRadius:100, alignItems:'center', justifyContent:'center',
-                          backgroundColor: isSelected(day) ? C.navyMid : isToday(day) ? 'rgba(201,168,76,0.18)' : 'transparent',
-                          borderWidth: isToday(day) && !isSelected(day) ? 1 : 0,
-                          borderColor: C.gold }}>
-                        <Text style={{ fontFamily: isSelected(day) ? 'GoogleSans_700Bold' : 'GoogleSans_400Regular',
-                          fontSize:10, color: isSelected(day) ? '#fff' : (idx%7===0||idx%7===6) ? 'rgba(192,57,43,0.75)' : C.navy }}>
-                          {day}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : <View style={{ flex:1 }} />}
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-        </View>
         </View>
         /* end dropdown wrapper */
       )}
@@ -769,333 +2068,3580 @@ const DatePicker = ({ label: l, value, onChange, half }) => {
 };
 
 // ── Text Field ──────────────────────────────────────────────────────────────
-const AF = ({ label: l, value, onChangeText, placeholder, keyboardType, half, editable = true, multiline }) => (
+const AF = ({
+  label: l,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  half,
+  editable = true,
+  multiline,
+}) => (
   <View style={[{ marginBottom: 12 }, half && { flex: 1 }]}>
     <Text style={af.fieldLabel}>{l}</Text>
     <TextInput
-      style={[af.input, !editable && { opacity: 0.55, backgroundColor: 'rgba(15,30,53,0.06)' }, multiline && { minHeight: 60, textAlignVertical: 'top', paddingTop: 9 }]}
-      value={value} onChangeText={onChangeText}
-      placeholder={placeholder} placeholderTextColor={C.textMuted}
-      keyboardType={keyboardType || 'default'} autoCorrect={false}
-      editable={editable} multiline={multiline}
+      style={[
+        af.input,
+        !editable && { opacity: 0.55, backgroundColor: "rgba(15,30,53,0.06)" },
+        multiline && { minHeight: 60, textAlignVertical: "top", paddingTop: 9 },
+      ]}
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      placeholderTextColor={C.textMuted}
+      keyboardType={keyboardType || "default"}
+      autoCorrect={false}
+      editable={editable}
+      multiline={multiline}
     />
   </View>
 );
 
-const RELIGIONS = ['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Born Again Christian','Baptist','Methodist','Jehovah\'s Witness','Buddhism','Others'];
+const RELIGIONS = [
+  "Roman Catholic",
+  "Islam",
+  "Iglesia ni Cristo",
+  "Seventh-day Adventist",
+  "Born Again Christian",
+  "Baptist",
+  "Methodist",
+  "Jehovah's Witness",
+  "Buddhism",
+  "Others",
+];
 const PROVINCES_PH = [
-  'Abra','Agusan del Norte','Agusan del Sur','Aklan','Albay','Antique','Apayao','Aurora',
-  'Basilan','Bataan','Batanes','Batangas','Benguet','Biliran','Bohol','Bukidnon','Bulacan',
-  'Cagayan','Camarines Norte','Camarines Sur','Camiguin','Capiz','Catanduanes','Cavite','Cebu',
-  'Compostela Valley (Davao de Oro)','Cotabato (North Cotabato)','Davao de Oro','Davao del Norte',
-  'Davao del Sur','Davao Occidental','Davao Oriental','Dinagat Islands','Eastern Samar',
-  'Guimaras','Ifugao','Ilocos Norte','Ilocos Sur','Iloilo','Isabela','Kalinga','La Union',
-  'Laguna','Lanao del Norte','Lanao del Sur','Leyte','Maguindanao del Norte','Maguindanao del Sur',
-  'Marinduque','Masbate','Metro Manila (NCR)','Misamis Occidental','Misamis Oriental',
-  'Mountain Province','Negros Occidental','Negros Oriental','Northern Samar','Nueva Ecija',
-  'Nueva Vizcaya','Occidental Mindoro','Oriental Mindoro','Palawan','Pampanga','Pangasinan',
-  'Quezon','Quirino','Rizal','Romblon','Samar (Western Samar)','Sarangani','Siquijor',
-  'Sorsogon','South Cotabato','Southern Leyte','Sultan Kudarat','Sulu','Surigao del Norte',
-  'Surigao del Sur','Tarlac','Tawi-Tawi','Zambales','Zamboanga del Norte','Zamboanga del Sur',
-  'Zamboanga Sibugay','Others',
+  "Abra",
+  "Agusan del Norte",
+  "Agusan del Sur",
+  "Aklan",
+  "Albay",
+  "Antique",
+  "Apayao",
+  "Aurora",
+  "Basilan",
+  "Bataan",
+  "Batanes",
+  "Batangas",
+  "Benguet",
+  "Biliran",
+  "Bohol",
+  "Bukidnon",
+  "Bulacan",
+  "Cagayan",
+  "Camarines Norte",
+  "Camarines Sur",
+  "Camiguin",
+  "Capiz",
+  "Catanduanes",
+  "Cavite",
+  "Cebu",
+  "Compostela Valley (Davao de Oro)",
+  "Cotabato (North Cotabato)",
+  "Davao de Oro",
+  "Davao del Norte",
+  "Davao del Sur",
+  "Davao Occidental",
+  "Davao Oriental",
+  "Dinagat Islands",
+  "Eastern Samar",
+  "Guimaras",
+  "Ifugao",
+  "Ilocos Norte",
+  "Ilocos Sur",
+  "Iloilo",
+  "Isabela",
+  "Kalinga",
+  "La Union",
+  "Laguna",
+  "Lanao del Norte",
+  "Lanao del Sur",
+  "Leyte",
+  "Maguindanao del Norte",
+  "Maguindanao del Sur",
+  "Marinduque",
+  "Masbate",
+  "Metro Manila (NCR)",
+  "Misamis Occidental",
+  "Misamis Oriental",
+  "Mountain Province",
+  "Negros Occidental",
+  "Negros Oriental",
+  "Northern Samar",
+  "Nueva Ecija",
+  "Nueva Vizcaya",
+  "Occidental Mindoro",
+  "Oriental Mindoro",
+  "Palawan",
+  "Pampanga",
+  "Pangasinan",
+  "Quezon",
+  "Quirino",
+  "Rizal",
+  "Romblon",
+  "Samar (Western Samar)",
+  "Sarangani",
+  "Siquijor",
+  "Sorsogon",
+  "South Cotabato",
+  "Southern Leyte",
+  "Sultan Kudarat",
+  "Sulu",
+  "Surigao del Norte",
+  "Surigao del Sur",
+  "Tarlac",
+  "Tawi-Tawi",
+  "Zambales",
+  "Zamboanga del Norte",
+  "Zamboanga del Sur",
+  "Zamboanga Sibugay",
+  "Others",
 ];
 
 const MUNICIPALITIES_BY_PROVINCE = {
-  'Abra': ['Bangued','Boliney','Bucay','Bucloc','Daguioman','Danglas','Dolores','La Paz','Lacub','Lagangilang','Lagayan','Langiden','Licuan-Baay','Luba','Malibcong','Manabo','Peñarrubia','Pidigan','Pilar','Sallapadan','San Isidro','San Juan','San Quintin','Tayum','Tineg','Tubo','Villaviciosa','Others'],
-  'Agusan del Norte': ['Buenavista','Butuan City','Cabadbaran City','Carmen','Jabonga','Kitcharao','Las Nieves','Magallanes','Nasipit','Remedios T. Romualdez','Santiago','Tubay','Others'],
-  'Agusan del Sur': ['Bayugan City','Bunawan','Esperanza','La Paz','Loreto','Prosperidad','Rosario','San Francisco','San Luis','Santa Josefa','Sibagat','Talacogon','Trento','Veruela','Others'],
-  'Aklan': ['Altavas','Balete','Banga','Batan','Buruanga','Ibajay','Kalibo','Lezo','Libacao','Madalag','Makato','Malay','Malinao','Nabas','New Washington','Numancia','Tangalan','Others'],
-  'Albay': ['Bacacay','Camalig','Daraga','Guinobatan','Jovellar','Legazpi City','Libon','Ligao City','Malilipot','Malinao','Manito','Oas','Pio Duran','Polangui','Rapu-Rapu','Santo Domingo','Tabaco City','Tiwi','Others'],
-  'Antique': ['Anini-y','Barbaza','Belison','Bugasong','Caluya','Culasi','Hamtic','Laua-an','Libertad','Pandan','Patnongon','San Jose de Buenavista','San Remigio','Sebaste','Sibalom','Tibiao','Tobias Fornier','Valderrama','Others'],
-  'Apayao': ['Calanasan','Conner','Flora','Kabugao','Luna','Pudtol','Santa Marcela','Others'],
-  'Aurora': ['Baler','Casiguran','Dilasag','Dinalungan','Dingalan','Dipaculao','Maria Aurora','San Luis','Others'],
-  'Basilan': ['Akbar','Al-Barka','Hadji Mohammad Ajul','Hadji Muhtamad','Isabela City','Lamitan City','Lantawan','Maluso','Sumisip','Tabuan-Lasa','Tipo-Tipo','Tuburan','Ungkaya Pukan','Others'],
-  'Bataan': ['Abucay','Bagac','Balanga City','Dinalupihan','Hermosa','Limay','Mariveles','Morong','Orani','Orion','Pilar','Samal','Others'],
-  'Batanes': ['Basco','Itbayat','Ivana','Mahatao','Sabtang','Uyugan','Others'],
-  'Batangas': ['Agoncillo','Alitagtag','Balayan','Balete','Batangas City','Bauan','Calaca','Calatagan','Cuenca','Ibaan','Laurel','Lemery','Lian','Lipa City','Lobo','Mabini','Malvar','Mataas na Kahoy','Nasugbu','Padre Garcia','Rosario','San Jose','San Juan','San Luis','San Nicolas','San Pascual','Santa Teresita','Santo Tomas','Taal','Talisay','Tanauan City','Taysan','Tingloy','Tuy','Others'],
-  'Benguet': ['Atok','Baguio City','Bakun','Bokod','Buguias','Itogon','Kabayan','Kapangan','Kibungan','La Trinidad','Mankayan','Sablan','Tuba','Tublay','Others'],
-  'Biliran': ['Almeria','Biliran','Cabucgayan','Caibiran','Culaba','Kawayan','Maripipi','Naval','Others'],
-  'Bohol': ['Alburquerque','Alicia','Anda','Antequera','Baclayon','Balilihan','Batuan','Bien Unido','Bilar','Buenavista','Calape','Candijay','Carmen','Catigbian','Clarin','Corella','Cortes','Dagohoy','Danao','Dauis','Dimiao','Duero','Garcia Hernandez','Guindulman','Inabanga','Jagna','Lila','Loay','Loboc','Loon','Mabini','Maribojoc','Panglao','Pilar','Pitogo','Presidency Roxas','San Isidro','San Miguel','Sevilla','Sierra Bullones','Sikatuna','Tagbilaran City','Talibon','Trinidad','Tubigon','Ubay','Valencia','Others'],
-  'Bukidnon': ['Baungon','Cabanglasan','Damulog','Dangcagan','Don Carlos','Impasug-ong','Kadingilan','Kalilangan','Kibawe','Kitaotao','Lantapan','Libona','Malaybalay City','Malitbog','Manolo Fortich','Maramag','Pangantucan','Quezon','San Fernando','Sumilao','Talakag','Valencia City','Others'],
-  'Bulacan': ['Angat','Balagtas','Baliuag','Bocaue','Bulakan','Bustos','Calumpit','Doña Remedios Trinidad','Guiguinto','Hagonoy','Malolos City','Marilao','Meycauayan City','Norzagaray','Obando','Pandi','Paombong','Plaridel','Pulilan','San Ildefonso','San Jose del Monte City','San Miguel','San Rafael','Santa Maria','Others'],
-  'Cagayan': ['Abulug','Alcala','Allacapan','Amulung','Aparri','Baggao','Ballesteros','Buguey','Calayan','Camalaniugan','Claveria','Enrile','Gattaran','Gonzaga','Iguig','Lal-lo','Lasam','Pamplona','Peñablanca','Piat','Rizal','Sanchez-Mira','Santa Ana','Santa Praxedes','Santa Teresita','Santo Niño','Solana','Tuao','Tuguegarao City','Others'],
-  'Camarines Norte': ['Basud','Capalonga','Daet','Jose Panganiban','Labo','Mercedes','Paracale','San Lorenzo Ruiz','San Vicente','Santa Elena','Talisay','Vinzons','Others'],
-  'Camarines Sur': ['Baao','Balatan','Bato','Bombon','Buhi','Bula','Cabusao','Calabanga','Camaligan','Canaman','Caramoan','Del Gallego','Gainza','Garchitorena','Goa','Iriga City','Lagonoy','Libmanan','Lupi','Magarao','Milaor','Minalabac','Nabua','Naga City','Ocampo','Pamplona','Pasacao','Pili','Presentacion','Ragay','Sagnay','San Fernando','San Jose','Sipocot','Siruma','Tigaon','Tinambac','Others'],
-  'Camiguin': ['Catarman','Guinsiliban','Mahinog','Mambajao','Sagay','Others'],
-  'Capiz': ['Cuartero','Dao','Dumalag','Dumarao','Ivisan','Jamindan','Ma-ayon','Mambusao','Panay','Panitan','Pilar','Pontevedra','President Roxas','Roxas City','Sapi-an','Sigma','Tapaz','Others'],
-  'Catanduanes': ['Bagamanoc','Baras','Bato','Caramoran','Gigmoto','Pandan','Panganiban','San Andres','San Miguel','Viga','Virac','Others'],
-  'Cavite': ['Alfonso','Amadeo','Bacoor City','Carmona','Cavite City','Dasmariñas City','General Emilio Aguinaldo','General Mariano Alvarez','General Trias City','Imus City','Indang','Kawit','Magallanes','Maragondon','Mendez','Naic','Noveleta','Rosario','Silang','Tagaytay City','Tanza','Ternate','Trece Martires City','Others'],
-  'Cebu': ['Alcantara','Alcoy','Alegria','Aloguinsan','Argao','Asturias','Badian','Balamban','Bantayan','Barili','Bogo City','Boljoon','Borbon','Carcar City','Carmen','Catmon','Cebu City','Compostela','Consolacion','Cordova','Daanbantayan','Dalaguete','Danao City','Dumanjug','Ginatilan','Lapu-Lapu City','Liloan','Madridejos','Malabuyoc','Mandaue City','Medellin','Minglanilla','Moalboal','Naga City','Oslob','Pilar','Pinamungahan','Poro','Ronda','Samboan','San Fernando','San Francisco','San Remigio','Santa Fe','Santander','Sibonga','Sogod','Tabogon','Tabuelan','Talisay City','Toledo City','Tuburan','Tudela','Others'],
-  'Compostela Valley (Davao de Oro)': ['Compostela','Laak','Mabini','Maco','Maragusan','Mawab','Monkayo','Montevista','Nabunturan','New Bataan','Pantukan','Others'],
-  'Cotabato (North Cotabato)': ['Alamada','Aleosan','Antipas','Arakan','Banisilan','Carmen','Kabacan','Kidapawan City','Libungan','Magpet','Makilala','Matalam','Midsayap','M\'lang','Pigcawayan','Pikit','President Roxas','Tulunan','Others'],
-  'Davao de Oro': ['Compostela','Laak','Mabini','Maco','Maragusan','Mawab','Monkayo','Montevista','Nabunturan','New Bataan','Pantukan','Others'],
-  'Davao del Norte': ['Asuncion','Braulio E. Dujali','Carmen','Island Garden City of Samal','Kapalong','New Corella','Panabo City','San Isidro','Santo Tomas','Tagum City','Talaingod','Others'],
-  'Davao del Sur': ['Bansalan','Davao City','Digos City','Don Marcelino','Hagonoy','Jose Abad Santos','Kiblawan','Magsaysay','Malalag','Malita','Matanao','Padada','Santa Cruz','Sulop','Others'],
-  'Davao Occidental': ['Don Marcelino','Jose Abad Santos','Malita','Santa Maria','Sarangani','Others'],
-  'Davao Oriental': ['Baganga','Banaybanay','Boston','Caraga','Cateel','Governor Generoso','Lupon','Manay','Mati City','San Isidro','Tarragona','Others'],
-  'Dinagat Islands': ['Basilisa','Cagdianao','Dinagat','Libjo','Loreto','San Jose','Tubajon','Others'],
-  'Eastern Samar': ['Arteche','Balangiga','Balangkayan','Borongan City','Can-avid','Dolores','General MacArthur','Giporlos','Guiuan','Hernani','Jipapad','Lawaan','Llorente','Maslog','Maydolong','Mercedes','Oras','Quinapondan','Salcedo','San Julian','San Policarpo','Sulat','Taft','Others'],
-  'Guimaras': ['Buenavista','Jordan','Nueva Valencia','San Lorenzo','Sibunag','Others'],
-  'Ifugao': ['Alfonso Lista','Aguinaldo','Asipulo','Banaue','Hingyon','Hungduan','Kiangan','Lagawe','Lamut','Mayoyao','Tinoc','Others'],
-  'Ilocos Norte': ['Adams','Bacarra','Badoc','Bangui','Banna','Batac City','Burgos','Carasi','Currimao','Dingras','Dumalneg','Laoag City','Marcos','Nueva Era','Pagudpud','Paoay','Pasuquin','Piddig','Pinili','San Nicolas','Sarrat','Solsona','Vintar','Others'],
-  'Ilocos Sur': ['Alilem','Banayoyo','Bantay','Burgos','Cabugao','Candon City','Caoayan','Cervantes','Galimuyod','Gregorio del Pilar','Lidlidda','Magsingal','Mahbadong','Nagbukel','Narvacan','Quirino','Salcedo','San Emilio','San Esteban','San Ildefonso','San Juan','San Vicente','Santa','Santa Catalina','Santa Cruz','Santa Lucia','Santa Maria','Santiago','Santo Domingo','Sigay','Sinait','Sugpon','Suyo','Tagudin','Vigan City','Others'],
-  'Iloilo': ['Ajuy','Alimodian','Anilao','Badiangan','Balasan','Banate','Barotac Nuevo','Barotac Viejo','Batad','Bingawan','Cabatuan','Calinog','Carles','Concepcion','Dingle','Dueñas','Dumangas','Estancia','Guimbal','Igbaras','Iloilo City','Janiuay','Lambunao','Leganes','Lemery','Leon','Maasin','Miagao','Mina','New Lucena','Oton','Passi City','Pavia','Pototan','San Dionisio','San Enrique','San Joaquin','San Miguel','San Rafael','Santa Barbara','Sara','Tigbauan','Tubungan','Zarraga','Others'],
-  'Isabela': ['Alicia','Angadanan','Aurora','Benito Soliven','Burgos','Cabagan','Cabatuan','Cauayan City','Cordon','Delfin Albano','Dinapigue','Divilacan','Echague','Gamu','Ilagan City','Jones','Luna','Maconacon','Mallig','Naguilian','Palanan','Quezon','Quirino','Ramon','Reina Mercedes','Roxas','San Agustin','San Guillermo','San Isidro','San Manuel','San Mariano','San Mateo','San Pablo','Santa Maria','Santo Tomas','Tumauini','Others'],
-  'Kalinga': ['Balbalan','Lubuagan','Pasil','Pinukpuk','Rizal','Tabuk City','Tanudan','Tinglayan','Others'],
-  'La Union': ['Agoo','Aringay','Bacnotan','Bagulin','Balaoan','Bangar','Bauang','Burgos','Caba','Luna','Naguilian','Pugo','Rosario','San Fernando City','San Gabriel','San Juan','Santo Tomas','Santol','Sudipen','Tubao','Others'],
-  'Laguna': ['Alaminos','Bay','Biñan City','Cabuyao City','Calamba City','Calauan','Cavinti','Famy','Kalayaan','Liliw','Los Baños','Luisiana','Lumban','Mabitac','Magdalena','Majayjay','Marikina City','Nagcarlan','Paete','Pagsanjan','Pakil','Pangil','Pila','Rizal','San Pablo City','San Pedro City','Santa Cruz','Santa Maria','Santa Rosa City','Siniloan','Victoria','Others'],
-  'Lanao del Norte': ['Bacolod','Baloi','Baroy','Iligan City','Kapatagan','Kauswagan','Kolambugan','Lala','Linamon','Maigo','Matungao','Munai','Nunungan','Pantao Ragat','Pantar','Poona Piagapo','Salvador','Sapad','Sultan Naga Dimaporo','Tagoloan II','Tangcal','Tubod','Others'],
-  'Lanao del Sur': ['Balabagan','Balindong','Bayang','Binidayan','Buadiposo-Buntong','Bubong','Butig','Calanogas','Ditsaan-Ramain','Ganassi','Kapai','Kapatagan','Lumba-Bayabao','Lumbaca-Unayan','Lumbatan','Lumbayanague','Madalum','Madamba','Maguing','Malabang','Marantao','Marawi City','Marogong','Masiu','Mulondo','Pagayawan','Piagapo','Picong','Poona Bayabao','Pualas','Butig','Saguiaran','Sultan Dumalondong','Tagoloan II','Tamparan','Taraka','Tubaran','Tugaya','Wao','Others'],
-  'Leyte': ['Abuyog','Alangalang','Albuera','Babatngon','Barugo','Bato','Baybay City','Burauen','Calubian','Capoocan','Carigara','Dagami','Dulag','Hilongos','Hindang','Inopacan','Isabel','Jaro','Javier','Julita','Kananga','La Paz','Leyte','MacArthur','Mahaplag','Matag-ob','Matalom','Mayorga','Merida','Ormoc City','Palo','Palompon','Pastrana','San Isidro','San Miguel','Santa Fe','Tabango','Tabontabon','Tacloban City','Tanauan','Tolosa','Tunga','Villaba','Others'],
-  'Maguindanao del Norte': ['Barira','Buldon','Datu Blah T. Sinsuat','Datu Odin Sinsuat','Kabuntalan','Matanog','Northern Kabuntalan','Parang','Sultan Kudarat','Sultan Mastura','Upi','Others'],
-  'Maguindanao del Sur': ['Ampatuan','Buluan','Datu Abdullah Sangki','Datu Anggal Midtimbang','Datu Hoffer Ampatuan','Datu Montawal','Datu Paglas','Datu Piang','Datu Salibo','Datu Saudi-Ampatuan','Datu Unsay','Gen. S. K. Pendatun','Guindulungan','Mamasapano','Mangudadatu','Pagagawan','Pagalungan','Paglat','Pandag','Rajah Buayan','Shariff Aguak','Shariff Saydona Mustapha','South Upi','Sultan sa Barongis','Talayan','Talitay','Wao','Others'],
-  'Marinduque': ['Boac','Buenavista','Gasan','Mogpog','Santa Cruz','Torrijos','Others'],
-  'Masbate': ['Aroroy','Baleno','Balud','Batuan','Cataingan','Cawayan','Claveria','Dimasalang','Esperanza','Mandaon','Masbate City','Milagros','Mobo','Monreal','Palanas','Pio V. Corpuz','Placer','San Fernando','San Jacinto','San Pascual','Uson','Others'],
-  'Metro Manila (NCR)': ['Caloocan','Las Piñas','Makati','Malabon','Mandaluyong','Manila','Marikina','Muntinlupa','Navotas','Parañaque','Pasay','Pasig','Pateros','Quezon City','San Juan','Taguig','Valenzuela','Others'],
-  'Misamis Occidental': ['Aloran','Baliangao','Bonifacio','Calamba','Clarin','Concepcion','Don Victoriano Chiongbian','Jimenez','Lopez Jaena','Oroquieta City','Ozamiz City','Panaon','Plaridel','Sapang Dalaga','Sinacaban','Tangub City','Tudela','Others'],
-  'Misamis Oriental': ['Alubijid','Balingasag','Balingoan','Binuangan','Cagayan de Oro City','Claveria','El Salvador City','Gingoog City','Gitagum','Initao','Jasaan','Kinoguitan','Lagonglong','Laguindingan','Libertad','Lugait','Magsaysay','Manticao','Medina','Naawan','Opol','Salay','Sugbongcogon','Tagoloan','Talisayan','Villanueva','Others'],
-  'Mountain Province': ['Barlig','Bauko','Besao','Bontoc','Natonin','Paracelis','Sabangan','Sadanga','Sagada','Tadian','Others'],
-  'Negros Occidental': ['Bacolod City','Bago City','Binalbagan','Calatrava','Candoni','Cauayan','Enrique B. Magalona','Escalante City','Himamaylan City','Hinigaran','Hinoba-an','Ilog','Isabela','Kabankalan City','La Carlota City','La Castellana','Manapla','Moises Padilla','Murcia','Pontevedra','Pulupandan','Sagay City','San Carlos City','San Enrique','Silay City','Sipalay City','Talisay City','Toboso','Valladolid','Victorias City','Others'],
-  'Negros Oriental': ['Amlan','Ayungon','Bacong','Bais City','Basay','Bayawan City','Bindoy','Canlaon City','Dauin','Dumaguete City','Guihulngan City','Jimalalud','La Libertad','Mabinay','Manjuyod','Pamplona','San Jose','Santa Catalina','Siaton','Sibulan','Tanjay City','Tayasan','Valencia','Vallehermoso','Zamboanguita','Others'],
-  'Northern Samar': ['Allen','Biri','Bobon','Capul','Catarman','Catubig','Gamay','Laoang','Lapinig','Las Navas','Lavezares','Lope de Vega','Mapanas','Mondragon','Palapag','Pambujan','Rosario','San Antonio','San Isidro','San Jose','San Roque','San Vicente','Silvino Lobos','Victoria','Others'],
-  'Nueva Ecija': ['Aliaga','Bongabon','Cabanatuan City','Cabiao','Carranglan','Cuyapo','Gabaldon','Gapan City','General Mamerto Natividad','General Tinio','Guimba','Jaen','Laur','Licab','Llanera','Lupao','Munoz City','Nampicuan','Palayan City','Pantabangan','Peñaranda','Quezon','Rizal','San Antonio','San Isidro','San Jose City','San Leonardo','Santa Rosa','Santo Domingo','Talavera','Talugtug','Zaragoza','Others'],
-  'Nueva Vizcaya': ['Alfonso Castañeda','Ambaguio','Aritao','Bagabag','Bambang','Bayombong','Diadi','Dupax del Norte','Dupax del Sur','Kasibu','Kayapa','Quezon','Santa Fe','Solano','Villaverde','Others'],
-  'Occidental Mindoro': ['Abra de Ilog','Calintaan','Looc','Lubang','Magsaysay','Mamburao','Paluan','Rizal','Sablayan','San Jose','Santa Cruz','Others'],
-  'Oriental Mindoro': ['Baco','Bansud','Bongabong','Bulalacao','Calapan City','Gloria','Mansalay','Naujan','Pinamalayan','Pola','Puerto Galera','Roxas','San Teodoro','Socorro','Victoria','Others'],
-  'Palawan': ['Aborlan','Agutaya','Araceli','Balabac','Bataraza','Brooke\'s Point','Busuanga','Cagayancillo','Coron','Culion','Cuyo','Dumaran','El Nido','Kalayaan','Linapacan','Magsaysay','Narra','Puerto Princesa City','Quezon','Rizal','Roxas','San Vicente','Sofronio Española','Taytay','Others'],
-  'Pampanga': ['Angeles City','Apalit','Arayat','Bacolor','Candaba','Floridablanca','Guagua','Lubao','Mabalacat City','Macabebe','Magalang','Masantol','Mexico','Minalin','Porac','San Fernando City','San Luis','San Simon','Santa Ana','Santa Rita','Santo Tomas','Sasmuan','Others'],
-  'Pangasinan': ['Agno','Aguilar','Alaminos City','Alcala','Anda','Asingan','Balungao','Bani','Basista','Bautista','Bayambang','Binalonan','Binmaley','Bugallon','Burgos','Calasiao','Dagupan City','Dasol','Infanta','Labrador','Laoac','Lingayen','Mabini','Malasiqui','Manaoag','Mangaldan','Mangatarem','Mapandan','Natividad','Pozorrubio','Rosales','San Carlos City','San Fabian','San Jacinto','San Manuel','San Nicolas','San Quintin','Santa Barbara','Santa Maria','Santo Tomas','Sison','Sual','Tayug','Umingan','Urbiztondo','Urdaneta City','Villasis','Others'],
-  'Quezon': ['Agdangan','Alabat','Atimonan','Buenavista','Burdeos','Calauag','Candelaria','Catanauan','Dolores','General Luna','General Nakar','Guinayangan','Gumaca','Infanta','Jomalig','Lopez','Lucban','Lucena City','Macalelon','Mauban','Mulanay','Padre Burgos','Pagbilao','Panukulan','Patnanungan','Perez','Pitogo','Plaridel','Polillo','Quezon','Real','Sampaloc','San Andres','San Antonio','San Francisco','San Narciso','Sariaya','Tagkawayan','Tayabas City','Tiaong','Unisan','Others'],
-  'Quirino': ['Aglipay','Cabarroguis','Diffun','Maddela','Nagtipunan','Saguday','Others'],
-  'Rizal': ['Angono','Antipolo City','Baras','Binangonan','Cainta','Cardona','Jala-Jala','Morong','Pililla','Rodriguez','San Mateo','Tanay','Taytay','Teresa','Others'],
-  'Romblon': ['Alcantara','Banton','Cajidiocan','Calatrava','Concepcion','Corcuera','Ferrol','Looc','Magdiwang','Odiongan','Romblon','San Agustin','San Andres','San Fernando','San Jose','Santa Fe','Santa Maria','Santa Magdalena','Others'],
-  'Samar (Western Samar)': ['Almagro','Basey','Calbayog City','Calbiga','Catbalogan City','Daram','Gandara','Hinabangan','Jiabong','Marabut','Matuguinao','Motiong','Pagsanghan','Paranas','Pinabacdao','San Jorge','San Jose de Buan','San Sebastian','Santa Margarita','Santa Rita','Santo Niño','Tagapul-an','Talalora','Tarangnan','Villareal','Zumarraga','Others'],
-  'Sarangani': ['Alabel','Glan','Kiamba','Maasim','Maitum','Malapatan','Malungon','Others'],
-  'Siquijor': ['Enrique Villanueva','Larena','Lazi','Maria','San Juan','Siquijor','Others'],
-  'Sorsogon': ['Barcelona','Bulan','Bulusan','Casiguran','Castilla','Donsol','Gubat','Irosin','Juban','Magallanes','Matnog','Pilar','Prieto Diaz','Santa Magdalena','Sorsogon City','Others'],
-  'South Cotabato': ['Banga','General Santos City','Koronadal City','Lake Sebu','Norala','Polomolok','Santo Niño','Surallah','T\'boli','Tampakan','Tantangan','Tupi','Others'],
-  'Southern Leyte': ['Anahawan','Bontoc','Hinunangan','Hinundayan','Libagon','Liloan','Limasawa','Maasin City','Macrohon','Malitbog','Padre Burgos','Pintuyan','Saint Bernard','San Francisco','San Juan','San Ricardo','Silago','Sogod','St. Bernard','Tomas Oppus','Others'],
-  'Sultan Kudarat': ['Bagumbayan','Columbio','Esperanza','Isulan','Kalamansig','Lambayong','Lebak','Lutayan','Palimbang','President Quirino','Senator Ninoy Aquino','Tacurong City','Others'],
-  'Sulu': ['Banguingui','Hadji Panglima Tahil','Indanan','Jolo','Kalingalan Caluang','Lugus','Luuk','Maimbung','Old Panamao','Omar','Pandami','Panglima Estino','Pangutaran','Parang','Pata','Patikul','Siasi','Talipao','Tapul','Tongkil','Others'],
-  'Surigao del Norte': ['Alegria','Bacuag','Burgos','Claver','Dapa','Del Carmen','General Luna','Gigaquit','Mainit','Malimono','Pilar','Placer','San Benito','San Francisco','San Isidro','Santa Monica','Sison','Socorro','Surigao City','Tagana-an','Tubod','Others'],
-  'Surigao del Sur': ['Barobo','Bayabas','Bislig City','Cagwait','Cantilan','Carmen','Carrascal','Cortes','Hinatuan','Lanuza','Lianga','Lingig','Madrid','Marihatag','San Agustin','San Miguel','Tagbina','Tago','Tandag City','Others'],
-  'Tarlac': ['Anao','Bamban','Camiling','Capas','Concepcion','Gerona','La Paz','Mayantoc','Moncada','Paniqui','Pura','Ramos','San Clemente','San Jose','San Manuel','Santa Ignacia','Tarlac City','Victoria','Others'],
-  'Tawi-Tawi': ['Bongao','Languyan','Mapun','Panglima Sugala','Sapa-Sapa','Sibutu','Simunul','Sitangkai','South Ubian','Tandubas','Turtle Islands','Others'],
-  'Zambales': ['Botolan','Cabangan','Candelaria','Castillejos','Iba','Masinloc','Olongapo City','Palauig','San Antonio','San Felipe','San Marcelino','San Narciso','Santa Cruz','Subic','Others'],
-  'Zamboanga del Norte': ['Baliguian','Dapitan City','Dipolog City','Godod','Gutalac','Jose Dalman','Kalawit','Katipunan','La Libertad','Labason','Leon B. Postigo','Liloy','Manukan','Mutia','Piñan','Polanco','President Manuel A. Roxas','Rizal','Salug','Sergio Osmeña Sr.','Siayan','Sibuco','Sibutad','Sindangan','Siocon','Sirawai','Tampilisan','Others'],
-  'Zamboanga del Sur': ['Aurora','Bayog','Dimataling','Dinas','Dumalinao','Dumingag','Guipos','Josefina','Kumalarang','Labangan','Lapuyan','Mahayag','Margosatubig','Midsalip','Molave','Pagadian City','Pitogo','Ramon Magsaysay','San Miguel','San Pablo','Tabina','Tambulig','Tigbao','Tukuran','Vincenzo A. Sagun','Zamboanga City','Others'],
-  'Zamboanga Sibugay': ['Alicia','Buug','Diplahan','Imelda','Ipil','Kabasalan','Mabuhay','Malangas','Naga','Olutanga','Payao','Roseller Lim','Siay','Talusan','Titay','Tungawan','Others'],
-  'Others': ['Others'],
+  Abra: [
+    "Bangued",
+    "Boliney",
+    "Bucay",
+    "Bucloc",
+    "Daguioman",
+    "Danglas",
+    "Dolores",
+    "La Paz",
+    "Lacub",
+    "Lagangilang",
+    "Lagayan",
+    "Langiden",
+    "Licuan-Baay",
+    "Luba",
+    "Malibcong",
+    "Manabo",
+    "Peñarrubia",
+    "Pidigan",
+    "Pilar",
+    "Sallapadan",
+    "San Isidro",
+    "San Juan",
+    "San Quintin",
+    "Tayum",
+    "Tineg",
+    "Tubo",
+    "Villaviciosa",
+    "Others",
+  ],
+  "Agusan del Norte": [
+    "Buenavista",
+    "Butuan City",
+    "Cabadbaran City",
+    "Carmen",
+    "Jabonga",
+    "Kitcharao",
+    "Las Nieves",
+    "Magallanes",
+    "Nasipit",
+    "Remedios T. Romualdez",
+    "Santiago",
+    "Tubay",
+    "Others",
+  ],
+  "Agusan del Sur": [
+    "Bayugan City",
+    "Bunawan",
+    "Esperanza",
+    "La Paz",
+    "Loreto",
+    "Prosperidad",
+    "Rosario",
+    "San Francisco",
+    "San Luis",
+    "Santa Josefa",
+    "Sibagat",
+    "Talacogon",
+    "Trento",
+    "Veruela",
+    "Others",
+  ],
+  Aklan: [
+    "Altavas",
+    "Balete",
+    "Banga",
+    "Batan",
+    "Buruanga",
+    "Ibajay",
+    "Kalibo",
+    "Lezo",
+    "Libacao",
+    "Madalag",
+    "Makato",
+    "Malay",
+    "Malinao",
+    "Nabas",
+    "New Washington",
+    "Numancia",
+    "Tangalan",
+    "Others",
+  ],
+  Albay: [
+    "Bacacay",
+    "Camalig",
+    "Daraga",
+    "Guinobatan",
+    "Jovellar",
+    "Legazpi City",
+    "Libon",
+    "Ligao City",
+    "Malilipot",
+    "Malinao",
+    "Manito",
+    "Oas",
+    "Pio Duran",
+    "Polangui",
+    "Rapu-Rapu",
+    "Santo Domingo",
+    "Tabaco City",
+    "Tiwi",
+    "Others",
+  ],
+  Antique: [
+    "Anini-y",
+    "Barbaza",
+    "Belison",
+    "Bugasong",
+    "Caluya",
+    "Culasi",
+    "Hamtic",
+    "Laua-an",
+    "Libertad",
+    "Pandan",
+    "Patnongon",
+    "San Jose de Buenavista",
+    "San Remigio",
+    "Sebaste",
+    "Sibalom",
+    "Tibiao",
+    "Tobias Fornier",
+    "Valderrama",
+    "Others",
+  ],
+  Apayao: [
+    "Calanasan",
+    "Conner",
+    "Flora",
+    "Kabugao",
+    "Luna",
+    "Pudtol",
+    "Santa Marcela",
+    "Others",
+  ],
+  Aurora: [
+    "Baler",
+    "Casiguran",
+    "Dilasag",
+    "Dinalungan",
+    "Dingalan",
+    "Dipaculao",
+    "Maria Aurora",
+    "San Luis",
+    "Others",
+  ],
+  Basilan: [
+    "Akbar",
+    "Al-Barka",
+    "Hadji Mohammad Ajul",
+    "Hadji Muhtamad",
+    "Isabela City",
+    "Lamitan City",
+    "Lantawan",
+    "Maluso",
+    "Sumisip",
+    "Tabuan-Lasa",
+    "Tipo-Tipo",
+    "Tuburan",
+    "Ungkaya Pukan",
+    "Others",
+  ],
+  Bataan: [
+    "Abucay",
+    "Bagac",
+    "Balanga City",
+    "Dinalupihan",
+    "Hermosa",
+    "Limay",
+    "Mariveles",
+    "Morong",
+    "Orani",
+    "Orion",
+    "Pilar",
+    "Samal",
+    "Others",
+  ],
+  Batanes: [
+    "Basco",
+    "Itbayat",
+    "Ivana",
+    "Mahatao",
+    "Sabtang",
+    "Uyugan",
+    "Others",
+  ],
+  Batangas: [
+    "Agoncillo",
+    "Alitagtag",
+    "Balayan",
+    "Balete",
+    "Batangas City",
+    "Bauan",
+    "Calaca",
+    "Calatagan",
+    "Cuenca",
+    "Ibaan",
+    "Laurel",
+    "Lemery",
+    "Lian",
+    "Lipa City",
+    "Lobo",
+    "Mabini",
+    "Malvar",
+    "Mataas na Kahoy",
+    "Nasugbu",
+    "Padre Garcia",
+    "Rosario",
+    "San Jose",
+    "San Juan",
+    "San Luis",
+    "San Nicolas",
+    "San Pascual",
+    "Santa Teresita",
+    "Santo Tomas",
+    "Taal",
+    "Talisay",
+    "Tanauan City",
+    "Taysan",
+    "Tingloy",
+    "Tuy",
+    "Others",
+  ],
+  Benguet: [
+    "Atok",
+    "Baguio City",
+    "Bakun",
+    "Bokod",
+    "Buguias",
+    "Itogon",
+    "Kabayan",
+    "Kapangan",
+    "Kibungan",
+    "La Trinidad",
+    "Mankayan",
+    "Sablan",
+    "Tuba",
+    "Tublay",
+    "Others",
+  ],
+  Biliran: [
+    "Almeria",
+    "Biliran",
+    "Cabucgayan",
+    "Caibiran",
+    "Culaba",
+    "Kawayan",
+    "Maripipi",
+    "Naval",
+    "Others",
+  ],
+  Bohol: [
+    "Alburquerque",
+    "Alicia",
+    "Anda",
+    "Antequera",
+    "Baclayon",
+    "Balilihan",
+    "Batuan",
+    "Bien Unido",
+    "Bilar",
+    "Buenavista",
+    "Calape",
+    "Candijay",
+    "Carmen",
+    "Catigbian",
+    "Clarin",
+    "Corella",
+    "Cortes",
+    "Dagohoy",
+    "Danao",
+    "Dauis",
+    "Dimiao",
+    "Duero",
+    "Garcia Hernandez",
+    "Guindulman",
+    "Inabanga",
+    "Jagna",
+    "Lila",
+    "Loay",
+    "Loboc",
+    "Loon",
+    "Mabini",
+    "Maribojoc",
+    "Panglao",
+    "Pilar",
+    "Pitogo",
+    "Presidency Roxas",
+    "San Isidro",
+    "San Miguel",
+    "Sevilla",
+    "Sierra Bullones",
+    "Sikatuna",
+    "Tagbilaran City",
+    "Talibon",
+    "Trinidad",
+    "Tubigon",
+    "Ubay",
+    "Valencia",
+    "Others",
+  ],
+  Bukidnon: [
+    "Baungon",
+    "Cabanglasan",
+    "Damulog",
+    "Dangcagan",
+    "Don Carlos",
+    "Impasug-ong",
+    "Kadingilan",
+    "Kalilangan",
+    "Kibawe",
+    "Kitaotao",
+    "Lantapan",
+    "Libona",
+    "Malaybalay City",
+    "Malitbog",
+    "Manolo Fortich",
+    "Maramag",
+    "Pangantucan",
+    "Quezon",
+    "San Fernando",
+    "Sumilao",
+    "Talakag",
+    "Valencia City",
+    "Others",
+  ],
+  Bulacan: [
+    "Angat",
+    "Balagtas",
+    "Baliuag",
+    "Bocaue",
+    "Bulakan",
+    "Bustos",
+    "Calumpit",
+    "Doña Remedios Trinidad",
+    "Guiguinto",
+    "Hagonoy",
+    "Malolos City",
+    "Marilao",
+    "Meycauayan City",
+    "Norzagaray",
+    "Obando",
+    "Pandi",
+    "Paombong",
+    "Plaridel",
+    "Pulilan",
+    "San Ildefonso",
+    "San Jose del Monte City",
+    "San Miguel",
+    "San Rafael",
+    "Santa Maria",
+    "Others",
+  ],
+  Cagayan: [
+    "Abulug",
+    "Alcala",
+    "Allacapan",
+    "Amulung",
+    "Aparri",
+    "Baggao",
+    "Ballesteros",
+    "Buguey",
+    "Calayan",
+    "Camalaniugan",
+    "Claveria",
+    "Enrile",
+    "Gattaran",
+    "Gonzaga",
+    "Iguig",
+    "Lal-lo",
+    "Lasam",
+    "Pamplona",
+    "Peñablanca",
+    "Piat",
+    "Rizal",
+    "Sanchez-Mira",
+    "Santa Ana",
+    "Santa Praxedes",
+    "Santa Teresita",
+    "Santo Niño",
+    "Solana",
+    "Tuao",
+    "Tuguegarao City",
+    "Others",
+  ],
+  "Camarines Norte": [
+    "Basud",
+    "Capalonga",
+    "Daet",
+    "Jose Panganiban",
+    "Labo",
+    "Mercedes",
+    "Paracale",
+    "San Lorenzo Ruiz",
+    "San Vicente",
+    "Santa Elena",
+    "Talisay",
+    "Vinzons",
+    "Others",
+  ],
+  "Camarines Sur": [
+    "Baao",
+    "Balatan",
+    "Bato",
+    "Bombon",
+    "Buhi",
+    "Bula",
+    "Cabusao",
+    "Calabanga",
+    "Camaligan",
+    "Canaman",
+    "Caramoan",
+    "Del Gallego",
+    "Gainza",
+    "Garchitorena",
+    "Goa",
+    "Iriga City",
+    "Lagonoy",
+    "Libmanan",
+    "Lupi",
+    "Magarao",
+    "Milaor",
+    "Minalabac",
+    "Nabua",
+    "Naga City",
+    "Ocampo",
+    "Pamplona",
+    "Pasacao",
+    "Pili",
+    "Presentacion",
+    "Ragay",
+    "Sagnay",
+    "San Fernando",
+    "San Jose",
+    "Sipocot",
+    "Siruma",
+    "Tigaon",
+    "Tinambac",
+    "Others",
+  ],
+  Camiguin: [
+    "Catarman",
+    "Guinsiliban",
+    "Mahinog",
+    "Mambajao",
+    "Sagay",
+    "Others",
+  ],
+  Capiz: [
+    "Cuartero",
+    "Dao",
+    "Dumalag",
+    "Dumarao",
+    "Ivisan",
+    "Jamindan",
+    "Ma-ayon",
+    "Mambusao",
+    "Panay",
+    "Panitan",
+    "Pilar",
+    "Pontevedra",
+    "President Roxas",
+    "Roxas City",
+    "Sapi-an",
+    "Sigma",
+    "Tapaz",
+    "Others",
+  ],
+  Catanduanes: [
+    "Bagamanoc",
+    "Baras",
+    "Bato",
+    "Caramoran",
+    "Gigmoto",
+    "Pandan",
+    "Panganiban",
+    "San Andres",
+    "San Miguel",
+    "Viga",
+    "Virac",
+    "Others",
+  ],
+  Cavite: [
+    "Alfonso",
+    "Amadeo",
+    "Bacoor City",
+    "Carmona",
+    "Cavite City",
+    "Dasmariñas City",
+    "General Emilio Aguinaldo",
+    "General Mariano Alvarez",
+    "General Trias City",
+    "Imus City",
+    "Indang",
+    "Kawit",
+    "Magallanes",
+    "Maragondon",
+    "Mendez",
+    "Naic",
+    "Noveleta",
+    "Rosario",
+    "Silang",
+    "Tagaytay City",
+    "Tanza",
+    "Ternate",
+    "Trece Martires City",
+    "Others",
+  ],
+  Cebu: [
+    "Alcantara",
+    "Alcoy",
+    "Alegria",
+    "Aloguinsan",
+    "Argao",
+    "Asturias",
+    "Badian",
+    "Balamban",
+    "Bantayan",
+    "Barili",
+    "Bogo City",
+    "Boljoon",
+    "Borbon",
+    "Carcar City",
+    "Carmen",
+    "Catmon",
+    "Cebu City",
+    "Compostela",
+    "Consolacion",
+    "Cordova",
+    "Daanbantayan",
+    "Dalaguete",
+    "Danao City",
+    "Dumanjug",
+    "Ginatilan",
+    "Lapu-Lapu City",
+    "Liloan",
+    "Madridejos",
+    "Malabuyoc",
+    "Mandaue City",
+    "Medellin",
+    "Minglanilla",
+    "Moalboal",
+    "Naga City",
+    "Oslob",
+    "Pilar",
+    "Pinamungahan",
+    "Poro",
+    "Ronda",
+    "Samboan",
+    "San Fernando",
+    "San Francisco",
+    "San Remigio",
+    "Santa Fe",
+    "Santander",
+    "Sibonga",
+    "Sogod",
+    "Tabogon",
+    "Tabuelan",
+    "Talisay City",
+    "Toledo City",
+    "Tuburan",
+    "Tudela",
+    "Others",
+  ],
+  "Compostela Valley (Davao de Oro)": [
+    "Compostela",
+    "Laak",
+    "Mabini",
+    "Maco",
+    "Maragusan",
+    "Mawab",
+    "Monkayo",
+    "Montevista",
+    "Nabunturan",
+    "New Bataan",
+    "Pantukan",
+    "Others",
+  ],
+  "Cotabato (North Cotabato)": [
+    "Alamada",
+    "Aleosan",
+    "Antipas",
+    "Arakan",
+    "Banisilan",
+    "Carmen",
+    "Kabacan",
+    "Kidapawan City",
+    "Libungan",
+    "Magpet",
+    "Makilala",
+    "Matalam",
+    "Midsayap",
+    "M'lang",
+    "Pigcawayan",
+    "Pikit",
+    "President Roxas",
+    "Tulunan",
+    "Others",
+  ],
+  "Davao de Oro": [
+    "Compostela",
+    "Laak",
+    "Mabini",
+    "Maco",
+    "Maragusan",
+    "Mawab",
+    "Monkayo",
+    "Montevista",
+    "Nabunturan",
+    "New Bataan",
+    "Pantukan",
+    "Others",
+  ],
+  "Davao del Norte": [
+    "Asuncion",
+    "Braulio E. Dujali",
+    "Carmen",
+    "Island Garden City of Samal",
+    "Kapalong",
+    "New Corella",
+    "Panabo City",
+    "San Isidro",
+    "Santo Tomas",
+    "Tagum City",
+    "Talaingod",
+    "Others",
+  ],
+  "Davao del Sur": [
+    "Bansalan",
+    "Davao City",
+    "Digos City",
+    "Don Marcelino",
+    "Hagonoy",
+    "Jose Abad Santos",
+    "Kiblawan",
+    "Magsaysay",
+    "Malalag",
+    "Malita",
+    "Matanao",
+    "Padada",
+    "Santa Cruz",
+    "Sulop",
+    "Others",
+  ],
+  "Davao Occidental": [
+    "Don Marcelino",
+    "Jose Abad Santos",
+    "Malita",
+    "Santa Maria",
+    "Sarangani",
+    "Others",
+  ],
+  "Davao Oriental": [
+    "Baganga",
+    "Banaybanay",
+    "Boston",
+    "Caraga",
+    "Cateel",
+    "Governor Generoso",
+    "Lupon",
+    "Manay",
+    "Mati City",
+    "San Isidro",
+    "Tarragona",
+    "Others",
+  ],
+  "Dinagat Islands": [
+    "Basilisa",
+    "Cagdianao",
+    "Dinagat",
+    "Libjo",
+    "Loreto",
+    "San Jose",
+    "Tubajon",
+    "Others",
+  ],
+  "Eastern Samar": [
+    "Arteche",
+    "Balangiga",
+    "Balangkayan",
+    "Borongan City",
+    "Can-avid",
+    "Dolores",
+    "General MacArthur",
+    "Giporlos",
+    "Guiuan",
+    "Hernani",
+    "Jipapad",
+    "Lawaan",
+    "Llorente",
+    "Maslog",
+    "Maydolong",
+    "Mercedes",
+    "Oras",
+    "Quinapondan",
+    "Salcedo",
+    "San Julian",
+    "San Policarpo",
+    "Sulat",
+    "Taft",
+    "Others",
+  ],
+  Guimaras: [
+    "Buenavista",
+    "Jordan",
+    "Nueva Valencia",
+    "San Lorenzo",
+    "Sibunag",
+    "Others",
+  ],
+  Ifugao: [
+    "Alfonso Lista",
+    "Aguinaldo",
+    "Asipulo",
+    "Banaue",
+    "Hingyon",
+    "Hungduan",
+    "Kiangan",
+    "Lagawe",
+    "Lamut",
+    "Mayoyao",
+    "Tinoc",
+    "Others",
+  ],
+  "Ilocos Norte": [
+    "Adams",
+    "Bacarra",
+    "Badoc",
+    "Bangui",
+    "Banna",
+    "Batac City",
+    "Burgos",
+    "Carasi",
+    "Currimao",
+    "Dingras",
+    "Dumalneg",
+    "Laoag City",
+    "Marcos",
+    "Nueva Era",
+    "Pagudpud",
+    "Paoay",
+    "Pasuquin",
+    "Piddig",
+    "Pinili",
+    "San Nicolas",
+    "Sarrat",
+    "Solsona",
+    "Vintar",
+    "Others",
+  ],
+  "Ilocos Sur": [
+    "Alilem",
+    "Banayoyo",
+    "Bantay",
+    "Burgos",
+    "Cabugao",
+    "Candon City",
+    "Caoayan",
+    "Cervantes",
+    "Galimuyod",
+    "Gregorio del Pilar",
+    "Lidlidda",
+    "Magsingal",
+    "Mahbadong",
+    "Nagbukel",
+    "Narvacan",
+    "Quirino",
+    "Salcedo",
+    "San Emilio",
+    "San Esteban",
+    "San Ildefonso",
+    "San Juan",
+    "San Vicente",
+    "Santa",
+    "Santa Catalina",
+    "Santa Cruz",
+    "Santa Lucia",
+    "Santa Maria",
+    "Santiago",
+    "Santo Domingo",
+    "Sigay",
+    "Sinait",
+    "Sugpon",
+    "Suyo",
+    "Tagudin",
+    "Vigan City",
+    "Others",
+  ],
+  Iloilo: [
+    "Ajuy",
+    "Alimodian",
+    "Anilao",
+    "Badiangan",
+    "Balasan",
+    "Banate",
+    "Barotac Nuevo",
+    "Barotac Viejo",
+    "Batad",
+    "Bingawan",
+    "Cabatuan",
+    "Calinog",
+    "Carles",
+    "Concepcion",
+    "Dingle",
+    "Dueñas",
+    "Dumangas",
+    "Estancia",
+    "Guimbal",
+    "Igbaras",
+    "Iloilo City",
+    "Janiuay",
+    "Lambunao",
+    "Leganes",
+    "Lemery",
+    "Leon",
+    "Maasin",
+    "Miagao",
+    "Mina",
+    "New Lucena",
+    "Oton",
+    "Passi City",
+    "Pavia",
+    "Pototan",
+    "San Dionisio",
+    "San Enrique",
+    "San Joaquin",
+    "San Miguel",
+    "San Rafael",
+    "Santa Barbara",
+    "Sara",
+    "Tigbauan",
+    "Tubungan",
+    "Zarraga",
+    "Others",
+  ],
+  Isabela: [
+    "Alicia",
+    "Angadanan",
+    "Aurora",
+    "Benito Soliven",
+    "Burgos",
+    "Cabagan",
+    "Cabatuan",
+    "Cauayan City",
+    "Cordon",
+    "Delfin Albano",
+    "Dinapigue",
+    "Divilacan",
+    "Echague",
+    "Gamu",
+    "Ilagan City",
+    "Jones",
+    "Luna",
+    "Maconacon",
+    "Mallig",
+    "Naguilian",
+    "Palanan",
+    "Quezon",
+    "Quirino",
+    "Ramon",
+    "Reina Mercedes",
+    "Roxas",
+    "San Agustin",
+    "San Guillermo",
+    "San Isidro",
+    "San Manuel",
+    "San Mariano",
+    "San Mateo",
+    "San Pablo",
+    "Santa Maria",
+    "Santo Tomas",
+    "Tumauini",
+    "Others",
+  ],
+  Kalinga: [
+    "Balbalan",
+    "Lubuagan",
+    "Pasil",
+    "Pinukpuk",
+    "Rizal",
+    "Tabuk City",
+    "Tanudan",
+    "Tinglayan",
+    "Others",
+  ],
+  "La Union": [
+    "Agoo",
+    "Aringay",
+    "Bacnotan",
+    "Bagulin",
+    "Balaoan",
+    "Bangar",
+    "Bauang",
+    "Burgos",
+    "Caba",
+    "Luna",
+    "Naguilian",
+    "Pugo",
+    "Rosario",
+    "San Fernando City",
+    "San Gabriel",
+    "San Juan",
+    "Santo Tomas",
+    "Santol",
+    "Sudipen",
+    "Tubao",
+    "Others",
+  ],
+  Laguna: [
+    "Alaminos",
+    "Bay",
+    "Biñan City",
+    "Cabuyao City",
+    "Calamba City",
+    "Calauan",
+    "Cavinti",
+    "Famy",
+    "Kalayaan",
+    "Liliw",
+    "Los Baños",
+    "Luisiana",
+    "Lumban",
+    "Mabitac",
+    "Magdalena",
+    "Majayjay",
+    "Marikina City",
+    "Nagcarlan",
+    "Paete",
+    "Pagsanjan",
+    "Pakil",
+    "Pangil",
+    "Pila",
+    "Rizal",
+    "San Pablo City",
+    "San Pedro City",
+    "Santa Cruz",
+    "Santa Maria",
+    "Santa Rosa City",
+    "Siniloan",
+    "Victoria",
+    "Others",
+  ],
+  "Lanao del Norte": [
+    "Bacolod",
+    "Baloi",
+    "Baroy",
+    "Iligan City",
+    "Kapatagan",
+    "Kauswagan",
+    "Kolambugan",
+    "Lala",
+    "Linamon",
+    "Maigo",
+    "Matungao",
+    "Munai",
+    "Nunungan",
+    "Pantao Ragat",
+    "Pantar",
+    "Poona Piagapo",
+    "Salvador",
+    "Sapad",
+    "Sultan Naga Dimaporo",
+    "Tagoloan II",
+    "Tangcal",
+    "Tubod",
+    "Others",
+  ],
+  "Lanao del Sur": [
+    "Balabagan",
+    "Balindong",
+    "Bayang",
+    "Binidayan",
+    "Buadiposo-Buntong",
+    "Bubong",
+    "Butig",
+    "Calanogas",
+    "Ditsaan-Ramain",
+    "Ganassi",
+    "Kapai",
+    "Kapatagan",
+    "Lumba-Bayabao",
+    "Lumbaca-Unayan",
+    "Lumbatan",
+    "Lumbayanague",
+    "Madalum",
+    "Madamba",
+    "Maguing",
+    "Malabang",
+    "Marantao",
+    "Marawi City",
+    "Marogong",
+    "Masiu",
+    "Mulondo",
+    "Pagayawan",
+    "Piagapo",
+    "Picong",
+    "Poona Bayabao",
+    "Pualas",
+    "Butig",
+    "Saguiaran",
+    "Sultan Dumalondong",
+    "Tagoloan II",
+    "Tamparan",
+    "Taraka",
+    "Tubaran",
+    "Tugaya",
+    "Wao",
+    "Others",
+  ],
+  Leyte: [
+    "Abuyog",
+    "Alangalang",
+    "Albuera",
+    "Babatngon",
+    "Barugo",
+    "Bato",
+    "Baybay City",
+    "Burauen",
+    "Calubian",
+    "Capoocan",
+    "Carigara",
+    "Dagami",
+    "Dulag",
+    "Hilongos",
+    "Hindang",
+    "Inopacan",
+    "Isabel",
+    "Jaro",
+    "Javier",
+    "Julita",
+    "Kananga",
+    "La Paz",
+    "Leyte",
+    "MacArthur",
+    "Mahaplag",
+    "Matag-ob",
+    "Matalom",
+    "Mayorga",
+    "Merida",
+    "Ormoc City",
+    "Palo",
+    "Palompon",
+    "Pastrana",
+    "San Isidro",
+    "San Miguel",
+    "Santa Fe",
+    "Tabango",
+    "Tabontabon",
+    "Tacloban City",
+    "Tanauan",
+    "Tolosa",
+    "Tunga",
+    "Villaba",
+    "Others",
+  ],
+  "Maguindanao del Norte": [
+    "Barira",
+    "Buldon",
+    "Datu Blah T. Sinsuat",
+    "Datu Odin Sinsuat",
+    "Kabuntalan",
+    "Matanog",
+    "Northern Kabuntalan",
+    "Parang",
+    "Sultan Kudarat",
+    "Sultan Mastura",
+    "Upi",
+    "Others",
+  ],
+  "Maguindanao del Sur": [
+    "Ampatuan",
+    "Buluan",
+    "Datu Abdullah Sangki",
+    "Datu Anggal Midtimbang",
+    "Datu Hoffer Ampatuan",
+    "Datu Montawal",
+    "Datu Paglas",
+    "Datu Piang",
+    "Datu Salibo",
+    "Datu Saudi-Ampatuan",
+    "Datu Unsay",
+    "Gen. S. K. Pendatun",
+    "Guindulungan",
+    "Mamasapano",
+    "Mangudadatu",
+    "Pagagawan",
+    "Pagalungan",
+    "Paglat",
+    "Pandag",
+    "Rajah Buayan",
+    "Shariff Aguak",
+    "Shariff Saydona Mustapha",
+    "South Upi",
+    "Sultan sa Barongis",
+    "Talayan",
+    "Talitay",
+    "Wao",
+    "Others",
+  ],
+  Marinduque: [
+    "Boac",
+    "Buenavista",
+    "Gasan",
+    "Mogpog",
+    "Santa Cruz",
+    "Torrijos",
+    "Others",
+  ],
+  Masbate: [
+    "Aroroy",
+    "Baleno",
+    "Balud",
+    "Batuan",
+    "Cataingan",
+    "Cawayan",
+    "Claveria",
+    "Dimasalang",
+    "Esperanza",
+    "Mandaon",
+    "Masbate City",
+    "Milagros",
+    "Mobo",
+    "Monreal",
+    "Palanas",
+    "Pio V. Corpuz",
+    "Placer",
+    "San Fernando",
+    "San Jacinto",
+    "San Pascual",
+    "Uson",
+    "Others",
+  ],
+  "Metro Manila (NCR)": [
+    "Caloocan",
+    "Las Piñas",
+    "Makati",
+    "Malabon",
+    "Mandaluyong",
+    "Manila",
+    "Marikina",
+    "Muntinlupa",
+    "Navotas",
+    "Parañaque",
+    "Pasay",
+    "Pasig",
+    "Pateros",
+    "Quezon City",
+    "San Juan",
+    "Taguig",
+    "Valenzuela",
+    "Others",
+  ],
+  "Misamis Occidental": [
+    "Aloran",
+    "Baliangao",
+    "Bonifacio",
+    "Calamba",
+    "Clarin",
+    "Concepcion",
+    "Don Victoriano Chiongbian",
+    "Jimenez",
+    "Lopez Jaena",
+    "Oroquieta City",
+    "Ozamiz City",
+    "Panaon",
+    "Plaridel",
+    "Sapang Dalaga",
+    "Sinacaban",
+    "Tangub City",
+    "Tudela",
+    "Others",
+  ],
+  "Misamis Oriental": [
+    "Alubijid",
+    "Balingasag",
+    "Balingoan",
+    "Binuangan",
+    "Cagayan de Oro City",
+    "Claveria",
+    "El Salvador City",
+    "Gingoog City",
+    "Gitagum",
+    "Initao",
+    "Jasaan",
+    "Kinoguitan",
+    "Lagonglong",
+    "Laguindingan",
+    "Libertad",
+    "Lugait",
+    "Magsaysay",
+    "Manticao",
+    "Medina",
+    "Naawan",
+    "Opol",
+    "Salay",
+    "Sugbongcogon",
+    "Tagoloan",
+    "Talisayan",
+    "Villanueva",
+    "Others",
+  ],
+  "Mountain Province": [
+    "Barlig",
+    "Bauko",
+    "Besao",
+    "Bontoc",
+    "Natonin",
+    "Paracelis",
+    "Sabangan",
+    "Sadanga",
+    "Sagada",
+    "Tadian",
+    "Others",
+  ],
+  "Negros Occidental": [
+    "Bacolod City",
+    "Bago City",
+    "Binalbagan",
+    "Calatrava",
+    "Candoni",
+    "Cauayan",
+    "Enrique B. Magalona",
+    "Escalante City",
+    "Himamaylan City",
+    "Hinigaran",
+    "Hinoba-an",
+    "Ilog",
+    "Isabela",
+    "Kabankalan City",
+    "La Carlota City",
+    "La Castellana",
+    "Manapla",
+    "Moises Padilla",
+    "Murcia",
+    "Pontevedra",
+    "Pulupandan",
+    "Sagay City",
+    "San Carlos City",
+    "San Enrique",
+    "Silay City",
+    "Sipalay City",
+    "Talisay City",
+    "Toboso",
+    "Valladolid",
+    "Victorias City",
+    "Others",
+  ],
+  "Negros Oriental": [
+    "Amlan",
+    "Ayungon",
+    "Bacong",
+    "Bais City",
+    "Basay",
+    "Bayawan City",
+    "Bindoy",
+    "Canlaon City",
+    "Dauin",
+    "Dumaguete City",
+    "Guihulngan City",
+    "Jimalalud",
+    "La Libertad",
+    "Mabinay",
+    "Manjuyod",
+    "Pamplona",
+    "San Jose",
+    "Santa Catalina",
+    "Siaton",
+    "Sibulan",
+    "Tanjay City",
+    "Tayasan",
+    "Valencia",
+    "Vallehermoso",
+    "Zamboanguita",
+    "Others",
+  ],
+  "Northern Samar": [
+    "Allen",
+    "Biri",
+    "Bobon",
+    "Capul",
+    "Catarman",
+    "Catubig",
+    "Gamay",
+    "Laoang",
+    "Lapinig",
+    "Las Navas",
+    "Lavezares",
+    "Lope de Vega",
+    "Mapanas",
+    "Mondragon",
+    "Palapag",
+    "Pambujan",
+    "Rosario",
+    "San Antonio",
+    "San Isidro",
+    "San Jose",
+    "San Roque",
+    "San Vicente",
+    "Silvino Lobos",
+    "Victoria",
+    "Others",
+  ],
+  "Nueva Ecija": [
+    "Aliaga",
+    "Bongabon",
+    "Cabanatuan City",
+    "Cabiao",
+    "Carranglan",
+    "Cuyapo",
+    "Gabaldon",
+    "Gapan City",
+    "General Mamerto Natividad",
+    "General Tinio",
+    "Guimba",
+    "Jaen",
+    "Laur",
+    "Licab",
+    "Llanera",
+    "Lupao",
+    "Munoz City",
+    "Nampicuan",
+    "Palayan City",
+    "Pantabangan",
+    "Peñaranda",
+    "Quezon",
+    "Rizal",
+    "San Antonio",
+    "San Isidro",
+    "San Jose City",
+    "San Leonardo",
+    "Santa Rosa",
+    "Santo Domingo",
+    "Talavera",
+    "Talugtug",
+    "Zaragoza",
+    "Others",
+  ],
+  "Nueva Vizcaya": [
+    "Alfonso Castañeda",
+    "Ambaguio",
+    "Aritao",
+    "Bagabag",
+    "Bambang",
+    "Bayombong",
+    "Diadi",
+    "Dupax del Norte",
+    "Dupax del Sur",
+    "Kasibu",
+    "Kayapa",
+    "Quezon",
+    "Santa Fe",
+    "Solano",
+    "Villaverde",
+    "Others",
+  ],
+  "Occidental Mindoro": [
+    "Abra de Ilog",
+    "Calintaan",
+    "Looc",
+    "Lubang",
+    "Magsaysay",
+    "Mamburao",
+    "Paluan",
+    "Rizal",
+    "Sablayan",
+    "San Jose",
+    "Santa Cruz",
+    "Others",
+  ],
+  "Oriental Mindoro": [
+    "Baco",
+    "Bansud",
+    "Bongabong",
+    "Bulalacao",
+    "Calapan City",
+    "Gloria",
+    "Mansalay",
+    "Naujan",
+    "Pinamalayan",
+    "Pola",
+    "Puerto Galera",
+    "Roxas",
+    "San Teodoro",
+    "Socorro",
+    "Victoria",
+    "Others",
+  ],
+  Palawan: [
+    "Aborlan",
+    "Agutaya",
+    "Araceli",
+    "Balabac",
+    "Bataraza",
+    "Brooke's Point",
+    "Busuanga",
+    "Cagayancillo",
+    "Coron",
+    "Culion",
+    "Cuyo",
+    "Dumaran",
+    "El Nido",
+    "Kalayaan",
+    "Linapacan",
+    "Magsaysay",
+    "Narra",
+    "Puerto Princesa City",
+    "Quezon",
+    "Rizal",
+    "Roxas",
+    "San Vicente",
+    "Sofronio Española",
+    "Taytay",
+    "Others",
+  ],
+  Pampanga: [
+    "Angeles City",
+    "Apalit",
+    "Arayat",
+    "Bacolor",
+    "Candaba",
+    "Floridablanca",
+    "Guagua",
+    "Lubao",
+    "Mabalacat City",
+    "Macabebe",
+    "Magalang",
+    "Masantol",
+    "Mexico",
+    "Minalin",
+    "Porac",
+    "San Fernando City",
+    "San Luis",
+    "San Simon",
+    "Santa Ana",
+    "Santa Rita",
+    "Santo Tomas",
+    "Sasmuan",
+    "Others",
+  ],
+  Pangasinan: [
+    "Agno",
+    "Aguilar",
+    "Alaminos City",
+    "Alcala",
+    "Anda",
+    "Asingan",
+    "Balungao",
+    "Bani",
+    "Basista",
+    "Bautista",
+    "Bayambang",
+    "Binalonan",
+    "Binmaley",
+    "Bugallon",
+    "Burgos",
+    "Calasiao",
+    "Dagupan City",
+    "Dasol",
+    "Infanta",
+    "Labrador",
+    "Laoac",
+    "Lingayen",
+    "Mabini",
+    "Malasiqui",
+    "Manaoag",
+    "Mangaldan",
+    "Mangatarem",
+    "Mapandan",
+    "Natividad",
+    "Pozorrubio",
+    "Rosales",
+    "San Carlos City",
+    "San Fabian",
+    "San Jacinto",
+    "San Manuel",
+    "San Nicolas",
+    "San Quintin",
+    "Santa Barbara",
+    "Santa Maria",
+    "Santo Tomas",
+    "Sison",
+    "Sual",
+    "Tayug",
+    "Umingan",
+    "Urbiztondo",
+    "Urdaneta City",
+    "Villasis",
+    "Others",
+  ],
+  Quezon: [
+    "Agdangan",
+    "Alabat",
+    "Atimonan",
+    "Buenavista",
+    "Burdeos",
+    "Calauag",
+    "Candelaria",
+    "Catanauan",
+    "Dolores",
+    "General Luna",
+    "General Nakar",
+    "Guinayangan",
+    "Gumaca",
+    "Infanta",
+    "Jomalig",
+    "Lopez",
+    "Lucban",
+    "Lucena City",
+    "Macalelon",
+    "Mauban",
+    "Mulanay",
+    "Padre Burgos",
+    "Pagbilao",
+    "Panukulan",
+    "Patnanungan",
+    "Perez",
+    "Pitogo",
+    "Plaridel",
+    "Polillo",
+    "Quezon",
+    "Real",
+    "Sampaloc",
+    "San Andres",
+    "San Antonio",
+    "San Francisco",
+    "San Narciso",
+    "Sariaya",
+    "Tagkawayan",
+    "Tayabas City",
+    "Tiaong",
+    "Unisan",
+    "Others",
+  ],
+  Quirino: [
+    "Aglipay",
+    "Cabarroguis",
+    "Diffun",
+    "Maddela",
+    "Nagtipunan",
+    "Saguday",
+    "Others",
+  ],
+  Rizal: [
+    "Angono",
+    "Antipolo City",
+    "Baras",
+    "Binangonan",
+    "Cainta",
+    "Cardona",
+    "Jala-Jala",
+    "Morong",
+    "Pililla",
+    "Rodriguez",
+    "San Mateo",
+    "Tanay",
+    "Taytay",
+    "Teresa",
+    "Others",
+  ],
+  Romblon: [
+    "Alcantara",
+    "Banton",
+    "Cajidiocan",
+    "Calatrava",
+    "Concepcion",
+    "Corcuera",
+    "Ferrol",
+    "Looc",
+    "Magdiwang",
+    "Odiongan",
+    "Romblon",
+    "San Agustin",
+    "San Andres",
+    "San Fernando",
+    "San Jose",
+    "Santa Fe",
+    "Santa Maria",
+    "Santa Magdalena",
+    "Others",
+  ],
+  "Samar (Western Samar)": [
+    "Almagro",
+    "Basey",
+    "Calbayog City",
+    "Calbiga",
+    "Catbalogan City",
+    "Daram",
+    "Gandara",
+    "Hinabangan",
+    "Jiabong",
+    "Marabut",
+    "Matuguinao",
+    "Motiong",
+    "Pagsanghan",
+    "Paranas",
+    "Pinabacdao",
+    "San Jorge",
+    "San Jose de Buan",
+    "San Sebastian",
+    "Santa Margarita",
+    "Santa Rita",
+    "Santo Niño",
+    "Tagapul-an",
+    "Talalora",
+    "Tarangnan",
+    "Villareal",
+    "Zumarraga",
+    "Others",
+  ],
+  Sarangani: [
+    "Alabel",
+    "Glan",
+    "Kiamba",
+    "Maasim",
+    "Maitum",
+    "Malapatan",
+    "Malungon",
+    "Others",
+  ],
+  Siquijor: [
+    "Enrique Villanueva",
+    "Larena",
+    "Lazi",
+    "Maria",
+    "San Juan",
+    "Siquijor",
+    "Others",
+  ],
+  Sorsogon: [
+    "Barcelona",
+    "Bulan",
+    "Bulusan",
+    "Casiguran",
+    "Castilla",
+    "Donsol",
+    "Gubat",
+    "Irosin",
+    "Juban",
+    "Magallanes",
+    "Matnog",
+    "Pilar",
+    "Prieto Diaz",
+    "Santa Magdalena",
+    "Sorsogon City",
+    "Others",
+  ],
+  "South Cotabato": [
+    "Banga",
+    "General Santos City",
+    "Koronadal City",
+    "Lake Sebu",
+    "Norala",
+    "Polomolok",
+    "Santo Niño",
+    "Surallah",
+    "T'boli",
+    "Tampakan",
+    "Tantangan",
+    "Tupi",
+    "Others",
+  ],
+  "Southern Leyte": [
+    "Anahawan",
+    "Bontoc",
+    "Hinunangan",
+    "Hinundayan",
+    "Libagon",
+    "Liloan",
+    "Limasawa",
+    "Maasin City",
+    "Macrohon",
+    "Malitbog",
+    "Padre Burgos",
+    "Pintuyan",
+    "Saint Bernard",
+    "San Francisco",
+    "San Juan",
+    "San Ricardo",
+    "Silago",
+    "Sogod",
+    "St. Bernard",
+    "Tomas Oppus",
+    "Others",
+  ],
+  "Sultan Kudarat": [
+    "Bagumbayan",
+    "Columbio",
+    "Esperanza",
+    "Isulan",
+    "Kalamansig",
+    "Lambayong",
+    "Lebak",
+    "Lutayan",
+    "Palimbang",
+    "President Quirino",
+    "Senator Ninoy Aquino",
+    "Tacurong City",
+    "Others",
+  ],
+  Sulu: [
+    "Banguingui",
+    "Hadji Panglima Tahil",
+    "Indanan",
+    "Jolo",
+    "Kalingalan Caluang",
+    "Lugus",
+    "Luuk",
+    "Maimbung",
+    "Old Panamao",
+    "Omar",
+    "Pandami",
+    "Panglima Estino",
+    "Pangutaran",
+    "Parang",
+    "Pata",
+    "Patikul",
+    "Siasi",
+    "Talipao",
+    "Tapul",
+    "Tongkil",
+    "Others",
+  ],
+  "Surigao del Norte": [
+    "Alegria",
+    "Bacuag",
+    "Burgos",
+    "Claver",
+    "Dapa",
+    "Del Carmen",
+    "General Luna",
+    "Gigaquit",
+    "Mainit",
+    "Malimono",
+    "Pilar",
+    "Placer",
+    "San Benito",
+    "San Francisco",
+    "San Isidro",
+    "Santa Monica",
+    "Sison",
+    "Socorro",
+    "Surigao City",
+    "Tagana-an",
+    "Tubod",
+    "Others",
+  ],
+  "Surigao del Sur": [
+    "Barobo",
+    "Bayabas",
+    "Bislig City",
+    "Cagwait",
+    "Cantilan",
+    "Carmen",
+    "Carrascal",
+    "Cortes",
+    "Hinatuan",
+    "Lanuza",
+    "Lianga",
+    "Lingig",
+    "Madrid",
+    "Marihatag",
+    "San Agustin",
+    "San Miguel",
+    "Tagbina",
+    "Tago",
+    "Tandag City",
+    "Others",
+  ],
+  Tarlac: [
+    "Anao",
+    "Bamban",
+    "Camiling",
+    "Capas",
+    "Concepcion",
+    "Gerona",
+    "La Paz",
+    "Mayantoc",
+    "Moncada",
+    "Paniqui",
+    "Pura",
+    "Ramos",
+    "San Clemente",
+    "San Jose",
+    "San Manuel",
+    "Santa Ignacia",
+    "Tarlac City",
+    "Victoria",
+    "Others",
+  ],
+  "Tawi-Tawi": [
+    "Bongao",
+    "Languyan",
+    "Mapun",
+    "Panglima Sugala",
+    "Sapa-Sapa",
+    "Sibutu",
+    "Simunul",
+    "Sitangkai",
+    "South Ubian",
+    "Tandubas",
+    "Turtle Islands",
+    "Others",
+  ],
+  Zambales: [
+    "Botolan",
+    "Cabangan",
+    "Candelaria",
+    "Castillejos",
+    "Iba",
+    "Masinloc",
+    "Olongapo City",
+    "Palauig",
+    "San Antonio",
+    "San Felipe",
+    "San Marcelino",
+    "San Narciso",
+    "Santa Cruz",
+    "Subic",
+    "Others",
+  ],
+  "Zamboanga del Norte": [
+    "Baliguian",
+    "Dapitan City",
+    "Dipolog City",
+    "Godod",
+    "Gutalac",
+    "Jose Dalman",
+    "Kalawit",
+    "Katipunan",
+    "La Libertad",
+    "Labason",
+    "Leon B. Postigo",
+    "Liloy",
+    "Manukan",
+    "Mutia",
+    "Piñan",
+    "Polanco",
+    "President Manuel A. Roxas",
+    "Rizal",
+    "Salug",
+    "Sergio Osmeña Sr.",
+    "Siayan",
+    "Sibuco",
+    "Sibutad",
+    "Sindangan",
+    "Siocon",
+    "Sirawai",
+    "Tampilisan",
+    "Others",
+  ],
+  "Zamboanga del Sur": [
+    "Aurora",
+    "Bayog",
+    "Dimataling",
+    "Dinas",
+    "Dumalinao",
+    "Dumingag",
+    "Guipos",
+    "Josefina",
+    "Kumalarang",
+    "Labangan",
+    "Lapuyan",
+    "Mahayag",
+    "Margosatubig",
+    "Midsalip",
+    "Molave",
+    "Pagadian City",
+    "Pitogo",
+    "Ramon Magsaysay",
+    "San Miguel",
+    "San Pablo",
+    "Tabina",
+    "Tambulig",
+    "Tigbao",
+    "Tukuran",
+    "Vincenzo A. Sagun",
+    "Zamboanga City",
+    "Others",
+  ],
+  "Zamboanga Sibugay": [
+    "Alicia",
+    "Buug",
+    "Diplahan",
+    "Imelda",
+    "Ipil",
+    "Kabasalan",
+    "Mabuhay",
+    "Malangas",
+    "Naga",
+    "Olutanga",
+    "Payao",
+    "Roseller Lim",
+    "Siay",
+    "Talusan",
+    "Titay",
+    "Tungawan",
+    "Others",
+  ],
+  Others: ["Others"],
 };
 
 // Comprehensive barangay data for major cities
 const BARANGAYS_BY_CITY = {
-  'Cagayan de Oro City': ['Agusan','Balubal','Balulang','Barangay 1 (Puntod)','Barangay 2','Barangay 3','Barangay 4','Barangay 5','Barangay 6','Barangay 7','Barangay 8','Barangay 9','Barangay 10','Barangay 11','Barangay 12','Barangay 13','Barangay 14','Barangay 15','Barangay 16','Barangay 17','Barangay 18','Barangay 19','Barangay 20','Barangay 21','Barangay 22','Barangay 23','Barangay 24','Barangay 25','Baikingon','Bayabas','Bayanga','Besigan','Bonbon','Bugo','Bulua','Canitoan','Carmen','Consolacion','Cugman','Dansolihon','Del Monte','Dologon','Dungguan','Gusa','Indahag','Iponan','Kauswagan','Lapasan','Lawis','Layawan','Lumbia','Macabalan','Macasandig','Mambuaya','Mamugtan','Maraymaray','Maybolo','Nazareth','Pagalungan','Pagatpat','Patpat','Pigsag-an','Puerto','Puntod','Rodero','Rosal','Sto. Niño','Tablon','Taglimao','Tagpangi','Tignapoloan','Tumpagon','Tuburan','Upper Carmen','Upper Hilltop','Upper Lumbia','Velez','Others'],
-  'Tagum City': ['Apokon','Bincungan','Busaon','Canocotan','Cuambogan','La Filipina','Liboganon','Madaum','Magdum','Magugpo East','Magugpo North','Magugpo Poblacion','Magugpo South','Magugpo West','Mankilam','New Balamban','New Visayas','Pagsabangan','Pandapan','San Agustin','San Isidro','San Miguel','Visayan Village','Others'],
-  'Iligan City': ['Abuno','Acmac','Bagong Silang','Buru-un','Dalipuga','Del Carmen','Digkilaan','Ditucalan','Dulag','Hunyon','Hinaplanon','Hindang','Kabacsanan','Kalilangan','Kiwalan','Lanipao','Luinab','Mahayahay','Mainit','Mandulog','Maria Cristina','Palao','Panorugon','Puga-an','Rogongon','San Miguel','San Roque','Santiago','Santo Rosario','Saray','Suarez','Tambacan','Tibanga','Tipanoy','Tominobo Lower','Tominobo Upper','Tubod','Ubaldo Laya','Upper Hinaplanon','Upper Tominobo','Villa Verde','Others'],
-  'Davao City': ['Acacia','Agdao','Alambre','Alejandra Navarro','Alfonso Angliongto Sr.','Angalan','Angliongto','Antonio B. Pascual','Araibo','Arayat','Baganihan','Bago Gallera','Bago Oshiro','Baguio','Balengaeng','Baliok','Bangkas Heights','Bantol','Baracatan','Barangay 1-A','Barangay 2-A','Barangay 3-A','Barangay 4-A','Barangay 5-A','Barangay 6-A','Barangay 7-A','Barangay 8-A','Barangay 9-A','Barangay 10-A','Barangay 11-B','Barangay 12-B','Barangay 13-B','Barangay 14-B','Barangay 15-B','Barangay 16-B','Barangay 17-B','Barangay 18-B','Barangay 19-B','Barangay 20-B','Barangay 21-C','Barangay 22-C','Barangay 23-C','Barangay 24-C','Barangay 25-C','Barangay 26-C','Barangay 27-C','Barangay 28-C','Barangay 29-C','Barangay 30-C','Barangay 31-D','Barangay 32-D','Barangay 33-D','Barangay 34-D','Barangay 35-D','Barangay 36-D','Barangay 37-D','Barangay 38-D','Barangay 39-D','Barangay 40-D','Biao Escuela','Biao Guianga','Biao Joaquin','Binugao','Bucana','Buda','Buhangin','Bunawan','Cabantian','Cadalian','Calinan','Callawa','Camansi','Carmen','Catalunan Grande','Catalunan Pequeño','Catigan','Cawayan','Centro (San Juan)','Colosas','Communal','Crossing Bayabas','Dacudao','Dalag','Dalagdag','Daliao','Daliaon Plantation','Datu Salumay','Dominga','Dumoy','Eden','Fatima','Gatungan','Gov. Paciano Bangoy','Gov. Vicente Duterte','Gumalang','Gumitan','Ilang','Inayangan','Indangan','Kap. Tomas Monteverde Sr.','Kilate','Lacson','Lamanan','Lampianao','Langub','Lapu-lapu','Leon Garcia Sr.','Lizada','Los Amigos','Lubogan','Lumiad','Ma-a','Mabuhay','Magsaysay','Magtuod','Mahayag','Malabog','Malagos','Malamba','Manambulan','Mandug','Manuel Guianga','Mapula','Marapangi','Marilog','Matina Aplaya','Matina Biao','Matina Crossing','Matina Pangi','Megkawayan','Menlo','Miao','Mintal','Mudiang','Mulig','New Carmen','New Valencia','Pampanga','Panacan','Panalum','Pandaitan','Pangyan','Paquibato','Paradise Embak','Rafael Castillo','Riverside','Salapawan','Salaysay','Saloy','San Antonio','San Isidro','Santo Niño','Sasa','Sirib','Sirawan','Sibulan','Tacunan','Tagakpan','Tagluno','Tagurano','Talandang','Talomo','Talomo River','Tamayong','Tambo','Tamugan','Tapak','Tawan-tawan','Tibuloy','Tibungco','Tigatto','Toril','Tugbok','Tungkalan','Ubalde','Ula','Union','Waan','Wangan','Wines','Others'],
-  'Manila': ['Binondo','Ermita','Intramuros','Malate','Paco','Pandacan','Port Area','Quiapo','Sampaloc','San Andres Bukid','San Miguel','San Nicolas','Santa Ana','Santa Cruz','Santa Mesa','Tondo','Others'],
-  'Quezon City': ['Alicia','Amihan','Apolonio Samson','Aurora','Bagbag','Bagong Lipunan ng Crame','Bagong Pag-asa','Bagong Silangan','Bagong Silang','Bagumbayan','Bahay Toro','Balingasa','Balonbato','Batasan Hills','Bayanihan','Blue Ridge A','Blue Ridge B','Botocan','Bungad','Camp Aguinaldo','Capri','Central','Claro','Commonwealth','Culiat','Damar','Damayan','Damayan Lagi','Damong Maliit','Del Monte','Dioquino Zobel','Don Manuel','Doña Aurora','Doña Imelda','Doña Josefa','Duyan-Duyan','E. Rodriguez','East Kamias','Escopa I','Escopa II','Escopa III','Escopa IV','Fairview','Greater Lagro','Gulod','Holy Spirit','Horseshoe','Immaculate Concepcion','Kaligayahan','Kalusugan','Kamuning','Katipunan','Kaunlaran','Kristong Hari','Krus na Ligas','Laging Handa','Libis','Loma de Gato','Loyola Heights','Lucban','Luzon Avenue','Maharlika','Malaya','Manresa','Mangga','Mariana','Mariblo','Marilag','Masagana','Masambong','Matandang Balara','May-Bunga Kanluran','May-Bunga Silangan','Maytunas','Milagrosa','N.S. Amoranto Sr.','Nagkaisang Nayon','New Era','Novaliches Proper','Obrero','Old Capitol Site','Pag-ibig sa Nayon','Paligid','Paltok','Pansol','Paraiso','Pasong Putik Proper','Pasong Tamo','Payatas','Phil-Am','Pinagkaisahan','Pinahan','Pingkian','Project 6','Quirino 2-A','Quirino 2-B','Quirino 2-C','Quirino 3-A','Roxas','Sacred Heart','Saint Ignatius','Saint Peter','Salvacion','San Agustin','San Antonio','San Bartolome','San Isidro Labrador I','San Isidro Labrador II','San Jose','San Martin de Porres','San Roque','San Vicente','Sangandaan','Santo Cristo','Santo Domingo','Santos','Batasan Hills','Sauyo','Siena','Silangan','Socorro','South Triangle','Tagumpay','Talayan','Talipapa','Tandang Sora','Tatalon','Teachers Village East','Teachers Village West','U.P. Campus','U.P. Village','Ugong Norte','Unang Sigaw','Valencia','Vasra','Veterans Village','Villa Maria Clara','West Kamias','West Triangle','White Plains','Others'],
-  'Cebu City': ['Adlaon','Agsungot','Apas','Bacayan','Banilad','Basak Pardo','Basak San Nicolas','Binaliw','Bonbon','Budlaan','Busay','Calamba','Cambinocot','Capitol Site','Carreta','Central Poblacion','Cogon Pardo','Cogon Ramos','Day-as','Duljo','Ermita','Guadalupe','Guba','Hipodromo','Inayawan','Kalubihan','Kalunasan','Kamagayan','Kinasang-an','Labangon','Lahug','Lorega-San Miguel','Lusaran','Luz','Mabini','Mabolo','Malubog','Mambaling','Nasipit','Northern Hills','Pardo','Pari-an','Pasil','Pit-os','Poblacion Pardo','Pulangbato','Pung-ol-Sibugay','Punta Princesa','Quiot Pardo','Sambag I','Sambag II','San Antonio','San Jose','San Nicolas Central','San Nicolas Proper','San Roque','Santa Cruz','Santo Niño','Sapangdaku','Sawang Calero','Sinsin','Sirao','Suba Poblacion','Sudlon I','Sudlon II','T. Padilla','Tabunan','Tagbao','Talamban','Taptap','Tejero','Tinago','Tisa','To-ong Pardo','Toong','Tuburan','Tumulak','Others'],
-  'General Santos City': ['Apopong','Baluan','Batomelong','Buayan','Bula','City Heights','Conel','Dadiangas East','Dadiangas North','Dadiangas South','Dadiangas West','Fatima','Katangawan','Lagao','Labangal','Ligaya','Mabuhay','Olympog','San Isidro','San Jose','Sinawal','Tambler','Tinagacan','Upper Labay','Others'],
-  'Zamboanga City': ['Arena Blanco','Ayala','Baliwasan','Baluno','Boalan','Bolong','Buenavista','Bunguiao','Busay (Sacol Island)','Cabaluay','Cabatangan','Cacao','Calabasa','Calarian','Camino Nuevo','Campo Islam','Cañas','Capisan','Cawit','Culianan','Dita','Divisoria','Dulian (Upper Bunguiao)','Dulian (Upper Pasonanca)','Guiwan','Kasanyangan','La Paz','La Rivera','Labuan','Lamisahan','Landang Gua','Landang Laum','Lanzones','Lapakan','Latuan (Curuan)','Licomo','Limaong','Limpapa','Lubigan','Lumayang','Lumbangan','Lunzuran','Maasin','Malagutay','Mampang','Manalipa','Mangusu','Manicahan','Mariki','Mayor Jaldon','Mercedes','Mobilegas','Montemar','Motosawa','Municipyo','Pasonanca','Patalon','Pawak','Payi','Perez','Piao','Putik','Quiniput','Recodo','Rio Hondo','Salaan','San Jose Gusu','San Roque','Sangali','Santa Barbara','Santa Catalina','Santa Maria','Santo Niño','Sibulao (Caruan)','Sinubung','Sinunuc','Tagasilay','Talon-Talon','Taluksangay','Tetuan','Tictapul','Tigbalabag','Tigtabon','Tolosa','Tugbungan','Tulungatung','Tumaga','Tumalutab','Tuminobo','Victoria','Vitali','Walled City','Zambowood','Others'],
-  'Iloilo City': ['Arevalo','Bonifacio-Tanza','Buhang','Buntatala','Calaparan','City Proper (Iloilo)','Compañia','Concepcion-Montes','Cubay','Dungon','Dungon A','Dungon B','Duran','East Baluarte','East Timawa','Gustilo','Hibao-an Norte','Hibao-an Sur','Hinactaanan','Inday','Jibao-an','La Paz','Laguda','Lanit','Lapuz Norte','Lapuz Sur','Libertad-Extramuros','Libertad Proper','Loboc','Lopez Jaena Norte','Lopez Jaena Sur','Malipayon-Delgado','Mansaya-Lapuz','Maribago-Blumentritt','Marigondon Norte','Marigondon Sur','Molo Proper','Nabitasan','Navais','Oñate De Leon','Ortiz','Osmeña','Our Lady of Fatima','Our Lady of Lourdes','Pale Benedicto Rizal','Quintin Salas','Rizal Palapala I','Rizal Palapala II','San Agustin','San Felix','San Jose','San Juan','Santa Filomena','Santo Niño Norte','Santo Niño Sur','Santo Rosario-Duran','Seminario-Lutac','Simon Ledesma','Smallville','Taal','Tacas','Taytay Zone I','Taytay Zone II','Timawa Tanza I','Timawa Tanza II','Ungka I','Ungka II','Yulo-Arroyo','Yulo Drive','Others'],
-  'Bacolod City': ['Alijis','Banago','Bata','Cabug','Estefania','Granada','Handumanan','Mandalagan','Mansilingan','Montevista','Pahanocoy','Punta-Taytay','Singcang-Airport','Sum-ag','Taculing','Tangub','Tasay','Villamonte','Vista Alegre','Others'],
-  'Dumaguete City': ['Bagacay','Bajumpandan','Banilad','Bantayan','Barangay 1','Barangay 2','Barangay 3','Barangay 4','Barangay 5','Barangay 6','Barangay 7','Barangay 8','Basak','Bunao','Cadawinonan','Calindagan','Camanjac','Candau-ay','Cantil-e','Daro','Junob','Looc','Mangnao-Guindapunan','Motong','Piapi','Poblacion No. 1','Poblacion No. 2','Poblacion No. 3','Poblacion No. 4','Poblacion No. 5','Poblacion No. 6','Poblacion No. 7','Poblacion No. 8','Pulantubig','Tabuctubig','Taclobo','Talay','Others'],
-  'Butuan City': ['Agusan Pequeño','Ambago','Amparo','Ampayon','Anticala','Antongalon','Aupagan','Baan KM 3','Baan Riverside','Babag','Bading','Bancasi','Banza','Baobaon','Basag','Bayanihan','Bilay','Bitan-agan','Bit-os','Bobon','Bonbon','Bugabus','Bugsukan','Buhangin','Cabcabon','Camayahan','Dagohoy','Dankias','De Oro','Don Francisco','Doongan','Dulag','Dumalagan','Florida','Libertad','Limaha','Los Angeles','Lumbocan','Maguinda','Mahay','Mahogany','Maibu','Mandamo','Masao','Maug','May-is','Minyamun','Ong Yiu','Pagatpatan','Pangabugan','Pianing','Pigdaulan','Pinamanculan','Port Poyohon','Salvacion','San Ignacio','San Mateo','San Vicente','Sikatuna','Silongan','Sumile','Sumilihon','Tagabaca','Taguibo','Taligaman','Tandang Sora','Tiniwisan','Tungao','Urduja','Villa Kananga','Others'],
-  'Makati': ['Bangkal','Bel-Air','Carmona','Cembo','Comembo','Dasmariñas','East Rembo','Forbes Park','Guadalupe Nuevo','Guadalupe Viejo','Kasilawan','La Paz','Magallanes','Olympia','Palanan','Pembo','Pinagkaisahan','Pio del Pilar','Pitogo','Post Proper Northside','Post Proper Southside','Rizal','San Antonio','San Isidro','San Lorenzo','Santa Cruz','Singkamas','South Cembo','Tejeros','Urdaneta','Valenzuela','West Rembo','Others'],
-  'Taguig': ['Bagumbayan','Bambang','Calzada','Central Bicutan','Central Signal Village','Fort Bonifacio','Hagonoy','Ibayo-Tipas','Katuparan','Ligid-Tipas','Lower Bicutan','Maharlika Village','Napindan','New Lower Bicutan','North Daang Hari','North Signal Village','Palingon','Pinagsama','San Miguel','Santa Ana','South Daang Hari','South Signal Village','Tanyag','Tuktukan','Upper Bicutan','Ususan','Wawa','Western Bicutan','Others'],
-  'Pasig': ['Bagong Ilog','Bagong Katipunan','Bambang','Buting','Caniogan','Dela Paz','Kalawaan','Kapasigan','Kapitolyo','Malinao','Manggahan','Maybunga','Oranbo','Palatiw','Pinagbuhatan','Pineda','Rosario','Sagad','San Antonio','San Joaquin','San Jose','San Nicolas','Santa Cruz','Santa Lucia','Santa Rosa','Santo Tomas','Santolan','Sumilang','Ugong','Others'],
-  'Others': ['Others'],
+  "Cagayan de Oro City": [
+    "Agusan",
+    "Balubal",
+    "Balulang",
+    "Barangay 1 (Puntod)",
+    "Barangay 2",
+    "Barangay 3",
+    "Barangay 4",
+    "Barangay 5",
+    "Barangay 6",
+    "Barangay 7",
+    "Barangay 8",
+    "Barangay 9",
+    "Barangay 10",
+    "Barangay 11",
+    "Barangay 12",
+    "Barangay 13",
+    "Barangay 14",
+    "Barangay 15",
+    "Barangay 16",
+    "Barangay 17",
+    "Barangay 18",
+    "Barangay 19",
+    "Barangay 20",
+    "Barangay 21",
+    "Barangay 22",
+    "Barangay 23",
+    "Barangay 24",
+    "Barangay 25",
+    "Baikingon",
+    "Bayabas",
+    "Bayanga",
+    "Besigan",
+    "Bonbon",
+    "Bugo",
+    "Bulua",
+    "Canitoan",
+    "Carmen",
+    "Consolacion",
+    "Cugman",
+    "Dansolihon",
+    "Del Monte",
+    "Dologon",
+    "Dungguan",
+    "Gusa",
+    "Indahag",
+    "Iponan",
+    "Kauswagan",
+    "Lapasan",
+    "Lawis",
+    "Layawan",
+    "Lumbia",
+    "Macabalan",
+    "Macasandig",
+    "Mambuaya",
+    "Mamugtan",
+    "Maraymaray",
+    "Maybolo",
+    "Nazareth",
+    "Pagalungan",
+    "Pagatpat",
+    "Patpat",
+    "Pigsag-an",
+    "Puerto",
+    "Puntod",
+    "Rodero",
+    "Rosal",
+    "Sto. Niño",
+    "Tablon",
+    "Taglimao",
+    "Tagpangi",
+    "Tignapoloan",
+    "Tumpagon",
+    "Tuburan",
+    "Upper Carmen",
+    "Upper Hilltop",
+    "Upper Lumbia",
+    "Velez",
+    "Others",
+  ],
+  "Tagum City": [
+    "Apokon",
+    "Bincungan",
+    "Busaon",
+    "Canocotan",
+    "Cuambogan",
+    "La Filipina",
+    "Liboganon",
+    "Madaum",
+    "Magdum",
+    "Magugpo East",
+    "Magugpo North",
+    "Magugpo Poblacion",
+    "Magugpo South",
+    "Magugpo West",
+    "Mankilam",
+    "New Balamban",
+    "New Visayas",
+    "Pagsabangan",
+    "Pandapan",
+    "San Agustin",
+    "San Isidro",
+    "San Miguel",
+    "Visayan Village",
+    "Others",
+  ],
+  "Iligan City": [
+    "Abuno",
+    "Acmac",
+    "Bagong Silang",
+    "Buru-un",
+    "Dalipuga",
+    "Del Carmen",
+    "Digkilaan",
+    "Ditucalan",
+    "Dulag",
+    "Hunyon",
+    "Hinaplanon",
+    "Hindang",
+    "Kabacsanan",
+    "Kalilangan",
+    "Kiwalan",
+    "Lanipao",
+    "Luinab",
+    "Mahayahay",
+    "Mainit",
+    "Mandulog",
+    "Maria Cristina",
+    "Palao",
+    "Panorugon",
+    "Puga-an",
+    "Rogongon",
+    "San Miguel",
+    "San Roque",
+    "Santiago",
+    "Santo Rosario",
+    "Saray",
+    "Suarez",
+    "Tambacan",
+    "Tibanga",
+    "Tipanoy",
+    "Tominobo Lower",
+    "Tominobo Upper",
+    "Tubod",
+    "Ubaldo Laya",
+    "Upper Hinaplanon",
+    "Upper Tominobo",
+    "Villa Verde",
+    "Others",
+  ],
+  "Davao City": [
+    "Acacia",
+    "Agdao",
+    "Alambre",
+    "Alejandra Navarro",
+    "Alfonso Angliongto Sr.",
+    "Angalan",
+    "Angliongto",
+    "Antonio B. Pascual",
+    "Araibo",
+    "Arayat",
+    "Baganihan",
+    "Bago Gallera",
+    "Bago Oshiro",
+    "Baguio",
+    "Balengaeng",
+    "Baliok",
+    "Bangkas Heights",
+    "Bantol",
+    "Baracatan",
+    "Barangay 1-A",
+    "Barangay 2-A",
+    "Barangay 3-A",
+    "Barangay 4-A",
+    "Barangay 5-A",
+    "Barangay 6-A",
+    "Barangay 7-A",
+    "Barangay 8-A",
+    "Barangay 9-A",
+    "Barangay 10-A",
+    "Barangay 11-B",
+    "Barangay 12-B",
+    "Barangay 13-B",
+    "Barangay 14-B",
+    "Barangay 15-B",
+    "Barangay 16-B",
+    "Barangay 17-B",
+    "Barangay 18-B",
+    "Barangay 19-B",
+    "Barangay 20-B",
+    "Barangay 21-C",
+    "Barangay 22-C",
+    "Barangay 23-C",
+    "Barangay 24-C",
+    "Barangay 25-C",
+    "Barangay 26-C",
+    "Barangay 27-C",
+    "Barangay 28-C",
+    "Barangay 29-C",
+    "Barangay 30-C",
+    "Barangay 31-D",
+    "Barangay 32-D",
+    "Barangay 33-D",
+    "Barangay 34-D",
+    "Barangay 35-D",
+    "Barangay 36-D",
+    "Barangay 37-D",
+    "Barangay 38-D",
+    "Barangay 39-D",
+    "Barangay 40-D",
+    "Biao Escuela",
+    "Biao Guianga",
+    "Biao Joaquin",
+    "Binugao",
+    "Bucana",
+    "Buda",
+    "Buhangin",
+    "Bunawan",
+    "Cabantian",
+    "Cadalian",
+    "Calinan",
+    "Callawa",
+    "Camansi",
+    "Carmen",
+    "Catalunan Grande",
+    "Catalunan Pequeño",
+    "Catigan",
+    "Cawayan",
+    "Centro (San Juan)",
+    "Colosas",
+    "Communal",
+    "Crossing Bayabas",
+    "Dacudao",
+    "Dalag",
+    "Dalagdag",
+    "Daliao",
+    "Daliaon Plantation",
+    "Datu Salumay",
+    "Dominga",
+    "Dumoy",
+    "Eden",
+    "Fatima",
+    "Gatungan",
+    "Gov. Paciano Bangoy",
+    "Gov. Vicente Duterte",
+    "Gumalang",
+    "Gumitan",
+    "Ilang",
+    "Inayangan",
+    "Indangan",
+    "Kap. Tomas Monteverde Sr.",
+    "Kilate",
+    "Lacson",
+    "Lamanan",
+    "Lampianao",
+    "Langub",
+    "Lapu-lapu",
+    "Leon Garcia Sr.",
+    "Lizada",
+    "Los Amigos",
+    "Lubogan",
+    "Lumiad",
+    "Ma-a",
+    "Mabuhay",
+    "Magsaysay",
+    "Magtuod",
+    "Mahayag",
+    "Malabog",
+    "Malagos",
+    "Malamba",
+    "Manambulan",
+    "Mandug",
+    "Manuel Guianga",
+    "Mapula",
+    "Marapangi",
+    "Marilog",
+    "Matina Aplaya",
+    "Matina Biao",
+    "Matina Crossing",
+    "Matina Pangi",
+    "Megkawayan",
+    "Menlo",
+    "Miao",
+    "Mintal",
+    "Mudiang",
+    "Mulig",
+    "New Carmen",
+    "New Valencia",
+    "Pampanga",
+    "Panacan",
+    "Panalum",
+    "Pandaitan",
+    "Pangyan",
+    "Paquibato",
+    "Paradise Embak",
+    "Rafael Castillo",
+    "Riverside",
+    "Salapawan",
+    "Salaysay",
+    "Saloy",
+    "San Antonio",
+    "San Isidro",
+    "Santo Niño",
+    "Sasa",
+    "Sirib",
+    "Sirawan",
+    "Sibulan",
+    "Tacunan",
+    "Tagakpan",
+    "Tagluno",
+    "Tagurano",
+    "Talandang",
+    "Talomo",
+    "Talomo River",
+    "Tamayong",
+    "Tambo",
+    "Tamugan",
+    "Tapak",
+    "Tawan-tawan",
+    "Tibuloy",
+    "Tibungco",
+    "Tigatto",
+    "Toril",
+    "Tugbok",
+    "Tungkalan",
+    "Ubalde",
+    "Ula",
+    "Union",
+    "Waan",
+    "Wangan",
+    "Wines",
+    "Others",
+  ],
+  Manila: [
+    "Binondo",
+    "Ermita",
+    "Intramuros",
+    "Malate",
+    "Paco",
+    "Pandacan",
+    "Port Area",
+    "Quiapo",
+    "Sampaloc",
+    "San Andres Bukid",
+    "San Miguel",
+    "San Nicolas",
+    "Santa Ana",
+    "Santa Cruz",
+    "Santa Mesa",
+    "Tondo",
+    "Others",
+  ],
+  "Quezon City": [
+    "Alicia",
+    "Amihan",
+    "Apolonio Samson",
+    "Aurora",
+    "Bagbag",
+    "Bagong Lipunan ng Crame",
+    "Bagong Pag-asa",
+    "Bagong Silangan",
+    "Bagong Silang",
+    "Bagumbayan",
+    "Bahay Toro",
+    "Balingasa",
+    "Balonbato",
+    "Batasan Hills",
+    "Bayanihan",
+    "Blue Ridge A",
+    "Blue Ridge B",
+    "Botocan",
+    "Bungad",
+    "Camp Aguinaldo",
+    "Capri",
+    "Central",
+    "Claro",
+    "Commonwealth",
+    "Culiat",
+    "Damar",
+    "Damayan",
+    "Damayan Lagi",
+    "Damong Maliit",
+    "Del Monte",
+    "Dioquino Zobel",
+    "Don Manuel",
+    "Doña Aurora",
+    "Doña Imelda",
+    "Doña Josefa",
+    "Duyan-Duyan",
+    "E. Rodriguez",
+    "East Kamias",
+    "Escopa I",
+    "Escopa II",
+    "Escopa III",
+    "Escopa IV",
+    "Fairview",
+    "Greater Lagro",
+    "Gulod",
+    "Holy Spirit",
+    "Horseshoe",
+    "Immaculate Concepcion",
+    "Kaligayahan",
+    "Kalusugan",
+    "Kamuning",
+    "Katipunan",
+    "Kaunlaran",
+    "Kristong Hari",
+    "Krus na Ligas",
+    "Laging Handa",
+    "Libis",
+    "Loma de Gato",
+    "Loyola Heights",
+    "Lucban",
+    "Luzon Avenue",
+    "Maharlika",
+    "Malaya",
+    "Manresa",
+    "Mangga",
+    "Mariana",
+    "Mariblo",
+    "Marilag",
+    "Masagana",
+    "Masambong",
+    "Matandang Balara",
+    "May-Bunga Kanluran",
+    "May-Bunga Silangan",
+    "Maytunas",
+    "Milagrosa",
+    "N.S. Amoranto Sr.",
+    "Nagkaisang Nayon",
+    "New Era",
+    "Novaliches Proper",
+    "Obrero",
+    "Old Capitol Site",
+    "Pag-ibig sa Nayon",
+    "Paligid",
+    "Paltok",
+    "Pansol",
+    "Paraiso",
+    "Pasong Putik Proper",
+    "Pasong Tamo",
+    "Payatas",
+    "Phil-Am",
+    "Pinagkaisahan",
+    "Pinahan",
+    "Pingkian",
+    "Project 6",
+    "Quirino 2-A",
+    "Quirino 2-B",
+    "Quirino 2-C",
+    "Quirino 3-A",
+    "Roxas",
+    "Sacred Heart",
+    "Saint Ignatius",
+    "Saint Peter",
+    "Salvacion",
+    "San Agustin",
+    "San Antonio",
+    "San Bartolome",
+    "San Isidro Labrador I",
+    "San Isidro Labrador II",
+    "San Jose",
+    "San Martin de Porres",
+    "San Roque",
+    "San Vicente",
+    "Sangandaan",
+    "Santo Cristo",
+    "Santo Domingo",
+    "Santos",
+    "Batasan Hills",
+    "Sauyo",
+    "Siena",
+    "Silangan",
+    "Socorro",
+    "South Triangle",
+    "Tagumpay",
+    "Talayan",
+    "Talipapa",
+    "Tandang Sora",
+    "Tatalon",
+    "Teachers Village East",
+    "Teachers Village West",
+    "U.P. Campus",
+    "U.P. Village",
+    "Ugong Norte",
+    "Unang Sigaw",
+    "Valencia",
+    "Vasra",
+    "Veterans Village",
+    "Villa Maria Clara",
+    "West Kamias",
+    "West Triangle",
+    "White Plains",
+    "Others",
+  ],
+  "Cebu City": [
+    "Adlaon",
+    "Agsungot",
+    "Apas",
+    "Bacayan",
+    "Banilad",
+    "Basak Pardo",
+    "Basak San Nicolas",
+    "Binaliw",
+    "Bonbon",
+    "Budlaan",
+    "Busay",
+    "Calamba",
+    "Cambinocot",
+    "Capitol Site",
+    "Carreta",
+    "Central Poblacion",
+    "Cogon Pardo",
+    "Cogon Ramos",
+    "Day-as",
+    "Duljo",
+    "Ermita",
+    "Guadalupe",
+    "Guba",
+    "Hipodromo",
+    "Inayawan",
+    "Kalubihan",
+    "Kalunasan",
+    "Kamagayan",
+    "Kinasang-an",
+    "Labangon",
+    "Lahug",
+    "Lorega-San Miguel",
+    "Lusaran",
+    "Luz",
+    "Mabini",
+    "Mabolo",
+    "Malubog",
+    "Mambaling",
+    "Nasipit",
+    "Northern Hills",
+    "Pardo",
+    "Pari-an",
+    "Pasil",
+    "Pit-os",
+    "Poblacion Pardo",
+    "Pulangbato",
+    "Pung-ol-Sibugay",
+    "Punta Princesa",
+    "Quiot Pardo",
+    "Sambag I",
+    "Sambag II",
+    "San Antonio",
+    "San Jose",
+    "San Nicolas Central",
+    "San Nicolas Proper",
+    "San Roque",
+    "Santa Cruz",
+    "Santo Niño",
+    "Sapangdaku",
+    "Sawang Calero",
+    "Sinsin",
+    "Sirao",
+    "Suba Poblacion",
+    "Sudlon I",
+    "Sudlon II",
+    "T. Padilla",
+    "Tabunan",
+    "Tagbao",
+    "Talamban",
+    "Taptap",
+    "Tejero",
+    "Tinago",
+    "Tisa",
+    "To-ong Pardo",
+    "Toong",
+    "Tuburan",
+    "Tumulak",
+    "Others",
+  ],
+  "General Santos City": [
+    "Apopong",
+    "Baluan",
+    "Batomelong",
+    "Buayan",
+    "Bula",
+    "City Heights",
+    "Conel",
+    "Dadiangas East",
+    "Dadiangas North",
+    "Dadiangas South",
+    "Dadiangas West",
+    "Fatima",
+    "Katangawan",
+    "Lagao",
+    "Labangal",
+    "Ligaya",
+    "Mabuhay",
+    "Olympog",
+    "San Isidro",
+    "San Jose",
+    "Sinawal",
+    "Tambler",
+    "Tinagacan",
+    "Upper Labay",
+    "Others",
+  ],
+  "Zamboanga City": [
+    "Arena Blanco",
+    "Ayala",
+    "Baliwasan",
+    "Baluno",
+    "Boalan",
+    "Bolong",
+    "Buenavista",
+    "Bunguiao",
+    "Busay (Sacol Island)",
+    "Cabaluay",
+    "Cabatangan",
+    "Cacao",
+    "Calabasa",
+    "Calarian",
+    "Camino Nuevo",
+    "Campo Islam",
+    "Cañas",
+    "Capisan",
+    "Cawit",
+    "Culianan",
+    "Dita",
+    "Divisoria",
+    "Dulian (Upper Bunguiao)",
+    "Dulian (Upper Pasonanca)",
+    "Guiwan",
+    "Kasanyangan",
+    "La Paz",
+    "La Rivera",
+    "Labuan",
+    "Lamisahan",
+    "Landang Gua",
+    "Landang Laum",
+    "Lanzones",
+    "Lapakan",
+    "Latuan (Curuan)",
+    "Licomo",
+    "Limaong",
+    "Limpapa",
+    "Lubigan",
+    "Lumayang",
+    "Lumbangan",
+    "Lunzuran",
+    "Maasin",
+    "Malagutay",
+    "Mampang",
+    "Manalipa",
+    "Mangusu",
+    "Manicahan",
+    "Mariki",
+    "Mayor Jaldon",
+    "Mercedes",
+    "Mobilegas",
+    "Montemar",
+    "Motosawa",
+    "Municipyo",
+    "Pasonanca",
+    "Patalon",
+    "Pawak",
+    "Payi",
+    "Perez",
+    "Piao",
+    "Putik",
+    "Quiniput",
+    "Recodo",
+    "Rio Hondo",
+    "Salaan",
+    "San Jose Gusu",
+    "San Roque",
+    "Sangali",
+    "Santa Barbara",
+    "Santa Catalina",
+    "Santa Maria",
+    "Santo Niño",
+    "Sibulao (Caruan)",
+    "Sinubung",
+    "Sinunuc",
+    "Tagasilay",
+    "Talon-Talon",
+    "Taluksangay",
+    "Tetuan",
+    "Tictapul",
+    "Tigbalabag",
+    "Tigtabon",
+    "Tolosa",
+    "Tugbungan",
+    "Tulungatung",
+    "Tumaga",
+    "Tumalutab",
+    "Tuminobo",
+    "Victoria",
+    "Vitali",
+    "Walled City",
+    "Zambowood",
+    "Others",
+  ],
+  "Iloilo City": [
+    "Arevalo",
+    "Bonifacio-Tanza",
+    "Buhang",
+    "Buntatala",
+    "Calaparan",
+    "City Proper (Iloilo)",
+    "Compañia",
+    "Concepcion-Montes",
+    "Cubay",
+    "Dungon",
+    "Dungon A",
+    "Dungon B",
+    "Duran",
+    "East Baluarte",
+    "East Timawa",
+    "Gustilo",
+    "Hibao-an Norte",
+    "Hibao-an Sur",
+    "Hinactaanan",
+    "Inday",
+    "Jibao-an",
+    "La Paz",
+    "Laguda",
+    "Lanit",
+    "Lapuz Norte",
+    "Lapuz Sur",
+    "Libertad-Extramuros",
+    "Libertad Proper",
+    "Loboc",
+    "Lopez Jaena Norte",
+    "Lopez Jaena Sur",
+    "Malipayon-Delgado",
+    "Mansaya-Lapuz",
+    "Maribago-Blumentritt",
+    "Marigondon Norte",
+    "Marigondon Sur",
+    "Molo Proper",
+    "Nabitasan",
+    "Navais",
+    "Oñate De Leon",
+    "Ortiz",
+    "Osmeña",
+    "Our Lady of Fatima",
+    "Our Lady of Lourdes",
+    "Pale Benedicto Rizal",
+    "Quintin Salas",
+    "Rizal Palapala I",
+    "Rizal Palapala II",
+    "San Agustin",
+    "San Felix",
+    "San Jose",
+    "San Juan",
+    "Santa Filomena",
+    "Santo Niño Norte",
+    "Santo Niño Sur",
+    "Santo Rosario-Duran",
+    "Seminario-Lutac",
+    "Simon Ledesma",
+    "Smallville",
+    "Taal",
+    "Tacas",
+    "Taytay Zone I",
+    "Taytay Zone II",
+    "Timawa Tanza I",
+    "Timawa Tanza II",
+    "Ungka I",
+    "Ungka II",
+    "Yulo-Arroyo",
+    "Yulo Drive",
+    "Others",
+  ],
+  "Bacolod City": [
+    "Alijis",
+    "Banago",
+    "Bata",
+    "Cabug",
+    "Estefania",
+    "Granada",
+    "Handumanan",
+    "Mandalagan",
+    "Mansilingan",
+    "Montevista",
+    "Pahanocoy",
+    "Punta-Taytay",
+    "Singcang-Airport",
+    "Sum-ag",
+    "Taculing",
+    "Tangub",
+    "Tasay",
+    "Villamonte",
+    "Vista Alegre",
+    "Others",
+  ],
+  "Dumaguete City": [
+    "Bagacay",
+    "Bajumpandan",
+    "Banilad",
+    "Bantayan",
+    "Barangay 1",
+    "Barangay 2",
+    "Barangay 3",
+    "Barangay 4",
+    "Barangay 5",
+    "Barangay 6",
+    "Barangay 7",
+    "Barangay 8",
+    "Basak",
+    "Bunao",
+    "Cadawinonan",
+    "Calindagan",
+    "Camanjac",
+    "Candau-ay",
+    "Cantil-e",
+    "Daro",
+    "Junob",
+    "Looc",
+    "Mangnao-Guindapunan",
+    "Motong",
+    "Piapi",
+    "Poblacion No. 1",
+    "Poblacion No. 2",
+    "Poblacion No. 3",
+    "Poblacion No. 4",
+    "Poblacion No. 5",
+    "Poblacion No. 6",
+    "Poblacion No. 7",
+    "Poblacion No. 8",
+    "Pulantubig",
+    "Tabuctubig",
+    "Taclobo",
+    "Talay",
+    "Others",
+  ],
+  "Butuan City": [
+    "Agusan Pequeño",
+    "Ambago",
+    "Amparo",
+    "Ampayon",
+    "Anticala",
+    "Antongalon",
+    "Aupagan",
+    "Baan KM 3",
+    "Baan Riverside",
+    "Babag",
+    "Bading",
+    "Bancasi",
+    "Banza",
+    "Baobaon",
+    "Basag",
+    "Bayanihan",
+    "Bilay",
+    "Bitan-agan",
+    "Bit-os",
+    "Bobon",
+    "Bonbon",
+    "Bugabus",
+    "Bugsukan",
+    "Buhangin",
+    "Cabcabon",
+    "Camayahan",
+    "Dagohoy",
+    "Dankias",
+    "De Oro",
+    "Don Francisco",
+    "Doongan",
+    "Dulag",
+    "Dumalagan",
+    "Florida",
+    "Libertad",
+    "Limaha",
+    "Los Angeles",
+    "Lumbocan",
+    "Maguinda",
+    "Mahay",
+    "Mahogany",
+    "Maibu",
+    "Mandamo",
+    "Masao",
+    "Maug",
+    "May-is",
+    "Minyamun",
+    "Ong Yiu",
+    "Pagatpatan",
+    "Pangabugan",
+    "Pianing",
+    "Pigdaulan",
+    "Pinamanculan",
+    "Port Poyohon",
+    "Salvacion",
+    "San Ignacio",
+    "San Mateo",
+    "San Vicente",
+    "Sikatuna",
+    "Silongan",
+    "Sumile",
+    "Sumilihon",
+    "Tagabaca",
+    "Taguibo",
+    "Taligaman",
+    "Tandang Sora",
+    "Tiniwisan",
+    "Tungao",
+    "Urduja",
+    "Villa Kananga",
+    "Others",
+  ],
+  Makati: [
+    "Bangkal",
+    "Bel-Air",
+    "Carmona",
+    "Cembo",
+    "Comembo",
+    "Dasmariñas",
+    "East Rembo",
+    "Forbes Park",
+    "Guadalupe Nuevo",
+    "Guadalupe Viejo",
+    "Kasilawan",
+    "La Paz",
+    "Magallanes",
+    "Olympia",
+    "Palanan",
+    "Pembo",
+    "Pinagkaisahan",
+    "Pio del Pilar",
+    "Pitogo",
+    "Post Proper Northside",
+    "Post Proper Southside",
+    "Rizal",
+    "San Antonio",
+    "San Isidro",
+    "San Lorenzo",
+    "Santa Cruz",
+    "Singkamas",
+    "South Cembo",
+    "Tejeros",
+    "Urdaneta",
+    "Valenzuela",
+    "West Rembo",
+    "Others",
+  ],
+  Taguig: [
+    "Bagumbayan",
+    "Bambang",
+    "Calzada",
+    "Central Bicutan",
+    "Central Signal Village",
+    "Fort Bonifacio",
+    "Hagonoy",
+    "Ibayo-Tipas",
+    "Katuparan",
+    "Ligid-Tipas",
+    "Lower Bicutan",
+    "Maharlika Village",
+    "Napindan",
+    "New Lower Bicutan",
+    "North Daang Hari",
+    "North Signal Village",
+    "Palingon",
+    "Pinagsama",
+    "San Miguel",
+    "Santa Ana",
+    "South Daang Hari",
+    "South Signal Village",
+    "Tanyag",
+    "Tuktukan",
+    "Upper Bicutan",
+    "Ususan",
+    "Wawa",
+    "Western Bicutan",
+    "Others",
+  ],
+  Pasig: [
+    "Bagong Ilog",
+    "Bagong Katipunan",
+    "Bambang",
+    "Buting",
+    "Caniogan",
+    "Dela Paz",
+    "Kalawaan",
+    "Kapasigan",
+    "Kapitolyo",
+    "Malinao",
+    "Manggahan",
+    "Maybunga",
+    "Oranbo",
+    "Palatiw",
+    "Pinagbuhatan",
+    "Pineda",
+    "Rosario",
+    "Sagad",
+    "San Antonio",
+    "San Joaquin",
+    "San Jose",
+    "San Nicolas",
+    "Santa Cruz",
+    "Santa Lucia",
+    "Santa Rosa",
+    "Santo Tomas",
+    "Santolan",
+    "Sumilang",
+    "Ugong",
+    "Others",
+  ],
+  Others: ["Others"],
 };
 
+// ── Standalone sub-components for AddressPicker (must be outside to avoid re-mount on re-render) ──
+const AddressCardField = ({ icon, labelTxt, children }) => (
+  <View
+    style={{
+      backgroundColor: "rgba(255,255,255,0.65)",
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: "rgba(200,218,235,0.80)",
+      padding: 11,
+      marginBottom: 8,
+    }}
+  >
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 5,
+        marginBottom: 6,
+      }}
+    >
+      <Text style={{ fontSize: 12 }}>{icon}</Text>
+      <Text style={[af.fieldLabel, { marginBottom: 0, fontSize: 9 }]}>
+        {labelTxt}
+      </Text>
+    </View>
+    {children}
+  </View>
+);
+
+const AddressSearchDropdown = ({
+  search,
+  onSearch,
+  items,
+  selected,
+  onSelect,
+  placeholder,
+  onClose,
+}) => (
+  <View
+    style={{
+      backgroundColor: "#fff",
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: "rgba(200,218,235,0.90)",
+      marginTop: 4,
+      shadowColor: "#1a2d4e",
+      shadowOpacity: 0.12,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+      zIndex: 999,
+    }}
+  >
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        margin: 8,
+        backgroundColor: "rgba(240,246,252,0.92)",
+        borderRadius: 9,
+        borderWidth: 1.5,
+        borderColor: "rgba(200,218,235,0.75)",
+        paddingHorizontal: 10,
+      }}
+    >
+      <Text style={{ fontSize: 12, color: C.textMuted, marginRight: 6 }}>
+        🔍
+      </Text>
+      <TextInput
+        style={{
+          flex: 1,
+          fontFamily: "GoogleSans_400Regular",
+          fontSize: 13,
+          color: C.navy,
+          paddingVertical: 8,
+        }}
+        value={search}
+        onChangeText={onSearch}
+        placeholder={`Search ${placeholder}...`}
+        placeholderTextColor={C.textMuted}
+        autoFocus
+        autoCorrect={false}
+      />
+      {search.length > 0 && (
+        <TouchableOpacity onPress={() => onSearch("")}>
+          <Text style={{ color: C.textMuted, fontSize: 14 }}>✕</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+    <ScrollView
+      style={{ maxHeight: 190 }}
+      nestedScrollEnabled
+      showsVerticalScrollIndicator
+      keyboardShouldPersistTaps="always"
+    >
+      {items.length === 0 ? (
+        <View style={{ padding: 16, alignItems: "center" }}>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 12,
+              color: C.textMuted,
+            }}
+          >
+            No results found
+          </Text>
+        </View>
+      ) : (
+        items.map((opt) => (
+          <TouchableOpacity
+            key={opt}
+            style={[
+              {
+                paddingHorizontal: 14,
+                paddingVertical: 11,
+                borderBottomWidth: 1,
+                borderColor: "rgba(15,30,53,0.06)",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+              },
+              selected === opt && {
+                backgroundColor: "rgba(201,168,76,0.12)",
+              },
+            ]}
+            onPress={() => {
+              onSelect(opt);
+              onClose();
+            }}
+            activeOpacity={0.75}
+          >
+            {selected === opt && (
+              <Text style={{ fontSize: 9, color: C.gold }}>◆</Text>
+            )}
+            <Text
+              style={[
+                {
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 13,
+                  color: C.navy,
+                  flex: 1,
+                },
+                selected === opt && {
+                  fontFamily: "GoogleSans_700Bold",
+                  color: C.navyMid,
+                },
+              ]}
+            >
+              {opt}
+            </Text>
+          </TouchableOpacity>
+        ))
+      )}
+    </ScrollView>
+  </View>
+);
+
 // ── Redesigned AddressPicker — card-based with full dropdown suggestions ──────────────────────────
-const AddressPicker = ({ label, barangay, municipality, province, houseStreet, zip, onChangeBgy, onChangeMun, onChangeProv, onChangeHouseStreet, onChangeZip }) => {
+const AddressPicker = ({
+  label,
+  barangay,
+  municipality,
+  province,
+  houseStreet,
+  zip,
+  onChangeBgy,
+  onChangeMun,
+  onChangeProv,
+  onChangeHouseStreet,
+  onChangeZip,
+}) => {
   const [showProvDrop, setShowProvDrop] = useState(false);
-  const [showMunDrop,  setShowMunDrop]  = useState(false);
-  const [showBgyDrop,  setShowBgyDrop]  = useState(false);
-  const [provSearch,   setProvSearch]   = useState('');
-  const [munSearch,    setMunSearch]    = useState('');
-  const [bgySearch,    setBgySearch]    = useState('');
+  const [showMunDrop, setShowMunDrop] = useState(false);
+  const [showBgyDrop, setShowBgyDrop] = useState(false);
+  const [provSearch, setProvSearch] = useState("");
+  const [munSearch, setMunSearch] = useState("");
+  const [bgySearch, setBgySearch] = useState("");
 
-  const munList     = MUNICIPALITIES_BY_PROVINCE[province] || [];
-  const bgyList     = BARANGAYS_BY_CITY[municipality] || [];
-  const filteredProv = PROVINCES_PH.filter(p => p.toLowerCase().includes(provSearch.toLowerCase()));
-  const filteredMun  = munList.filter(m => m.toLowerCase().includes(munSearch.toLowerCase()));
-  const filteredBgy  = bgyList.filter(b => b.toLowerCase().includes(bgySearch.toLowerCase()));
-
-  const CardField = ({ icon, labelTxt, children }) => (
-    <View style={{ backgroundColor: 'rgba(255,255,255,0.65)', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.80)', padding: 11, marginBottom: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 }}>
-        <Text style={{ fontSize: 12 }}>{icon}</Text>
-        <Text style={[af.fieldLabel, { marginBottom: 0, fontSize: 9 }]}>{labelTxt}</Text>
-      </View>
-      {children}
-    </View>
+  const munList = MUNICIPALITIES_BY_PROVINCE[province] || [];
+  const bgyList = BARANGAYS_BY_CITY[municipality] || [];
+  const filteredProv = PROVINCES_PH.filter((p) =>
+    p.toLowerCase().includes(provSearch.toLowerCase()),
   );
-
-  const SearchDropdown = ({ search, onSearch, items, selected, onSelect, placeholder, onClose }) => (
-    <View style={{ backgroundColor: '#fff', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.90)', marginTop: 4, shadowColor: '#1a2d4e', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, zIndex: 999 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', margin: 8, backgroundColor: 'rgba(240,246,252,0.92)', borderRadius: 9, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)', paddingHorizontal: 10 }}>
-        <Text style={{ fontSize: 12, color: C.textMuted, marginRight: 6 }}>🔍</Text>
-        <TextInput
-          style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy, paddingVertical: 8 }}
-          value={search} onChangeText={onSearch}
-          placeholder={`Search ${placeholder}...`} placeholderTextColor={C.textMuted}
-          autoFocus autoCorrect={false}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => onSearch('')}><Text style={{ color: C.textMuted, fontSize: 14 }}>✕</Text></TouchableOpacity>
-        )}
-      </View>
-      <ScrollView style={{ maxHeight: 190 }} nestedScrollEnabled showsVerticalScrollIndicator>
-        {items.length === 0
-          ? <View style={{ padding: 16, alignItems: 'center' }}><Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textMuted }}>No results found</Text></View>
-          : items.map(opt => (
-            <TouchableOpacity key={opt}
-              style={[{ paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.06)', flexDirection: 'row', alignItems: 'center', gap: 8 }, selected === opt && { backgroundColor: 'rgba(201,168,76,0.12)' }]}
-              onPress={() => { onSelect(opt); onClose(); }} activeOpacity={0.75}>
-              {selected === opt && <Text style={{ fontSize: 9, color: C.gold }}>◆</Text>}
-              <Text style={[{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy, flex: 1 }, selected === opt && { fontFamily: 'GoogleSans_700Bold', color: C.navyMid }]}>{opt}</Text>
-            </TouchableOpacity>
-          ))
-        }
-      </ScrollView>
-    </View>
+  const filteredMun = munList.filter((m) =>
+    m.toLowerCase().includes(munSearch.toLowerCase()),
+  );
+  const filteredBgy = bgyList.filter((b) =>
+    b.toLowerCase().includes(bgySearch.toLowerCase()),
   );
 
   return (
     <View style={{ marginBottom: 8 }}>
-      {label && <Text style={[af.fieldLabel, { marginBottom: 8 }]}>{label}</Text>}
+      {label && (
+        <Text style={[af.fieldLabel, { marginBottom: 8 }]}>{label}</Text>
+      )}
 
       {/* House No. / Street */}
-      <CardField icon="🏠" labelTxt="HOUSE NO. / STREET">
+      <AddressCardField icon="🏠" labelTxt="HOUSE NO. / STREET">
         <TextInput
           style={[af.input, { marginBottom: 0 }]}
-          value={houseStreet} onChangeText={onChangeHouseStreet}
-          placeholder="e.g. 123 Rizal Street" placeholderTextColor={C.textMuted} autoCorrect={false}
+          value={houseStreet}
+          onChangeText={onChangeHouseStreet}
+          placeholder="e.g. 123 Rizal Street"
+          placeholderTextColor={C.textMuted}
+          autoCorrect={false}
         />
-      </CardField>
+      </AddressCardField>
 
       {/* Province */}
-      <CardField icon="🗺️" labelTxt="PROVINCE / REGION">
+      <AddressCardField icon="🗺️" labelTxt="PROVINCE / REGION">
         <TouchableOpacity
-          style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }]}
-          onPress={() => { setShowProvDrop(o => !o); setShowMunDrop(false); setShowBgyDrop(false); }} activeOpacity={0.8}>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: province ? C.navy : C.textMuted, flex: 1 }}>{province || 'Select province / region'}</Text>
-          <Text style={{ fontSize: 11, color: C.gold }}>{showProvDrop ? '▲' : '▼'}</Text>
+          style={[
+            af.input,
+            {
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 0,
+            },
+          ]}
+          onPress={() => {
+            setShowProvDrop((o) => !o);
+            setShowMunDrop(false);
+            setShowBgyDrop(false);
+          }}
+          activeOpacity={0.8}
+        >
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 13,
+              color: province ? C.navy : C.textMuted,
+              flex: 1,
+            }}
+          >
+            {province || "Select province / region"}
+          </Text>
+          <Text style={{ fontSize: 11, color: C.gold }}>
+            {showProvDrop ? "▲" : "▼"}
+          </Text>
         </TouchableOpacity>
         {showProvDrop && (
-          <SearchDropdown
-            search={provSearch} onSearch={setProvSearch}
-            items={filteredProv} selected={province}
-            onSelect={v => { onChangeProv(v); onChangeMun(''); onChangeBgy(''); setProvSearch(''); }}
-            placeholder="province" onClose={() => setShowProvDrop(false)}
+          <AddressSearchDropdown
+            search={provSearch}
+            onSearch={setProvSearch}
+            items={filteredProv}
+            selected={province}
+            onSelect={(v) => {
+              onChangeProv(v);
+              onChangeMun("");
+              onChangeBgy("");
+              setProvSearch("");
+            }}
+            placeholder="province"
+            onClose={() => setShowProvDrop(false)}
           />
         )}
-      </CardField>
+      </AddressCardField>
 
       {/* City / Municipality */}
-      <CardField icon="🏙️" labelTxt="CITY / MUNICIPALITY">
+      <AddressCardField icon="🏙️" labelTxt="CITY / MUNICIPALITY">
         <TouchableOpacity
-          style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0, opacity: province ? 1 : 0.55 }]}
-          onPress={() => { if (!province) return; setShowMunDrop(o => !o); setShowProvDrop(false); setShowBgyDrop(false); }} activeOpacity={0.8}>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: municipality ? C.navy : C.textMuted, flex: 1 }}>
-            {municipality || (province ? 'Select city / municipality' : 'Select province first')}
+          style={[
+            af.input,
+            {
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 0,
+              opacity: province ? 1 : 0.55,
+            },
+          ]}
+          onPress={() => {
+            if (!province) return;
+            setShowMunDrop((o) => !o);
+            setShowProvDrop(false);
+            setShowBgyDrop(false);
+          }}
+          activeOpacity={0.8}
+        >
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 13,
+              color: municipality ? C.navy : C.textMuted,
+              flex: 1,
+            }}
+          >
+            {municipality ||
+              (province
+                ? "Select city / municipality"
+                : "Select province first")}
           </Text>
-          <Text style={{ fontSize: 11, color: C.gold }}>{showMunDrop ? '▲' : '▼'}</Text>
+          <Text style={{ fontSize: 11, color: C.gold }}>
+            {showMunDrop ? "▲" : "▼"}
+          </Text>
         </TouchableOpacity>
         {showMunDrop && (
-          <SearchDropdown
-            search={munSearch} onSearch={v => { setMunSearch(v); if (!munList.some(m => m.toLowerCase().includes(v.toLowerCase()))) onChangeMun(v); }}
-            items={filteredMun.length > 0 ? filteredMun : (munSearch.length > 1 ? [munSearch] : [])}
+          <AddressSearchDropdown
+            search={munSearch}
+            onSearch={(v) => {
+              setMunSearch(v);
+              if (
+                !munList.some((m) => m.toLowerCase().includes(v.toLowerCase()))
+              )
+                onChangeMun(v);
+            }}
+            items={
+              filteredMun.length > 0
+                ? filteredMun
+                : munSearch.length > 1
+                  ? [munSearch]
+                  : []
+            }
             selected={municipality}
-            onSelect={v => { onChangeMun(v); onChangeBgy(''); setMunSearch(''); }}
-            placeholder="city or municipality" onClose={() => setShowMunDrop(false)}
+            onSelect={(v) => {
+              onChangeMun(v);
+              onChangeBgy("");
+              setMunSearch("");
+            }}
+            placeholder="city or municipality"
+            onClose={() => setShowMunDrop(false)}
           />
         )}
         {/* Manual type if not in list */}
         {!showMunDrop && municipality && !munList.includes(municipality) && (
-          <View style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, fontStyle: 'italic' }}>✏️ Manual: </Text>
+          <View
+            style={{
+              marginTop: 4,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 10,
+                color: C.textMuted,
+                fontStyle: "italic",
+              }}
+            >
+              ✏️ Manual:{" "}
+            </Text>
             <TextInput
-              style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.20)', paddingVertical: 4 }}
-              value={municipality} onChangeText={onChangeMun}
-              placeholder="Type municipality name" placeholderTextColor={C.textMuted} autoCorrect={false}
+              style={{
+                flex: 1,
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 12,
+                color: C.navy,
+                borderBottomWidth: 1,
+                borderColor: "rgba(15,30,53,0.20)",
+                paddingVertical: 4,
+              }}
+              value={municipality}
+              onChangeText={onChangeMun}
+              placeholder="Type municipality name"
+              placeholderTextColor={C.textMuted}
+              autoCorrect={false}
             />
           </View>
         )}
-      </CardField>
+      </AddressCardField>
 
       {/* Barangay */}
-      <CardField icon="📍" labelTxt="BARANGAY">
+      <AddressCardField icon="📍" labelTxt="BARANGAY">
         {bgyList.length > 0 ? (
           <>
             <TouchableOpacity
-              style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }]}
-              onPress={() => { setShowBgyDrop(o => !o); setShowProvDrop(false); setShowMunDrop(false); }} activeOpacity={0.8}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: barangay ? C.navy : C.textMuted, flex: 1 }}>{barangay || 'Select barangay'}</Text>
-              <Text style={{ fontSize: 11, color: C.gold }}>{showBgyDrop ? '▲' : '▼'}</Text>
+              style={[
+                af.input,
+                {
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 0,
+                },
+              ]}
+              onPress={() => {
+                setShowBgyDrop((o) => !o);
+                setShowProvDrop(false);
+                setShowMunDrop(false);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 13,
+                  color: barangay ? C.navy : C.textMuted,
+                  flex: 1,
+                }}
+              >
+                {barangay || "Select barangay"}
+              </Text>
+              <Text style={{ fontSize: 11, color: C.gold }}>
+                {showBgyDrop ? "▲" : "▼"}
+              </Text>
             </TouchableOpacity>
             {showBgyDrop && (
-              <SearchDropdown
-                search={bgySearch} onSearch={setBgySearch}
-                items={filteredBgy} selected={barangay}
-                onSelect={v => { onChangeBgy(v); setBgySearch(''); }}
-                placeholder="barangay" onClose={() => setShowBgyDrop(false)}
+              <AddressSearchDropdown
+                search={bgySearch}
+                onSearch={setBgySearch}
+                items={filteredBgy}
+                selected={barangay}
+                onSelect={(v) => {
+                  onChangeBgy(v);
+                  setBgySearch("");
+                }}
+                placeholder="barangay"
+                onClose={() => setShowBgyDrop(false)}
               />
             )}
           </>
         ) : (
           <TextInput
             style={[af.input, { marginBottom: 0 }]}
-            value={barangay} onChangeText={onChangeBgy}
-            placeholder={municipality ? `Type barangay in ${municipality}` : 'e.g. Brgy. Poblacion'}
-            placeholderTextColor={C.textMuted} autoCorrect={false}
+            value={barangay}
+            onChangeText={onChangeBgy}
+            placeholder={
+              municipality
+                ? `Type barangay in ${municipality}`
+                : "e.g. Brgy. Poblacion"
+            }
+            placeholderTextColor={C.textMuted}
+            autoCorrect={false}
           />
         )}
-      </CardField>
+      </AddressCardField>
 
       {/* ZIP Code */}
-      <CardField icon="📮" labelTxt="ZIP CODE">
+      <AddressCardField icon="📮" labelTxt="ZIP CODE">
         <TextInput
           style={[af.input, { marginBottom: 0 }]}
-          value={zip} onChangeText={onChangeZip}
-          placeholder="e.g. 9000" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false}
+          value={zip}
+          onChangeText={onChangeZip}
+          placeholder="e.g. 9000"
+          placeholderTextColor={C.textMuted}
+          keyboardType="numeric"
+          autoCorrect={false}
         />
-      </CardField>
+      </AddressCardField>
     </View>
   );
 };
 
 const GOV_ID_TYPES = [
-  'SSS', 'GSIS', 'TIN', 'PhilHealth', 'Pag-IBIG (HDMF)',
-  'Philippine Passport', 'Driver\'s License', 'Voter\'s ID',
-  'PRC ID', 'Postal ID', 'Senior Citizen ID', 'PWD ID',
-  'UMID', 'National ID (PhilSys)', 'OFW ID', 'Others',
+  "SSS",
+  "GSIS",
+  "TIN",
+  "PhilHealth",
+  "Pag-IBIG (HDMF)",
+  "Philippine Passport",
+  "Driver's License",
+  "Voter's ID",
+  "PRC ID",
+  "Postal ID",
+  "Senior Citizen ID",
+  "PWD ID",
+  "UMID",
+  "National ID (PhilSys)",
+  "OFW ID",
+  "Others",
 ];
 
 // ── Gov ID Picker — dropdown type + number input ────────────────────────────
-const GovIdPicker = ({ label: l, idType, idNumber, onTypeChange, onNumberChange, placeholder }) => {
+const GovIdPicker = ({
+  label: l,
+  idType,
+  idNumber,
+  onTypeChange,
+  onNumberChange,
+  placeholder,
+}) => {
   const [open, setOpen] = useState(false);
   return (
     <View style={{ flex: 1, minWidth: 0 }}>
       {l ? <Text style={af.fieldLabel}>{l}</Text> : null}
       <TouchableOpacity
-        style={[af.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }]}
-        onPress={() => setOpen(o => !o)} activeOpacity={0.8}>
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: idType ? C.navy : C.textMuted, flex: 1 }}>
-          {idType || 'Select ID type'}
+        style={[
+          af.input,
+          {
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 5,
+          },
+        ]}
+        onPress={() => setOpen((o) => !o)}
+        activeOpacity={0.8}
+      >
+        <Text
+          style={{
+            fontFamily: "GoogleSans_400Regular",
+            fontSize: 12,
+            color: idType ? C.navy : C.textMuted,
+            flex: 1,
+          }}
+        >
+          {idType || "Select ID type"}
         </Text>
-        <Text style={{ fontSize: 11, color: C.textMuted }}>{open ? '▲' : '▼'}</Text>
+        <Text style={{ fontSize: 11, color: C.textMuted }}>
+          {open ? "▲" : "▼"}
+        </Text>
       </TouchableOpacity>
       {open && (
         <View style={[af.dropdownList, { marginBottom: 5 }]}>
-          <ScrollView style={{ maxHeight: 160 }} nestedScrollEnabled showsVerticalScrollIndicator>
-            {GOV_ID_TYPES.map(opt => (
-              <TouchableOpacity key={opt} style={[af.dropdownItem, idType === opt && af.dropdownItemActive]}
-                onPress={() => { onTypeChange(opt); setOpen(false); }} activeOpacity={0.8}>
-                <Text style={[af.dropdownTxt, idType === opt && { color: C.gold, fontFamily: 'GoogleSans_700Bold' }]}>{opt}</Text>
+          <ScrollView
+            style={{ maxHeight: 160 }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
+            {GOV_ID_TYPES.map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                style={[
+                  af.dropdownItem,
+                  idType === opt && af.dropdownItemActive,
+                ]}
+                onPress={() => {
+                  onTypeChange(opt);
+                  setOpen(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    af.dropdownTxt,
+                    idType === opt && {
+                      color: C.gold,
+                      fontFamily: "GoogleSans_700Bold",
+                    },
+                  ]}
+                >
+                  {opt}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -1104,10 +5650,12 @@ const GovIdPicker = ({ label: l, idType, idNumber, onTypeChange, onNumberChange,
       {/* ID Number input */}
       <TextInput
         style={[af.input, { fontSize: 12 }]}
-        value={idNumber} onChangeText={onNumberChange}
-        placeholder={placeholder || 'Enter ID number'}
+        value={idNumber}
+        onChangeText={onNumberChange}
+        placeholder={placeholder || "Enter ID number"}
         placeholderTextColor={C.textMuted}
-        autoCorrect={false} autoCapitalize="characters"
+        autoCorrect={false}
+        autoCapitalize="characters"
       />
     </View>
   );
@@ -1116,22 +5664,55 @@ const GovIdPicker = ({ label: l, idType, idNumber, onTypeChange, onNumberChange,
 // ─── Application Form HTML Generator (for Print/PDF) ─────────────────────────
 const generateAppFormHTML = (member, form) => {
   const f = form;
-  const govIds = (f.govIds || []).filter(g => g.type || g.number);
-  const fullName = [member.lastName, member.firstName, member.middleName].filter(Boolean).join(', ');
-  const presentAddr = [f.presentHouseStreet, f.presentBarangay, f.presentMunicipality, f.presentProvince].filter(Boolean).join(', ') || f.presentAddress || '';
-  const permanentAddr = [f.permanentHouseStreet, f.permanentBarangay, f.permanentMunicipality, f.permanentProvince].filter(Boolean).join(', ') || f.permanentAddress || '';
-  const religion = f.religion === 'Others' ? f.religionOther : f.religion;
-  const nationality = f.nationality === 'Others' ? f.nationalityOther : f.nationality;
-  const sssGsis = govIds.find(g => g.type === 'SSS' || g.type === 'GSIS');
-  const tin     = govIds.find(g => g.type === 'TIN');
-  const otherIds = govIds.filter(g => g.type !== 'SSS' && g.type !== 'GSIS' && g.type !== 'TIN');
+  const govIds = (f.govIds || []).filter((g) => g.type || g.number);
+  const fullName = [member.lastName, member.firstName, member.middleName]
+    .filter(Boolean)
+    .join(", ");
+  const presentAddr =
+    [
+      f.presentHouseStreet,
+      f.presentBarangay,
+      f.presentMunicipality,
+      f.presentProvince,
+    ]
+      .filter(Boolean)
+      .join(", ") ||
+    f.presentAddress ||
+    "";
+  const permanentAddr =
+    [
+      f.permanentHouseStreet,
+      f.permanentBarangay,
+      f.permanentMunicipality,
+      f.permanentProvince,
+    ]
+      .filter(Boolean)
+      .join(", ") ||
+    f.permanentAddress ||
+    "";
+  const religion = f.religion === "Others" ? f.religionOther : f.religion;
+  const nationality =
+    f.nationality === "Others" ? f.nationalityOther : f.nationality;
+  const sssGsis = govIds.find((g) => g.type === "SSS" || g.type === "GSIS");
+  const tin = govIds.find((g) => g.type === "TIN");
+  const otherIds = govIds.filter(
+    (g) => g.type !== "SSS" && g.type !== "GSIS" && g.type !== "TIN",
+  );
 
-  const line = (val, minW = '180px') => `<span style="display:inline-block;min-width:${minW};border-bottom:1px solid #333;padding:1px 4px;font-size:11px;">${val || ''}</span>`;
-  const radio = (checked) => `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid #333;text-align:center;line-height:10px;font-size:8px;vertical-align:middle;margin-right:2px;">${checked ? '●' : ''}</span>`;
-  const cell = (val, style='') => `<td style="border:1px solid #555;padding:4px 6px;font-size:10px;${style}">${val || '&nbsp;'}</td>`;
-  const hdr  = (val, style='') => `<th style="border:1px solid #555;padding:4px 6px;font-size:10px;font-weight:bold;text-align:center;background:#f0f0f0;${style}">${val}</th>`;
+  const line = (val, minW = "180px") =>
+    `<span style="display:inline-block;min-width:${minW};border-bottom:1px solid #333;padding:1px 4px;font-size:11px;">${val || ""}</span>`;
+  const radio = (checked) =>
+    `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid #333;text-align:center;line-height:10px;font-size:8px;vertical-align:middle;margin-right:2px;">${checked ? "●" : ""}</span>`;
+  const cell = (val, style = "") =>
+    `<td style="border:1px solid #555;padding:4px 6px;font-size:10px;${style}">${val || "&nbsp;"}</td>`;
+  const hdr = (val, style = "") =>
+    `<th style="border:1px solid #555;padding:4px 6px;font-size:10px;font-weight:bold;text-align:center;background:#f0f0f0;${style}">${val}</th>`;
 
-  const today = new Date().toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+  const today = new Date().toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>CESLA MPC Application Form</title>
@@ -1270,101 +5851,101 @@ const generateAppFormHTML = (member, form) => {
   <div class="outer">
     <!-- App Date + No -->
     <div class="rb" style="display:flex;justify-content:space-between;">
-      <span>Application Date: &nbsp;${line(f.appDate,'130px')}</span>
-      <span>Application No: &nbsp;${line(f.appNo,'130px')}</span>
+      <span>Application Date: &nbsp;${line(f.appDate, "130px")}</span>
+      <span>Application No: &nbsp;${line(f.appNo, "130px")}</span>
     </div>
 
     <div class="sec">PERSONAL DETAILS</div>
 
     <!-- Salutation + Gender -->
     <div class="rb">
-      ${radio(f.salutation==='Mr.')} Mr. &nbsp;&nbsp;
-      ${radio(f.salutation==='Mrs.')} Mrs. &nbsp;&nbsp;
-      ${radio(f.salutation==='Ms.')} Ms.
+      ${radio(f.salutation === "Mr.")} Mr. &nbsp;&nbsp;
+      ${radio(f.salutation === "Mrs.")} Mrs. &nbsp;&nbsp;
+      ${radio(f.salutation === "Ms.")} Ms.
       &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-      Gender: &nbsp;${radio(f.gender==='Male')} Male &nbsp;&nbsp; ${radio(f.gender==='Female')} Female
+      Gender: &nbsp;${radio(f.gender === "Male")} Male &nbsp;&nbsp; ${radio(f.gender === "Female")} Female
     </div>
 
     <!-- Name -->
     <div class="rb" style="display:flex;gap:0;padding:0;">
       <div style="flex:2;border-right:1px solid #555;padding:5px 8px;">
         <div style="font-size:9px;color:#777;">Last Name</div>
-        <div style="font-size:12px;font-weight:bold;">${member.lastName || '&nbsp;'}</div>
+        <div style="font-size:12px;font-weight:bold;">${member.lastName || "&nbsp;"}</div>
       </div>
       <div style="flex:2;border-right:1px solid #555;padding:5px 8px;">
         <div style="font-size:9px;color:#777;">First Name</div>
-        <div style="font-size:12px;">${member.firstName || '&nbsp;'}</div>
+        <div style="font-size:12px;">${member.firstName || "&nbsp;"}</div>
       </div>
       <div style="flex:2;border-right:1px solid #555;padding:5px 8px;">
         <div style="font-size:9px;color:#777;">Middle Name</div>
-        <div style="font-size:12px;">${member.middleName || '&nbsp;'}</div>
+        <div style="font-size:12px;">${member.middleName || "&nbsp;"}</div>
       </div>
       <div style="flex:1;padding:5px 8px;">
         <div style="font-size:9px;color:#777;">Suffix</div>
-        <div style="font-size:12px;">${f.suffix || '&nbsp;'}</div>
+        <div style="font-size:12px;">${f.suffix || "&nbsp;"}</div>
       </div>
     </div>
 
     <!-- DOB + Nationality -->
     <div class="rb">
-      Date of Birth (MM/DD/YYYY): ${line(f.dob,'120px')}
+      Date of Birth (MM/DD/YYYY): ${line(f.dob, "120px")}
       &nbsp;&nbsp;&nbsp;
-      Nationality: &nbsp;${radio(f.nationality==='Filipino')} Filipino &nbsp;
-      ${radio(f.nationality==='Others')} Others (please specify) ${line(nationality==='Filipino'?'':nationality,'90px')}
+      Nationality: &nbsp;${radio(f.nationality === "Filipino")} Filipino &nbsp;
+      ${radio(f.nationality === "Others")} Others (please specify) ${line(nationality === "Filipino" ? "" : nationality, "90px")}
     </div>
 
     <!-- Place of Birth + Religion + Dependents -->
     <div class="rb">
-      Place of Birth: ${line(f.placeOfBirth || [f.pobMunicipality, f.pobProvince].filter(Boolean).join(', '),'190px')}
+      Place of Birth: ${line(f.placeOfBirth || [f.pobMunicipality, f.pobProvince].filter(Boolean).join(", "), "190px")}
       &nbsp;&nbsp;&nbsp;
-      Religion: ${line(religion,'130px')}
+      Religion: ${line(religion, "130px")}
       &nbsp;&nbsp;&nbsp;
-      Number of Dependents: ${line(f.numDependents,'55px')}
+      Number of Dependents: ${line(f.numDependents, "55px")}
     </div>
 
     <!-- Civil Status -->
     <div class="rb">
       Civil Status: &nbsp;
-      ${radio(f.civilStatus==='Single')} Single &nbsp;&nbsp;
-      ${radio(f.civilStatus==='Married')} Married &nbsp;&nbsp;
-      ${radio(f.civilStatus==='Legally Separated')} Legally Separated &nbsp;&nbsp;
-      ${radio(f.civilStatus==='Others')} Others
+      ${radio(f.civilStatus === "Single")} Single &nbsp;&nbsp;
+      ${radio(f.civilStatus === "Married")} Married &nbsp;&nbsp;
+      ${radio(f.civilStatus === "Legally Separated")} Legally Separated &nbsp;&nbsp;
+      ${radio(f.civilStatus === "Others")} Others
     </div>
 
     <!-- Gov IDs -->
     <div class="rb">
-      SSS/GSIS Number: ${line(sssGsis?.number,'120px')} &nbsp;&nbsp;
-      Tax Identification Number: ${line(tin?.number,'120px')} &nbsp;&nbsp;
-      Other IDs: ${line(otherIds.map(g=>`${g.type}: ${g.number}`).join(' | '),'120px')}
+      SSS/GSIS Number: ${line(sssGsis?.number, "120px")} &nbsp;&nbsp;
+      Tax Identification Number: ${line(tin?.number, "120px")} &nbsp;&nbsp;
+      Other IDs: ${line(otherIds.map((g) => `${g.type}: ${g.number}`).join(" | "), "120px")}
     </div>
 
     <!-- Referrer -->
     <div class="rb">
-      Who recommended you to CEC? ${line(f.recommendedBy,'170px')}
+      Who recommended you to CEC? ${line(f.recommendedBy, "170px")}
     </div>
     <div class="rb">
-      Contact No: ${line(f.contactNo || member.contact,'170px')}
+      Contact No: ${line(f.contactNo || member.contact, "170px")}
     </div>
 
     <!-- Family Members -->
     <div class="rb" style="font-weight:bold;font-size:11px;padding:5px 8px;">Family Members:</div>
     <table>
       <tr>
-        ${hdr('Name','width:35%')}${hdr('Relation','width:20%')}${hdr('Age','width:10%')}${hdr('Occupation')}
+        ${hdr("Name", "width:35%")}${hdr("Relation", "width:20%")}${hdr("Age", "width:10%")}${hdr("Occupation")}
       </tr>
-      ${(f.family || Array(5).fill({})).map(r=>`<tr style="height:20px;">${cell(r.name)}${cell(r.relation)}${cell(r.age)}${cell(r.occupation)}</tr>`).join('')}
+      ${(f.family || Array(5).fill({})).map((r) => `<tr style="height:20px;">${cell(r.name)}${cell(r.relation)}${cell(r.age)}${cell(r.occupation)}</tr>`).join("")}
     </table>
 
     <!-- Contact Details -->
     <div class="sec">CONTACT DETAILS</div>
     <div class="rb">
-      Present Address: ${line(presentAddr,'300px')} &nbsp;&nbsp; Zip Code: ${line(f.presentZip,'65px')}
+      Present Address: ${line(presentAddr, "300px")} &nbsp;&nbsp; Zip Code: ${line(f.presentZip, "65px")}
     </div>
     <div class="rb">
-      Length of Stay in Present Address: ${line(f.stayYears,'50px')} years &nbsp; ${line(f.stayMonths,'50px')} months
+      Length of Stay in Present Address: ${line(f.stayYears, "50px")} years &nbsp; ${line(f.stayMonths, "50px")} months
     </div>
     <div class="rb">
-      Permanent Address: ${line(permanentAddr || '(Same as present address)','295px')} &nbsp;&nbsp; Zip Code: ${line(f.permanentZip,'65px')}
+      Permanent Address: ${line(permanentAddr || "(Same as present address)", "295px")} &nbsp;&nbsp; Zip Code: ${line(f.permanentZip, "65px")}
     </div>
   </div>
 </div>
@@ -1379,41 +5960,41 @@ const generateAppFormHTML = (member, form) => {
     <div class="sec">EMPLOYMENT DETAILS</div>
     <table>
       <tr>
-        ${hdr('EMPLOYED','width:34%')}${hdr('SELF-EMPLOYED','width:33%')}${hdr('UNEMPLOYED','width:33%')}
+        ${hdr("EMPLOYED", "width:34%")}${hdr("SELF-EMPLOYED", "width:33%")}${hdr("UNEMPLOYED", "width:33%")}
       </tr>
       <tr style="vertical-align:top;">
         <td style="border:1px solid #555;padding:6px 8px;font-size:10px;line-height:2;vertical-align:top;">
-          Employer/Business Name:<br>${line(f.employerName,'165px')}<br>
-          Office Address:<br>${line(f.officeAddress,'165px')}<br>
-          Nature of Business: ${line(f.natureOfBiz,'115px')}<br>
-          Office No: ${line(f.officeNo,'75px')} &nbsp; Fax No: ${line(f.faxNo,'55px')}<br>
+          Employer/Business Name:<br>${line(f.employerName, "165px")}<br>
+          Office Address:<br>${line(f.officeAddress, "165px")}<br>
+          Nature of Business: ${line(f.natureOfBiz, "115px")}<br>
+          Office No: ${line(f.officeNo, "75px")} &nbsp; Fax No: ${line(f.faxNo, "55px")}<br>
           Employment Type: &nbsp;
-          ${radio(f.employmentType==='Private')} Private &nbsp;
-          ${radio(f.employmentType==='Government')} Government<br>
-          &nbsp;&nbsp;${radio(f.employmentType==='Others')} Others: ${line(f.employmentTypeOther,'75px')}<br>
-          Position/Rank: ${line(f.positionRank,'115px')}<br>
-          Monthly Income: ${line(f.monthlyIncome,'105px')}<br>
+          ${radio(f.employmentType === "Private")} Private &nbsp;
+          ${radio(f.employmentType === "Government")} Government<br>
+          &nbsp;&nbsp;${radio(f.employmentType === "Others")} Others: ${line(f.employmentTypeOther, "75px")}<br>
+          Position/Rank: ${line(f.positionRank, "115px")}<br>
+          Monthly Income: ${line(f.monthlyIncome, "105px")}<br>
           <span style="font-size:9px;font-style:italic;">*If less than six (6) months in current<br>employment, please fill-up below:</span><br>
-          Previous Employer:<br>${line(f.prevEmployer,'165px')}<br>
-          Yrs. In Company: ${line(f.yrsInCompany,'75px')}<br>
-          Position/Rank: ${line(f.prevPosition,'110px')}
+          Previous Employer:<br>${line(f.prevEmployer, "165px")}<br>
+          Yrs. In Company: ${line(f.yrsInCompany, "75px")}<br>
+          Position/Rank: ${line(f.prevPosition, "110px")}
         </td>
         <td style="border:1px solid #555;padding:6px 8px;font-size:10px;line-height:2;vertical-align:top;">
-          Name of Business:<br>${line(f.bizName,'155px')}<br>
+          Name of Business:<br>${line(f.bizName, "155px")}<br>
           Type of Business:<br>
-          ${radio(f.bizType==='Sole Prop')} Sole Prop &nbsp;
-          ${radio(f.bizType==='Partnership')} Partnership &nbsp;
-          ${radio(f.bizType==='Corp')} Corp<br>
-          Nature of Business: ${line(f.bizNature,'115px')}<br>
-          Asset Size of Business (Php):<br>${line(f.assetSize,'150px')}<br>
-          Share in Business (%): ${line(f.shareInBiz,'85px')}<br>
-          Monthly Income: ${line(f.selfMonthlyIncome,'105px')}
+          ${radio(f.bizType === "Sole Prop")} Sole Prop &nbsp;
+          ${radio(f.bizType === "Partnership")} Partnership &nbsp;
+          ${radio(f.bizType === "Corp")} Corp<br>
+          Nature of Business: ${line(f.bizNature, "115px")}<br>
+          Asset Size of Business (Php):<br>${line(f.assetSize, "150px")}<br>
+          Share in Business (%): ${line(f.shareInBiz, "85px")}<br>
+          Monthly Income: ${line(f.selfMonthlyIncome, "105px")}
         </td>
         <td style="border:1px solid #555;padding:6px 8px;font-size:10px;line-height:2.2;vertical-align:top;">
-          ${radio(f.unemployedType==='Housewife')} Housewife<br>
-          ${radio(f.unemployedType==='Student')} Student<br>
-          ${radio(f.unemployedType==='Others')} Others (please specify)<br>
-          ${line(f.unemployedOther,'140px')}
+          ${radio(f.unemployedType === "Housewife")} Housewife<br>
+          ${radio(f.unemployedType === "Student")} Student<br>
+          ${radio(f.unemployedType === "Others")} Others (please specify)<br>
+          ${line(f.unemployedOther, "140px")}
         </td>
       </tr>
     </table>
@@ -1443,7 +6024,7 @@ const generateAppFormHTML = (member, form) => {
 
   <div style="text-align:center;margin-top:10px;font-size:8px;color:#999;">
     CESLA Multi-Purpose Cooperative &nbsp;|&nbsp; CLIMBS Employee Cooperative &nbsp;|&nbsp;
-    Generated: ${today} &nbsp;|&nbsp; User ID: ${member.userId || ''}
+    Generated: ${today} &nbsp;|&nbsp; User ID: ${member.userId || ""}
   </div>
 </div>
 
@@ -1455,70 +6036,108 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
   const isMobile = isMobileProp ?? rwdMobile;
   const af0 = member.appForm || {};
   const today = new Date();
-  const todayStr = today.toLocaleDateString('en-PH', { month: '2-digit', day: '2-digit', year: '2-digit' }).replace(/\//g, '/');
-  const autoAppNo = af0.appNo || `APP-${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}-${member.uid?.slice(-4)?.toUpperCase() || 'XXXX'}`;
+  const todayStr = today
+    .toLocaleDateString("en-PH", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "2-digit",
+    })
+    .replace(/\//g, "/");
+  const autoAppNo =
+    af0.appNo ||
+    `APP-${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}-${member.uid?.slice(-4)?.toUpperCase() || "XXXX"}`;
   const [form, setForm] = useState({
-    appDate: af0.appDate || todayStr, appNo: autoAppNo,
-    salutation: af0.salutation || '', gender: af0.gender || '',
-    suffix: af0.suffix || '',
-    dob: af0.dob || '',
-    placeOfBirth: af0.placeOfBirth || '',
-    pobMunicipality: af0.pobMunicipality || '',
-    pobProvince: af0.pobProvince || '',
-    nationality: af0.nationality || 'Filipino', nationalityOther: af0.nationalityOther || '',
-    religion: af0.religion || '', religionOther: af0.religionOther || '',
-    numDependents: af0.numDependents || '0',
-    civilStatus: af0.civilStatus || '',
+    appDate: af0.appDate || todayStr,
+    appNo: autoAppNo,
+    salutation: af0.salutation || "",
+    gender: af0.gender || "",
+    suffix: af0.suffix || "",
+    dob: af0.dob || "",
+    placeOfBirth: af0.placeOfBirth || "",
+    pobMunicipality: af0.pobMunicipality || "",
+    pobProvince: af0.pobProvince || "",
+    nationality: af0.nationality || "Filipino",
+    nationalityOther: af0.nationalityOther || "",
+    religion: af0.religion || "",
+    religionOther: af0.religionOther || "",
+    numDependents: af0.numDependents || "0",
+    civilStatus: af0.civilStatus || "",
     // Gov IDs — array of { type, number }
     govIds: af0.govIds || [
-      { type: af0.sssGsis ? 'SSS' : '', number: af0.sssGsis || '' },
-      { type: af0.tin ? 'TIN' : '', number: af0.tin || '' },
-      { type: af0.philHealth ? 'PhilHealth' : '', number: af0.philHealth || '' },
-      { type: af0.pagIbig ? 'Pag-IBIG (HDMF)' : '', number: af0.pagIbig || '' },
+      { type: af0.sssGsis ? "SSS" : "", number: af0.sssGsis || "" },
+      { type: af0.tin ? "TIN" : "", number: af0.tin || "" },
+      {
+        type: af0.philHealth ? "PhilHealth" : "",
+        number: af0.philHealth || "",
+      },
+      { type: af0.pagIbig ? "Pag-IBIG (HDMF)" : "", number: af0.pagIbig || "" },
     ],
-    recommendedBy: af0.recommendedBy || '',
-    contactNo: af0.contactNo || '',
-    family: af0.family || Array(5).fill(null).map(() => ({ name: '', relation: '', age: '', occupation: '' })),
-    presentHouseStreet: af0.presentHouseStreet || '', presentBarangay: af0.presentBarangay || '',
-    presentMunicipality: af0.presentMunicipality || '', presentProvince: af0.presentProvince || '',
-    presentAddress: af0.presentAddress || '', presentZip: af0.presentZip || '',
-    stayYears: af0.stayYears || '', stayMonths: af0.stayMonths || '',
-    permanentHouseStreet: af0.permanentHouseStreet || '', permanentBarangay: af0.permanentBarangay || '',
-    permanentMunicipality: af0.permanentMunicipality || '', permanentProvince: af0.permanentProvince || '',
-    permanentAddress: af0.permanentAddress || '', permanentZip: af0.permanentZip || '',
-    empType: af0.empType || '',
-    employerName: af0.employerName || '', officeAddress: af0.officeAddress || '',
-    natureOfBiz: af0.natureOfBiz || '', officeNo: af0.officeNo || '', faxNo: af0.faxNo || '',
-    employmentType: af0.employmentType || '', employmentTypeOther: af0.employmentTypeOther || '',
-    positionRank: af0.positionRank || '', monthlyIncome: af0.monthlyIncome || '',
-    prevEmployer: af0.prevEmployer || '', yrsInCompany: af0.yrsInCompany || '', prevPosition: af0.prevPosition || '',
-    bizName: af0.bizName || '', bizType: af0.bizType || '', bizNature: af0.bizNature || '',
-    assetSize: af0.assetSize || '', shareInBiz: af0.shareInBiz || '', selfMonthlyIncome: af0.selfMonthlyIncome || '',
-    unemployedType: af0.unemployedType || '', unemployedOther: af0.unemployedOther || '',
+    recommendedBy: af0.recommendedBy || "",
+    contactNo: af0.contactNo || "",
+    family:
+      af0.family ||
+      Array(5)
+        .fill(null)
+        .map(() => ({ name: "", relation: "", age: "", occupation: "" })),
+    presentHouseStreet: af0.presentHouseStreet || "",
+    presentBarangay: af0.presentBarangay || "",
+    presentMunicipality: af0.presentMunicipality || "",
+    presentProvince: af0.presentProvince || "",
+    presentAddress: af0.presentAddress || "",
+    presentZip: af0.presentZip || "",
+    stayYears: af0.stayYears || "",
+    stayMonths: af0.stayMonths || "",
+    permanentHouseStreet: af0.permanentHouseStreet || "",
+    permanentBarangay: af0.permanentBarangay || "",
+    permanentMunicipality: af0.permanentMunicipality || "",
+    permanentProvince: af0.permanentProvince || "",
+    permanentAddress: af0.permanentAddress || "",
+    permanentZip: af0.permanentZip || "",
+    empType: af0.empType || "",
+    employerName: af0.employerName || "",
+    officeAddress: af0.officeAddress || "",
+    natureOfBiz: af0.natureOfBiz || "",
+    officeNo: af0.officeNo || "",
+    faxNo: af0.faxNo || "",
+    employmentType: af0.employmentType || "",
+    employmentTypeOther: af0.employmentTypeOther || "",
+    positionRank: af0.positionRank || "",
+    monthlyIncome: af0.monthlyIncome || "",
+    prevEmployer: af0.prevEmployer || "",
+    yrsInCompany: af0.yrsInCompany || "",
+    prevPosition: af0.prevPosition || "",
+    bizName: af0.bizName || "",
+    bizType: af0.bizType || "",
+    bizNature: af0.bizNature || "",
+    assetSize: af0.assetSize || "",
+    shareInBiz: af0.shareInBiz || "",
+    selfMonthlyIncome: af0.selfMonthlyIncome || "",
+    unemployedType: af0.unemployedType || "",
+    unemployedOther: af0.unemployedOther || "",
   });
 
   const [saving, setSaving] = useState(false);
-  const [saved,  setSaved]  = useState(false);
-  const [page,   setPage]   = useState(1);
+  const [saved, setSaved] = useState(false);
+  const [page, setPage] = useState(1);
   const [printing, setPrinting] = useState(false);
 
   const handlePrint = async () => {
     setPrinting(true);
     try {
       let html = generateAppFormHTML(member, form);
-      if (Platform.OS === 'web') {
+      if (Platform.OS === "web") {
         // Embed logo as base64 so it prints correctly
         try {
-          const resp = await fetch(require('../../../assets/CESLA_logo.png'));
+          const resp = await fetch(require("../../../assets/CESLA_logo.png"));
           const blob = await resp.blob();
-          const b64 = await new Promise(res => {
+          const b64 = await new Promise((res) => {
             const reader = new FileReader();
             reader.onloadend = () => res(reader.result);
             reader.readAsDataURL(blob);
           });
           html = html.replace('src="CESLA_logo.png"', `src="${b64}"`);
         } catch (e) {}
-        const win = window.open('', '_blank');
+        const win = window.open("", "_blank");
         win.document.write(html);
         win.document.close();
         win.focus();
@@ -1526,36 +6145,51 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
       } else {
         const { uri } = await Print.printToFileAsync({ html, base64: false });
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Save or Share Application Form' });
+          await Sharing.shareAsync(uri, {
+            mimeType: "application/pdf",
+            dialogTitle: "Save or Share Application Form",
+          });
         } else {
           await Print.printAsync({ html });
         }
       }
-    } catch (e) { console.warn('Print error:', e); }
-    finally { setPrinting(false); }
+    } catch (e) {
+      console.warn("Print error:", e);
+    } finally {
+      setPrinting(false);
+    }
   };
 
-  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
-  const setFamily = (idx, key, val) => setForm(f => {
-    const fam = [...f.family];
-    fam[idx] = { ...fam[idx], [key]: val };
-    return { ...f, family: fam };
-  });
-  const setGovId = (idx, field, val) => setForm(f => {
-    const ids = [...f.govIds];
-    ids[idx] = { ...ids[idx], [field]: val };
-    return { ...f, govIds: ids };
-  });
-  const addGovId = () => setForm(f => ({ ...f, govIds: [...f.govIds, { type: '', number: '' }] }));
+  const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  const setFamily = (idx, key, val) =>
+    setForm((f) => {
+      const fam = [...f.family];
+      fam[idx] = { ...fam[idx], [key]: val };
+      return { ...f, family: fam };
+    });
+  const setGovId = (idx, field, val) =>
+    setForm((f) => {
+      const ids = [...f.govIds];
+      ids[idx] = { ...ids[idx], [field]: val };
+      return { ...f, govIds: ids };
+    });
+  const addGovId = () =>
+    setForm((f) => ({ ...f, govIds: [...f.govIds, { type: "", number: "" }] }));
 
   const save = async () => {
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'members', member.uid), { appForm: form, updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, "members", member.uid), {
+        appForm: form,
+        updatedAt: serverTimestamp(),
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch (e) { console.warn(e); }
-    finally { setSaving(false); }
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1567,15 +6201,22 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
       style={contentHeight ? { height: contentHeight } : undefined}
     >
       <Text style={s.pageTitle}>📋 Application Form</Text>
-      <Text style={s.pageSub}>CESLA Multi-Purpose Cooperative — Official Membership Application</Text>
+      <Text style={s.pageSub}>
+        CESLA Multi-Purpose Cooperative — Official Membership Application
+      </Text>
 
       {/* Tab selector */}
       <View style={af.pageTabs}>
-        {['Personal Details', 'Employment Details'].map((tab, i) => (
-          <TouchableOpacity key={tab}
+        {["Personal Details", "Employment Details"].map((tab, i) => (
+          <TouchableOpacity
+            key={tab}
             style={[af.pageTab, page === i + 1 && af.pageTabActive]}
-            onPress={() => setPage(i + 1)} activeOpacity={0.8}>
-            <Text style={[af.pageTabTxt, page === i + 1 && af.pageTabTxtActive]}>
+            onPress={() => setPage(i + 1)}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[af.pageTabTxt, page === i + 1 && af.pageTabTxtActive]}
+            >
               {i + 1}. {tab}
             </Text>
           </TouchableOpacity>
@@ -1589,14 +6230,48 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
             <View style={{ flexDirection: rowDir, gap: 10 }}>
               <View style={halfStyle}>
                 <Text style={af.fieldLabel}>APPLICATION DATE</Text>
-                <View style={[af.input, { justifyContent: 'center', opacity: 0.85, backgroundColor: 'rgba(15,30,53,0.06)' }]}>
-                  <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: C.navy }}>{form.appDate}</Text>
+                <View
+                  style={[
+                    af.input,
+                    {
+                      justifyContent: "center",
+                      opacity: 0.85,
+                      backgroundColor: "rgba(15,30,53,0.06)",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_500Medium",
+                      fontSize: 13,
+                      color: C.navy,
+                    }}
+                  >
+                    {form.appDate}
+                  </Text>
                 </View>
               </View>
               <View style={halfStyle}>
                 <Text style={af.fieldLabel}>APPLICATION NO.</Text>
-                <View style={[af.input, { justifyContent: 'center', opacity: 0.85, backgroundColor: 'rgba(15,30,53,0.06)' }]}>
-                  <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.navy }}>{form.appNo}</Text>
+                <View
+                  style={[
+                    af.input,
+                    {
+                      justifyContent: "center",
+                      opacity: 0.85,
+                      backgroundColor: "rgba(15,30,53,0.06)",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_500Medium",
+                      fontSize: 12,
+                      color: C.navy,
+                    }}
+                  >
+                    {form.appNo}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -1604,159 +6279,428 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
 
           <Text style={af.secHeader}>PERSONAL DETAILS</Text>
           <GCard>
-            <RadioRow label="Salutation" options={['Mr.', 'Mrs.', 'Ms.']} selected={form.salutation} onSelect={v => set('salutation', v)} />
-            <RadioRow label="Gender" options={['Male', 'Female']} selected={form.gender} onSelect={v => set('gender', v)} />
+            <RadioRow
+              label="Salutation"
+              options={["Mr.", "Mrs.", "Ms."]}
+              selected={form.salutation}
+              onSelect={(v) => set("salutation", v)}
+            />
+            <RadioRow
+              label="Gender"
+              options={["Male", "Female"]}
+              selected={form.gender}
+              onSelect={(v) => set("gender", v)}
+            />
             <View style={{ flexDirection: rowDir, gap: 8 }}>
-              <View style={halfStyle}><AF l="LAST NAME"  value={member.lastName || member.name?.split(',')[0] || ''} placeholder="—" editable={false} /></View>
-              <View style={halfStyle}><AF l="FIRST NAME" value={member.firstName || ''} placeholder="—" editable={false} /></View>
+              <View style={halfStyle}>
+                <AF
+                  l="LAST NAME"
+                  value={member.lastName || member.name?.split(",")[0] || ""}
+                  placeholder="—"
+                  editable={false}
+                />
+              </View>
+              <View style={halfStyle}>
+                <AF
+                  l="FIRST NAME"
+                  value={member.firstName || ""}
+                  placeholder="—"
+                  editable={false}
+                />
+              </View>
             </View>
             <View style={{ flexDirection: rowDir, gap: 8 }}>
-              <View style={halfStyle}><AF l="MIDDLE NAME" value={member.middleName || ''} placeholder="—" editable={false} /></View>
-              <View style={halfStyle}><AF l="SUFFIX"      value={form.suffix} onChangeText={v => set('suffix', v)} placeholder="Jr., Sr., II" /></View>
+              <View style={halfStyle}>
+                <AF
+                  l="MIDDLE NAME"
+                  value={member.middleName || ""}
+                  placeholder="—"
+                  editable={false}
+                />
+              </View>
+              <View style={halfStyle}>
+                <AF
+                  l="SUFFIX"
+                  value={form.suffix}
+                  onChangeText={(v) => set("suffix", v)}
+                  placeholder="Jr., Sr., II"
+                />
+              </View>
             </View>
 
-            <DatePicker l="DATE OF BIRTH" value={form.dob} onChange={v => set('dob', v)} />
+            <DatePicker
+              l="DATE OF BIRTH"
+              value={form.dob}
+              onChange={(v) => set("dob", v)}
+            />
             {/* Place of Birth — Province first, then Municipality */}
             <Text style={af.fieldLabel}>PLACE OF BIRTH</Text>
             <View style={{ flexDirection: rowDir, gap: 8, marginBottom: 12 }}>
               <View style={halfStyle}>
-                <Text style={[af.fieldLabel, { marginBottom: 4, fontSize: 8 }]}>PROVINCE</Text>
+                <Text style={[af.fieldLabel, { marginBottom: 4, fontSize: 8 }]}>
+                  PROVINCE
+                </Text>
                 <DropdownPicker
                   l=""
                   options={PROVINCES_PH}
                   value={form.pobProvince}
-                  onSelect={v => { set('pobProvince', v); set('pobMunicipality', ''); set('placeOfBirth', `${form.pobMunicipality || ''}, ${v}`); }}
+                  onSelect={(v) => {
+                    set("pobProvince", v);
+                    set("pobMunicipality", "");
+                    set("placeOfBirth", `${form.pobMunicipality || ""}, ${v}`);
+                  }}
                   placeholder="Select province"
                 />
               </View>
               <View style={halfStyle}>
-                <Text style={[af.fieldLabel, { marginBottom: 4, fontSize: 8 }]}>CITY / MUNICIPALITY</Text>
+                <Text style={[af.fieldLabel, { marginBottom: 4, fontSize: 8 }]}>
+                  CITY / MUNICIPALITY
+                </Text>
                 <DropdownPicker
                   l=""
-                  options={form.pobProvince && MUNICIPALITIES_BY_PROVINCE[form.pobProvince]
-                    ? MUNICIPALITIES_BY_PROVINCE[form.pobProvince]
-                    : []}
+                  options={
+                    form.pobProvince &&
+                    MUNICIPALITIES_BY_PROVINCE[form.pobProvince]
+                      ? MUNICIPALITIES_BY_PROVINCE[form.pobProvince]
+                      : []
+                  }
                   value={form.pobMunicipality}
-                  onSelect={v => { set('pobMunicipality', v); set('placeOfBirth', `${v}, ${form.pobProvince || ''}`); }}
-                  placeholder={form.pobProvince ? 'Select city / municipality' : 'Select province first'}
+                  onSelect={(v) => {
+                    set("pobMunicipality", v);
+                    set("placeOfBirth", `${v}, ${form.pobProvince || ""}`);
+                  }}
+                  placeholder={
+                    form.pobProvince
+                      ? "Select city / municipality"
+                      : "Select province first"
+                  }
                 />
               </View>
             </View>
 
-            <RadioRow label="Nationality" options={['Filipino', 'Others']} selected={form.nationality} onSelect={v => set('nationality', v)} />
-            {form.nationality === 'Others' && (
-              <AF l="SPECIFY NATIONALITY" value={form.nationalityOther} onChangeText={v => set('nationalityOther', v)} placeholder="Enter nationality" />
+            <RadioRow
+              label="Nationality"
+              options={["Filipino", "Others"]}
+              selected={form.nationality}
+              onSelect={(v) => set("nationality", v)}
+            />
+            {form.nationality === "Others" && (
+              <AF
+                l="SPECIFY NATIONALITY"
+                value={form.nationalityOther}
+                onChangeText={(v) => set("nationalityOther", v)}
+                placeholder="Enter nationality"
+              />
             )}
 
-            <DropdownPicker l="RELIGION" options={RELIGIONS} value={form.religion} onSelect={v => set('religion', v)} placeholder="Select religion" />
-            {form.religion === 'Others' && (
-              <AF l="SPECIFY RELIGION" value={form.religionOther} onChangeText={v => set('religionOther', v)} placeholder="Enter religion" />
+            <DropdownPicker
+              l="RELIGION"
+              options={RELIGIONS}
+              value={form.religion}
+              onSelect={(v) => set("religion", v)}
+              placeholder="Select religion"
+            />
+            {form.religion === "Others" && (
+              <AF
+                l="SPECIFY RELIGION"
+                value={form.religionOther}
+                onChangeText={(v) => set("religionOther", v)}
+                placeholder="Enter religion"
+              />
             )}
 
-            <DropdownPicker l="NO. OF DEPENDENTS" options={['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15+']} value={form.numDependents} onSelect={v => set('numDependents', v)} placeholder="Select number" />
-            <RadioRow label="Civil Status" options={['Single', 'Married', 'Legally Separated', 'Others']} selected={form.civilStatus} onSelect={v => set('civilStatus', v)} />
+            <DropdownPicker
+              l="NO. OF DEPENDENTS"
+              options={[
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15+",
+              ]}
+              value={form.numDependents}
+              onSelect={(v) => set("numDependents", v)}
+              placeholder="Select number"
+            />
+            <RadioRow
+              label="Civil Status"
+              options={["Single", "Married", "Legally Separated", "Others"]}
+              selected={form.civilStatus}
+              onSelect={(v) => set("civilStatus", v)}
+            />
 
             <Text style={[af.secHeader, { marginTop: 4 }]}>GOVERNMENT IDs</Text>
             {/* 2-col on wide, 1-col on mobile */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {form.govIds.map((gid, idx) => (
-                <View key={idx} style={{ flex: 1, flexBasis: isMobile ? '100%' : '48%', minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3, height: 18 }}>
-                    <Text style={[af.fieldLabel, { marginBottom: 0 }]}>ID #{idx + 1}</Text>
+                <View
+                  key={idx}
+                  style={{
+                    flex: 1,
+                    flexBasis: isMobile ? "100%" : "48%",
+                    minWidth: 0,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: 3,
+                      height: 18,
+                    }}
+                  >
+                    <Text style={[af.fieldLabel, { marginBottom: 0 }]}>
+                      ID #{idx + 1}
+                    </Text>
                     <TouchableOpacity
-                      onPress={() => setForm(f => ({ ...f, govIds: f.govIds.filter((_, i) => i !== idx) }))}
+                      onPress={() =>
+                        setForm((f) => ({
+                          ...f,
+                          govIds: f.govIds.filter((_, i) => i !== idx),
+                        }))
+                      }
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       style={{ opacity: idx === 0 ? 0 : 1 }}
-                      disabled={idx === 0}>
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.red }}>✕ Remove</Text>
+                      disabled={idx === 0}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 10,
+                          color: C.red,
+                        }}
+                      >
+                        ✕ Remove
+                      </Text>
                     </TouchableOpacity>
                   </View>
                   <GovIdPicker
                     l=""
                     idType={gid.type}
                     idNumber={gid.number}
-                    onTypeChange={v => setGovId(idx, 'type', v)}
-                    onNumberChange={v => setGovId(idx, 'number', v)}
+                    onTypeChange={(v) => setGovId(idx, "type", v)}
+                    onNumberChange={(v) => setGovId(idx, "number", v)}
                     placeholder="Enter ID number"
                   />
                 </View>
               ))}
             </View>
-            <TouchableOpacity onPress={addGovId}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, marginBottom: 4 }}>
+            <TouchableOpacity
+              onPress={addGovId}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingVertical: 8,
+                marginBottom: 4,
+              }}
+            >
               <Text style={{ fontSize: 15, color: C.blue }}>＋</Text>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.blue }}>Add Another ID</Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 12,
+                  color: C.blue,
+                }}
+              >
+                Add Another ID
+              </Text>
             </TouchableOpacity>
 
             <View style={{ flexDirection: rowDir, gap: 8 }}>
-              <View style={halfStyle}><AF l="NAME OF REFERRER (CEC)" value={form.recommendedBy} onChangeText={v => set('recommendedBy', v)} placeholder="Full name of referrer" /></View>
-              <View style={halfStyle}><AF l="REFERRER CONTACT NO."   value={form.contactNo}     onChangeText={v => set('contactNo', v)}     placeholder="09XXXXXXXXX" keyboardType="phone-pad" /></View>
+              <View style={halfStyle}>
+                <AF
+                  l="NAME OF REFERRER (CEC)"
+                  value={form.recommendedBy}
+                  onChangeText={(v) => set("recommendedBy", v)}
+                  placeholder="Full name of referrer"
+                />
+              </View>
+              <View style={halfStyle}>
+                <AF
+                  l="REFERRER CONTACT NO."
+                  value={form.contactNo}
+                  onChangeText={(v) => set("contactNo", v)}
+                  placeholder="09XXXXXXXXX"
+                  keyboardType="phone-pad"
+                />
+              </View>
             </View>
           </GCard>
 
           <Text style={af.secHeader}>FAMILY MEMBERS</Text>
-          <GCard style={{ padding: 0, overflow: 'hidden' }}>
+          <GCard style={{ padding: 0, overflow: "hidden" }}>
             <View style={af.tableHeader}>
-              {[{l:'Name',f:2},{l:'Relation',f:1},{l:'Age',f:0.6},{l:'Occupation',f:1.4}].map(h => (
-                <Text key={h.l} style={[af.tableHeaderTxt, { flex: h.f }]}>{h.l}</Text>
+              {[
+                { l: "Name", f: 2 },
+                { l: "Relation", f: 1 },
+                { l: "Age", f: 0.6 },
+                { l: "Occupation", f: 1.4 },
+              ].map((h) => (
+                <Text key={h.l} style={[af.tableHeaderTxt, { flex: h.f }]}>
+                  {h.l}
+                </Text>
               ))}
             </View>
             {form.family.map((row, idx) => (
-              <View key={idx} style={[af.tableRow, idx % 2 === 1 && { backgroundColor: 'rgba(255,255,255,0.35)' }]}>
-                <TextInput style={[af.tableCell, { flex: 2 }]}                                              value={row.name}       onChangeText={v => setFamily(idx, 'name', v)}       placeholder="Name"       placeholderTextColor={C.textMuted} />
-                <TextInput style={[af.tableCell, { flex: 1,   borderLeftWidth: 1, borderColor: C.border }]} value={row.relation}   onChangeText={v => setFamily(idx, 'relation', v)}   placeholder="Relation"   placeholderTextColor={C.textMuted} />
-                <TextInput style={[af.tableCell, { flex: 0.6, borderLeftWidth: 1, borderColor: C.border }]} value={row.age}        onChangeText={v => setFamily(idx, 'age', v)}        placeholder="Age"        placeholderTextColor={C.textMuted} keyboardType="numeric" />
-                <TextInput style={[af.tableCell, { flex: 1.4, borderLeftWidth: 1, borderColor: C.border }]} value={row.occupation} onChangeText={v => setFamily(idx, 'occupation', v)} placeholder="Occupation" placeholderTextColor={C.textMuted} />
+              <View
+                key={idx}
+                style={[
+                  af.tableRow,
+                  idx % 2 === 1 && {
+                    backgroundColor: "rgba(255,255,255,0.35)",
+                  },
+                ]}
+              >
+                <TextInput
+                  style={[af.tableCell, { flex: 2 }]}
+                  value={row.name}
+                  onChangeText={(v) => setFamily(idx, "name", v)}
+                  placeholder="Name"
+                  placeholderTextColor={C.textMuted}
+                />
+                <TextInput
+                  style={[
+                    af.tableCell,
+                    { flex: 1, borderLeftWidth: 1, borderColor: C.border },
+                  ]}
+                  value={row.relation}
+                  onChangeText={(v) => setFamily(idx, "relation", v)}
+                  placeholder="Relation"
+                  placeholderTextColor={C.textMuted}
+                />
+                <TextInput
+                  style={[
+                    af.tableCell,
+                    { flex: 0.6, borderLeftWidth: 1, borderColor: C.border },
+                  ]}
+                  value={row.age}
+                  onChangeText={(v) => setFamily(idx, "age", v)}
+                  placeholder="Age"
+                  placeholderTextColor={C.textMuted}
+                  keyboardType="numeric"
+                />
+                <TextInput
+                  style={[
+                    af.tableCell,
+                    { flex: 1.4, borderLeftWidth: 1, borderColor: C.border },
+                  ]}
+                  value={row.occupation}
+                  onChangeText={(v) => setFamily(idx, "occupation", v)}
+                  placeholder="Occupation"
+                  placeholderTextColor={C.textMuted}
+                />
               </View>
             ))}
           </GCard>
 
           <Text style={af.secHeader}>CONTACT DETAILS</Text>
           <GCard>
-            <Text style={[af.fieldLabel, { fontSize: 10, color: C.navyMid, marginBottom: 8 }]}>📍 PRESENT ADDRESS</Text>
+            <Text
+              style={[
+                af.fieldLabel,
+                { fontSize: 10, color: C.navyMid, marginBottom: 8 },
+              ]}
+            >
+              📍 PRESENT ADDRESS
+            </Text>
             <AddressPicker
               barangay={form.presentBarangay}
               municipality={form.presentMunicipality}
               province={form.presentProvince}
               houseStreet={form.presentHouseStreet}
               zip={form.presentZip}
-              onChangeBgy={v => set('presentBarangay', v)}
-              onChangeMun={v => set('presentMunicipality', v)}
-              onChangeProv={v => set('presentProvince', v)}
-              onChangeHouseStreet={v => set('presentHouseStreet', v)}
-              onChangeZip={v => set('presentZip', v)}
+              onChangeBgy={(v) => set("presentBarangay", v)}
+              onChangeMun={(v) => set("presentMunicipality", v)}
+              onChangeProv={(v) => set("presentProvince", v)}
+              onChangeHouseStreet={(v) => set("presentHouseStreet", v)}
+              onChangeZip={(v) => set("presentZip", v)}
             />
             <View style={{ flexDirection: rowDir, gap: 8, marginBottom: 8 }}>
               <View style={isMobile ? {} : { flex: 1 }}>
                 <Text style={af.fieldLabel}>YEARS OF STAY</Text>
-                <TextInput style={[af.input, { marginBottom: 0 }]} value={form.stayYears} onChangeText={v => set('stayYears', v)} placeholder="e.g. 3" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
+                <TextInput
+                  style={[af.input, { marginBottom: 0 }]}
+                  value={form.stayYears}
+                  onChangeText={(v) => set("stayYears", v)}
+                  placeholder="e.g. 3"
+                  placeholderTextColor={C.textMuted}
+                  keyboardType="numeric"
+                  autoCorrect={false}
+                />
               </View>
               <View style={isMobile ? {} : { flex: 1 }}>
                 <Text style={af.fieldLabel}>MONTHS OF STAY</Text>
-                <TextInput style={[af.input, { marginBottom: 0 }]} value={form.stayMonths} onChangeText={v => set('stayMonths', v)} placeholder="e.g. 6" placeholderTextColor={C.textMuted} keyboardType="numeric" autoCorrect={false} />
+                <TextInput
+                  style={[af.input, { marginBottom: 0 }]}
+                  value={form.stayMonths}
+                  onChangeText={(v) => set("stayMonths", v)}
+                  placeholder="e.g. 6"
+                  placeholderTextColor={C.textMuted}
+                  keyboardType="numeric"
+                  autoCorrect={false}
+                />
               </View>
             </View>
 
             <View style={{ height: 12 }} />
-            <Text style={[af.fieldLabel, { fontSize: 10, color: C.navyMid, marginBottom: 4 }]}>📍 PERMANENT ADDRESS</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginBottom: 8, fontStyle: 'italic' }}>Leave blank if same as present address</Text>
+            <Text
+              style={[
+                af.fieldLabel,
+                { fontSize: 10, color: C.navyMid, marginBottom: 4 },
+              ]}
+            >
+              📍 PERMANENT ADDRESS
+            </Text>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 10,
+                color: C.textMuted,
+                marginBottom: 8,
+                fontStyle: "italic",
+              }}
+            >
+              Leave blank if same as present address
+            </Text>
             <AddressPicker
               barangay={form.permanentBarangay}
               municipality={form.permanentMunicipality}
               province={form.permanentProvince}
               houseStreet={form.permanentHouseStreet}
               zip={form.permanentZip}
-              onChangeBgy={v => set('permanentBarangay', v)}
-              onChangeMun={v => set('permanentMunicipality', v)}
-              onChangeProv={v => set('permanentProvince', v)}
-              onChangeHouseStreet={v => set('permanentHouseStreet', v)}
-              onChangeZip={v => set('permanentZip', v)}
+              onChangeBgy={(v) => set("permanentBarangay", v)}
+              onChangeMun={(v) => set("permanentMunicipality", v)}
+              onChangeProv={(v) => set("permanentProvince", v)}
+              onChangeHouseStreet={(v) => set("permanentHouseStreet", v)}
+              onChangeZip={(v) => set("permanentZip", v)}
             />
           </GCard>
 
-          <TouchableOpacity style={af.fullBtn} onPress={() => setPage(2)} activeOpacity={0.85}>
-            <LinearGradient colors={['#1a2d4e', '#243554']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={af.fullBtnGrad}>
-              <Text style={af.fullBtnTxt}>Next: Employment Details  →</Text>
+          <TouchableOpacity
+            style={af.fullBtn}
+            onPress={() => setPage(2)}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={["#1a2d4e", "#243554"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={af.fullBtnGrad}
+            >
+              <Text style={af.fullBtnTxt}>Next: Employment Details →</Text>
             </LinearGradient>
           </TouchableOpacity>
         </>
@@ -1767,95 +6711,328 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
         <>
           <Text style={af.secHeader}>EMPLOYMENT DETAILS</Text>
           <GCard>
-            <RadioRow label="Employment Status" options={['Employed', 'Self-Employed', 'Unemployed']} selected={form.empType} onSelect={v => set('empType', v)} />
+            <RadioRow
+              label="Employment Status"
+              options={["Employed", "Self-Employed", "Unemployed"]}
+              selected={form.empType}
+              onSelect={(v) => set("empType", v)}
+            />
           </GCard>
 
-          {form.empType === 'Employed' && (
+          {form.empType === "Employed" && (
             <GCard>
               <Text style={s.secTitle}>Employed</Text>
-              <AF l="EMPLOYER / BUSINESS NAME" value={form.employerName}  onChangeText={v => set('employerName', v)}  placeholder="Name of employer" />
-              <AF l="OFFICE ADDRESS"           value={form.officeAddress} onChangeText={v => set('officeAddress', v)} placeholder="Complete office address" />
-              <AF l="NATURE OF BUSINESS"       value={form.natureOfBiz}   onChangeText={v => set('natureOfBiz', v)}   placeholder="e.g. Government Agency" />
+              <AF
+                l="EMPLOYER / BUSINESS NAME"
+                value={form.employerName}
+                onChangeText={(v) => set("employerName", v)}
+                placeholder="Name of employer"
+              />
+              <AF
+                l="OFFICE ADDRESS"
+                value={form.officeAddress}
+                onChangeText={(v) => set("officeAddress", v)}
+                placeholder="Complete office address"
+              />
+              <AF
+                l="NATURE OF BUSINESS"
+                value={form.natureOfBiz}
+                onChangeText={(v) => set("natureOfBiz", v)}
+                placeholder="e.g. Government Agency"
+              />
               <View style={{ flexDirection: rowDir, gap: 8 }}>
-                <View style={halfStyle}><AF l="OFFICE NO." value={form.officeNo} onChangeText={v => set('officeNo', v)} placeholder="(088) XXX-XXXX" keyboardType="phone-pad" /></View>
-                <View style={halfStyle}><AF l="FAX NO."    value={form.faxNo}    onChangeText={v => set('faxNo', v)}    placeholder="(088) XXX-XXXX" keyboardType="phone-pad" /></View>
+                <View style={halfStyle}>
+                  <AF
+                    l="OFFICE NO."
+                    value={form.officeNo}
+                    onChangeText={(v) => set("officeNo", v)}
+                    placeholder="(088) XXX-XXXX"
+                    keyboardType="phone-pad"
+                  />
+                </View>
+                <View style={halfStyle}>
+                  <AF
+                    l="FAX NO."
+                    value={form.faxNo}
+                    onChangeText={(v) => set("faxNo", v)}
+                    placeholder="(088) XXX-XXXX"
+                    keyboardType="phone-pad"
+                  />
+                </View>
               </View>
-              <RadioRow label="Employment Type" options={['Private', 'Government', 'Others']} selected={form.employmentType} onSelect={v => set('employmentType', v)} />
-              {form.employmentType === 'Others' && (
-                <AF l="SPECIFY TYPE" value={form.employmentTypeOther} onChangeText={v => set('employmentTypeOther', v)} placeholder="Specify" />
+              <RadioRow
+                label="Employment Type"
+                options={["Private", "Government", "Others"]}
+                selected={form.employmentType}
+                onSelect={(v) => set("employmentType", v)}
+              />
+              {form.employmentType === "Others" && (
+                <AF
+                  l="SPECIFY TYPE"
+                  value={form.employmentTypeOther}
+                  onChangeText={(v) => set("employmentTypeOther", v)}
+                  placeholder="Specify"
+                />
               )}
               <View style={{ flexDirection: rowDir, gap: 8 }}>
-                <View style={halfStyle}><AF l="POSITION / RANK"    value={form.positionRank}  onChangeText={v => set('positionRank', v)}  placeholder="e.g. Teacher I"  /></View>
-                <View style={halfStyle}><AF l="MONTHLY INCOME (₱)" value={form.monthlyIncome} onChangeText={v => set('monthlyIncome', v)} placeholder="e.g. 25000" keyboardType="numeric" /></View>
+                <View style={halfStyle}>
+                  <AF
+                    l="POSITION / RANK"
+                    value={form.positionRank}
+                    onChangeText={(v) => set("positionRank", v)}
+                    placeholder="e.g. Teacher I"
+                  />
+                </View>
+                <View style={halfStyle}>
+                  <AF
+                    l="MONTHLY INCOME (₱)"
+                    value={form.monthlyIncome}
+                    onChangeText={(v) => set("monthlyIncome", v)}
+                    placeholder="e.g. 25000"
+                    keyboardType="numeric"
+                  />
+                </View>
               </View>
               <View style={af.noteBox}>
-                <Text style={af.noteTxt}>* If less than 6 months in current employment, fill in previous employer below.</Text>
+                <Text style={af.noteTxt}>
+                  * If less than 6 months in current employment, fill in
+                  previous employer below.
+                </Text>
               </View>
-              <AF l="PREVIOUS EMPLOYER" value={form.prevEmployer} onChangeText={v => set('prevEmployer', v)} placeholder="Previous employer name" />
+              <AF
+                l="PREVIOUS EMPLOYER"
+                value={form.prevEmployer}
+                onChangeText={(v) => set("prevEmployer", v)}
+                placeholder="Previous employer name"
+              />
               <View style={{ flexDirection: rowDir, gap: 8 }}>
-                <View style={halfStyle}><AF l="YRS IN COMPANY"  value={form.yrsInCompany} onChangeText={v => set('yrsInCompany', v)} placeholder="0" keyboardType="numeric" /></View>
-                <View style={halfStyle}><AF l="POSITION / RANK" value={form.prevPosition} onChangeText={v => set('prevPosition', v)} placeholder="Previous position" /></View>
+                <View style={halfStyle}>
+                  <AF
+                    l="YRS IN COMPANY"
+                    value={form.yrsInCompany}
+                    onChangeText={(v) => set("yrsInCompany", v)}
+                    placeholder="0"
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={halfStyle}>
+                  <AF
+                    l="POSITION / RANK"
+                    value={form.prevPosition}
+                    onChangeText={(v) => set("prevPosition", v)}
+                    placeholder="Previous position"
+                  />
+                </View>
               </View>
             </GCard>
           )}
 
-          {form.empType === 'Self-Employed' && (
+          {form.empType === "Self-Employed" && (
             <GCard>
               <Text style={s.secTitle}>Self-Employed</Text>
-              <AF l="NAME OF BUSINESS" value={form.bizName}   onChangeText={v => set('bizName', v)}   placeholder="Business name" />
-              <RadioRow label="Type of Business" options={['Sole Prop', 'Partnership', 'Corp']} selected={form.bizType} onSelect={v => set('bizType', v)} />
-              <AF l="NATURE OF BUSINESS" value={form.bizNature} onChangeText={v => set('bizNature', v)} placeholder="e.g. Retail, Trading" />
+              <AF
+                l="NAME OF BUSINESS"
+                value={form.bizName}
+                onChangeText={(v) => set("bizName", v)}
+                placeholder="Business name"
+              />
+              <RadioRow
+                label="Type of Business"
+                options={["Sole Prop", "Partnership", "Corp"]}
+                selected={form.bizType}
+                onSelect={(v) => set("bizType", v)}
+              />
+              <AF
+                l="NATURE OF BUSINESS"
+                value={form.bizNature}
+                onChangeText={(v) => set("bizNature", v)}
+                placeholder="e.g. Retail, Trading"
+              />
               <View style={{ flexDirection: rowDir, gap: 8 }}>
-                <View style={halfStyle}><AF l="ASSET SIZE (₱)"  value={form.assetSize}  onChangeText={v => set('assetSize', v)}  placeholder="e.g. 500000" keyboardType="numeric" /></View>
-                <View style={halfStyle}><AF l="SHARE IN BIZ (%)" value={form.shareInBiz} onChangeText={v => set('shareInBiz', v)} placeholder="e.g. 50"     keyboardType="numeric" /></View>
+                <View style={halfStyle}>
+                  <AF
+                    l="ASSET SIZE (₱)"
+                    value={form.assetSize}
+                    onChangeText={(v) => set("assetSize", v)}
+                    placeholder="e.g. 500000"
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={halfStyle}>
+                  <AF
+                    l="SHARE IN BIZ (%)"
+                    value={form.shareInBiz}
+                    onChangeText={(v) => set("shareInBiz", v)}
+                    placeholder="e.g. 50"
+                    keyboardType="numeric"
+                  />
+                </View>
               </View>
-              <AF l="MONTHLY INCOME (₱)" value={form.selfMonthlyIncome} onChangeText={v => set('selfMonthlyIncome', v)} placeholder="e.g. 30000" keyboardType="numeric" />
+              <AF
+                l="MONTHLY INCOME (₱)"
+                value={form.selfMonthlyIncome}
+                onChangeText={(v) => set("selfMonthlyIncome", v)}
+                placeholder="e.g. 30000"
+                keyboardType="numeric"
+              />
             </GCard>
           )}
 
-          {form.empType === 'Unemployed' && (
+          {form.empType === "Unemployed" && (
             <GCard>
               <Text style={s.secTitle}>Unemployed</Text>
-              <RadioRow label="Status" options={['Housewife', 'Student', 'Others']} selected={form.unemployedType} onSelect={v => set('unemployedType', v)} />
-              {form.unemployedType === 'Others' && (
-                <AF l="PLEASE SPECIFY" value={form.unemployedOther} onChangeText={v => set('unemployedOther', v)} placeholder="Specify status" />
+              <RadioRow
+                label="Status"
+                options={["Housewife", "Student", "Others"]}
+                selected={form.unemployedType}
+                onSelect={(v) => set("unemployedType", v)}
+              />
+              {form.unemployedType === "Others" && (
+                <AF
+                  l="PLEASE SPECIFY"
+                  value={form.unemployedOther}
+                  onChangeText={(v) => set("unemployedOther", v)}
+                  placeholder="Specify status"
+                />
               )}
             </GCard>
           )}
 
-          <GCard style={{ backgroundColor: 'rgba(15,30,53,0.06)', borderColor: 'rgba(15,30,53,0.18)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, lineHeight: 18, textAlign: 'justify' }}>
-              I/We hereby certify that all the data and statements in this application are correct and are made for obtaining credit, and the signature(s) appearing thereon is(are) genuine. I/We authorize you to obtain such information as you may require connecting the statements made in this application and that the sources which you may apply are authorized to provide any information relative to this application.{" "}
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', color: C.navy }}>I/We agree this will remain your property whether the credit is granted or not.</Text>
+          <GCard
+            style={{
+              backgroundColor: "rgba(15,30,53,0.06)",
+              borderColor: "rgba(15,30,53,0.18)",
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 11,
+                color: C.textSec,
+                lineHeight: 18,
+                textAlign: "justify",
+              }}
+            >
+              I/We hereby certify that all the data and statements in this
+              application are correct and are made for obtaining credit, and the
+              signature(s) appearing thereon is(are) genuine. I/We authorize you
+              to obtain such information as you may require connecting the
+              statements made in this application and that the sources which you
+              may apply are authorized to provide any information relative to
+              this application.{" "}
+              <Text style={{ fontFamily: "GoogleSans_700Bold", color: C.navy }}>
+                I/We agree this will remain your property whether the credit is
+                granted or not.
+              </Text>
             </Text>
           </GCard>
 
           {/* Buttons — 3 columns in one row */}
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 24 }}>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 24 }}>
             {/* Back */}
-            <TouchableOpacity style={{ flex: 1, borderRadius: 12, overflow: 'hidden' }} onPress={() => setPage(1)} activeOpacity={0.85}>
-              <LinearGradient colors={['#304674', '#1a2d4e']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 13, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff', textAlign: 'center' }}>← Back</Text>
+            <TouchableOpacity
+              style={{ flex: 1, borderRadius: 12, overflow: "hidden" }}
+              onPress={() => setPage(1)}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#304674", "#1a2d4e"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{
+                  paddingVertical: 13,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 12,
+                    color: "#fff",
+                    textAlign: "center",
+                  }}
+                >
+                  ← Back
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
 
             {/* Submit */}
-            <TouchableOpacity style={{ flex: 1.4, borderRadius: 12, overflow: 'hidden', opacity: saving ? 0.7 : 1 }} onPress={save} disabled={saving} activeOpacity={0.85}>
-              <LinearGradient colors={saved ? ['#1a8a4a', '#25a85a'] : ['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 13, alignItems: 'center', justifyContent: 'center' }}>
-                {saving
-                  ? <ActivityIndicator color={C.navy} />
-                  : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: saved ? '#fff' : C.navy, textAlign: 'center' }}>
-                      {saved ? '✓ Submitted!' : '📨 Submit'}
-                    </Text>}
+            <TouchableOpacity
+              style={{
+                flex: 1.4,
+                borderRadius: 12,
+                overflow: "hidden",
+                opacity: saving ? 0.7 : 1,
+              }}
+              onPress={save}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={saved ? ["#1a8a4a", "#25a85a"] : ["#c9a84c", "#e8c87a"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{
+                  paddingVertical: 13,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {saving ? (
+                  <ActivityIndicator color={C.navy} />
+                ) : (
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 12,
+                      color: saved ? "#fff" : C.navy,
+                      textAlign: "center",
+                    }}
+                  >
+                    {saved ? "✓ Submitted!" : "📨 Submit"}
+                  </Text>
+                )}
               </LinearGradient>
             </TouchableOpacity>
 
             {/* Print */}
-            <TouchableOpacity style={{ flex: 1, borderRadius: 12, overflow: 'hidden', opacity: printing ? 0.7 : 1 }} onPress={handlePrint} disabled={printing} activeOpacity={0.85}>
-              <LinearGradient colors={['#1a2d4e', '#243554']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 13, alignItems: 'center', justifyContent: 'center' }}>
-                {printing
-                  ? <ActivityIndicator color={C.gold} />
-                  : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold, textAlign: 'center' }}>🖨️ Print</Text>}
+            <TouchableOpacity
+              style={{
+                flex: 1,
+                borderRadius: 12,
+                overflow: "hidden",
+                opacity: printing ? 0.7 : 1,
+              }}
+              onPress={handlePrint}
+              disabled={printing}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#1a2d4e", "#243554"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{
+                  paddingVertical: 13,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {printing ? (
+                  <ActivityIndicator color={C.gold} />
+                ) : (
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 12,
+                      color: C.gold,
+                      textAlign: "center",
+                    }}
+                  >
+                    🖨️ Print
+                  </Text>
+                )}
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -1867,50 +7044,179 @@ const AppFormView = ({ member, contentHeight, isMobile: isMobileProp }) => {
 
 // AppForm styles
 const af = StyleSheet.create({
-  fieldLabel:       { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.55)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
-  input:            { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy, backgroundColor: 'rgba(240,246,252,0.92)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)' },
-  radio:            { width: 15, height: 15, borderRadius: 8, borderWidth: 1.5, borderColor: C.navyMid, justifyContent: 'center', alignItems: 'center' },
-  radioActive:      { borderColor: C.gold, backgroundColor: 'rgba(201,168,76,0.15)' },
-  radioDot:         { width: 7, height: 7, borderRadius: 4, backgroundColor: C.gold },
-  radioLabel:       { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy },
-  secHeader:        { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 8, marginTop: 4 },
-  pageTabs:         { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  pageTab:          { flex: 1, paddingVertical: 11, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.60)', alignItems: 'center' },
-  pageTabActive:    { backgroundColor: C.navyMid, borderColor: C.gold },
-  pageTabTxt:       { fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: C.textSec, textAlign: 'center' },
-  pageTabTxtActive: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#fff' },
-  fullBtn:          { borderRadius: 12, overflow: 'hidden', marginTop: 4 },
-  fullBtnGrad:      { paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
-  fullBtnTxt:       { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff', letterSpacing: 0.8 },
-  noteBox:          { backgroundColor: 'rgba(201,168,76,0.12)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(201,168,76,0.35)', padding: 9, marginBottom: 10 },
-  noteTxt:          { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.70)', fontStyle: 'italic' },
-  dropdownList:     { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.90)', marginTop: 4, shadowColor: '#1a2d4e', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, zIndex: 999 },
-  dropdownItem:     { paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.06)' },
-  dropdownItemActive:{ backgroundColor: 'rgba(201,168,76,0.12)' },
-  dropdownTxt:      { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy },
-  tableHeader:      { flexDirection: 'row', backgroundColor: '#1a2d4e', paddingVertical: 9, paddingHorizontal: 6 },
-  tableHeaderTxt:   { flex: 1, fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.gold, textAlign: 'center' },
-  tableRow:         { flexDirection: 'row', borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.10)' },
-  tableCell:        { flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.navy, paddingHorizontal: 7, paddingVertical: 8 },
+  fieldLabel: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 9,
+    color: "rgba(1,31,75,0.55)",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  input: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 13,
+    color: C.navy,
+    backgroundColor: "rgba(240,246,252,0.92)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderWidth: 1.5,
+    borderColor: "rgba(200,218,235,0.75)",
+  },
+  radio: {
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: C.navyMid,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  radioActive: {
+    borderColor: C.gold,
+    backgroundColor: "rgba(201,168,76,0.15)",
+  },
+  radioDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.gold },
+  radioLabel: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 12,
+    color: C.navy,
+  },
+  secHeader: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 10,
+    color: C.textMuted,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  pageTabs: { flexDirection: "row", gap: 8, marginBottom: 14 },
+  pageTab: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: C.surface,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.60)",
+    alignItems: "center",
+  },
+  pageTabActive: { backgroundColor: C.navyMid, borderColor: C.gold },
+  pageTabTxt: {
+    fontFamily: "GoogleSans_500Medium",
+    fontSize: 11,
+    color: C.textSec,
+    textAlign: "center",
+  },
+  pageTabTxtActive: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#fff",
+  },
+  fullBtn: { borderRadius: 12, overflow: "hidden", marginTop: 4 },
+  fullBtnGrad: {
+    paddingVertical: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullBtnTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 14,
+    color: "#fff",
+    letterSpacing: 0.8,
+  },
+  noteBox: {
+    backgroundColor: "rgba(201,168,76,0.12)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.35)",
+    padding: 9,
+    marginBottom: 10,
+  },
+  noteTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.70)",
+    fontStyle: "italic",
+  },
+  dropdownList: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "rgba(200,218,235,0.90)",
+    marginTop: 4,
+    shadowColor: "#1a2d4e",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    zIndex: 999,
+  },
+  dropdownItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderColor: "rgba(15,30,53,0.06)",
+  },
+  dropdownItemActive: { backgroundColor: "rgba(201,168,76,0.12)" },
+  dropdownTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 13,
+    color: C.navy,
+  },
+  tableHeader: {
+    flexDirection: "row",
+    backgroundColor: "#1a2d4e",
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+  },
+  tableHeaderTxt: {
+    flex: 1,
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 10,
+    color: C.gold,
+    textAlign: "center",
+  },
+  tableRow: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderColor: "rgba(15,30,53,0.10)",
+  },
+  tableCell: {
+    flex: 1,
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: C.navy,
+    paddingHorizontal: 7,
+    paddingVertical: 8,
+  },
 });
 
 // ── Helper: generate txn number (member-side) ─────────────────────────────────
 const genMemberTxnNo = (type) => {
-  const prefix = { savings: 'SAV', shares: 'SHR', loan: 'LNS' }[type] || 'TXN';
+  const prefix = { savings: "SAV", shares: "SHR", loan: "LNS" }[type] || "TXN";
   const ts = Date.now().toString(36).toUpperCase().slice(-6);
   return `${prefix}-${ts}`;
 };
 
-const FinanceView = ({ title, icon, value, label, color, member, contentHeight, type }) => {
+const FinanceView = ({
+  title,
+  icon,
+  value,
+  label,
+  color,
+  member,
+  contentHeight,
+  type,
+}) => {
   // type: 'savings' | 'shares' | 'loan' (for loan this view is not used but kept for safety)
-  const [txns,      setTxns]      = useState([]);
-  const [txnLoad,   setTxnLoad]   = useState(true);
-  const [mode,      setMode]      = useState(null);   // 'deposit' | 'withdraw' | null
-  const [amount,    setAmount]    = useState('');
-  const [remarks,   setRemarks]   = useState('');
-  const [busy,      setBusy]      = useState(false);
-  const [doneMsg,   setDoneMsg]   = useState('');
-  const [errMsg,    setErrMsg]    = useState('');
+  const [txns, setTxns] = useState([]);
+  const [txnLoad, setTxnLoad] = useState(true);
+  const [mode, setMode] = useState(null); // 'deposit' | 'withdraw' | null
+  const [amount, setAmount] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [doneMsg, setDoneMsg] = useState("");
+  const [errMsg, setErrMsg] = useState("");
   const [liveValue, setLiveValue] = useState(null);
 
   // Withdrawal requests pending
@@ -1922,13 +7228,17 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
   useEffect(() => {
     setTxnLoad(true);
     const unsub = onSnapshot(
-      query(collection(db, 'transactions'),
-        where('memberId', '==', member.uid),
-        where('type', '==', type),
-        orderBy('createdAt', 'desc')
+      query(
+        collection(db, "transactions"),
+        where("memberId", "==", member.uid),
+        where("type", "==", type),
+        orderBy("createdAt", "desc"),
       ),
-      snap => { setTxns(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setTxnLoad(false); },
-      () => setTxnLoad(false)
+      (snap) => {
+        setTxns(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setTxnLoad(false);
+      },
+      () => setTxnLoad(false),
     );
     return unsub;
   }, [member.uid, type]);
@@ -1936,122 +7246,301 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
   // Load pending withdrawal requests for this member + type
   useEffect(() => {
     const unsub = onSnapshot(
-      query(collection(db, 'withdrawalRequests'),
-        where('memberId', '==', member.uid),
-        where('type', '==', type),
-        where('status', '==', 'Pending'),
-        orderBy('createdAt', 'desc')
+      query(
+        collection(db, "withdrawalRequests"),
+        where("memberId", "==", member.uid),
+        where("type", "==", type),
+        where("status", "==", "Pending"),
+        orderBy("createdAt", "desc"),
       ),
-      snap => setPendingWithdrawals(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-      () => {}
+      (snap) =>
+        setPendingWithdrawals(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        ),
+      () => {},
     );
     return unsub;
   }, [member.uid, type]);
 
-  const resetForm = () => { setMode(null); setAmount(''); setRemarks(''); setErrMsg(''); };
+  const resetForm = () => {
+    setMode(null);
+    setAmount("");
+    setRemarks("");
+    setErrMsg("");
+  };
 
   const handleDeposit = async () => {
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0)   { setErrMsg('Enter a valid amount.'); return; }
-    if (amt > 9999999)      { setErrMsg('Amount too large.'); return; }
-    setBusy(true); setErrMsg('');
+    if (!amt || amt <= 0) {
+      setErrMsg("Enter a valid amount.");
+      return;
+    }
+    if (amt > 9999999) {
+      setErrMsg("Amount too large.");
+      return;
+    }
+    setBusy(true);
+    setErrMsg("");
     try {
-      const txnNo  = genMemberTxnNo(type);
+      const txnNo = genMemberTxnNo(type);
       const newBal = curBal + amt;
-      const descMap = { savings: 'Savings Deposit', shares: 'Share Capital Deposit' };
+      const descMap = {
+        savings: "Savings Deposit",
+        shares: "Share Capital Deposit",
+      };
       // Save transaction
-      await addDoc(collection(db, 'transactions'), {
-        memberId: member.uid, memberName: member.name, memberUserId: member.userId,
-        type, txnNo, amount: amt,
-        description: descMap[type] || 'Deposit',
-        remarks: remarks.trim() || '',
+      await addDoc(collection(db, "transactions"), {
+        memberId: member.uid,
+        memberName: member.name,
+        memberUserId: member.userId,
+        type,
+        txnNo,
+        amount: amt,
+        description: descMap[type] || "Deposit",
+        remarks: remarks.trim() || "",
         createdAt: serverTimestamp(),
       });
       // Update balance
-      const fieldMap = { savings: 'savings', shares: 'shares' };
-      await updateDoc(doc(db, 'members', member.uid), {
+      const fieldMap = { savings: "savings", shares: "shares" };
+      await updateDoc(doc(db, "members", member.uid), {
         [fieldMap[type]]: newBal,
         updatedAt: serverTimestamp(),
       });
       // Notify admin
-      await addDoc(collection(db, 'adminNotifications'), {
-        type: 'deposit', icon: '💰',
-        title: `${descMap[type] || 'Deposit'} — ${member.name}`,
+      await addDoc(collection(db, "adminNotifications"), {
+        type: "deposit",
+        icon: "💰",
+        title: `${descMap[type] || "Deposit"} — ${member.name}`,
         message: `${member.name} (${member.userId}) deposited ${fmtCur(amt)} to ${type}.`,
-        memberId: member.uid, memberUserId: member.userId,
-        createdAt: serverTimestamp(), read: false,
+        memberId: member.uid,
+        memberUserId: member.userId,
+        createdAt: serverTimestamp(),
+        read: false,
       });
       setLiveValue(newBal);
       setDoneMsg(`✓ Deposit of ${fmtCur(amt)} successful!`);
       resetForm();
-      setTimeout(() => setDoneMsg(''), 4000);
-    } catch (e) { setErrMsg(e.message || 'Deposit failed.'); }
-    finally { setBusy(false); }
+      setTimeout(() => setDoneMsg(""), 4000);
+    } catch (e) {
+      setErrMsg(e.message || "Deposit failed.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleWithdrawRequest = async () => {
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0)          { setErrMsg('Enter a valid amount.'); return; }
-    if (amt > curBal)              { setErrMsg(`Insufficient balance. Current: ${fmtCur(curBal)}`); return; }
-    if (amt > 9999999)             { setErrMsg('Amount too large.'); return; }
+    if (!amt || amt <= 0) {
+      setErrMsg("Enter a valid amount.");
+      return;
+    }
+    if (amt > curBal) {
+      setErrMsg(`Insufficient balance. Current: ${fmtCur(curBal)}`);
+      return;
+    }
+    if (amt > 9999999) {
+      setErrMsg("Amount too large.");
+      return;
+    }
     // Check if already has pending withdrawal
-    if (pendingWithdrawals.length > 0) { setErrMsg('You already have a pending withdrawal request. Please wait for admin approval.'); return; }
-    setBusy(true); setErrMsg('');
+    if (pendingWithdrawals.length > 0) {
+      setErrMsg(
+        "You already have a pending withdrawal request. Please wait for admin approval.",
+      );
+      return;
+    }
+    setBusy(true);
+    setErrMsg("");
     try {
-      await addDoc(collection(db, 'withdrawalRequests'), {
-        memberId: member.uid, memberName: member.name, memberUserId: member.userId,
-        type, amount: amt,
-        remarks: remarks.trim() || '',
-        status: 'Pending',
+      await addDoc(collection(db, "withdrawalRequests"), {
+        memberId: member.uid,
+        memberName: member.name,
+        memberUserId: member.userId,
+        type,
+        amount: amt,
+        remarks: remarks.trim() || "",
+        status: "Pending",
         createdAt: serverTimestamp(),
       });
-      await addDoc(collection(db, 'adminNotifications'), {
-        type: 'withdrawal_request', icon: '📤',
+      await addDoc(collection(db, "adminNotifications"), {
+        type: "withdrawal_request",
+        icon: "📤",
         title: `Withdrawal Request — ${member.name}`,
         message: `${member.name} (${member.userId}) is requesting a ${type} withdrawal of ${fmtCur(amt)}.`,
-        memberId: member.uid, memberUserId: member.userId,
-        createdAt: serverTimestamp(), read: false,
+        memberId: member.uid,
+        memberUserId: member.userId,
+        createdAt: serverTimestamp(),
+        read: false,
       });
-      setDoneMsg(`✓ Withdrawal request of ${fmtCur(amt)} submitted! Awaiting admin approval.`);
+      setDoneMsg(
+        `✓ Withdrawal request of ${fmtCur(amt)} submitted! Awaiting admin approval.`,
+      );
       resetForm();
-      setTimeout(() => setDoneMsg(''), 5000);
-    } catch (e) { setErrMsg(e.message || 'Request failed.'); }
-    finally { setBusy(false); }
+      setTimeout(() => setDoneMsg(""), 5000);
+    } catch (e) {
+      setErrMsg(e.message || "Request failed.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-
+    <ScrollView
+      contentContainerStyle={s.pageOuter}
+      showsVerticalScrollIndicator={true}
+      style={contentHeight ? { height: contentHeight } : undefined}
+    >
       {/* ── Hero Balance Panel ── */}
-      <View style={{ borderRadius: 20, overflow: 'hidden', marginBottom: 14, shadowColor: '#1a2d4e', shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 5 }, elevation: 8 }}>
+      <View
+        style={{
+          borderRadius: 20,
+          overflow: "hidden",
+          marginBottom: 14,
+          shadowColor: "#1a2d4e",
+          shadowOpacity: 0.18,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 5 },
+          elevation: 8,
+        }}
+      >
         <LinearGradient
-          colors={color === C.green ? ['#0f3d22', '#1a5c33', '#1a8a4a'] : color === C.gold ? ['#3d2a00', '#5e4200', '#c9a84c'] : ['#0d2b4e', '#1a3d6e', '#2563b0']}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          style={{ padding: 28, alignItems: 'center' }}>
+          colors={
+            color === C.green
+              ? ["#0f3d22", "#1a5c33", "#1a8a4a"]
+              : color === C.gold
+                ? ["#3d2a00", "#5e4200", "#c9a84c"]
+                : ["#0d2b4e", "#1a3d6e", "#2563b0"]
+          }
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ padding: 28, alignItems: "center" }}
+        >
           {/* Icon row */}
-          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.30)', justifyContent: 'center', alignItems: 'center', marginBottom: 14 }}>
+          <View
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: 32,
+              backgroundColor: "rgba(255,255,255,0.15)",
+              borderWidth: 2,
+              borderColor: "rgba(255,255,255,0.30)",
+              justifyContent: "center",
+              alignItems: "center",
+              marginBottom: 14,
+            }}
+          >
             <Text style={{ fontSize: 30 }}>{icon}</Text>
           </View>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.60)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>{label}</Text>
-          <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 36, color: '#fff', marginBottom: 4, letterSpacing: 0.5 }}>{fmtCur(curBal)}</Text>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>Last updated: {fmtDate(member.updatedAt)}</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 12,
+              color: "rgba(255,255,255,0.60)",
+              letterSpacing: 1.5,
+              textTransform: "uppercase",
+              marginBottom: 6,
+            }}
+          >
+            {label}
+          </Text>
+          <Text
+            style={{
+              fontFamily: "NotoSerif_700Bold",
+              fontSize: 36,
+              color: "#fff",
+              marginBottom: 4,
+              letterSpacing: 0.5,
+            }}
+          >
+            {fmtCur(curBal)}
+          </Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 10,
+              color: "rgba(255,255,255,0.45)",
+              marginTop: 2,
+            }}
+          >
+            Last updated: {fmtDate(member.updatedAt)}
+          </Text>
 
           {/* Action buttons inside panel — only for savings, not shares */}
-          {mode === null && type !== 'shares' && (
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 22, width: '100%', maxWidth: 280 }}>
+          {mode === null && type !== "shares" && (
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 12,
+                marginTop: 22,
+                width: "100%",
+                maxWidth: 280,
+              }}
+            >
               <TouchableOpacity
-                onPress={() => { setMode('deposit'); setErrMsg(''); }}
-                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(26,138,74,0.35)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(76,222,138,0.50)', paddingVertical: 13 }}
-                activeOpacity={0.8}>
-                <Image source={require('../../assets/wallet.png')} style={{ width: 20, height: 20, tintColor: '#4cde8a' }} />
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#4cde8a' }}>Deposit</Text>
+                onPress={() => {
+                  setMode("deposit");
+                  setErrMsg("");
+                }}
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  backgroundColor: "rgba(26,138,74,0.35)",
+                  borderRadius: 14,
+                  borderWidth: 1.5,
+                  borderColor: "rgba(76,222,138,0.50)",
+                  paddingVertical: 13,
+                }}
+                activeOpacity={0.8}
+              >
+                <Image
+                  source={require("../../assets/wallet.png")}
+                  style={{ width: 20, height: 20, tintColor: "#4cde8a" }}
+                />
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 13,
+                    color: "#4cde8a",
+                  }}
+                >
+                  Deposit
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => { setMode('withdraw'); setErrMsg(''); }}
-                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(192,57,43,0.30)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(232,120,120,0.50)', paddingVertical: 13 }}
-                activeOpacity={0.8}>
-                <Image source={require('../../assets/withdraw.png')} style={{ width: 20, height: 20, tintColor: '#e87a7a' }} />
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e87a7a' }}>Withdraw</Text>
+                onPress={() => {
+                  setMode("withdraw");
+                  setErrMsg("");
+                }}
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  backgroundColor: "rgba(192,57,43,0.30)",
+                  borderRadius: 14,
+                  borderWidth: 1.5,
+                  borderColor: "rgba(232,120,120,0.50)",
+                  paddingVertical: 13,
+                }}
+                activeOpacity={0.8}
+              >
+                <Image
+                  source={require("../../assets/withdraw.png")}
+                  style={{ width: 20, height: 20, tintColor: "#e87a7a" }}
+                />
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 13,
+                    color: "#e87a7a",
+                  }}
+                >
+                  Withdraw
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -2060,22 +7549,77 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
 
       {/* ── Success message ── */}
       {doneMsg ? (
-        <View style={{ backgroundColor: 'rgba(26,138,74,0.14)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(26,138,74,0.40)', padding: 14, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View
+          style={{
+            backgroundColor: "rgba(26,138,74,0.14)",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "rgba(26,138,74,0.40)",
+            padding: 14,
+            marginBottom: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
           <Text style={{ fontSize: 18 }}>✅</Text>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, flex: 1, lineHeight: 18 }}>{doneMsg}</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_700Bold",
+              fontSize: 12,
+              color: C.green,
+              flex: 1,
+              lineHeight: 18,
+            }}
+          >
+            {doneMsg}
+          </Text>
         </View>
       ) : null}
 
       {/* ── Pending withdrawal notice ── */}
       {pendingWithdrawals.length > 0 && (
-        <View style={{ backgroundColor: 'rgba(196,125,14,0.12)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(196,125,14,0.35)', padding: 13, marginBottom: 12, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+        <View
+          style={{
+            backgroundColor: "rgba(196,125,14,0.12)",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "rgba(196,125,14,0.35)",
+            padding: 13,
+            marginBottom: 12,
+            flexDirection: "row",
+            gap: 10,
+            alignItems: "flex-start",
+          }}
+        >
           <Text style={{ fontSize: 16 }}>⏳</Text>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.orange, marginBottom: 4 }}>Pending Withdrawal Request</Text>
-            {pendingWithdrawals.map(w => (
-              <Text key={w.id} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
-                {fmtCur(w.amount)} — Awaiting admin approval{w.remarks ? ` · "${w.remarks}"` : ''}{'\n'}
-                <Text style={{ fontSize: 10, color: C.textMuted }}>Submitted: {fmtTime(w.createdAt)}</Text>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 12,
+                color: C.orange,
+                marginBottom: 4,
+              }}
+            >
+              Pending Withdrawal Request
+            </Text>
+            {pendingWithdrawals.map((w) => (
+              <Text
+                key={w.id}
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 12,
+                  color: C.textSec,
+                  lineHeight: 18,
+                }}
+              >
+                {fmtCur(w.amount)} — Awaiting admin approval
+                {w.remarks ? ` · "${w.remarks}"` : ""}
+                {"\n"}
+                <Text style={{ fontSize: 10, color: C.textMuted }}>
+                  Submitted: {fmtTime(w.createdAt)}
+                </Text>
               </Text>
             ))}
           </View>
@@ -2084,26 +7628,102 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
 
       {/* ── Transaction form (when mode is active) ── */}
       {mode !== null && (
-        <GCard style={{ borderTopWidth: 3, borderTopColor: mode === 'deposit' ? C.green : C.red, marginBottom: 14 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: mode === 'deposit' ? 'rgba(26,138,74,0.18)' : 'rgba(192,57,43,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+        <GCard
+          style={{
+            borderTopWidth: 3,
+            borderTopColor: mode === "deposit" ? C.green : C.red,
+            marginBottom: 14,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              marginBottom: 14,
+            }}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor:
+                  mode === "deposit"
+                    ? "rgba(26,138,74,0.18)"
+                    : "rgba(192,57,43,0.15)",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
               <Image
-                source={mode === 'deposit' ? require('../../assets/wallet.png') : require('../../assets/withdraw.png')}
-                style={{ width: 18, height: 18, tintColor: mode === 'deposit' ? C.green : C.red }}
+                source={
+                  mode === "deposit"
+                    ? require("../../assets/wallet.png")
+                    : require("../../assets/withdraw.png")
+                }
+                style={{
+                  width: 18,
+                  height: 18,
+                  tintColor: mode === "deposit" ? C.green : C.red,
+                }}
               />
             </View>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: mode === 'deposit' ? C.green : C.red, flex: 1 }}>
-              {mode === 'deposit' ? 'Deposit' : 'Withdrawal Request'}
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 14,
+                color: mode === "deposit" ? C.green : C.red,
+                flex: 1,
+              }}
+            >
+              {mode === "deposit" ? "Deposit" : "Withdrawal Request"}
             </Text>
-            <TouchableOpacity onPress={resetForm} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: 'rgba(15,30,53,0.07)' }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted }}>Cancel</Text>
+            <TouchableOpacity
+              onPress={resetForm}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 8,
+                backgroundColor: "rgba(15,30,53,0.07)",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 11,
+                  color: C.textMuted,
+                }}
+              >
+                Cancel
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {mode === 'withdraw' && (
-            <View style={{ backgroundColor: 'rgba(196,125,14,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(196,125,14,0.30)', padding: 10, marginBottom: 12 }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.orange, lineHeight: 17 }}>
-                ⚠️ Withdrawal requests need <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>admin approval</Text> before processing. You'll be notified once approved.
+          {mode === "withdraw" && (
+            <View
+              style={{
+                backgroundColor: "rgba(196,125,14,0.10)",
+                borderRadius: 9,
+                borderWidth: 1,
+                borderColor: "rgba(196,125,14,0.30)",
+                padding: 10,
+                marginBottom: 12,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 11,
+                  color: C.orange,
+                  lineHeight: 17,
+                }}
+              >
+                ⚠️ Withdrawal requests need{" "}
+                <Text style={{ fontFamily: "GoogleSans_700Bold" }}>
+                  admin approval
+                </Text>{" "}
+                before processing. You'll be notified once approved.
               </Text>
             </View>
           )}
@@ -2113,7 +7733,10 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
             <TextInput
               style={[s.fieldInput, { flex: 1 }]}
               value={amount}
-              onChangeText={v => { setAmount(v.replace(/[^0-9.]/g, '')); setErrMsg(''); }}
+              onChangeText={(v) => {
+                setAmount(v.replace(/[^0-9.]/g, ""));
+                setErrMsg("");
+              }}
               placeholder="0.00"
               placeholderTextColor={C.textMuted}
               keyboardType="decimal-pad"
@@ -2126,7 +7749,11 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
               style={[s.fieldInput, { flex: 1, minHeight: 44 }]}
               value={remarks}
               onChangeText={setRemarks}
-              placeholder={mode === 'deposit' ? 'e.g. Monthly contribution' : 'e.g. Emergency withdrawal'}
+              placeholder={
+                mode === "deposit"
+                  ? "e.g. Monthly contribution"
+                  : "e.g. Emergency withdrawal"
+              }
               placeholderTextColor={C.textMuted}
               multiline
             />
@@ -2140,244 +7767,1289 @@ const FinanceView = ({ title, icon, value, label, color, member, contentHeight, 
           ) : null}
 
           <TouchableOpacity
-            onPress={mode === 'deposit' ? handleDeposit : handleWithdrawRequest}
+            onPress={mode === "deposit" ? handleDeposit : handleWithdrawRequest}
             disabled={busy}
-            style={{ borderRadius: 12, paddingVertical: 14, alignItems: 'center', backgroundColor: mode === 'deposit' ? C.green : C.red, opacity: busy ? 0.65 : 1, flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
-            {busy
-              ? <ActivityIndicator color="#fff" />
-              : <>
-                  <Image
-                    source={mode === 'deposit' ? require('../../assets/wallet.png') : require('../../assets/withdraw.png')}
-                    style={{ width: 16, height: 16, tintColor: '#fff' }}
-                  />
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff', letterSpacing: 0.5 }}>
-                    {mode === 'deposit' ? 'Confirm Deposit' : 'Submit Withdrawal Request'}
-                  </Text>
-                </>}
+            style={{
+              borderRadius: 12,
+              paddingVertical: 14,
+              alignItems: "center",
+              backgroundColor: mode === "deposit" ? C.green : C.red,
+              opacity: busy ? 0.65 : 1,
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            {busy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Image
+                  source={
+                    mode === "deposit"
+                      ? require("../../assets/wallet.png")
+                      : require("../../assets/withdraw.png")
+                  }
+                  style={{ width: 16, height: 16, tintColor: "#fff" }}
+                />
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 13,
+                    color: "#fff",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  {mode === "deposit"
+                    ? "Confirm Deposit"
+                    : "Submit Withdrawal Request"}
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
         </GCard>
       )}
 
       {/* ── Transaction History ── */}
       <Text style={s.sHead}>📋 TRANSACTION HISTORY</Text>
-      {txnLoad && <ActivityIndicator color={C.gold} style={{ marginVertical: 20 }} />}
+      {txnLoad && (
+        <ActivityIndicator color={C.gold} style={{ marginVertical: 20 }} />
+      )}
       {!txnLoad && txns.length === 0 && (
-        <GCard style={{ alignItems: 'center', padding: 32 }}>
-          <MaterialIcons name="receipt-long" size={38} color={C.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>No transactions yet.</Text>
+        <GCard style={{ alignItems: "center", padding: 32 }}>
+          <MaterialIcons
+            name="receipt-long"
+            size={38}
+            color={C.textMuted}
+            style={{ marginBottom: 10 }}
+          />
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 13,
+              color: C.textMuted,
+              textAlign: "center",
+              lineHeight: 20,
+            }}
+          >
+            No transactions yet.
+          </Text>
         </GCard>
       )}
-      {!txnLoad && txns.map(txn => {
-        const isCredit = txn.amount > 0;
-        return (
-          <GCard key={txn.id} style={{ padding: 13, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: isCredit ? C.green : C.red }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isCredit ? 'rgba(26,138,74,0.12)' : 'rgba(192,57,43,0.10)', justifyContent: 'center', alignItems: 'center' }}>
-                  <Image
-                    source={isCredit ? require('../../assets/wallet.png') : require('../../assets/withdraw.png')}
-                    style={{ width: 18, height: 18, tintColor: isCredit ? C.green : C.red }}
-                  />
+      {!txnLoad &&
+        txns.map((txn) => {
+          const isCredit = txn.amount > 0;
+          return (
+            <GCard
+              key={txn.id}
+              style={{
+                padding: 13,
+                marginBottom: 8,
+                borderLeftWidth: 3,
+                borderLeftColor: isCredit ? C.green : C.red,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                    flex: 1,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      backgroundColor: isCredit
+                        ? "rgba(26,138,74,0.12)"
+                        : "rgba(192,57,43,0.10)",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Image
+                      source={
+                        isCredit
+                          ? require("../../assets/wallet.png")
+                          : require("../../assets/withdraw.png")
+                      }
+                      style={{
+                        width: 18,
+                        height: 18,
+                        tintColor: isCredit ? C.green : C.red,
+                      }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 13,
+                        color: C.navy,
+                      }}
+                    >
+                      {txn.description || (isCredit ? "Credit" : "Debit")}
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_400Regular",
+                        fontSize: 10,
+                        color: C.textMuted,
+                        marginTop: 1,
+                      }}
+                    >
+                      TXN# {txn.txnNo} · {fmtTime(txn.createdAt)}
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>{txn.description || (isCredit ? 'Credit' : 'Debit')}</Text>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 1 }}>TXN# {txn.txnNo} · {fmtTime(txn.createdAt)}</Text>
-                </View>
+                <Text
+                  style={{
+                    fontFamily: "NotoSerif_700Bold",
+                    fontSize: 15,
+                    color: isCredit ? C.green : C.red,
+                  }}
+                >
+                  {isCredit ? "+" : ""}
+                  {fmtCur(txn.amount)}
+                </Text>
               </View>
-              <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 15, color: isCredit ? C.green : C.red }}>
-                {isCredit ? '+' : ''}{fmtCur(txn.amount)}
-              </Text>
-            </View>
-            {txn.remarks ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, marginTop: 8, fontStyle: 'italic', paddingLeft: 46 }}>{txn.remarks}</Text> : null}
-          </GCard>
-        );
-      })}
+              {txn.remarks ? (
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 11,
+                    color: C.textSec,
+                    marginTop: 8,
+                    fontStyle: "italic",
+                    paddingLeft: 46,
+                  }}
+                >
+                  {txn.remarks}
+                </Text>
+              ) : null}
+            </GCard>
+          );
+        })}
     </ScrollView>
   );
 };
 
-
-const ApplyLoanView = ({ member, contentHeight }) => {
+const ApplyLoanView = ({ member, contentHeight, isMobile: isMobileProp }) => {
+  const { isMobile: rwdMobile } = useRwd();
+  const isMobile = isMobileProp ?? rwdMobile;
   // ── Step navigation: 'loan' | 'comaker' | 'done' ────────────────────────
-  const [step, setStep] = useState('loan');
+  const [step, setStep] = useState("loan");
 
   // ── STEP 1 — Loan Application fields ────────────────────────────────────
   // Loan Type
-  const [loanType, setLoanType]     = useState(''); // 'Housing Loan' | 'Vehicle Loan' | 'Salary Loan' | 'Buy-Out'
-  const [isRenewal, setIsRenewal]   = useState(false); // for Salary Loan & Buy-Out
-  const [loanAmount, setLoanAmount] = useState('');
+  const [loanType, setLoanType] = useState(""); // 'Housing Loan' | 'Vehicle Loan' | 'Salary Loan' | 'Buy-Out'
+  const [isRenewal, setIsRenewal] = useState(false); // for Salary Loan & Buy-Out
+  const [loanAmount, setLoanAmount] = useState("");
 
   // Personal Data
-  const [lastName, setLastName]         = useState('');
-  const [firstName, setFirstName]       = useState('');
-  const [middleName, setMiddleName]     = useState('');
-  const [birthdate, setBirthdate]       = useState('');
-  const [civilStatus, setCivilStatus]   = useState('');
-  const [gender, setGender]             = useState('');
-  const [citizenship, setCitizenship]   = useState('');
-  const [religion, setReligion]         = useState('');
-  const [address, setAddress]           = useState('');
-  const [cellphone, setCellphone]       = useState('');
-  const [email, setEmail]               = useState('');
+  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [birthdate, setBirthdate] = useState("");
+  const [civilStatus, setCivilStatus] = useState("");
+  const [gender, setGender] = useState("");
+  const [citizenship, setCitizenship] = useState("");
+  const [religion, setReligion] = useState("");
+  const [address, setAddress] = useState("");
+  const [addrProvince, setAddrProvince] = useState("");
+  const [addrCity, setAddrCity] = useState("");
+  const [addrBarangay, setAddrBarangay] = useState("");
+  const [addrStreet, setAddrStreet] = useState("");
+  const [cellphone, setCellphone] = useState("");
+  const [email, setEmail] = useState("");
 
   // Spouse
-  const [spouseName, setSpouseName]           = useState('');
-  const [spouseOccupation, setSpouseOccupation] = useState('');
-  const [spouseEmployer, setSpouseEmployer]   = useState('');
-  const [spouseLengthService, setSpouseLengthService] = useState('');
-  const [spouseMonthlyIncome, setSpouseMonthlyIncome] = useState('');
-  const [spouseEmployerAddr, setSpouseEmployerAddr]   = useState('');
-  const [spouseCellphone, setSpouseCellphone] = useState('');
-  const [spouseEmail, setSpouseEmail]         = useState('');
-  const [numChildren, setNumChildren]         = useState('');
-  const [nearestRelative, setNearestRelative] = useState('');
+  const [spouseName, setSpouseName] = useState("");
+  const [spouseOccupation, setSpouseOccupation] = useState("");
+  const [spouseEmployer, setSpouseEmployer] = useState("");
+  const [spouseLengthService, setSpouseLengthService] = useState("");
+  const [spouseMonthlyIncome, setSpouseMonthlyIncome] = useState("");
+  const [spouseEmployerAddr, setSpouseEmployerAddr] = useState("");
+  const [spouseCellphone, setSpouseCellphone] = useState("");
+  const [spouseEmail, setSpouseEmail] = useState("");
+  const [numChildren, setNumChildren] = useState("");
+  const [nearestRelative, setNearestRelative] = useState("");
 
   // Other Properties
   const [hasHouseLot, setHasHouseLot] = useState(false);
-  const [hasLot, setHasLot]           = useState(false);
-  const [hasCar, setHasCar]           = useState(false);
+  const [hasLot, setHasLot] = useState(false);
+  const [hasCar, setHasCar] = useState(false);
   const [hasMotorcycle, setHasMotorcycle] = useState(false);
-  const [hasPUV, setHasPUV]           = useState(false);
-  const [propLocation, setPropLocation] = useState('');
-  const [propTaxDecNo, setPropTaxDecNo] = useState('');
-  const [propAssessedVal, setPropAssessedVal] = useState('');
-  const [propMarketVal, setPropMarketVal]     = useState('');
-  const [propMortgageTo, setPropMortgageTo]   = useState('');
-  const [vehicleMakeBrand, setVehicleMakeBrand] = useState('');
-  const [vehicleAmount, setVehicleAmount]       = useState('');
+  const [hasPUV, setHasPUV] = useState(false);
+  const [propLocation, setPropLocation] = useState("");
+  const [propTaxDecNo, setPropTaxDecNo] = useState("");
+  const [propAssessedVal, setPropAssessedVal] = useState("");
+  const [propMarketVal, setPropMarketVal] = useState("");
+  const [propMortgageTo, setPropMortgageTo] = useState("");
+  const [vehicleMakeBrand, setVehicleMakeBrand] = useState("");
+  const [vehicleAmount, setVehicleAmount] = useState("");
 
   // Application Agreement
-  const [agreementMonths, setAgreementMonths]   = useState('');
-  const [agreementStartDate, setAgreementStartDate] = useState('');
-  const [agreementMaturity, setAgreementMaturity]   = useState('');
-  const [agreementPenalty, setAgreementPenalty]     = useState('');
+  const [agreementMonths, setAgreementMonths] = useState("");
+  const [agreementStartDate, setAgreementStartDate] = useState("");
+  const [agreementMaturity, setAgreementMaturity] = useState("");
+  const [agreementPenalty, setAgreementPenalty] = useState("");
 
   // ── STEP 2 — Co-Maker fields ─────────────────────────────────────────────
-  const [cmLastName, setCmLastName]       = useState('');
-  const [cmFirstName, setCmFirstName]     = useState('');
-  const [cmMiddleName, setCmMiddleName]   = useState('');
-  const [cmBirthdate, setCmBirthdate]     = useState('');
-  const [cmCivilStatus, setCmCivilStatus] = useState('');
-  const [cmGender, setCmGender]           = useState('');
-  const [cmCitizenship, setCmCitizenship] = useState('');
-  const [cmReligion, setCmReligion]       = useState('');
-  const [cmAddress, setCmAddress]         = useState('');
-  const [cmCellphone, setCmCellphone]     = useState('');
-  const [cmEmail, setCmEmail]             = useState('');
-  const [cmLengthOfStay, setCmLengthOfStay] = useState('');
-  const [cmHousingStatus, setCmHousingStatus] = useState(''); // 'Owned' | 'Living w/ Parents/Relatives' | 'Rented'
-  const [cmLandlordName, setCmLandlordName] = useState('');
-  const [cmLandlordAddress, setCmLandlordAddress] = useState('');
-  const [cmLandlordContact, setCmLandlordContact] = useState('');
-  const [cmEmployer, setCmEmployer]       = useState('');
-  const [cmTIN, setCmTIN]                 = useState('');
-  const [cmSSS, setCmSSS]                 = useState('');
-  const [cmLengthService, setCmLengthService] = useState('');
-  const [cmMonthlySalary, setCmMonthlySalary] = useState('');
-  const [cmOtherIncome, setCmOtherIncome] = useState('');
-  const [cmSpouseName, setCmSpouseName]   = useState('');
-  const [cmSpouseContact, setCmSpouseContact] = useState('');
-  const [cmSpouseEmployer, setCmSpouseEmployer] = useState('');
-  const [cmSpouseEmail, setCmSpouseEmail] = useState('');
+  const [cmLastName, setCmLastName] = useState("");
+  const [cmFirstName, setCmFirstName] = useState("");
+  const [cmMiddleName, setCmMiddleName] = useState("");
+  const [cmBirthdate, setCmBirthdate] = useState("");
+  const [cmCivilStatus, setCmCivilStatus] = useState("");
+  const [cmGender, setCmGender] = useState("");
+  const [cmCitizenship, setCmCitizenship] = useState("");
+  const [cmReligion, setCmReligion] = useState("");
+  const [cmAddress, setCmAddress] = useState("");
+  const [cmAddrProvince, setCmAddrProvince] = useState("");
+  const [cmAddrCity, setCmAddrCity] = useState("");
+  const [cmAddrBarangay, setCmAddrBarangay] = useState("");
+  const [cmAddrStreet, setCmAddrStreet] = useState("");
+  const [cmCellphone, setCmCellphone] = useState("");
+  const [cmEmail, setCmEmail] = useState("");
+  const [cmLengthOfStay, setCmLengthOfStay] = useState("");
+  const [cmHousingStatus, setCmHousingStatus] = useState(""); // 'Owned' | 'Living w/ Parents/Relatives' | 'Rented'
+  const [cmLandlordName, setCmLandlordName] = useState("");
+  const [cmLandlordAddress, setCmLandlordAddress] = useState("");
+  const [cmLandlordContact, setCmLandlordContact] = useState("");
+  const [cmEmployer, setCmEmployer] = useState("");
+  const [cmTIN, setCmTIN] = useState("");
+  const [cmSSS, setCmSSS] = useState("");
+  const [cmLengthService, setCmLengthService] = useState("");
+  const [cmMonthlySalary, setCmMonthlySalary] = useState("");
+  const [cmOtherIncome, setCmOtherIncome] = useState("");
+  const [cmSpouseName, setCmSpouseName] = useState("");
+  const [cmSpouseContact, setCmSpouseContact] = useState("");
+  const [cmSpouseEmployer, setCmSpouseEmployer] = useState("");
+  const [cmSpouseEmail, setCmSpouseEmail] = useState("");
   // Children (up to 5 rows)
-  const [cmChildren, setCmChildren]       = useState([
-    { name: '', age: '', birthday: '' },
-    { name: '', age: '', birthday: '' },
-    { name: '', age: '', birthday: '' },
-    { name: '', age: '', birthday: '' },
-    { name: '', age: '', birthday: '' },
+  const [cmChildren, setCmChildren] = useState([
+    { name: "", age: "", birthday: "" },
+    { name: "", age: "", birthday: "" },
+    { name: "", age: "", birthday: "" },
+    { name: "", age: "", birthday: "" },
+    { name: "", age: "", birthday: "" },
   ]);
-  const [cmMotherName, setCmMotherName]   = useState('');
-  const [cmMotherContact, setCmMotherContact] = useState('');
-  const [cmFatherName, setCmFatherName]   = useState('');
-  const [cmFatherContact, setCmFatherContact] = useState('');
+  const [cmMotherName, setCmMotherName] = useState("");
+  const [cmMotherContact, setCmMotherContact] = useState("");
+  const [cmFatherName, setCmFatherName] = useState("");
+  const [cmFatherContact, setCmFatherContact] = useState("");
 
   // ── Shared state ──────────────────────────────────────────────────────────
-  const [loading, setLoading]   = useState(false);
-  const [done, setDone]         = useState(false);
-  const [error, setError]       = useState('');
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const RadioGroup = ({ options, value, onSelect, row = true }) => (
-    <View style={{ flexDirection: row ? 'row' : 'column', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
-      {options.map(opt => (
+    <View
+      style={{
+        flexDirection: row ? "row" : "column",
+        flexWrap: "wrap",
+        gap: 6,
+        marginBottom: 11,
+      }}
+    >
+      {options.map((opt) => (
         <TouchableOpacity
           key={opt}
           onPress={() => onSelect(opt)}
           style={{
-            flexDirection: 'row', alignItems: 'center', gap: 6,
-            paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderRadius: 20,
             borderWidth: 1.5,
-            borderColor: value === opt ? C.gold : 'rgba(15,30,53,0.18)',
-            backgroundColor: value === opt ? 'rgba(201,168,76,0.15)' : C.surface,
-          }}>
-          <View style={{
-            width: 14, height: 14, borderRadius: 7,
-            borderWidth: 1.5,
-            borderColor: value === opt ? C.gold : 'rgba(15,30,53,0.30)',
-            backgroundColor: value === opt ? C.gold : 'transparent',
-            justifyContent: 'center', alignItems: 'center',
-          }}>
-            {value === opt && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' }} />}
+            borderColor: value === opt ? C.gold : "rgba(15,30,53,0.18)",
+            backgroundColor:
+              value === opt ? "rgba(201,168,76,0.15)" : C.surface,
+          }}
+        >
+          <View
+            style={{
+              width: 14,
+              height: 14,
+              borderRadius: 7,
+              borderWidth: 1.5,
+              borderColor: value === opt ? C.gold : "rgba(15,30,53,0.30)",
+              backgroundColor: value === opt ? C.gold : "transparent",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            {value === opt && (
+              <View
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: "#fff",
+                }}
+              />
+            )}
           </View>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 12,
+              color: C.navy,
+            }}
+          >
+            {opt}
+          </Text>
         </TouchableOpacity>
       ))}
     </View>
   );
 
   const CheckItem = ({ label, checked, onToggle }) => (
-    <TouchableOpacity onPress={onToggle}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: 10, marginBottom: 6 }}>
-      <View style={{
-        width: 16, height: 16, borderRadius: 3, borderWidth: 1.5,
-        borderColor: checked ? C.gold : 'rgba(15,30,53,0.30)',
-        backgroundColor: checked ? C.gold : 'transparent',
-        justifyContent: 'center', alignItems: 'center',
-      }}>
-        {checked && <Text style={{ fontSize: 10, color: '#fff', fontWeight: '800', lineHeight: 13 }}>✓</Text>}
+    <TouchableOpacity
+      onPress={onToggle}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        marginRight: 10,
+        marginBottom: 6,
+      }}
+    >
+      <View
+        style={{
+          width: 16,
+          height: 16,
+          borderRadius: 3,
+          borderWidth: 1.5,
+          borderColor: checked ? C.gold : "rgba(15,30,53,0.30)",
+          backgroundColor: checked ? C.gold : "transparent",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        {checked && (
+          <Text
+            style={{
+              fontSize: 10,
+              color: "#fff",
+              fontWeight: "800",
+              lineHeight: 13,
+            }}
+          >
+            ✓
+          </Text>
+        )}
       </View>
-      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{label}</Text>
+      <Text
+        style={{
+          fontFamily: "GoogleSans_400Regular",
+          fontSize: 12,
+          color: C.navy,
+        }}
+      >
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 
-  const FieldLabel = ({ label }) => (
-    <Text style={s.fieldLabel}>{label}</Text>
-  );
+  const FieldLabel = ({ label }) => <Text style={s.fieldLabel}>{label}</Text>;
+
+  // ── Mini Calendar Date Picker ────────────────────────────────────────────────
+  const DatePicker = ({ label, value, onChange }) => {
+    const MONTHS = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    const today = new Date();
+    const parsed = value ? new Date(value) : null;
+    const [open, setOpen] = useState(false);
+    const [viewYear, setViewYear] = useState(
+      parsed ? parsed.getFullYear() : today.getFullYear() - 25,
+    );
+    const [viewMonth, setViewMonth] = useState(
+      parsed ? parsed.getMonth() : today.getMonth(),
+    );
+    const [mode, setMode] = useState("day"); // 'day' | 'month' | 'year'
+    const triggerRef = useRef(null);
+    const [dropY, setDropY] = useState(0);
+    const [dropX, setDropX] = useState(0);
+    const [dropW, setDropW] = useState(0);
+
+    const selYear = parsed ? parsed.getFullYear() : null;
+    const selMonth = parsed ? parsed.getMonth() : null;
+    const selDay = parsed ? parsed.getDate() : null;
+
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+
+    const selectDay = (d) => {
+      const mm = String(viewMonth + 1).padStart(2, "0");
+      const dd = String(d).padStart(2, "0");
+      onChange(`${mm}/${dd}/${viewYear}`);
+      setOpen(false);
+      setMode("day");
+    };
+
+    const prevMonth = () => {
+      if (viewMonth === 0) {
+        setViewMonth(11);
+        setViewYear((y) => y - 1);
+      } else setViewMonth((m) => m - 1);
+    };
+    const nextMonth = () => {
+      if (viewMonth === 11) {
+        setViewMonth(0);
+        setViewYear((y) => y + 1);
+      } else setViewMonth((m) => m + 1);
+    };
+
+    const openPicker = () => {
+      if (!open && triggerRef.current) {
+        triggerRef.current.measure((fx, fy, w, h, px, py) => {
+          setDropY(py + h + 4);
+          setDropX(px);
+          setDropW(w);
+          setOpen(true);
+        });
+      } else {
+        setOpen(false);
+        setMode("day");
+      }
+    };
+
+    const displayText = value || "Select date";
+    const yearRange = [];
+    for (let y = 1940; y <= today.getFullYear(); y++) yearRange.push(y);
+
+    return (
+      <View style={{ marginBottom: 11 }}>
+        {!!label && <FieldLabel label={label} />}
+        <TouchableOpacity
+          ref={triggerRef}
+          onPress={openPicker}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderWidth: 1.5,
+            borderColor: open ? C.gold : value ? C.gold : "rgba(15,30,53,0.18)",
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            backgroundColor: value ? "rgba(201,168,76,0.08)" : C.surface,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 13,
+              color: value ? C.text : C.textMuted,
+            }}
+          >
+            {displayText}
+          </Text>
+          <MaterialIcons
+            name={open ? "keyboard-arrow-up" : "calendar-today"}
+            size={16}
+            color={open ? C.gold : C.textSec}
+          />
+        </TouchableOpacity>
+
+        <Modal
+          visible={open}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setOpen(false);
+            setMode("day");
+          }}
+        >
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => {
+              setOpen(false);
+              setMode("day");
+            }}
+          >
+            <View
+              style={{
+                position: "absolute",
+                top: dropY,
+                left: dropX,
+                width: dropW,
+                borderRadius: 14,
+                borderWidth: 1.5,
+                borderColor: "rgba(15,30,53,0.12)",
+                backgroundColor: "#f4f8fc",
+                overflow: "hidden",
+                shadowColor: "#1a2d4e",
+                shadowOpacity: 0.15,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 10,
+              }}
+            >
+              {/* Header */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  backgroundColor: C.navy,
+                }}
+              >
+                {mode === "day" && (
+                  <TouchableOpacity onPress={prevMonth} style={{ padding: 4 }}>
+                    <MaterialIcons name="chevron-left" size={20} color="#fff" />
+                  </TouchableOpacity>
+                )}
+                {mode !== "day" && <View style={{ width: 28 }} />}
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      setMode((m) => (m === "month" ? "day" : "month"))
+                    }
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      borderRadius: 8,
+                      backgroundColor:
+                        mode === "month" ? C.gold : "rgba(255,255,255,0.12)",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 12,
+                        color: mode === "month" ? C.navy : "#fff",
+                      }}
+                    >
+                      {MONTHS[viewMonth].slice(0, 3)}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() =>
+                      setMode((m) => (m === "year" ? "day" : "year"))
+                    }
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      borderRadius: 8,
+                      backgroundColor:
+                        mode === "year" ? C.gold : "rgba(255,255,255,0.12)",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 12,
+                        color: mode === "year" ? C.navy : "#fff",
+                      }}
+                    >
+                      {viewYear}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {mode === "day" && (
+                  <TouchableOpacity onPress={nextMonth} style={{ padding: 4 }}>
+                    <MaterialIcons
+                      name="chevron-right"
+                      size={20}
+                      color="#fff"
+                    />
+                  </TouchableOpacity>
+                )}
+                {mode !== "day" && <View style={{ width: 28 }} />}
+              </View>
+
+              {/* Month picker */}
+              {mode === "month" && (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    padding: 8,
+                    gap: 6,
+                    justifyContent: "center",
+                  }}
+                >
+                  {MONTHS.map((m, i) => (
+                    <TouchableOpacity
+                      key={m}
+                      onPress={() => {
+                        setViewMonth(i);
+                        setMode("day");
+                      }}
+                      style={{
+                        width: "30%",
+                        alignItems: "center",
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        backgroundColor:
+                          viewMonth === i ? C.gold : "rgba(15,30,53,0.06)",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_500Medium",
+                          fontSize: 12,
+                          color: viewMonth === i ? C.navy : C.text,
+                        }}
+                      >
+                        {m.slice(0, 3)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Year picker */}
+              {mode === "year" && (
+                <ScrollView
+                  style={{ maxHeight: 180 }}
+                  contentContainerStyle={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    padding: 8,
+                    gap: 6,
+                    justifyContent: "center",
+                  }}
+                >
+                  {[...yearRange].reverse().map((y) => (
+                    <TouchableOpacity
+                      key={y}
+                      onPress={() => {
+                        setViewYear(y);
+                        setMode("day");
+                      }}
+                      style={{
+                        width: "22%",
+                        alignItems: "center",
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                        backgroundColor:
+                          viewYear === y ? C.gold : "rgba(15,30,53,0.06)",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_500Medium",
+                          fontSize: 12,
+                          color: viewYear === y ? C.navy : C.text,
+                        }}
+                      >
+                        {y}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+
+              {/* Day grid */}
+              {mode === "day" && (
+                <View style={{ padding: 8 }}>
+                  {/* Day-of-week headers */}
+                  <View style={{ flexDirection: "row", marginBottom: 4 }}>
+                    {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                      <Text
+                        key={d}
+                        style={{
+                          flex: 1,
+                          textAlign: "center",
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 10,
+                          color: C.textMuted,
+                        }}
+                      >
+                        {d}
+                      </Text>
+                    ))}
+                  </View>
+                  {/* Weeks */}
+                  {Array.from({
+                    length: Math.ceil((firstDow + daysInMonth) / 7),
+                  }).map((_, wi) => (
+                    <View
+                      key={wi}
+                      style={{ flexDirection: "row", marginBottom: 2 }}
+                    >
+                      {Array.from({ length: 7 }).map((_, di) => {
+                        const dayNum = wi * 7 + di - firstDow + 1;
+                        const valid = dayNum >= 1 && dayNum <= daysInMonth;
+                        const isSelected =
+                          valid &&
+                          selDay === dayNum &&
+                          selMonth === viewMonth &&
+                          selYear === viewYear;
+                        const isToday =
+                          valid &&
+                          dayNum === today.getDate() &&
+                          viewMonth === today.getMonth() &&
+                          viewYear === today.getFullYear();
+                        return (
+                          <TouchableOpacity
+                            key={di}
+                            disabled={!valid}
+                            onPress={() => valid && selectDay(dayNum)}
+                            style={{
+                              flex: 1,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              height: 32,
+                              borderRadius: 8,
+                              backgroundColor: isSelected
+                                ? C.gold
+                                : isToday
+                                  ? "rgba(201,168,76,0.15)"
+                                  : "transparent",
+                            }}
+                          >
+                            {valid && (
+                              <Text
+                                style={{
+                                  fontFamily: "GoogleSans_500Medium",
+                                  fontSize: 12,
+                                  color: isSelected
+                                    ? C.navy
+                                    : isToday
+                                      ? C.gold
+                                      : C.text,
+                                }}
+                              >
+                                {dayNum}
+                              </Text>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+    );
+  };
+
+  // ── Dropdown Picker ──────────────────────────────────────────────────────────
+  const DropdownPicker = ({ label, options, value, onSelect }) => {
+    const [open, setOpen] = useState(false);
+    const triggerRef = useRef(null);
+    const [dropY, setDropY] = useState(0);
+    const [dropX, setDropX] = useState(0);
+    const [dropW, setDropW] = useState(0);
+
+    const openDropdown = () => {
+      if (!open && triggerRef.current) {
+        triggerRef.current.measure((fx, fy, w, h, px, py) => {
+          setDropY(py + h + 2);
+          setDropX(px);
+          setDropW(w);
+          setOpen(true);
+        });
+      } else {
+        setOpen(false);
+      }
+    };
+
+    return (
+      <View style={{ marginBottom: 11 }}>
+        {!!label && <FieldLabel label={label} />}
+        <TouchableOpacity
+          ref={triggerRef}
+          onPress={openDropdown}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderWidth: 1.5,
+            borderColor: open ? C.gold : value ? C.gold : "rgba(15,30,53,0.18)",
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            backgroundColor: value ? "rgba(201,168,76,0.08)" : C.surface,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 13,
+              color: value ? C.text : C.textMuted,
+            }}
+          >
+            {value || "Select…"}
+          </Text>
+          <MaterialIcons
+            name={open ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+            size={18}
+            color={open ? C.gold : C.textSec}
+          />
+        </TouchableOpacity>
+
+        <Modal
+          visible={open}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOpen(false)}
+        >
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setOpen(false)}
+          >
+            <View
+              style={{
+                position: "absolute",
+                top: dropY,
+                left: dropX,
+                width: dropW,
+                borderRadius: 12,
+                borderWidth: 1.5,
+                borderColor: "rgba(15,30,53,0.12)",
+                backgroundColor: "#f4f8fc",
+                overflow: "hidden",
+                shadowColor: "#1a2d4e",
+                shadowOpacity: 0.15,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 10,
+              }}
+            >
+              {options.map((opt, i) => (
+                <TouchableOpacity
+                  key={opt}
+                  onPress={() => {
+                    onSelect(opt);
+                    setOpen(false);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    backgroundColor:
+                      value === opt ? "rgba(201,168,76,0.13)" : "transparent",
+                    borderBottomWidth: i < options.length - 1 ? 1 : 0,
+                    borderColor: "rgba(15,30,53,0.07)",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily:
+                        value === opt
+                          ? "GoogleSans_700Bold"
+                          : "GoogleSans_400Regular",
+                      fontSize: 13,
+                      color: C.text,
+                    }}
+                  >
+                    {opt}
+                  </Text>
+                  {value === opt && (
+                    <MaterialIcons name="check" size={15} color={C.gold} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+    );
+  };
+
+  // ── Address Dropdown (standalone — must NOT be defined inside another component) ──
+  const ApiDropdown = ({ label, options, value, onSelect, disabled }) => {
+    const [open, setOpen] = useState(false);
+    const triggerRef = useRef(null);
+    const searchRef = useRef(null);
+    const [dropY, setDropY] = useState(0);
+    const [dropX, setDropX] = useState(0);
+    const [dropW, setDropW] = useState(0);
+    const [search, setSearch] = useState("");
+
+    const filtered = options.filter((o) =>
+      o.toLowerCase().includes(search.toLowerCase()),
+    );
+
+    const openDrop = () => {
+      if (disabled) return;
+      if (!open && triggerRef.current) {
+        triggerRef.current.measureInWindow((x, y, w, h) => {
+          setDropY(y + h + 2);
+          setDropX(x);
+          setDropW(w);
+          setOpen(true);
+          setSearch("");
+          setTimeout(() => searchRef.current?.focus(), 100);
+        });
+      } else setOpen(false);
+    };
+
+    return (
+      <View style={{ marginBottom: 11 }}>
+        <Text
+          style={{
+            fontFamily: "GoogleSans_700Bold",
+            fontSize: 10,
+            color: C.textMuted,
+            letterSpacing: 1.5,
+            textTransform: "uppercase",
+            marginBottom: 5,
+          }}
+        >
+          {label}
+        </Text>
+        <TouchableOpacity
+          ref={triggerRef}
+          onPress={openDrop}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderWidth: 1.5,
+            borderColor: open ? C.gold : value ? C.gold : "rgba(15,30,53,0.18)",
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            backgroundColor: disabled
+              ? "rgba(15,30,53,0.04)"
+              : value
+                ? "rgba(201,168,76,0.08)"
+                : C.surface,
+            opacity: disabled ? 0.55 : 1,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 13,
+              color: value ? C.text : C.textMuted,
+              flex: 1,
+            }}
+          >
+            {value || "Select…"}
+          </Text>
+          <MaterialIcons
+            name={open ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+            size={18}
+            color={open ? C.gold : C.textSec}
+          />
+        </TouchableOpacity>
+        <Modal
+          visible={open}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOpen(false)}
+        >
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setOpen(false)}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+              style={{
+                position: "absolute",
+                top: dropY,
+                left: dropX,
+                width: dropW,
+                maxHeight: 300,
+                borderRadius: 12,
+                borderWidth: 1.5,
+                borderColor: "rgba(15,30,53,0.12)",
+                backgroundColor: "#f4f8fc",
+                overflow: "hidden",
+                shadowColor: "#1a2d4e",
+                shadowOpacity: 0.15,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 10,
+              }}
+            >
+              <View
+                style={{
+                  padding: 8,
+                  borderBottomWidth: 1,
+                  borderColor: "rgba(15,30,53,0.08)",
+                }}
+              >
+                <TextInput
+                  ref={searchRef}
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search…"
+                  placeholderTextColor={C.textMuted}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 13,
+                    color: C.text,
+                    paddingHorizontal: 10,
+                    paddingVertical: 7,
+                    borderRadius: 8,
+                    backgroundColor: "rgba(15,30,53,0.06)",
+                  }}
+                />
+              </View>
+              <ScrollView
+                keyboardShouldPersistTaps="always"
+                nestedScrollEnabled
+              >
+                {filtered.map((opt, i) => (
+                  <TouchableOpacity
+                    key={opt}
+                    onPress={() => {
+                      onSelect(opt);
+                      setOpen(false);
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingHorizontal: 14,
+                      paddingVertical: 11,
+                      backgroundColor:
+                        value === opt ? "rgba(201,168,76,0.13)" : "transparent",
+                      borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
+                      borderColor: "rgba(15,30,53,0.07)",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily:
+                          value === opt
+                            ? "GoogleSans_700Bold"
+                            : "GoogleSans_400Regular",
+                        fontSize: 13,
+                        color: C.text,
+                      }}
+                    >
+                      {opt}
+                    </Text>
+                    {value === opt && (
+                      <MaterialIcons name="check" size={15} color={C.gold} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+                {filtered.length === 0 && (
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 13,
+                      color: C.textMuted,
+                      padding: 14,
+                      textAlign: "center",
+                    }}
+                  >
+                    {options.length === 0
+                      ? disabled
+                        ? "Select a province first"
+                        : "No data"
+                      : "No results found"}
+                  </Text>
+                )}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+    );
+  };
+
+  // ── Philippine Address Picker ────────────────────────────────────────────────
+  const PhAddressPicker = ({
+    province,
+    setProvince,
+    city,
+    setCity,
+    barangay,
+    setBarangay,
+    street,
+    setStreet,
+    onAddressChange,
+  }) => {
+    const buildAddress = (p, ct, br, st) =>
+      [st, br, ct, p].filter(Boolean).join(", ");
+
+    // Use static data — no network calls needed
+    const provinceList = Object.keys(MUNICIPALITIES_BY_PROVINCE).sort();
+    const cityList = province
+      ? (MUNICIPALITIES_BY_PROVINCE[province] || []).slice().sort()
+      : [];
+    const barangayList = city
+      ? (BARANGAYS_BY_CITY[city] || []).slice().sort()
+      : [];
+
+    const onSelectProvince = (name) => {
+      setProvince(name);
+      setCity("");
+      setBarangay("");
+      onAddressChange && onAddressChange(buildAddress(name, "", "", street));
+    };
+
+    const onSelectCity = (name) => {
+      setCity(name);
+      setBarangay("");
+      onAddressChange &&
+        onAddressChange(buildAddress(province, name, "", street));
+    };
+
+    const onSelectBarangay = (name) => {
+      setBarangay(name);
+      onAddressChange &&
+        onAddressChange(buildAddress(province, city, name, street));
+    };
+
+    const onStreetChange = (val) => {
+      setStreet(val);
+      onAddressChange &&
+        onAddressChange(buildAddress(province, city, barangay, val));
+    };
+
+    return (
+      <View>
+        <ApiDropdown
+          label="PROVINCE"
+          options={provinceList}
+          value={province}
+          onSelect={onSelectProvince}
+          disabled={false}
+        />
+        <ApiDropdown
+          label="CITY / MUNICIPALITY"
+          options={cityList}
+          value={city}
+          onSelect={onSelectCity}
+          disabled={!province}
+        />
+        <ApiDropdown
+          label="BARANGAY"
+          options={barangayList}
+          value={barangay}
+          onSelect={onSelectBarangay}
+          disabled={!city}
+        />
+        <DField
+          label="HOUSE NO. / STREET / SUBDIVISION"
+          value={street}
+          onChangeText={onStreetChange}
+          placeholder="e.g. 123 Rizal St., Poblacion"
+        />
+      </View>
+    );
+  };
 
   // Step indicator
   const StepIndicator = () => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: 16,
+      }}
+    >
       {[
-        { key: 'loan', num: '1', label: 'Loan Application' },
-        { key: 'comaker', num: '2', label: 'Co-Maker Statement' },
+        { key: "loan", num: "1", label: "Loan Application" },
+        { key: "comaker", num: "2", label: "Co-Maker Statement" },
       ].map((st, idx) => {
         const isActive = step === st.key;
-        const isDone   = step === 'done' || (step === 'comaker' && idx === 0);
+        const isDone = step === "done" || (step === "comaker" && idx === 0);
         return (
-          <View key={st.key} style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={{ alignItems: 'center' }}>
-              <View style={{
-                width: 32, height: 32, borderRadius: 16,
-                backgroundColor: isDone ? C.green : isActive ? C.gold : 'rgba(15,30,53,0.12)',
-                justifyContent: 'center', alignItems: 'center',
-                borderWidth: 2, borderColor: isDone ? C.green : isActive ? C.gold : 'rgba(15,30,53,0.20)',
-              }}>
-                <Text style={{
-                  fontFamily: 'GoogleSans_700Bold', fontSize: 13,
-                  color: isDone || isActive ? (isDone ? '#fff' : C.navy) : C.textMuted,
-                }}>
-                  {isDone ? '✓' : st.num}
+          <View
+            key={st.key}
+            style={{ flexDirection: "row", alignItems: "center" }}
+          >
+            <View style={{ alignItems: "center" }}>
+              <View
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  backgroundColor: isDone
+                    ? C.green
+                    : isActive
+                      ? C.gold
+                      : "rgba(15,30,53,0.12)",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  borderWidth: 2,
+                  borderColor: isDone
+                    ? C.green
+                    : isActive
+                      ? C.gold
+                      : "rgba(15,30,53,0.20)",
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 13,
+                    color:
+                      isDone || isActive
+                        ? isDone
+                          ? "#fff"
+                          : C.navy
+                        : C.textMuted,
+                  }}
+                >
+                  {isDone ? "✓" : st.num}
                 </Text>
               </View>
-              <Text style={{
-                fontFamily: 'GoogleSans_500Medium', fontSize: 10,
-                color: isActive ? C.navy : C.textMuted,
-                marginTop: 4, textAlign: 'center', width: 80,
-              }}>{st.label}</Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_500Medium",
+                  fontSize: 10,
+                  color: isActive ? C.navy : C.textMuted,
+                  marginTop: 4,
+                  textAlign: "center",
+                  width: 80,
+                }}
+              >
+                {st.label}
+              </Text>
             </View>
             {idx < 1 && (
-              <View style={{ width: 40, height: 2, backgroundColor: isDone ? C.green : 'rgba(15,30,53,0.12)', marginHorizontal: 4, marginBottom: 22 }} />
+              <View
+                style={{
+                  width: 40,
+                  height: 2,
+                  backgroundColor: isDone ? C.green : "rgba(15,30,53,0.12)",
+                  marginHorizontal: 4,
+                  marginBottom: 22,
+                }}
+              />
             )}
           </View>
         );
@@ -2387,47 +9059,84 @@ const ApplyLoanView = ({ member, contentHeight }) => {
 
   // ── Validate & advance step 1 → step 2 ───────────────────────────────────
   const handleNextStep = () => {
-    if (!loanType)    { setError('Please select a Loan Type.'); return; }
-    if (!loanAmount)  { setError('Please enter the Loan Amount.'); return; }
-    if (!lastName || !firstName) { setError('Please enter the applicant\'s full name.'); return; }
-    setError('');
-    setStep('comaker');
+    if (!loanType) {
+      setError("Please select a Loan Type.");
+      return;
+    }
+    if (!loanAmount) {
+      setError("Please enter the Loan Amount.");
+      return;
+    }
+    if (!lastName || !firstName) {
+      setError("Please enter the applicant's full name.");
+      return;
+    }
+    setError("");
+    setStep("comaker");
   };
 
   // ── Final submit ──────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!cmLastName || !cmFirstName) { setError('Please enter the Co-Maker\'s full name.'); return; }
-    setLoading(true); setError('');
+    if (!cmLastName || !cmFirstName) {
+      setError("Please enter the Co-Maker's full name.");
+      return;
+    }
+    setLoading(true);
+    setError("");
     try {
-      const amt = parseFloat(loanAmount.replace(/,/g, ''));
-      const loanTypeLabel = loanType + (isRenewal ? ' (Renewal)' : ' (New)');
+      const amt = parseFloat(loanAmount.replace(/,/g, ""));
+      const loanTypeLabel = loanType + (isRenewal ? " (Renewal)" : " (New)");
 
       // Main loan application document
-      await addDoc(collection(db, 'loanApplications'), {
+      await addDoc(collection(db, "loanApplications"), {
         memberId: member.uid,
         memberName: member.name,
         memberUserId: member.userId,
         amount: isNaN(amt) ? 0 : amt,
         loanType: loanTypeLabel,
         purpose: loanType,
-        term: agreementMonths ? `${agreementMonths} months` : '',
-        status: 'Pending',
+        term: agreementMonths ? `${agreementMonths} months` : "",
+        status: "Pending",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
 
         // Full loan form data
         applicant: {
-          lastName, firstName, middleName,
-          birthdate, civilStatus, gender, citizenship, religion,
-          address, cellphone, email,
-          spouseName, spouseOccupation, spouseEmployer,
-          spouseLengthService, spouseMonthlyIncome, spouseEmployerAddr,
-          spouseCellphone, spouseEmail, numChildren, nearestRelative,
+          lastName,
+          firstName,
+          middleName,
+          birthdate,
+          civilStatus,
+          gender,
+          citizenship,
+          religion,
+          address,
+          cellphone,
+          email,
+          spouseName,
+          spouseOccupation,
+          spouseEmployer,
+          spouseLengthService,
+          spouseMonthlyIncome,
+          spouseEmployerAddr,
+          spouseCellphone,
+          spouseEmail,
+          numChildren,
+          nearestRelative,
         },
         properties: {
-          hasHouseLot, hasLot, hasCar, hasMotorcycle, hasPUV,
-          propLocation, propTaxDecNo, propAssessedVal, propMarketVal, propMortgageTo,
-          vehicleMakeBrand, vehicleAmount,
+          hasHouseLot,
+          hasLot,
+          hasCar,
+          hasMotorcycle,
+          hasPUV,
+          propLocation,
+          propTaxDecNo,
+          propAssessedVal,
+          propMarketVal,
+          propMortgageTo,
+          vehicleMakeBrand,
+          vehicleAmount,
         },
         agreement: {
           months: agreementMonths,
@@ -2438,60 +9147,156 @@ const ApplyLoanView = ({ member, contentHeight }) => {
 
         // Co-maker data
         coMaker: {
-          lastName: cmLastName, firstName: cmFirstName, middleName: cmMiddleName,
-          birthdate: cmBirthdate, civilStatus: cmCivilStatus, gender: cmGender,
-          citizenship: cmCitizenship, religion: cmReligion,
-          address: cmAddress, cellphone: cmCellphone, email: cmEmail,
-          lengthOfStay: cmLengthOfStay, housingStatus: cmHousingStatus,
-          landlordName: cmLandlordName, landlordAddress: cmLandlordAddress, landlordContact: cmLandlordContact,
-          employer: cmEmployer, TIN: cmTIN, SSS: cmSSS,
-          lengthService: cmLengthService, monthlySalary: cmMonthlySalary, otherIncome: cmOtherIncome,
-          spouseName: cmSpouseName, spouseContact: cmSpouseContact,
-          spouseEmployer: cmSpouseEmployer, spouseEmail: cmSpouseEmail,
-          children: cmChildren.filter(c => c.name),
-          motherName: cmMotherName, motherContact: cmMotherContact,
-          fatherName: cmFatherName, fatherContact: cmFatherContact,
+          lastName: cmLastName,
+          firstName: cmFirstName,
+          middleName: cmMiddleName,
+          birthdate: cmBirthdate,
+          civilStatus: cmCivilStatus,
+          gender: cmGender,
+          citizenship: cmCitizenship,
+          religion: cmReligion,
+          address: cmAddress,
+          cellphone: cmCellphone,
+          email: cmEmail,
+          lengthOfStay: cmLengthOfStay,
+          housingStatus: cmHousingStatus,
+          landlordName: cmLandlordName,
+          landlordAddress: cmLandlordAddress,
+          landlordContact: cmLandlordContact,
+          employer: cmEmployer,
+          TIN: cmTIN,
+          SSS: cmSSS,
+          lengthService: cmLengthService,
+          monthlySalary: cmMonthlySalary,
+          otherIncome: cmOtherIncome,
+          spouseName: cmSpouseName,
+          spouseContact: cmSpouseContact,
+          spouseEmployer: cmSpouseEmployer,
+          spouseEmail: cmSpouseEmail,
+          children: cmChildren.filter((c) => c.name),
+          motherName: cmMotherName,
+          motherContact: cmMotherContact,
+          fatherName: cmFatherName,
+          fatherContact: cmFatherContact,
         },
       });
 
       // Admin notification
-      await addDoc(collection(db, 'adminNotifications'), {
-        type: 'loan', icon: '💳',
-        title: 'New Loan Application',
+      await addDoc(collection(db, "adminNotifications"), {
+        type: "loan",
+        icon: "💳",
+        title: "New Loan Application",
         message: `${member.name} applied for a ${loanTypeLabel} of ${fmtCur(isNaN(amt) ? 0 : amt)}.`,
-        memberId: member.uid, memberUserId: member.userId,
-        createdAt: serverTimestamp(), read: false,
+        memberId: member.uid,
+        memberUserId: member.userId,
+        createdAt: serverTimestamp(),
+        read: false,
       });
 
       setDone(true);
-      setStep('done');
+      setStep("done");
     } catch (e) {
-      setError(e.message || 'Submission failed. Please try again.');
+      setError(e.message || "Submission failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   // ── DONE screen ───────────────────────────────────────────────────────────
-  if (step === 'done') {
+  if (step === "done") {
     return (
-      <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator style={contentHeight ? { height: contentHeight } : undefined}>
-        <GCard style={{ alignItems: 'center', padding: 32 }}>
+      <ScrollView
+        contentContainerStyle={s.pageOuter}
+        showsVerticalScrollIndicator
+        style={contentHeight ? { height: contentHeight } : undefined}
+      >
+        <GCard style={{ alignItems: "center", padding: 32 }}>
           <Text style={{ fontSize: 52, marginBottom: 16 }}>✅</Text>
-          <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: C.green, textAlign: 'center', marginBottom: 8 }}>Application Submitted!</Text>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec, textAlign: 'center', lineHeight: 20 }}>
-            Your loan application with co-maker statement has been submitted. The admin will review your application shortly.
+          <Text
+            style={{
+              fontFamily: "NotoSerif_700Bold",
+              fontSize: 20,
+              color: C.green,
+              textAlign: "center",
+              marginBottom: 8,
+            }}
+          >
+            Application Submitted!
           </Text>
-          <View style={{ marginTop: 20, width: '100%', backgroundColor: 'rgba(26,138,74,0.10)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(26,138,74,0.30)', padding: 14 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, marginBottom: 4 }}>What's next?</Text>
-            {['Your application is now under review.','The admin will contact you for additional documents if needed.','Check "My Loans" for status updates.'].map((t, i) => (
-              <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 20 }}>• {t}</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 13,
+              color: C.textSec,
+              textAlign: "center",
+              lineHeight: 20,
+            }}
+          >
+            Your loan application with co-maker statement has been submitted.
+            The admin will review your application shortly.
+          </Text>
+          <View
+            style={{
+              marginTop: 20,
+              width: "100%",
+              backgroundColor: "rgba(26,138,74,0.10)",
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: "rgba(26,138,74,0.30)",
+              padding: 14,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 12,
+                color: C.green,
+                marginBottom: 4,
+              }}
+            >
+              What's next?
+            </Text>
+            {[
+              "Your application is now under review.",
+              "The admin will contact you for additional documents if needed.",
+              'Check "My Loans" for status updates.',
+            ].map((t, i) => (
+              <Text
+                key={i}
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 12,
+                  color: C.textSec,
+                  lineHeight: 20,
+                }}
+              >
+                • {t}
+              </Text>
             ))}
           </View>
           <TouchableOpacity
-            onPress={() => { setStep('loan'); setDone(false); }}
-            style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20, borderWidth: 1.5, borderColor: C.navy }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>Submit Another Application</Text>
+            onPress={() => {
+              setStep("loan");
+              setDone(false);
+            }}
+            style={{
+              marginTop: 20,
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+              borderRadius: 20,
+              borderWidth: 1.5,
+              borderColor: C.navy,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 13,
+                color: C.navy,
+              }}
+            >
+              Submit Another Application
+            </Text>
           </TouchableOpacity>
         </GCard>
       </ScrollView>
@@ -2499,64 +9304,201 @@ const ApplyLoanView = ({ member, contentHeight }) => {
   }
 
   // ── STEP 2 — Co-Maker Statement ───────────────────────────────────────────
-  if (step === 'comaker') {
+  if (step === "comaker") {
     return (
-      <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator style={contentHeight ? { height: contentHeight } : undefined}>
+      <ScrollView
+        contentContainerStyle={s.pageOuter}
+        showsVerticalScrollIndicator
+        style={contentHeight ? { height: contentHeight } : undefined}
+      >
         <Text style={s.pageTitle}>📋 Co-Maker Statement</Text>
-        <Text style={s.pageSub}>Form:004 — Fill out co-maker's information completely and accurately.</Text>
+        <Text style={s.pageSub}>
+          Form:004 — Fill out co-maker's information completely and accurately.
+        </Text>
         <StepIndicator />
 
         {/* Back button */}
-        <TouchableOpacity onPress={() => { setStep('loan'); setError(''); }}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(15,30,53,0.18)' }}>
-          <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.textSec }}>← Back to Loan Form</Text>
+        <TouchableOpacity
+          onPress={() => {
+            setStep("loan");
+            setError("");
+          }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            marginBottom: 12,
+            alignSelf: "flex-start",
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: "rgba(15,30,53,0.18)",
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "GoogleSans_500Medium",
+              fontSize: 12,
+              color: C.textSec,
+            }}
+          >
+            ← Back to Loan Form
+          </Text>
         </TouchableOpacity>
 
         {/* ── Personal Data ── */}
         <GCard>
           <Text style={s.secTitle}>Personal Data</Text>
-          <Text style={[s.fieldLabel, { marginBottom: 4 }]}>APPLICANT'S NAME</Text>
-          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 11 }}>
-            <View style={{ flex: 1 }}><DField label="LAST NAME" value={cmLastName} onChangeText={v => { setCmLastName(v); setError(''); }} placeholder="Last Name" /></View>
-            <View style={{ flex: 1 }}><DField label="FIRST NAME" value={cmFirstName} onChangeText={v => { setCmFirstName(v); setError(''); }} placeholder="First Name" /></View>
-            <View style={{ flex: 1 }}><DField label="MIDDLE NAME" value={cmMiddleName} onChangeText={setCmMiddleName} placeholder="Middle Name" /></View>
-          </View>
-
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Text style={[s.fieldLabel, { marginBottom: 4 }]}>
+            APPLICANT'S NAME
+          </Text>
+          <View
+            style={{
+              flexDirection: isMobile ? "column" : "row",
+              gap: 6,
+              marginBottom: 11,
+            }}
+          >
             <View style={{ flex: 1 }}>
-              <DField label="BIRTHDATE (MM/DD/YYYY)" value={cmBirthdate} onChangeText={setCmBirthdate} placeholder="MM/DD/YYYY" />
+              <DField
+                label="LAST NAME"
+                value={cmLastName}
+                onChangeText={(v) => {
+                  setCmLastName(v);
+                  setError("");
+                }}
+                placeholder="Last Name"
+              />
             </View>
             <View style={{ flex: 1 }}>
-              <FieldLabel label="CIVIL STATUS" />
-              <RadioGroup options={['Single', 'Married', 'Widowed', 'Separated']} value={cmCivilStatus} onSelect={setCmCivilStatus} row={false} />
+              <DField
+                label="FIRST NAME"
+                value={cmFirstName}
+                onChangeText={(v) => {
+                  setCmFirstName(v);
+                  setError("");
+                }}
+                placeholder="First Name"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="MIDDLE NAME"
+                value={cmMiddleName}
+                onChangeText={setCmMiddleName}
+                placeholder="Middle Name"
+              />
             </View>
           </View>
 
-          <FieldLabel label="GENDER" />
-          <RadioGroup options={['Male', 'Female']} value={cmGender} onSelect={setCmGender} />
+          <DatePicker
+            label="BIRTHDATE"
+            value={cmBirthdate}
+            onChange={setCmBirthdate}
+          />
 
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}><DField label="CITIZENSHIP" value={cmCitizenship} onChangeText={setCmCitizenship} placeholder="e.g. Filipino" /></View>
-            <View style={{ flex: 1 }}><DField label="RELIGION" value={cmReligion} onChangeText={setCmReligion} placeholder="e.g. Roman Catholic" /></View>
+          <DropdownPicker
+            label="CIVIL STATUS"
+            options={["Single", "Married", "Widowed", "Separated"]}
+            value={cmCivilStatus}
+            onSelect={setCmCivilStatus}
+          />
+
+          <DropdownPicker
+            label="GENDER"
+            options={["Male", "Female"]}
+            value={cmGender}
+            onSelect={setCmGender}
+          />
+
+          <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <DropdownPicker
+                label="CITIZENSHIP"
+                options={["Filipino", "Dual Citizen", "Foreign National"]}
+                value={cmCitizenship}
+                onSelect={setCmCitizenship}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="RELIGION"
+                value={cmReligion}
+                onChangeText={setCmReligion}
+                placeholder="e.g. Roman Catholic"
+              />
+            </View>
           </View>
 
-          <DField label="COMPLETE HOME/PRESENT ADDRESS" value={cmAddress} onChangeText={setCmAddress} placeholder="House No., Street, Barangay, City" />
+          <PhAddressPicker
+            province={cmAddrProvince}
+            setProvince={setCmAddrProvince}
+            city={cmAddrCity}
+            setCity={setCmAddrCity}
+            barangay={cmAddrBarangay}
+            setBarangay={setCmAddrBarangay}
+            street={cmAddrStreet}
+            setStreet={setCmAddrStreet}
+            onAddressChange={setCmAddress}
+          />
 
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}><DField label="CELLPHONE NUMBER" value={cmCellphone} onChangeText={setCmCellphone} placeholder="09XX-XXX-XXXX" keyboardType="phone-pad" /></View>
-            <View style={{ flex: 1 }}><DField label="EMAIL ADDRESS" value={cmEmail} onChangeText={setCmEmail} placeholder="email@example.com" keyboardType="email-address" /></View>
+          <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="CELLPHONE NUMBER"
+                value={cmCellphone}
+                onChangeText={setCmCellphone}
+                placeholder="09XX-XXX-XXXX"
+                keyboardType="phone-pad"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="EMAIL ADDRESS"
+                value={cmEmail}
+                onChangeText={setCmEmail}
+                placeholder="email@example.com"
+                keyboardType="email-address"
+              />
+            </View>
           </View>
 
-          <DField label="LENGTH OF STAY (years)" value={cmLengthOfStay} onChangeText={setCmLengthOfStay} placeholder="e.g. 5 years" />
+          <DField
+            label="LENGTH OF STAY (years)"
+            value={cmLengthOfStay}
+            onChangeText={setCmLengthOfStay}
+            placeholder="e.g. 5 years"
+          />
 
-          <FieldLabel label="HOUSING STATUS" />
-          <RadioGroup options={['Owned', 'Living w/ Parents/Relatives', 'Rented']} value={cmHousingStatus} onSelect={setCmHousingStatus} row={false} />
+          <DropdownPicker
+            label="HOUSING STATUS"
+            options={["Owned", "Living w/ Parents/Relatives", "Rented"]}
+            value={cmHousingStatus}
+            onSelect={setCmHousingStatus}
+          />
 
-          {cmHousingStatus === 'Rented' && (
+          {cmHousingStatus === "Rented" && (
             <>
-              <DField label="NAME OF LANDLORD" value={cmLandlordName} onChangeText={setCmLandlordName} placeholder="Landlord's full name" />
-              <DField label="LANDLORD ADDRESS" value={cmLandlordAddress} onChangeText={setCmLandlordAddress} placeholder="Address" />
-              <DField label="LANDLORD CONTACT NUMBER" value={cmLandlordContact} onChangeText={setCmLandlordContact} placeholder="Contact number" keyboardType="phone-pad" />
+              <DField
+                label="NAME OF LANDLORD"
+                value={cmLandlordName}
+                onChangeText={setCmLandlordName}
+                placeholder="Landlord's full name"
+              />
+              <DField
+                label="LANDLORD ADDRESS"
+                value={cmLandlordAddress}
+                onChangeText={setCmLandlordAddress}
+                placeholder="Address"
+              />
+              <DField
+                label="LANDLORD CONTACT NUMBER"
+                value={cmLandlordContact}
+                onChangeText={setCmLandlordContact}
+                placeholder="Contact number"
+                keyboardType="phone-pad"
+              />
             </>
           )}
         </GCard>
@@ -2564,40 +9506,116 @@ const ApplyLoanView = ({ member, contentHeight }) => {
         {/* ── Employment ── */}
         <GCard>
           <Text style={s.secTitle}>Employment</Text>
-          <DField label="PRESENT EMPLOYER" value={cmEmployer} onChangeText={setCmEmployer} placeholder="Company / Employer name" />
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}><DField label="TIN" value={cmTIN} onChangeText={setCmTIN} placeholder="TIN Number" /></View>
-            <View style={{ flex: 1 }}><DField label="SSS/GSIS #" value={cmSSS} onChangeText={setCmSSS} placeholder="SSS or GSIS #" /></View>
+          <DField
+            label="PRESENT EMPLOYER"
+            value={cmEmployer}
+            onChangeText={setCmEmployer}
+            placeholder="Company / Employer name"
+          />
+          <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="TIN"
+                value={cmTIN}
+                onChangeText={setCmTIN}
+                placeholder="TIN Number"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="SSS/GSIS #"
+                value={cmSSS}
+                onChangeText={setCmSSS}
+                placeholder="SSS or GSIS #"
+              />
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}><DField label="LENGTH OF SERVICE" value={cmLengthService} onChangeText={setCmLengthService} placeholder="e.g. 3 years" /></View>
-            <View style={{ flex: 1 }}><DField label="MONTHLY SALARY (₱)" value={cmMonthlySalary} onChangeText={setCmMonthlySalary} placeholder="0.00" keyboardType="numeric" /></View>
+          <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="LENGTH OF SERVICE"
+                value={cmLengthService}
+                onChangeText={setCmLengthService}
+                placeholder="e.g. 3 years"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="MONTHLY SALARY (₱)"
+                value={cmMonthlySalary}
+                onChangeText={setCmMonthlySalary}
+                placeholder="0.00"
+                keyboardType="numeric"
+              />
+            </View>
           </View>
-          <DField label="OTHER SOURCE OF INCOME" value={cmOtherIncome} onChangeText={setCmOtherIncome} placeholder="e.g. Business, Rental (optional)" />
+          <DField
+            label="OTHER SOURCE OF INCOME"
+            value={cmOtherIncome}
+            onChangeText={setCmOtherIncome}
+            placeholder="e.g. Business, Rental (optional)"
+          />
         </GCard>
 
         {/* ── Spouse ── */}
         <GCard>
           <Text style={s.secTitle}>Spouse Information</Text>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginBottom: 10 }}>Leave blank if not applicable.</Text>
-          <DField label="NAME OF SPOUSE (Last, First, Middle)" value={cmSpouseName} onChangeText={setCmSpouseName} placeholder="Spouse's full name" />
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}><DField label="CONTACT NO." value={cmSpouseContact} onChangeText={setCmSpouseContact} placeholder="Cellphone number" keyboardType="phone-pad" /></View>
-            <View style={{ flex: 1 }}><DField label="EMAIL ADDRESS" value={cmSpouseEmail} onChangeText={setCmSpouseEmail} placeholder="email@example.com" /></View>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 11,
+              color: C.textMuted,
+              marginBottom: 10,
+            }}
+          >
+            Leave blank if not applicable.
+          </Text>
+          <DField
+            label="NAME OF SPOUSE (Last, First, Middle)"
+            value={cmSpouseName}
+            onChangeText={setCmSpouseName}
+            placeholder="Spouse's full name"
+          />
+          <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="CONTACT NO."
+                value={cmSpouseContact}
+                onChangeText={setCmSpouseContact}
+                placeholder="Cellphone number"
+                keyboardType="phone-pad"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="EMAIL ADDRESS"
+                value={cmSpouseEmail}
+                onChangeText={setCmSpouseEmail}
+                placeholder="email@example.com"
+              />
+            </View>
           </View>
-          <DField label="PRESENT EMPLOYER" value={cmSpouseEmployer} onChangeText={setCmSpouseEmployer} placeholder="Spouse's employer" />
+          <DField
+            label="PRESENT EMPLOYER"
+            value={cmSpouseEmployer}
+            onChangeText={setCmSpouseEmployer}
+            placeholder="Spouse's employer"
+          />
         </GCard>
 
         {/* ── Children ── */}
         <GCard>
           <Text style={s.secTitle}>Name of Children</Text>
           {cmChildren.map((child, idx) => (
-            <View key={idx} style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+            <View
+              key={idx}
+              style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}
+            >
               <View style={{ flex: 3 }}>
                 <TextInput
                   style={[s.fieldInput, { marginBottom: 0 }]}
                   value={child.name}
-                  onChangeText={v => {
+                  onChangeText={(v) => {
                     const updated = [...cmChildren];
                     updated[idx] = { ...updated[idx], name: v };
                     setCmChildren(updated);
@@ -2610,7 +9628,7 @@ const ApplyLoanView = ({ member, contentHeight }) => {
                 <TextInput
                   style={[s.fieldInput, { marginBottom: 0 }]}
                   value={child.age}
-                  onChangeText={v => {
+                  onChangeText={(v) => {
                     const updated = [...cmChildren];
                     updated[idx] = { ...updated[idx], age: v };
                     setCmChildren(updated);
@@ -2624,7 +9642,7 @@ const ApplyLoanView = ({ member, contentHeight }) => {
                 <TextInput
                   style={[s.fieldInput, { marginBottom: 0 }]}
                   value={child.birthday}
-                  onChangeText={v => {
+                  onChangeText={(v) => {
                     const updated = [...cmChildren];
                     updated[idx] = { ...updated[idx], birthday: v };
                     setCmChildren(updated);
@@ -2635,7 +9653,14 @@ const ApplyLoanView = ({ member, contentHeight }) => {
               </View>
             </View>
           ))}
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 4 }}>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 10,
+              color: C.textMuted,
+              marginTop: 4,
+            }}
+          >
             Column order: Full Name (Last, First, Middle) · Age · Birthday
           </Text>
         </GCard>
@@ -2643,60 +9668,177 @@ const ApplyLoanView = ({ member, contentHeight }) => {
         {/* ── Parents ── */}
         <GCard>
           <Text style={s.secTitle}>Parents</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}><DField label="NAME OF MOTHER (Last, First, Middle)" value={cmMotherName} onChangeText={setCmMotherName} placeholder="Mother's full name" /></View>
-            <View style={{ flex: 1 }}><DField label="CONTACT NO." value={cmMotherContact} onChangeText={setCmMotherContact} placeholder="Contact number" keyboardType="phone-pad" /></View>
+          <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="NAME OF MOTHER (Last, First, Middle)"
+                value={cmMotherName}
+                onChangeText={setCmMotherName}
+                placeholder="Mother's full name"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="CONTACT NO."
+                value={cmMotherContact}
+                onChangeText={setCmMotherContact}
+                placeholder="Contact number"
+                keyboardType="phone-pad"
+              />
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}><DField label="NAME OF FATHER (Last, First, Middle)" value={cmFatherName} onChangeText={setCmFatherName} placeholder="Father's full name" /></View>
-            <View style={{ flex: 1 }}><DField label="CONTACT NO." value={cmFatherContact} onChangeText={setCmFatherContact} placeholder="Contact number" keyboardType="phone-pad" /></View>
+          <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="NAME OF FATHER (Last, First, Middle)"
+                value={cmFatherName}
+                onChangeText={setCmFatherName}
+                placeholder="Father's full name"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="CONTACT NO."
+                value={cmFatherContact}
+                onChangeText={setCmFatherContact}
+                placeholder="Contact number"
+                keyboardType="phone-pad"
+              />
+            </View>
           </View>
         </GCard>
 
         {/* ── Undertaking Notice ── */}
-        <GCard style={{ backgroundColor: 'rgba(37,99,176,0.08)', borderColor: 'rgba(37,99,176,0.28)' }}>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.blue, marginBottom: 8 }}>📋 Undertaking</Text>
+        <GCard
+          style={{
+            backgroundColor: "rgba(37,99,176,0.08)",
+            borderColor: "rgba(37,99,176,0.28)",
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "GoogleSans_700Bold",
+              fontSize: 12,
+              color: C.blue,
+              marginBottom: 8,
+            }}
+          >
+            📋 Undertaking
+          </Text>
           {[
-            'I certify that all information provided in this application is true and correct.',
-            'I agree to comply with the loan\'s terms and conditions as approved under the Cooperative\'s Credit Policy.',
-            'I agree to become the co-maker of the applicant in signing the Promissory Note and shall be jointly and severally liable.',
+            "I certify that all information provided in this application is true and correct.",
+            "I agree to comply with the loan's terms and conditions as approved under the Cooperative's Credit Policy.",
+            "I agree to become the co-maker of the applicant in signing the Promissory Note and shall be jointly and severally liable.",
           ].map((t, i) => (
-            <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, lineHeight: 18, marginBottom: 4 }}>• {t}</Text>
+            <Text
+              key={i}
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 11,
+                color: C.textSec,
+                lineHeight: 18,
+                marginBottom: 4,
+              }}
+            >
+              • {t}
+            </Text>
           ))}
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginTop: 8, fontStyle: 'italic' }}>
-            By submitting, you acknowledge and agree to the above undertaking on behalf of the co-maker.
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 11,
+              color: C.textMuted,
+              marginTop: 8,
+              fontStyle: "italic",
+            }}
+          >
+            By submitting, you acknowledge and agree to the above undertaking on
+            behalf of the co-maker.
           </Text>
         </GCard>
 
         {error ? (
-          <View style={{ backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(192,57,43,0.28)', padding: 10, marginBottom: 8 }}>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.red }}>{error}</Text>
+          <View
+            style={{
+              backgroundColor: "rgba(192,57,43,0.10)",
+              borderRadius: 9,
+              borderWidth: 1,
+              borderColor: "rgba(192,57,43,0.28)",
+              padding: 10,
+              marginBottom: 8,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 12,
+                color: C.red,
+              }}
+            >
+              {error}
+            </Text>
           </View>
         ) : null}
 
-        <SaveBtn onPress={handleSubmit} loading={loading} done={done} label="Submit Both Applications" doneLabel="Submitted Successfully!" />
+        <SaveBtn
+          onPress={handleSubmit}
+          loading={loading}
+          done={done}
+          label="Submit Both Applications"
+          doneLabel="Submitted Successfully!"
+        />
       </ScrollView>
     );
   }
 
   // ── STEP 1 — Main Loan Application ───────────────────────────────────────
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator style={contentHeight ? { height: contentHeight } : undefined}>
+    <ScrollView
+      contentContainerStyle={s.pageOuter}
+      showsVerticalScrollIndicator
+      style={contentHeight ? { height: contentHeight } : undefined}
+    >
       <Text style={s.pageTitle}>📝 Apply for a Loan</Text>
-      <Text style={s.pageSub}>Form:003 — Fill out all fields completely and accurately.</Text>
+      <Text style={s.pageSub}>
+        Form:003 — Fill out all fields completely and accurately.
+      </Text>
       <StepIndicator />
 
       {/* ── Before You Apply ── */}
-      <GCard style={{ backgroundColor: 'rgba(37,99,176,0.10)', borderColor: 'rgba(37,99,176,0.30)' }}>
-        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.blue, marginBottom: 6 }}>📌 Before You Apply</Text>
+      <GCard
+        style={{
+          backgroundColor: "rgba(37,99,176,0.10)",
+          borderColor: "rgba(37,99,176,0.30)",
+        }}
+      >
+        <Text
+          style={{
+            fontFamily: "GoogleSans_700Bold",
+            fontSize: 12,
+            color: C.blue,
+            marginBottom: 6,
+          }}
+        >
+          📌 Before You Apply
+        </Text>
         {[
-          'Must be active for at least 3 months.',
-          'Loan is up to 3x your share capital.',
+          "Must be active for at least 3 months.",
+          "Loan is up to 3x your share capital.",
           `Your share capital: ${fmtCur(member.shares)}`,
           `Estimated max loan: ${fmtCur((member.shares || 0) * 3)}`,
-          'A co-maker statement is required (Step 2).',
+          "A co-maker statement is required (Step 2).",
         ].map((t, i) => (
-          <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 19 }}>• {t}</Text>
+          <Text
+            key={i}
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 12,
+              color: C.textSec,
+              lineHeight: 19,
+            }}
+          >
+            • {t}
+          </Text>
         ))}
       </GCard>
 
@@ -2704,139 +9846,342 @@ const ApplyLoanView = ({ member, contentHeight }) => {
       <GCard>
         <Text style={s.secTitle}>Loan Type</Text>
 
-        {/* Housing / Vehicle */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-          {['Housing Loan', 'Vehicle Loan'].map(lt => (
-            <TouchableOpacity key={lt} onPress={() => { setLoanType(lt); setIsRenewal(false); setError(''); }}
+        {/* Row 1: Housing Loan | Vehicle Loan */}
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+          {["Housing Loan", "Vehicle Loan"].map((lt) => (
+            <TouchableOpacity
+              key={lt}
+              onPress={() => {
+                setLoanType(lt);
+                setIsRenewal(false);
+                setError("");
+              }}
               style={{
-                paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 20,
                 borderWidth: 1.5,
-                borderColor: loanType === lt ? C.gold : 'rgba(15,30,53,0.18)',
-                backgroundColor: loanType === lt ? 'rgba(201,168,76,0.15)' : C.surface,
-              }}>
-              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.navy }}>{lt}</Text>
+                alignItems: "center",
+                borderColor: loanType === lt ? C.gold : "rgba(15,30,53,0.18)",
+                backgroundColor:
+                  loanType === lt ? "rgba(201,168,76,0.15)" : C.surface,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_500Medium",
+                  fontSize: 12,
+                  color: C.navy,
+                }}
+              >
+                {lt}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Salary Loan with New/Renewal */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
-          <TouchableOpacity
-            onPress={() => { setLoanType('Salary Loan'); setError(''); }}
-            style={{
-              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-              borderWidth: 1.5,
-              borderColor: loanType === 'Salary Loan' ? C.gold : 'rgba(15,30,53,0.18)',
-              backgroundColor: loanType === 'Salary Loan' ? 'rgba(201,168,76,0.15)' : C.surface,
-            }}>
-            <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.navy }}>Salary Loan</Text>
-          </TouchableOpacity>
-          {loanType === 'Salary Loan' && (
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              {['New', 'Renewal'].map(opt => (
-                <TouchableOpacity key={opt} onPress={() => setIsRenewal(opt === 'Renewal')}
-                  style={{
-                    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16,
-                    borderWidth: 1.5,
-                    borderColor: (isRenewal ? 'Renewal' : 'New') === opt ? C.navy : 'rgba(15,30,53,0.18)',
-                    backgroundColor: (isRenewal ? 'Renewal' : 'New') === opt ? 'rgba(15,30,53,0.10)' : 'transparent',
-                  }}>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.navy }}>{opt}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+        {/* Row 2: Salary Loan | Buy-Out */}
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+          {[
+            { label: "Salary Loan", key: "Salary Loan" },
+            { label: "Buy-Out", key: "Buy-Out" },
+          ].map(({ label, key }) => (
+            <TouchableOpacity
+              key={key}
+              onPress={() => {
+                setLoanType(key);
+                setError("");
+              }}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 20,
+                borderWidth: 1.5,
+                alignItems: "center",
+                borderColor: loanType === key ? C.gold : "rgba(15,30,53,0.18)",
+                backgroundColor:
+                  loanType === key ? "rgba(201,168,76,0.15)" : C.surface,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_500Medium",
+                  fontSize: 12,
+                  color: C.navy,
+                }}
+              >
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Buy-Out with New/Renewal */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-          <TouchableOpacity
-            onPress={() => { setLoanType('Buy-Out'); setError(''); }}
-            style={{
-              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-              borderWidth: 1.5,
-              borderColor: loanType === 'Buy-Out' ? C.gold : 'rgba(15,30,53,0.18)',
-              backgroundColor: loanType === 'Buy-Out' ? 'rgba(201,168,76,0.15)' : C.surface,
-            }}>
-            <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.navy }}>Buy-Out</Text>
-          </TouchableOpacity>
-          {loanType === 'Buy-Out' && (
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              {['New', 'Renewal'].map(opt => (
-                <TouchableOpacity key={opt} onPress={() => setIsRenewal(opt === 'Renewal')}
+        {/* New / Renewal sub-options — shown below when Salary Loan or Buy-Out selected */}
+        {(loanType === "Salary Loan" || loanType === "Buy-Out") && (
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+            {["New", "Renewal"].map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                onPress={() => setIsRenewal(opt === "Renewal")}
+                style={{
+                  flex: 1,
+                  paddingVertical: 8,
+                  borderRadius: 16,
+                  borderWidth: 1.5,
+                  alignItems: "center",
+                  borderColor:
+                    (isRenewal ? "Renewal" : "New") === opt
+                      ? C.navy
+                      : "rgba(15,30,53,0.18)",
+                  backgroundColor:
+                    (isRenewal ? "Renewal" : "New") === opt
+                      ? "rgba(15,30,53,0.10)"
+                      : "transparent",
+                }}
+              >
+                <Text
                   style={{
-                    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16,
-                    borderWidth: 1.5,
-                    borderColor: (isRenewal ? 'Renewal' : 'New') === opt ? C.navy : 'rgba(15,30,53,0.18)',
-                    backgroundColor: (isRenewal ? 'Renewal' : 'New') === opt ? 'rgba(15,30,53,0.10)' : 'transparent',
-                  }}>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.navy }}>{opt}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 11,
+                    color: C.navy,
+                  }}
+                >
+                  {opt}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
-        <DField label="LOAN AMOUNT (₱)" value={loanAmount} onChangeText={v => { setLoanAmount(v); setError(''); }} placeholder="e.g. 50000" keyboardType="numeric" />
+        <DField
+          label="LOAN AMOUNT (₱)"
+          value={loanAmount}
+          onChangeText={(v) => {
+            setLoanAmount(v);
+            setError("");
+          }}
+          placeholder="e.g. 50000"
+          keyboardType="numeric"
+        />
       </GCard>
 
       {/* ── Personal Data ── */}
       <GCard>
         <Text style={s.secTitle}>Personal Data</Text>
-        <Text style={[s.fieldLabel, { marginBottom: 4 }]}>APPLICANT'S NAME (Last Name, First Name, Middle Name)</Text>
-        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 11 }}>
-          <View style={{ flex: 1 }}><DField label="LAST NAME" value={lastName} onChangeText={v => { setLastName(v); setError(''); }} placeholder="Last Name" /></View>
-          <View style={{ flex: 1 }}><DField label="FIRST NAME" value={firstName} onChangeText={v => { setFirstName(v); setError(''); }} placeholder="First Name" /></View>
-          <View style={{ flex: 1 }}><DField label="MIDDLE NAME" value={middleName} onChangeText={setMiddleName} placeholder="Middle Name" /></View>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Text style={[s.fieldLabel, { marginBottom: 4 }]}>
+          APPLICANT'S NAME (Last Name, First Name, Middle Name)
+        </Text>
+        <View
+          style={{
+            flexDirection: isMobile ? "column" : "row",
+            gap: 6,
+            marginBottom: 11,
+          }}
+        >
           <View style={{ flex: 1 }}>
-            <DField label="BIRTHDATE (Month/Day/Year)" value={birthdate} onChangeText={setBirthdate} placeholder="MM/DD/YYYY" />
+            <DField
+              label="LAST NAME"
+              value={lastName}
+              onChangeText={(v) => {
+                setLastName(v);
+                setError("");
+              }}
+              placeholder="Last Name"
+            />
           </View>
           <View style={{ flex: 1 }}>
-            <FieldLabel label="CIVIL STATUS" />
-            <RadioGroup options={['Single', 'Married', 'Widowed', 'Separated']} value={civilStatus} onSelect={setCivilStatus} row={false} />
+            <DField
+              label="FIRST NAME"
+              value={firstName}
+              onChangeText={(v) => {
+                setFirstName(v);
+                setError("");
+              }}
+              placeholder="First Name"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="MIDDLE NAME"
+              value={middleName}
+              onChangeText={setMiddleName}
+              placeholder="Middle Name"
+            />
           </View>
         </View>
 
-        <FieldLabel label="GENDER" />
-        <RadioGroup options={['Male', 'Female']} value={gender} onSelect={setGender} />
+        <DatePicker
+          label="BIRTHDATE"
+          value={birthdate}
+          onChange={setBirthdate}
+        />
 
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><DField label="CITIZENSHIP" value={citizenship} onChangeText={setCitizenship} placeholder="e.g. Filipino" /></View>
-          <View style={{ flex: 1 }}><DField label="RELIGION" value={religion} onChangeText={setReligion} placeholder="e.g. Roman Catholic" /></View>
+        <DropdownPicker
+          label="CIVIL STATUS"
+          options={["Single", "Married", "Widowed", "Separated"]}
+          value={civilStatus}
+          onSelect={setCivilStatus}
+        />
+
+        <DropdownPicker
+          label="GENDER"
+          options={["Male", "Female"]}
+          value={gender}
+          onSelect={setGender}
+        />
+
+        <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <DropdownPicker
+              label="CITIZENSHIP"
+              options={["Filipino", "Dual Citizen", "Foreign National"]}
+              value={citizenship}
+              onSelect={setCitizenship}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="RELIGION"
+              value={religion}
+              onChangeText={setReligion}
+              placeholder="e.g. Roman Catholic"
+            />
+          </View>
         </View>
 
-        <DField label="COMPLETE HOME/PRESENT ADDRESS" value={address} onChangeText={setAddress} placeholder="House No., Street, Barangay, City" />
+        <PhAddressPicker
+          province={addrProvince}
+          setProvince={setAddrProvince}
+          city={addrCity}
+          setCity={setAddrCity}
+          barangay={addrBarangay}
+          setBarangay={setAddrBarangay}
+          street={addrStreet}
+          setStreet={setAddrStreet}
+          onAddressChange={setAddress}
+        />
 
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><DField label="CELLPHONE NUMBER" value={cellphone} onChangeText={setCellphone} placeholder="09XX-XXX-XXXX" keyboardType="phone-pad" /></View>
-          <View style={{ flex: 1 }}><DField label="EMAIL ADDRESS" value={email} onChangeText={setEmail} placeholder="email@example.com" keyboardType="email-address" /></View>
+        <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="CELLPHONE NUMBER"
+              value={cellphone}
+              onChangeText={setCellphone}
+              placeholder="09XX-XXX-XXXX"
+              keyboardType="phone-pad"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="EMAIL ADDRESS"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="email@example.com"
+              keyboardType="email-address"
+            />
+          </View>
         </View>
       </GCard>
 
       {/* ── Spouse Info ── */}
       <GCard>
         <Text style={s.secTitle}>Spouse Information</Text>
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, marginBottom: 10 }}>Leave blank if not applicable.</Text>
-        <DField label="SPOUSE NAME (Last, First, Middle)" value={spouseName} onChangeText={setSpouseName} placeholder="Spouse's full name" />
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><DField label="SPOUSE OCCUPATION" value={spouseOccupation} onChangeText={setSpouseOccupation} placeholder="Occupation (if employed)" /></View>
-          <View style={{ flex: 1 }}><DField label="SPOUSE EMPLOYER" value={spouseEmployer} onChangeText={setSpouseEmployer} placeholder="Employer (if employed)" /></View>
+        <Text
+          style={{
+            fontFamily: "GoogleSans_400Regular",
+            fontSize: 11,
+            color: C.textMuted,
+            marginBottom: 10,
+          }}
+        >
+          Leave blank if not applicable.
+        </Text>
+        <DField
+          label="SPOUSE NAME (Last, First, Middle)"
+          value={spouseName}
+          onChangeText={setSpouseName}
+          placeholder="Spouse's full name"
+        />
+        <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="SPOUSE OCCUPATION"
+              value={spouseOccupation}
+              onChangeText={setSpouseOccupation}
+              placeholder="Occupation (if employed)"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="SPOUSE EMPLOYER"
+              value={spouseEmployer}
+              onChangeText={setSpouseEmployer}
+              placeholder="Employer (if employed)"
+            />
+          </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><DField label="SPOUSE LENGTH OF SERVICE" value={spouseLengthService} onChangeText={setSpouseLengthService} placeholder="e.g. 3 years" /></View>
-          <View style={{ flex: 1 }}><DField label="SPOUSE MONTHLY INCOME (₱)" value={spouseMonthlyIncome} onChangeText={setSpouseMonthlyIncome} placeholder="0.00" keyboardType="numeric" /></View>
+        <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="SPOUSE LENGTH OF SERVICE"
+              value={spouseLengthService}
+              onChangeText={setSpouseLengthService}
+              placeholder="e.g. 3 years"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="SPOUSE MONTHLY INCOME (₱)"
+              value={spouseMonthlyIncome}
+              onChangeText={setSpouseMonthlyIncome}
+              placeholder="0.00"
+              keyboardType="numeric"
+            />
+          </View>
         </View>
-        <DField label="SPOUSE EMPLOYER ADDRESS" value={spouseEmployerAddr} onChangeText={setSpouseEmployerAddr} placeholder="Employer address" />
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><DField label="SPOUSE CELLPHONE" value={spouseCellphone} onChangeText={setSpouseCellphone} placeholder="09XX-XXX-XXXX" keyboardType="phone-pad" /></View>
-          <View style={{ flex: 1 }}><DField label="SPOUSE EMAIL" value={spouseEmail} onChangeText={setSpouseEmail} placeholder="email@example.com" /></View>
+        <DField
+          label="SPOUSE EMPLOYER ADDRESS"
+          value={spouseEmployerAddr}
+          onChangeText={setSpouseEmployerAddr}
+          placeholder="Employer address"
+        />
+        <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="SPOUSE CELLPHONE"
+              value={spouseCellphone}
+              onChangeText={setSpouseCellphone}
+              placeholder="09XX-XXX-XXXX"
+              keyboardType="phone-pad"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="SPOUSE EMAIL"
+              value={spouseEmail}
+              onChangeText={setSpouseEmail}
+              placeholder="email@example.com"
+            />
+          </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><DField label="NO. OF CHILDREN" value={numChildren} onChangeText={setNumChildren} placeholder="0" keyboardType="numeric" /></View>
-          <View style={{ flex: 1 }}><DField label="NEAREST RELATIVE" value={nearestRelative} onChangeText={setNearestRelative} placeholder="Name of nearest relative" /></View>
+        <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="NO. OF CHILDREN"
+              value={numChildren}
+              onChangeText={setNumChildren}
+              placeholder="0"
+              keyboardType="numeric"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="NEAREST RELATIVE"
+              value={nearestRelative}
+              onChangeText={setNearestRelative}
+              placeholder="Name of nearest relative"
+            />
+          </View>
         </View>
       </GCard>
 
@@ -2844,34 +10189,108 @@ const ApplyLoanView = ({ member, contentHeight }) => {
       <GCard>
         <Text style={s.secTitle}>Other Properties Owned / Real Estate</Text>
         <FieldLabel label="REAL ESTATE" />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 }}>
-          <CheckItem label="House & Lot" checked={hasHouseLot} onToggle={() => setHasHouseLot(p => !p)} />
-          <CheckItem label="Lot" checked={hasLot} onToggle={() => setHasLot(p => !p)} />
+        <View
+          style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}
+        >
+          <CheckItem
+            label="House & Lot"
+            checked={hasHouseLot}
+            onToggle={() => setHasHouseLot((p) => !p)}
+          />
+          <CheckItem
+            label="Lot"
+            checked={hasLot}
+            onToggle={() => setHasLot((p) => !p)}
+          />
         </View>
         {(hasHouseLot || hasLot) && (
           <>
-            <DField label="LOCATION" value={propLocation} onChangeText={setPropLocation} placeholder="Location of property" />
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <View style={{ flex: 1 }}><DField label="TAX DECLARATION NO." value={propTaxDecNo} onChangeText={setPropTaxDecNo} placeholder="Tax Dec. No." /></View>
-              <View style={{ flex: 1 }}><DField label="ASSESSED VALUE (₱)" value={propAssessedVal} onChangeText={setPropAssessedVal} placeholder="0.00" keyboardType="numeric" /></View>
+            <DField
+              label="LOCATION"
+              value={propLocation}
+              onChangeText={setPropLocation}
+              placeholder="Location of property"
+            />
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <DField
+                  label="TAX DECLARATION NO."
+                  value={propTaxDecNo}
+                  onChangeText={setPropTaxDecNo}
+                  placeholder="Tax Dec. No."
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <DField
+                  label="ASSESSED VALUE (₱)"
+                  value={propAssessedVal}
+                  onChangeText={setPropAssessedVal}
+                  placeholder="0.00"
+                  keyboardType="numeric"
+                />
+              </View>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <View style={{ flex: 1 }}><DField label="MARKET VALUE (₱)" value={propMarketVal} onChangeText={setPropMarketVal} placeholder="0.00" keyboardType="numeric" /></View>
-              <View style={{ flex: 1 }}><DField label="MORTGAGE TO" value={propMortgageTo} onChangeText={setPropMortgageTo} placeholder="Mortgaged to (if any)" /></View>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <DField
+                  label="MARKET VALUE (₱)"
+                  value={propMarketVal}
+                  onChangeText={setPropMarketVal}
+                  placeholder="0.00"
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <DField
+                  label="MORTGAGE TO"
+                  value={propMortgageTo}
+                  onChangeText={setPropMortgageTo}
+                  placeholder="Mortgaged to (if any)"
+                />
+              </View>
             </View>
           </>
         )}
 
         <FieldLabel label="VEHICLE" />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 }}>
-          <CheckItem label="Car" checked={hasCar} onToggle={() => setHasCar(p => !p)} />
-          <CheckItem label="Motorcycle" checked={hasMotorcycle} onToggle={() => setHasMotorcycle(p => !p)} />
-          <CheckItem label="PUV" checked={hasPUV} onToggle={() => setHasPUV(p => !p)} />
+        <View
+          style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}
+        >
+          <CheckItem
+            label="Car"
+            checked={hasCar}
+            onToggle={() => setHasCar((p) => !p)}
+          />
+          <CheckItem
+            label="Motorcycle"
+            checked={hasMotorcycle}
+            onToggle={() => setHasMotorcycle((p) => !p)}
+          />
+          <CheckItem
+            label="PUV"
+            checked={hasPUV}
+            onToggle={() => setHasPUV((p) => !p)}
+          />
         </View>
         {(hasCar || hasMotorcycle || hasPUV) && (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}><DField label="MAKE/BRAND" value={vehicleMakeBrand} onChangeText={setVehicleMakeBrand} placeholder="e.g. Toyota Fortuner" /></View>
-            <View style={{ flex: 1 }}><DField label="AMOUNT (₱)" value={vehicleAmount} onChangeText={setVehicleAmount} placeholder="0.00" keyboardType="numeric" /></View>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="MAKE/BRAND"
+                value={vehicleMakeBrand}
+                onChangeText={setVehicleMakeBrand}
+                placeholder="e.g. Toyota Fortuner"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DField
+                label="AMOUNT (₱)"
+                value={vehicleAmount}
+                onChangeText={setVehicleAmount}
+                placeholder="0.00"
+                keyboardType="numeric"
+              />
+            </View>
           </View>
         )}
       </GCard>
@@ -2879,40 +10298,145 @@ const ApplyLoanView = ({ member, contentHeight }) => {
       {/* ── Application Agreement ── */}
       <GCard>
         <Text style={s.secTitle}>Application Agreement</Text>
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textMuted, lineHeight: 18, marginBottom: 12 }}>
-          I desire to borrow the said amount and promise to pay CESLA Multipurpose Cooperative, plus interest, in equal monthly/semi-monthly/amortization over the period specified.
+        <Text
+          style={{
+            fontFamily: "GoogleSans_400Regular",
+            fontSize: 11,
+            color: C.textMuted,
+            lineHeight: 18,
+            marginBottom: 12,
+          }}
+        >
+          I desire to borrow the said amount and promise to pay CESLA
+          Multipurpose Cooperative, plus interest, in equal
+          monthly/semi-monthly/amortization over the period specified.
         </Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><DField label="REPAYMENT PERIOD (months)" value={agreementMonths} onChangeText={setAgreementMonths} placeholder="e.g. 12" keyboardType="numeric" /></View>
-          <View style={{ flex: 1 }}><DField label="PENALTY % PER ANNUM" value={agreementPenalty} onChangeText={setAgreementPenalty} placeholder="e.g. 2" keyboardType="numeric" /></View>
+        <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="REPAYMENT PERIOD (months)"
+              value={agreementMonths}
+              onChangeText={setAgreementMonths}
+              placeholder="e.g. 12"
+              keyboardType="numeric"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <DField
+              label="PENALTY % PER ANNUM"
+              value={agreementPenalty}
+              onChangeText={setAgreementPenalty}
+              placeholder="e.g. 2"
+              keyboardType="numeric"
+            />
+          </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><DField label="PAYMENT START DATE" value={agreementStartDate} onChangeText={setAgreementStartDate} placeholder="MM/DD/YYYY" /></View>
-          <View style={{ flex: 1 }}><DField label="MATURITY DATE" value={agreementMaturity} onChangeText={setAgreementMaturity} placeholder="MM/DD/YYYY" /></View>
+        <View style={{ flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <DatePicker
+              label="PAYMENT START DATE"
+              value={agreementStartDate}
+              onChange={setAgreementStartDate}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <DatePicker
+              label="MATURITY DATE"
+              value={agreementMaturity}
+              onChange={setAgreementMaturity}
+            />
+          </View>
         </View>
       </GCard>
 
       {/* ── Note about co-maker ── */}
-      <GCard style={{ backgroundColor: 'rgba(196,125,14,0.10)', borderColor: 'rgba(196,125,14,0.35)' }}>
-        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.orange, marginBottom: 6 }}>⚠️ Co-Maker Required</Text>
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, lineHeight: 18 }}>
-          After completing this form, you will be asked to fill out the Co-Maker Statement (Form:004) on the next step. Please have your co-maker's details ready.
+      <GCard
+        style={{
+          backgroundColor: "rgba(196,125,14,0.10)",
+          borderColor: "rgba(196,125,14,0.35)",
+        }}
+      >
+        <Text
+          style={{
+            fontFamily: "GoogleSans_700Bold",
+            fontSize: 12,
+            color: C.orange,
+            marginBottom: 6,
+          }}
+        >
+          ⚠️ Co-Maker Required
+        </Text>
+        <Text
+          style={{
+            fontFamily: "GoogleSans_400Regular",
+            fontSize: 12,
+            color: C.textSec,
+            lineHeight: 18,
+          }}
+        >
+          After completing this form, you will be asked to fill out the Co-Maker
+          Statement (Form:004) on the next step. Please have your co-maker's
+          details ready.
         </Text>
       </GCard>
 
       {error ? (
-        <View style={{ backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(192,57,43,0.28)', padding: 10, marginBottom: 8 }}>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.red }}>{error}</Text>
+        <View
+          style={{
+            backgroundColor: "rgba(192,57,43,0.10)",
+            borderRadius: 9,
+            borderWidth: 1,
+            borderColor: "rgba(192,57,43,0.28)",
+            padding: 10,
+            marginBottom: 8,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 12,
+              color: C.red,
+            }}
+          >
+            {error}
+          </Text>
         </View>
       ) : null}
 
       {/* Next Step Button */}
       <TouchableOpacity
         onPress={handleNextStep}
-        style={{ borderRadius: 14, overflow: 'hidden', marginTop: 6, shadowColor: C.gold, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 5 }}>
-        <LinearGradient colors={[C.gold, C.goldLt]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8 }}>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy, letterSpacing: 1.5 }}>
+        style={{
+          borderRadius: 14,
+          overflow: "hidden",
+          marginTop: 6,
+          shadowColor: C.gold,
+          shadowOpacity: 0.35,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 3 },
+          elevation: 5,
+        }}
+      >
+        <LinearGradient
+          colors={[C.gold, C.goldLt]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingVertical: 14,
+            gap: 8,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "GoogleSans_700Bold",
+              fontSize: 14,
+              color: C.navy,
+              letterSpacing: 1.5,
+            }}
+          >
             NEXT: CO-MAKER STATEMENT →
           </Text>
         </LinearGradient>
@@ -2925,79 +10449,214 @@ const MyLoansView = ({ member, contentHeight }) => {
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const [withdrawAmt, setWithdrawAmt] = useState('');
+  const [withdrawAmt, setWithdrawAmt] = useState("");
   const [withdrawBusy, setWithdrawBusy] = useState(false);
-  const [withdrawDone, setWithdrawDone] = useState('');
-  const [withdrawErr, setWithdrawErr] = useState('');
+  const [withdrawDone, setWithdrawDone] = useState("");
+  const [withdrawErr, setWithdrawErr] = useState("");
 
   useEffect(() => {
-    return onSnapshot(query(collection(db, 'loanApplications'), where('memberId', '==', member.uid), orderBy('createdAt', 'desc')), snap => { setApps(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); });
+    return onSnapshot(
+      query(
+        collection(db, "loanApplications"),
+        where("memberId", "==", member.uid),
+        orderBy("createdAt", "desc"),
+      ),
+      (snap) => {
+        setApps(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setLoading(false);
+      },
+    );
   }, [member.uid]);
 
   const loanBalance = Number(member.loanBalance || 0);
-  const loanTotal   = Number(member.loan || 0);
+  const loanTotal = Number(member.loan || 0);
   const prog = loanTotal > 0 ? (loanTotal - loanBalance) / loanTotal : 0;
 
   const handleLoanWithdraw = async () => {
     const amt = parseFloat(withdrawAmt);
-    if (!amt || amt <= 0)     { setWithdrawErr('Enter a valid amount.'); return; }
-    if (amt > loanBalance)    { setWithdrawErr(`Exceeds Loan Wallet balance (${fmtCur(loanBalance)}).`); return; }
-    if (amt > 9999999)        { setWithdrawErr('Amount too large.'); return; }
-    setWithdrawBusy(true); setWithdrawErr('');
+    if (!amt || amt <= 0) {
+      setWithdrawErr("Enter a valid amount.");
+      return;
+    }
+    if (amt > loanBalance) {
+      setWithdrawErr(`Exceeds Loan Wallet balance (${fmtCur(loanBalance)}).`);
+      return;
+    }
+    if (amt > 9999999) {
+      setWithdrawErr("Amount too large.");
+      return;
+    }
+    setWithdrawBusy(true);
+    setWithdrawErr("");
     try {
-      const existingPending = await getDocs(query(
-        collection(db, 'withdrawalRequests'),
-        where('memberId', '==', member.uid),
-        where('type', '==', 'loan'),
-        where('status', '==', 'Pending')
-      ));
-      if (!existingPending.empty) { setWithdrawErr('You already have a pending loan withdrawal. Wait for admin approval.'); setWithdrawBusy(false); return; }
-      await addDoc(collection(db, 'withdrawalRequests'), {
-        memberId: member.uid, memberName: member.name, memberUserId: member.userId,
-        type: 'loan', amount: amt, remarks: 'Loan Wallet Withdrawal', status: 'Pending',
+      const existingPending = await getDocs(
+        query(
+          collection(db, "withdrawalRequests"),
+          where("memberId", "==", member.uid),
+          where("type", "==", "loan"),
+          where("status", "==", "Pending"),
+        ),
+      );
+      if (!existingPending.empty) {
+        setWithdrawErr(
+          "You already have a pending loan withdrawal. Wait for admin approval.",
+        );
+        setWithdrawBusy(false);
+        return;
+      }
+      await addDoc(collection(db, "withdrawalRequests"), {
+        memberId: member.uid,
+        memberName: member.name,
+        memberUserId: member.userId,
+        type: "loan",
+        amount: amt,
+        remarks: "Loan Wallet Withdrawal",
+        status: "Pending",
         createdAt: serverTimestamp(),
       });
-      await addDoc(collection(db, 'adminNotifications'), {
-        type: 'withdrawal_request', icon: '📤',
+      await addDoc(collection(db, "adminNotifications"), {
+        type: "withdrawal_request",
+        icon: "📤",
         title: `Loan Wallet Withdrawal — ${member.name}`,
         message: `${member.name} (${member.userId}) requesting loan wallet withdrawal of ${fmtCur(amt)}.`,
-        memberId: member.uid, memberUserId: member.userId,
-        createdAt: serverTimestamp(), read: false,
+        memberId: member.uid,
+        memberUserId: member.userId,
+        createdAt: serverTimestamp(),
+        read: false,
       });
-      setWithdrawDone(`✓ Withdrawal request of ${fmtCur(amt)} submitted! Awaiting admin approval.`);
-      setWithdrawAmt('');
-      setTimeout(() => { setShowWithdrawModal(false); setWithdrawDone(''); }, 2500);
-    } catch (e) { setWithdrawErr(e.message || 'Request failed.'); }
-    finally { setWithdrawBusy(false); }
+      setWithdrawDone(
+        `✓ Withdrawal request of ${fmtCur(amt)} submitted! Awaiting admin approval.`,
+      );
+      setWithdrawAmt("");
+      setTimeout(() => {
+        setShowWithdrawModal(false);
+        setWithdrawDone("");
+      }, 2500);
+    } catch (e) {
+      setWithdrawErr(e.message || "Request failed.");
+    } finally {
+      setWithdrawBusy(false);
+    }
   };
 
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
-
+    <ScrollView
+      contentContainerStyle={s.pageOuter}
+      showsVerticalScrollIndicator={true}
+      style={contentHeight ? { height: contentHeight } : undefined}
+    >
       {/* ── Page header ── */}
       <View style={{ marginBottom: 16 }}>
         <Text style={s.pageTitle}>💳 My Loans</Text>
-        <Text style={s.pageSub}>View your active loan and loan wallet balance.</Text>
+        <Text style={s.pageSub}>
+          View your active loan and loan wallet balance.
+        </Text>
       </View>
 
       {/* ── Loan Wallet Card ── */}
-      <View style={{ borderRadius: 20, overflow: 'hidden', marginBottom: 14, shadowColor: '#0d2b4e', shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 10 }}>
-        <LinearGradient colors={['#0d2b4e', '#1a3d6e', '#2563b0']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: 24, alignItems: 'center' }}>
-          <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.30)', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+      <View
+        style={{
+          borderRadius: 20,
+          overflow: "hidden",
+          marginBottom: 14,
+          shadowColor: "#0d2b4e",
+          shadowOpacity: 0.22,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 10,
+        }}
+      >
+        <LinearGradient
+          colors={["#0d2b4e", "#1a3d6e", "#2563b0"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ padding: 24, alignItems: "center" }}
+        >
+          <View
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: 30,
+              backgroundColor: "rgba(255,255,255,0.15)",
+              borderWidth: 2,
+              borderColor: "rgba(255,255,255,0.30)",
+              justifyContent: "center",
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
             <Text style={{ fontSize: 28 }}>💼</Text>
           </View>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.60)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 }}>Loan Wallet</Text>
-          <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 34, color: '#fff', letterSpacing: 0.5 }}>{fmtCur(loanBalance)}</Text>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>Available to withdraw</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 11,
+              color: "rgba(255,255,255,0.60)",
+              letterSpacing: 1.5,
+              textTransform: "uppercase",
+              marginBottom: 4,
+            }}
+          >
+            Loan Wallet
+          </Text>
+          <Text
+            style={{
+              fontFamily: "NotoSerif_700Bold",
+              fontSize: 34,
+              color: "#fff",
+              letterSpacing: 0.5,
+            }}
+          >
+            {fmtCur(loanBalance)}
+          </Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 10,
+              color: "rgba(255,255,255,0.45)",
+              marginTop: 4,
+            }}
+          >
+            Available to withdraw
+          </Text>
 
           {/* Withdraw button */}
           {loanBalance > 0 && (
             <TouchableOpacity
-              onPress={() => { setShowWithdrawModal(true); setWithdrawAmt(''); setWithdrawErr(''); setWithdrawDone(''); }}
-              style={{ marginTop: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(192,57,43,0.30)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(232,120,120,0.55)', paddingVertical: 12, paddingHorizontal: 32 }}
-              activeOpacity={0.8}>
-              <Image source={require('../../assets/withdraw.png')} style={{ width: 18, height: 18, tintColor: '#e87a7a' }} />
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e87a7a' }}>Withdraw Loan</Text>
+              onPress={() => {
+                setShowWithdrawModal(true);
+                setWithdrawAmt("");
+                setWithdrawErr("");
+                setWithdrawDone("");
+              }}
+              style={{
+                marginTop: 18,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                backgroundColor: "rgba(192,57,43,0.30)",
+                borderRadius: 14,
+                borderWidth: 1.5,
+                borderColor: "rgba(232,120,120,0.55)",
+                paddingVertical: 12,
+                paddingHorizontal: 32,
+              }}
+              activeOpacity={0.8}
+            >
+              <Image
+                source={require("../../assets/withdraw.png")}
+                style={{ width: 18, height: 18, tintColor: "#e87a7a" }}
+              />
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 13,
+                  color: "#e87a7a",
+                }}
+              >
+                Withdraw Loan
+              </Text>
             </TouchableOpacity>
           )}
         </LinearGradient>
@@ -3006,36 +10665,127 @@ const MyLoansView = ({ member, contentHeight }) => {
       {/* ── Active Loan Card ── */}
       <Text style={s.sHead}>📊 ACTIVE LOAN STATUS</Text>
       {loanTotal > 0 ? (
-        <GCard style={{ borderTopWidth: 4, borderTopColor: C.orange, marginBottom: 16 }}>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 12 }}>Active Loan</Text>
+        <GCard
+          style={{
+            borderTopWidth: 4,
+            borderTopColor: C.orange,
+            marginBottom: 16,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "GoogleSans_700Bold",
+              fontSize: 11,
+              color: C.textMuted,
+              letterSpacing: 1.8,
+              textTransform: "uppercase",
+              marginBottom: 12,
+            }}
+          >
+            Active Loan
+          </Text>
           {[
-            ['Total Loan Amount', fmtCur(loanTotal), C.orange],
-            ['Remaining Balance', fmtCur(loanBalance), C.red],
-            ['Total Paid',        fmtCur(loanTotal - loanBalance), C.green],
+            ["Total Loan Amount", fmtCur(loanTotal), C.orange],
+            ["Remaining Balance", fmtCur(loanBalance), C.red],
+            ["Total Paid", fmtCur(loanTotal - loanBalance), C.green],
           ].map(([l, v, c]) => (
             <View key={l} style={[s.infoRow, { paddingVertical: 11 }]}>
               <Text style={s.infoLabel}>{l}</Text>
-              <Text style={[s.infoVal, { color: c, fontFamily: 'GoogleSans_700Bold', fontSize: 14 }]}>{v}</Text>
+              <Text
+                style={[
+                  s.infoVal,
+                  { color: c, fontFamily: "GoogleSans_700Bold", fontSize: 14 },
+                ]}
+              >
+                {v}
+              </Text>
             </View>
           ))}
           <View style={{ marginTop: 14 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec }}>Repayment Progress</Text>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green }}>{Math.round(prog * 100)}%</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginBottom: 6,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 12,
+                  color: C.textSec,
+                }}
+              >
+                Repayment Progress
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 12,
+                  color: C.green,
+                }}
+              >
+                {Math.round(prog * 100)}%
+              </Text>
             </View>
-            <View style={{ height: 12, backgroundColor: 'rgba(15,30,53,0.12)', borderRadius: 6, overflow: 'hidden' }}>
-              <View style={{ height: 12, backgroundColor: C.green, borderRadius: 6, width: `${Math.round(prog * 100)}%` }} />
+            <View
+              style={{
+                height: 12,
+                backgroundColor: "rgba(15,30,53,0.12)",
+                borderRadius: 6,
+                overflow: "hidden",
+              }}
+            >
+              <View
+                style={{
+                  height: 12,
+                  backgroundColor: C.green,
+                  borderRadius: 6,
+                  width: `${Math.round(prog * 100)}%`,
+                }}
+              />
             </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>Paid: {fmtCur(loanTotal - loanBalance)}</Text>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>Left: {fmtCur(loanBalance)}</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 6,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 10,
+                  color: C.textMuted,
+                }}
+              >
+                Paid: {fmtCur(loanTotal - loanBalance)}
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 10,
+                  color: C.textMuted,
+                }}
+              >
+                Left: {fmtCur(loanBalance)}
+              </Text>
             </View>
           </View>
         </GCard>
       ) : (
-        <GCard style={{ alignItems: 'center', padding: 32, marginBottom: 16 }}>
+        <GCard style={{ alignItems: "center", padding: 32, marginBottom: 16 }}>
           <Text style={{ fontSize: 36, marginBottom: 10 }}>📋</Text>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: C.textMuted, textAlign: 'center' }}>No active loan.</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 14,
+              color: C.textMuted,
+              textAlign: "center",
+            }}
+          >
+            No active loan.
+          </Text>
         </GCard>
       )}
 
@@ -3043,23 +10793,84 @@ const MyLoansView = ({ member, contentHeight }) => {
       {!loading && apps.length > 0 && (
         <>
           <Text style={s.sHead}>📄 LOAN APPLICATIONS</Text>
-          {apps.map(app => {
-            const sc = app.status === 'Approved' ? C.green : app.status === 'Rejected' ? C.red : C.orange;
+          {apps.map((app) => {
+            const sc =
+              app.status === "Approved"
+                ? C.green
+                : app.status === "Rejected"
+                  ? C.red
+                  : C.orange;
             return (
-              <GCard key={app.id} style={{ borderLeftWidth: 3, borderLeftColor: sc, marginBottom: 10 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>Loan Application</Text>
-                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: sc + '20', borderWidth: 1, borderColor: sc + '60' }}>
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: sc }}>{app.status}</Text>
+              <GCard
+                key={app.id}
+                style={{
+                  borderLeftWidth: 3,
+                  borderLeftColor: sc,
+                  marginBottom: 10,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 10,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 13,
+                      color: C.navy,
+                    }}
+                  >
+                    Loan Application
+                  </Text>
+                  <View
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 20,
+                      backgroundColor: sc + "20",
+                      borderWidth: 1,
+                      borderColor: sc + "60",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 11,
+                        color: sc,
+                      }}
+                    >
+                      {app.status}
+                    </Text>
                   </View>
                 </View>
-                {[['Amount', fmtCur(app.amount)], ['Purpose', app.purpose], ['Term', app.term], ['Filed', fmtDate(app.createdAt)]].map(([l, v]) => (
+                {[
+                  ["Amount", fmtCur(app.amount)],
+                  ["Purpose", app.purpose],
+                  ["Term", app.term],
+                  ["Filed", fmtDate(app.createdAt)],
+                ].map(([l, v]) => (
                   <View key={l} style={s.infoRow}>
                     <Text style={s.infoLabel}>{l}</Text>
                     <Text style={s.infoVal}>{v}</Text>
                   </View>
                 ))}
-                {app.adminRemarks ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#9a7230', fontStyle: 'italic', marginTop: 8 }}>Admin: {app.adminRemarks}</Text> : null}
+                {app.adminRemarks ? (
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 12,
+                      color: "#9a7230",
+                      fontStyle: "italic",
+                      marginTop: 8,
+                    }}
+                  >
+                    Admin: {app.adminRemarks}
+                  </Text>
+                ) : null}
               </GCard>
             );
           })}
@@ -3068,47 +10879,188 @@ const MyLoansView = ({ member, contentHeight }) => {
       {loading && <Spinner msg="Loading..." />}
 
       {/* ── Withdraw Loan Wallet Modal ── */}
-      <Modal visible={showWithdrawModal} transparent animationType="fade" onRequestClose={() => setShowWithdrawModal(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <View style={{ width: '100%', maxWidth: 400, backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.30, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
+      <Modal
+        visible={showWithdrawModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowWithdrawModal(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 400,
+              backgroundColor: "#fff",
+              borderRadius: 20,
+              overflow: "hidden",
+              shadowColor: "#000",
+              shadowOpacity: 0.3,
+              shadowRadius: 20,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 16,
+            }}
+          >
             {/* Modal header */}
-            <LinearGradient colors={['#1a2d4e', '#243554']} style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(192,57,43,0.30)', justifyContent: 'center', alignItems: 'center' }}>
-                <Image source={require('../../assets/withdraw.png')} style={{ width: 20, height: 20, tintColor: '#e87a7a' }} />
+            <LinearGradient
+              colors={["#1a2d4e", "#243554"]}
+              style={{
+                padding: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <View
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: "rgba(192,57,43,0.30)",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <Image
+                  source={require("../../assets/withdraw.png")}
+                  style={{ width: 20, height: 20, tintColor: "#e87a7a" }}
+                />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#fff' }}>Withdraw Loan Wallet</Text>
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.50)', marginTop: 1 }}>Requires admin approval</Text>
+                <Text
+                  style={{
+                    fontFamily: "NotoSerif_700Bold",
+                    fontSize: 16,
+                    color: "#fff",
+                  }}
+                >
+                  Withdraw Loan Wallet
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 11,
+                    color: "rgba(255,255,255,0.50)",
+                    marginTop: 1,
+                  }}
+                >
+                  Requires admin approval
+                </Text>
               </View>
-              <TouchableOpacity onPress={() => setShowWithdrawModal(false)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' }}>
-                <Text style={{ color: '#fff', fontSize: 14, lineHeight: 18 }}>✕</Text>
+              <TouchableOpacity
+                onPress={() => setShowWithdrawModal(false)}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: "rgba(255,255,255,0.12)",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 14, lineHeight: 18 }}>
+                  ✕
+                </Text>
               </TouchableOpacity>
             </LinearGradient>
 
             <View style={{ padding: 18 }}>
               {/* Balance display */}
-              <View style={{ backgroundColor: 'rgba(37,99,176,0.10)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(37,99,176,0.25)', padding: 12, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View
+                style={{
+                  backgroundColor: "rgba(37,99,176,0.10)",
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "rgba(37,99,176,0.25)",
+                  padding: 12,
+                  marginBottom: 16,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
                 <Text style={{ fontSize: 22 }}>💼</Text>
                 <View>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, letterSpacing: 1 }}>LOAN WALLET BALANCE</Text>
-                  <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: C.blue }}>{fmtCur(loanBalance)}</Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 10,
+                      color: C.textMuted,
+                      letterSpacing: 1,
+                    }}
+                  >
+                    LOAN WALLET BALANCE
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "NotoSerif_700Bold",
+                      fontSize: 20,
+                      color: C.blue,
+                    }}
+                  >
+                    {fmtCur(loanBalance)}
+                  </Text>
                 </View>
               </View>
 
               {/* Admin approval warning */}
-              <View style={{ backgroundColor: 'rgba(196,125,14,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(196,125,14,0.35)', padding: 10, marginBottom: 14, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+              <View
+                style={{
+                  backgroundColor: "rgba(196,125,14,0.10)",
+                  borderRadius: 9,
+                  borderWidth: 1,
+                  borderColor: "rgba(196,125,14,0.35)",
+                  padding: 10,
+                  marginBottom: 14,
+                  flexDirection: "row",
+                  gap: 8,
+                  alignItems: "flex-start",
+                }}
+              >
                 <Text style={{ fontSize: 13 }}>⚠️</Text>
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.orange, flex: 1, lineHeight: 16 }}>
-                  Withdrawal needs <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>admin approval</Text> before processing.
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 11,
+                    color: C.orange,
+                    flex: 1,
+                    lineHeight: 16,
+                  }}
+                >
+                  Withdrawal needs{" "}
+                  <Text style={{ fontFamily: "GoogleSans_700Bold" }}>
+                    admin approval
+                  </Text>{" "}
+                  before processing.
                 </Text>
               </View>
 
-              <Text style={[s.fieldLabel, { marginBottom: 6 }]}>AMOUNT (₱)</Text>
+              <Text style={[s.fieldLabel, { marginBottom: 6 }]}>
+                AMOUNT (₱)
+              </Text>
               <View style={[s.fieldRow, { marginBottom: 14 }]}>
                 <TextInput
-                  style={[s.fieldInput, { flex: 1, fontSize: 18, fontFamily: 'NotoSerif_700Bold', color: C.red }]}
+                  style={[
+                    s.fieldInput,
+                    {
+                      flex: 1,
+                      fontSize: 18,
+                      fontFamily: "NotoSerif_700Bold",
+                      color: C.red,
+                    },
+                  ]}
                   value={withdrawAmt}
-                  onChangeText={v => { setWithdrawAmt(v.replace(/[^0-9.]/g, '')); setWithdrawErr(''); }}
+                  onChangeText={(v) => {
+                    setWithdrawAmt(v.replace(/[^0-9.]/g, ""));
+                    setWithdrawErr("");
+                  }}
                   placeholder="0.00"
                   placeholderTextColor={C.textMuted}
                   keyboardType="decimal-pad"
@@ -3124,9 +11076,31 @@ const MyLoansView = ({ member, contentHeight }) => {
               ) : null}
 
               {withdrawDone ? (
-                <View style={{ backgroundColor: 'rgba(26,138,74,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(26,138,74,0.40)', padding: 10, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                <View
+                  style={{
+                    backgroundColor: "rgba(26,138,74,0.14)",
+                    borderRadius: 9,
+                    borderWidth: 1,
+                    borderColor: "rgba(26,138,74,0.40)",
+                    padding: 10,
+                    marginBottom: 12,
+                    flexDirection: "row",
+                    gap: 8,
+                    alignItems: "flex-start",
+                  }}
+                >
                   <Text style={{ fontSize: 14 }}>✅</Text>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, flex: 1, lineHeight: 17 }}>{withdrawDone}</Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 12,
+                      color: C.green,
+                      flex: 1,
+                      lineHeight: 17,
+                    }}
+                  >
+                    {withdrawDone}
+                  </Text>
                 </View>
               ) : null}
 
@@ -3134,10 +11108,28 @@ const MyLoansView = ({ member, contentHeight }) => {
                 <TouchableOpacity
                   onPress={handleLoanWithdraw}
                   disabled={withdrawBusy}
-                  style={{ borderRadius: 12, paddingVertical: 13, alignItems: 'center', backgroundColor: C.red, opacity: withdrawBusy ? 0.65 : 1 }}>
-                  {withdrawBusy
-                    ? <ActivityIndicator color="#fff" />
-                    : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff', letterSpacing: 0.5 }}>⬇️  Submit Request</Text>}
+                  style={{
+                    borderRadius: 12,
+                    paddingVertical: 13,
+                    alignItems: "center",
+                    backgroundColor: C.red,
+                    opacity: withdrawBusy ? 0.65 : 1,
+                  }}
+                >
+                  {withdrawBusy ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 14,
+                        color: "#fff",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      ⬇️ Submit Request
+                    </Text>
+                  )}
                 </TouchableOpacity>
               )}
             </View>
@@ -3151,370 +11143,777 @@ const MyLoansView = ({ member, contentHeight }) => {
 // ── Per-loan guideline data ───────────────────────────────────────────────
 const LOAN_TYPES = [
   {
-    key: 'regular',
-    title: 'Regular Loan',
-    icon: '🏦',
+    key: "regular",
+    title: "Regular Loan",
+    icon: "🏦",
     color: C.blue,
-    effective: 'January 1, 2026',
-    terms: { term: '36 months', amount: '₱300,000.00', interest: '8% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Times 2 of the Share Capital, max ₱300,000.00',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: '6 months',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization'],
-    modeOfPayment: 'Monthly salary deduction every 15th & 30th',
-  },
-  {
-    key: 'salary',
-    title: 'Salary Loan',
-    icon: '💼',
-    color: C.navyMid,
-    effective: 'January 1, 2026',
-    terms: { term: '36 months', amount: '₱200,000.00', interest: '10% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Maximum amount of ₱200,000.00',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '5 working days upon receipt of application form',
-    renewal: '6 months',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'vehicle',
-    title: 'Vehicle Loan',
-    icon: '🚗',
-    color: '#2a6496',
-    effective: 'January 1, 2026',
-    terms: { term: '60 months', amount: 'Max ₱1M (20% of total price)', interest: '8% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Variable',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 to ₱1,000,000.00'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: 'Upon full payment of the loan',
-    documents: ['Brand New: Loan Application Form & Co-Maker Form (with photo)', 'Certificate of Net Take Home Pay', 'Proof of Quotation with photo of the unit', 'Proof of engine and chassis number', '2nd Hand: Accomplished Loan App & Co-Maker Form (with photo)', 'Proof of unit last price with photo (include plate #)', 'Photocopy of latest OR & CR', 'Stencil of engine & chassis number', 'Latest Cedula (seller), TIN ID or 2 gov\'t IDs (seller)', 'Unit must be year 2000 and up', 'TMG/PNP clearance of the unit'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'petty',
-    title: 'Petty Cash Loan',
-    icon: '💵',
-    color: C.orange,
-    effective: 'January 1, 2026',
-    terms: { term: '3 months', amount: '₱5,000.00', interest: '1% per month', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: 'Maximum amount of ₱5,000.00',
-    approvalLimits: ['Manager'],
-    processingTime: 'Within 24 hours from receipt of loan application form',
-    renewal: '50% payment',
-    documents: ['Petty Cash Application Form'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'special',
-    title: 'Special Loan (DTI)',
-    icon: '⭐',
-    color: '#7b3fa0',
-    effective: 'January 1, 2026',
-    terms: { term: '18 months', amount: '₱20,000.00', interest: '12% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Maximum amount of ₱20,000.00',
-    approvalLimits: ['Manager'],
-    processingTime: '5 working days upon receipt of application form',
-    renewal: '6 months or 50% payment',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'appliance',
-    title: 'Appliance Loan',
-    icon: '📺',
-    color: '#16847a',
-    effective: 'January 1, 2026',
-    terms: { term: '12 months', amount: '₱30,000.00', interest: '12% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Maximum amount of ₱30,000.00',
-    approvalLimits: ['Manager'],
-    processingTime: '5 working days upon receipt of application form',
-    renewal: '6 months or 50% payment',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Photo of desired appliance with price quotation from the store', 'After payment, submit photocopy of receipt'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-  },
-  {
-    key: 'healthcare',
-    title: 'Healthcare Loan',
-    icon: '🏥',
-    color: C.red,
-    effective: 'January 1, 2026',
-    terms: { term: '12 months', amount: 'Variable', interest: 'N/A', serviceCharge: '2%' },
-    qualification: 'Principal: Regular employee of CLIMBS with at least 6 months of service. Dependents: ages up to 70 y.o. only. Member of Good Standing (no past due amort. in all CEC loans).',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: 'Variable',
-    approvalLimits: ['Manager — ₱50,000.00 and below'],
-    processingTime: 'N/A',
-    renewal: 'Upon full payment, annual',
-    documents: ['Certificate of Net Take Home Pay'],
-    modeOfPayment: 'Monthly Salary Deduction 15th & 30th',
-  },
-  {
-    key: 'emergency',
-    title: 'Emergency Loan',
-    icon: '🚨',
-    color: '#c0392b',
-    effective: 'January 1, 2026',
-    terms: [
-      { term: '6 months', amount: 'Less than ₱10,000.00', interest: 'No interest', serviceCharge: '2%' },
-      { term: '24 months', amount: '₱10,000.01 to ₱25,000.00', interest: '8% per annum', serviceCharge: '2%' },
-      { term: '36 months', amount: '₱25,000.01 to ₱50,000.00', interest: '8% per annum', serviceCharge: '2%' },
+    effective: "January 1, 2026",
+    terms: {
+      term: "36 months",
+      amount: "₱300,000.00",
+      interest: "8% per annum",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security:
+      "Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)",
+    loanAmount: "Times 2 of the Share Capital, max ₱300,000.00",
+    approvalLimits: [
+      "Manager — ₱50,000.00 and below",
+      "CreCom — ₱50,000.01 to ₱150,000.00",
+      "BOD — ₱150,000.01 and above",
     ],
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: 'Variable',
-    approvalLimits: ['Manager — ₱50,000.00 and below'],
-    processingTime: '1 working day upon receipt of application form',
-    renewal: 'Anytime',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Doctor\'s prescription for medicines', 'Medical Certificate', 'Photocopy of receipts (laboratory & MC)', 'Admission Slip & Billing', 'Reasons for availment: Calamity / Death (immediate family) / Chronic Diseases & Ailments / Fortuitous events'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+    processingTime: "7 working days upon receipt of application form",
+    renewal: "6 months",
+    documents: [
+      "Loan Application Form",
+      "Certificate of Net Take Home Pay",
+      "Share Capital Ledger",
+      "Loan Ledger",
+      "Loan Computation & Proceeds",
+      "Schedule of Loan Amortization",
+    ],
+    modeOfPayment: "Monthly salary deduction every 15th & 30th",
   },
   {
-    key: 'educational',
-    title: 'Educational Loan',
-    icon: '🎓',
-    color: '#1a6b3a',
-    effective: 'January 1, 2026',
-    terms: { term: '10 months', amount: '₱50,000.00', interest: '10% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 1 year membership in CEC',
-    security: 'Share Capital at least ₱5,000.00 + Retirement Pay Computation',
-    loanAmount: 'Maximum amount of ₱50,000.00',
-    approvalLimits: ['Manager — ₱50,000.00 and below'],
-    processingTime: '5 working days upon receipt of application form',
-    renewal: 'Semester (college) / Annual (K-12)',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Billing Statement &/or School Assessment duly signed by the School Registrar', 'Official Receipt'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+    key: "salary",
+    title: "Salary Loan",
+    icon: "💼",
+    color: C.navyMid,
+    effective: "January 1, 2026",
+    terms: {
+      term: "36 months",
+      amount: "₱200,000.00",
+      interest: "10% per annum",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security:
+      "Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)",
+    loanAmount: "Maximum amount of ₱200,000.00",
+    approvalLimits: [
+      "Manager — ₱50,000.00 and below",
+      "CreCom — ₱50,000.01 to ₱150,000.00",
+      "BOD — ₱150,000.01 and above",
+    ],
+    processingTime: "5 working days upon receipt of application form",
+    renewal: "6 months",
+    documents: [
+      "Loan Application Form",
+      "Certificate of Net Take Home Pay",
+      "Share Capital Ledger",
+      "Loan Ledger",
+      "Loan Computation & Proceeds",
+      "Schedule of Loan Amortization",
+    ],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
   },
   {
-    key: 'cashadvance',
-    title: 'Cash Advance Loan',
-    icon: '💸',
+    key: "vehicle",
+    title: "Vehicle Loan",
+    icon: "🚗",
+    color: "#2a6496",
+    effective: "January 1, 2026",
+    terms: {
+      term: "60 months",
+      amount: "Max ₱1M (20% of total price)",
+      interest: "8% per annum",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security:
+      "Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)",
+    loanAmount: "Variable",
+    approvalLimits: [
+      "Manager — ₱50,000.00 and below",
+      "CreCom — ₱50,000.01 to ₱150,000.00",
+      "BOD — ₱150,000.01 to ₱1,000,000.00",
+    ],
+    processingTime: "7 working days upon receipt of application form",
+    renewal: "Upon full payment of the loan",
+    documents: [
+      "Brand New: Loan Application Form & Co-Maker Form (with photo)",
+      "Certificate of Net Take Home Pay",
+      "Proof of Quotation with photo of the unit",
+      "Proof of engine and chassis number",
+      "2nd Hand: Accomplished Loan App & Co-Maker Form (with photo)",
+      "Proof of unit last price with photo (include plate #)",
+      "Photocopy of latest OR & CR",
+      "Stencil of engine & chassis number",
+      "Latest Cedula (seller), TIN ID or 2 gov't IDs (seller)",
+      "Unit must be year 2000 and up",
+      "TMG/PNP clearance of the unit",
+    ],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
+  },
+  {
+    key: "petty",
+    title: "Petty Cash Loan",
+    icon: "💵",
+    color: C.orange,
+    effective: "January 1, 2026",
+    terms: {
+      term: "3 months",
+      amount: "₱5,000.00",
+      interest: "1% per month",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security: "Share Capital at least ₱5,000.00",
+    loanAmount: "Maximum amount of ₱5,000.00",
+    approvalLimits: ["Manager"],
+    processingTime: "Within 24 hours from receipt of loan application form",
+    renewal: "50% payment",
+    documents: ["Petty Cash Application Form"],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
+  },
+  {
+    key: "special",
+    title: "Special Loan (DTI)",
+    icon: "⭐",
+    color: "#7b3fa0",
+    effective: "January 1, 2026",
+    terms: {
+      term: "18 months",
+      amount: "₱20,000.00",
+      interest: "12% per annum",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security:
+      "Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)",
+    loanAmount: "Maximum amount of ₱20,000.00",
+    approvalLimits: ["Manager"],
+    processingTime: "5 working days upon receipt of application form",
+    renewal: "6 months or 50% payment",
+    documents: [
+      "Loan Application Form",
+      "Certificate of Net Take Home Pay",
+      "Share Capital Ledger",
+      "Loan Ledger",
+      "Loan Computation & Proceeds",
+    ],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
+  },
+  {
+    key: "appliance",
+    title: "Appliance Loan",
+    icon: "📺",
+    color: "#16847a",
+    effective: "January 1, 2026",
+    terms: {
+      term: "12 months",
+      amount: "₱30,000.00",
+      interest: "12% per annum",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security:
+      "Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)",
+    loanAmount: "Maximum amount of ₱30,000.00",
+    approvalLimits: ["Manager"],
+    processingTime: "5 working days upon receipt of application form",
+    renewal: "6 months or 50% payment",
+    documents: [
+      "Loan Application Form",
+      "Certificate of Net Take Home Pay",
+      "Photo of desired appliance with price quotation from the store",
+      "After payment, submit photocopy of receipt",
+    ],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
+  },
+  {
+    key: "healthcare",
+    title: "Healthcare Loan",
+    icon: "🏥",
+    color: C.red,
+    effective: "January 1, 2026",
+    terms: {
+      term: "12 months",
+      amount: "Variable",
+      interest: "N/A",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Principal: Regular employee of CLIMBS with at least 6 months of service. Dependents: ages up to 70 y.o. only. Member of Good Standing (no past due amort. in all CEC loans).",
+    security: "Share Capital at least ₱5,000.00",
+    loanAmount: "Variable",
+    approvalLimits: ["Manager — ₱50,000.00 and below"],
+    processingTime: "N/A",
+    renewal: "Upon full payment, annual",
+    documents: ["Certificate of Net Take Home Pay"],
+    modeOfPayment: "Monthly Salary Deduction 15th & 30th",
+  },
+  {
+    key: "emergency",
+    title: "Emergency Loan",
+    icon: "🚨",
+    color: "#c0392b",
+    effective: "January 1, 2026",
+    terms: [
+      {
+        term: "6 months",
+        amount: "Less than ₱10,000.00",
+        interest: "No interest",
+        serviceCharge: "2%",
+      },
+      {
+        term: "24 months",
+        amount: "₱10,000.01 to ₱25,000.00",
+        interest: "8% per annum",
+        serviceCharge: "2%",
+      },
+      {
+        term: "36 months",
+        amount: "₱25,000.01 to ₱50,000.00",
+        interest: "8% per annum",
+        serviceCharge: "2%",
+      },
+    ],
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security: "Share Capital at least ₱5,000.00",
+    loanAmount: "Variable",
+    approvalLimits: ["Manager — ₱50,000.00 and below"],
+    processingTime: "1 working day upon receipt of application form",
+    renewal: "Anytime",
+    documents: [
+      "Loan Application Form",
+      "Certificate of Net Take Home Pay",
+      "Doctor's prescription for medicines",
+      "Medical Certificate",
+      "Photocopy of receipts (laboratory & MC)",
+      "Admission Slip & Billing",
+      "Reasons for availment: Calamity / Death (immediate family) / Chronic Diseases & Ailments / Fortuitous events",
+    ],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
+  },
+  {
+    key: "educational",
+    title: "Educational Loan",
+    icon: "🎓",
+    color: "#1a6b3a",
+    effective: "January 1, 2026",
+    terms: {
+      term: "10 months",
+      amount: "₱50,000.00",
+      interest: "10% per annum",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 1 year membership in CEC",
+    security: "Share Capital at least ₱5,000.00 + Retirement Pay Computation",
+    loanAmount: "Maximum amount of ₱50,000.00",
+    approvalLimits: ["Manager — ₱50,000.00 and below"],
+    processingTime: "5 working days upon receipt of application form",
+    renewal: "Semester (college) / Annual (K-12)",
+    documents: [
+      "Loan Application Form",
+      "Certificate of Net Take Home Pay",
+      "Billing Statement &/or School Assessment duly signed by the School Registrar",
+      "Official Receipt",
+    ],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
+  },
+  {
+    key: "cashadvance",
+    title: "Cash Advance Loan",
+    icon: "💸",
     color: C.gold,
-    effective: 'January 1, 2026',
-    terms: { term: 'Payment upon release', amount: '80% of Actual Amount', interest: '1% per month', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: '80% of Actual Amount',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00'],
-    processingTime: 'Within 24 hours from receipt of loan application form',
-    renewal: 'N/A',
-    documents: ['Loan Application Form', 'Certificate from HR Manager or Comp. Ben Officer'],
-    modeOfPayment: 'Every Incentive/Bonus released. Settlement of payment at the end of the year.',
+    effective: "January 1, 2026",
+    terms: {
+      term: "Payment upon release",
+      amount: "80% of Actual Amount",
+      interest: "1% per month",
+      serviceCharge: "2%",
+    },
+    qualification: "Regular employee of CLIMBS",
+    security: "Share Capital at least ₱5,000.00",
+    loanAmount: "80% of Actual Amount",
+    approvalLimits: [
+      "Manager — ₱50,000.00 and below",
+      "CreCom — ₱50,000.01 to ₱150,000.00",
+    ],
+    processingTime: "Within 24 hours from receipt of loan application form",
+    renewal: "N/A",
+    documents: [
+      "Loan Application Form",
+      "Certificate from HR Manager or Comp. Ben Officer",
+    ],
+    modeOfPayment:
+      "Every Incentive/Bonus released. Settlement of payment at the end of the year.",
   },
   {
-    key: 'buyout',
-    title: 'Buy Out Loan',
-    icon: '🔄',
-    color: '#c47d0e',
-    effective: 'January 1, 2026',
-    terms: { term: '60 months', amount: '80% Retirement Benefits', interest: '18%, diminishing', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Retirement Pay Computation',
-    loanAmount: 'Retirement Benefit',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: 'Upon full payment of the loan',
-    documents: ['Loan Application Form', 'Co-maker Statement Form', 'Certificate of Net Take Home Pay', 'Outstanding Statement of Account', 'If loan amount equals retirement benefit: collateral required (TCT or OR/CR of vehicle less than 3 years, free of encumbrance)'],
-    modeOfPayment: 'Salary Deduction every 15th & 30th',
+    key: "buyout",
+    title: "Buy Out Loan",
+    icon: "🔄",
+    color: "#c47d0e",
+    effective: "January 1, 2026",
+    terms: {
+      term: "60 months",
+      amount: "80% Retirement Benefits",
+      interest: "18%, diminishing",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security: "Share Capital at least ₱5,000.00 + Retirement Pay Computation",
+    loanAmount: "Retirement Benefit",
+    approvalLimits: [
+      "Manager — ₱50,000.00 and below",
+      "CreCom — ₱50,000.01 to ₱150,000.00",
+      "BOD — ₱150,000.01 and above",
+    ],
+    processingTime: "7 working days upon receipt of application form",
+    renewal: "Upon full payment of the loan",
+    documents: [
+      "Loan Application Form",
+      "Co-maker Statement Form",
+      "Certificate of Net Take Home Pay",
+      "Outstanding Statement of Account",
+      "If loan amount equals retirement benefit: collateral required (TCT or OR/CR of vehicle less than 3 years, free of encumbrance)",
+    ],
+    modeOfPayment: "Salary Deduction every 15th & 30th",
   },
   {
-    key: 'rice',
-    title: 'Rice Loan',
-    icon: '🍚',
-    color: '#8a6a1a',
-    effective: 'January 1, 2026',
-    terms: { term: '1 month', amount: 'Variable', interest: '1% per month', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS & CEC members',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: 'Variable',
-    approvalLimits: ['Manager'],
-    processingTime: '3 working days upon receipt of application form',
-    renewal: 'Upon full payment of the loan',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+    key: "rice",
+    title: "Rice Loan",
+    icon: "🍚",
+    color: "#8a6a1a",
+    effective: "January 1, 2026",
+    terms: {
+      term: "1 month",
+      amount: "Variable",
+      interest: "1% per month",
+      serviceCharge: "2%",
+    },
+    qualification: "Regular employee of CLIMBS & CEC members",
+    security: "Share Capital at least ₱5,000.00",
+    loanAmount: "Variable",
+    approvalLimits: ["Manager"],
+    processingTime: "3 working days upon receipt of application form",
+    renewal: "Upon full payment of the loan",
+    documents: ["Loan Application Form", "Certificate of Net Take Home Pay"],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
   },
   {
-    key: 'grocery',
-    title: 'Grocery Loan',
-    icon: '🛒',
-    color: '#2e7d32',
-    effective: 'January 1, 2026',
-    terms: { term: '1 month', amount: '₱5,000.00', interest: '1% per month', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS & CEC members',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: '₱5,000.00',
-    approvalLimits: ['Manager'],
-    processingTime: 'Within 24 hours from receipt of loan application form',
-    renewal: 'Full payment of previous grocery loan',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+    key: "grocery",
+    title: "Grocery Loan",
+    icon: "🛒",
+    color: "#2e7d32",
+    effective: "January 1, 2026",
+    terms: {
+      term: "1 month",
+      amount: "₱5,000.00",
+      interest: "1% per month",
+      serviceCharge: "2%",
+    },
+    qualification: "Regular employee of CLIMBS & CEC members",
+    security: "Share Capital at least ₱5,000.00",
+    loanAmount: "₱5,000.00",
+    approvalLimits: ["Manager"],
+    processingTime: "Within 24 hours from receipt of loan application form",
+    renewal: "Full payment of previous grocery loan",
+    documents: ["Loan Application Form", "Certificate of Net Take Home Pay"],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
   },
   {
-    key: 'travel',
-    title: 'Travel Loan',
-    icon: '✈️',
-    color: '#1565c0',
-    effective: 'January 1, 2026',
-    terms: { term: '12 months', amount: '₱25,000.00', interest: '12% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: '₱25,000.00',
-    approvalLimits: ['Manager — ₱50,000.00 and below'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: 'Upon full payment of the loan',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+    key: "travel",
+    title: "Travel Loan",
+    icon: "✈️",
+    color: "#1565c0",
+    effective: "January 1, 2026",
+    terms: {
+      term: "12 months",
+      amount: "₱25,000.00",
+      interest: "12% per annum",
+      serviceCharge: "2%",
+    },
+    qualification: "Regular employee of CLIMBS",
+    security: "Share Capital at least ₱5,000.00",
+    loanAmount: "₱25,000.00",
+    approvalLimits: ["Manager — ₱50,000.00 and below"],
+    processingTime: "7 working days upon receipt of application form",
+    renewal: "Upon full payment of the loan",
+    documents: ["Loan Application Form", "Certificate of Net Take Home Pay"],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
   },
   {
-    key: 'lad',
-    title: 'Loan Against Deposit (LAD)',
-    icon: '🏧',
+    key: "lad",
+    title: "Loan Against Deposit (LAD)",
+    icon: "🏧",
     color: C.green,
-    effective: 'January 1, 2026',
-    terms: { term: '12 months', amount: '85% of total deposits', interest: '6% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS, CEC Members, No existing regular loan',
-    security: 'Share Capital at least ₱5,000.00 + Savings',
-    loanAmount: '85% of total deposits',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '5 working days upon receipt of application form',
-    renewal: '6 months or 50% payment',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+    effective: "January 1, 2026",
+    terms: {
+      term: "12 months",
+      amount: "85% of total deposits",
+      interest: "6% per annum",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS, CEC Members, No existing regular loan",
+    security: "Share Capital at least ₱5,000.00 + Savings",
+    loanAmount: "85% of total deposits",
+    approvalLimits: [
+      "Manager — ₱50,000.00 and below",
+      "CreCom — ₱50,000.01 to ₱150,000.00",
+      "BOD — ₱150,000.01 and above",
+    ],
+    processingTime: "5 working days upon receipt of application form",
+    renewal: "6 months or 50% payment",
+    documents: ["Loan Application Form", "Certificate of Net Take Home Pay"],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
   },
   {
-    key: 'housing',
-    title: 'Housing / Home Improvement Loan',
-    icon: '🏠',
-    color: '#5d4037',
-    effective: 'January 1, 2026',
-    terms: { term: '60 months', amount: '80% Retirement Benefits', interest: '8% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Maximum amount of retirement benefits',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: '50% payment',
-    documents: ['Loan Application Form & Co-Maker Form', 'Bill of Materials signed by Carpenter/Contractor (Home Improvement)', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization', 'New/Additional: Contractor\'s Equity Quotation, Vicinity Map/Sketch of property', 'If loan = retirement benefit: collateral required'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
+    key: "housing",
+    title: "Housing / Home Improvement Loan",
+    icon: "🏠",
+    color: "#5d4037",
+    effective: "January 1, 2026",
+    terms: {
+      term: "60 months",
+      amount: "80% Retirement Benefits",
+      interest: "8% per annum",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security:
+      "Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)",
+    loanAmount: "Maximum amount of retirement benefits",
+    approvalLimits: [
+      "Manager — ₱50,000.00 and below",
+      "CreCom — ₱50,000.01 to ₱150,000.00",
+      "BOD — ₱150,000.01 and above",
+    ],
+    processingTime: "7 working days upon receipt of application form",
+    renewal: "50% payment",
+    documents: [
+      "Loan Application Form & Co-Maker Form",
+      "Bill of Materials signed by Carpenter/Contractor (Home Improvement)",
+      "Certificate of Net Take Home Pay",
+      "Share Capital Ledger",
+      "Loan Ledger",
+      "Loan Computation & Proceeds",
+      "Schedule of Loan Amortization",
+      "New/Additional: Contractor's Equity Quotation, Vicinity Map/Sketch of property",
+      "If loan = retirement benefit: collateral required",
+    ],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
   },
   {
-    key: 'solar',
-    title: 'Solar Solutions Loan',
-    icon: '☀️',
-    color: '#e65100',
-    effective: 'February 1, 2026',
-    terms: { term: '36 months', amount: '80% Retirement Benefits', interest: '8% per annum', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)',
-    loanAmount: 'Maximum amount of retirement benefits',
-    approvalLimits: ['Manager — ₱50,000.00 and below', 'CreCom — ₱50,000.01 to ₱150,000.00', 'BOD — ₱150,000.01 and above'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: 'Full payment',
-    documents: ['Loan Application Form & Co-Maker Form', 'Certificate of Net Take Home Pay', 'Share Capital Ledger', 'Loan Ledger', 'Loan Computation & Proceeds', 'Schedule of Loan Amortization', 'If loan = retirement benefit: collateral required'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-    badge: 'NEW',
+    key: "solar",
+    title: "Solar Solutions Loan",
+    icon: "☀️",
+    color: "#e65100",
+    effective: "February 1, 2026",
+    terms: {
+      term: "36 months",
+      amount: "80% Retirement Benefits",
+      interest: "8% per annum",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security:
+      "Share Capital at least ₱5,000.00 + Future Indemnity Claim (Loan Insurance)",
+    loanAmount: "Maximum amount of retirement benefits",
+    approvalLimits: [
+      "Manager — ₱50,000.00 and below",
+      "CreCom — ₱50,000.01 to ₱150,000.00",
+      "BOD — ₱150,000.01 and above",
+    ],
+    processingTime: "7 working days upon receipt of application form",
+    renewal: "Full payment",
+    documents: [
+      "Loan Application Form & Co-Maker Form",
+      "Certificate of Net Take Home Pay",
+      "Share Capital Ledger",
+      "Loan Ledger",
+      "Loan Computation & Proceeds",
+      "Schedule of Loan Amortization",
+      "If loan = retirement benefit: collateral required",
+    ],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
+    badge: "NEW",
   },
   {
-    key: 'nonlife',
-    title: 'Non-Life Insurance Loan',
-    icon: '🛡️',
-    color: '#37474f',
-    effective: 'February 1, 2026',
-    terms: { term: '12 months', amount: '₱50,000.00', interest: 'N/A', serviceCharge: '2%' },
-    qualification: 'Regular employee of CLIMBS with at least 6 months of service',
-    security: 'Share Capital at least ₱5,000.00',
-    loanAmount: '₱50,000.00',
-    approvalLimits: ['Manager — ₱50,000.00 and below'],
-    processingTime: '7 working days upon receipt of application form',
-    renewal: 'Full payment',
-    documents: ['Loan Application Form', 'Certificate of Net Take Home Pay', 'Photocopy of SOA from NL department', 'Photocopy of Policy from NL department'],
-    modeOfPayment: 'Monthly Salary Deduction every 15th & 30th',
-    badge: 'NEW',
+    key: "nonlife",
+    title: "Non-Life Insurance Loan",
+    icon: "🛡️",
+    color: "#37474f",
+    effective: "February 1, 2026",
+    terms: {
+      term: "12 months",
+      amount: "₱50,000.00",
+      interest: "N/A",
+      serviceCharge: "2%",
+    },
+    qualification:
+      "Regular employee of CLIMBS with at least 6 months of service",
+    security: "Share Capital at least ₱5,000.00",
+    loanAmount: "₱50,000.00",
+    approvalLimits: ["Manager — ₱50,000.00 and below"],
+    processingTime: "7 working days upon receipt of application form",
+    renewal: "Full payment",
+    documents: [
+      "Loan Application Form",
+      "Certificate of Net Take Home Pay",
+      "Photocopy of SOA from NL department",
+      "Photocopy of Policy from NL department",
+    ],
+    modeOfPayment: "Monthly Salary Deduction every 15th & 30th",
+    badge: "NEW",
   },
 ];
 
 const LoanCard = ({ loan, expanded, onToggle }) => {
   const anim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   useEffect(() => {
-    Animated.timing(anim, { toValue: expanded ? 1 : 0, duration: 220, useNativeDriver: false }).start();
+    Animated.timing(anim, {
+      toValue: expanded ? 1 : 0,
+      duration: 220,
+      useNativeDriver: false,
+    }).start();
   }, [expanded]);
 
   const isMultiTerm = Array.isArray(loan.terms);
 
   const Row = ({ label, value }) => (
-    <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
-      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, width: 110, flexShrink: 0 }}>{label}</Text>
-      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.text, flex: 1, lineHeight: 18 }}>{value}</Text>
+    <View
+      style={{
+        flexDirection: "row",
+        paddingVertical: 6,
+        borderBottomWidth: 1,
+        borderColor: "rgba(15,30,53,0.07)",
+      }}
+    >
+      <Text
+        style={{
+          fontFamily: "GoogleSans_700Bold",
+          fontSize: 11,
+          color: C.textMuted,
+          width: 110,
+          flexShrink: 0,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{
+          fontFamily: "GoogleSans_400Regular",
+          fontSize: 12,
+          color: C.text,
+          flex: 1,
+          lineHeight: 18,
+        }}
+      >
+        {value}
+      </Text>
     </View>
   );
 
   return (
-    <GCard style={{ padding: 0, overflow: 'hidden', marginBottom: 12, borderTopWidth: 3, borderTopColor: loan.color }}>
+    <GCard
+      style={{
+        padding: 0,
+        overflow: "hidden",
+        marginBottom: 12,
+        borderTopWidth: 3,
+        borderTopColor: loan.color,
+      }}
+    >
       {/* Header — always visible */}
-      <TouchableOpacity onPress={onToggle} activeOpacity={0.8}
-        style={{ flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }}>
-        <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: loan.color + '22', justifyContent: 'center', alignItems: 'center' }}>
+      <TouchableOpacity
+        onPress={onToggle}
+        activeOpacity={0.8}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          padding: 14,
+          gap: 12,
+        }}
+      >
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            backgroundColor: loan.color + "22",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
           <Text style={{ fontSize: 20 }}>{loan.icon}</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: loan.color }}>{loan.title}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 14,
+                color: loan.color,
+              }}
+            >
+              {loan.title}
+            </Text>
             {loan.badge && (
-              <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: C.green }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>{loan.badge}</Text>
+              <View
+                style={{
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 6,
+                  backgroundColor: C.green,
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 9,
+                    color: "#fff",
+                  }}
+                >
+                  {loan.badge}
+                </Text>
               </View>
             )}
           </View>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 1 }}>Effective: {loan.effective}</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 10,
+              color: C.textMuted,
+              marginTop: 1,
+            }}
+          >
+            Effective: {loan.effective}
+          </Text>
           {!expanded && (
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.textSec, marginTop: 3 }} numberOfLines={1}>
-              {isMultiTerm ? 'Variable terms' : `${loan.terms.term} · ${loan.terms.amount} · ${loan.terms.interest}`}
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 11,
+                color: C.textSec,
+                marginTop: 3,
+              }}
+              numberOfLines={1}
+            >
+              {isMultiTerm
+                ? "Variable terms"
+                : `${loan.terms.term} · ${loan.terms.amount} · ${loan.terms.interest}`}
             </Text>
           )}
         </View>
-        <Text style={{ fontSize: 18, color: C.textMuted }}>{expanded ? '▲' : '▼'}</Text>
+        <Text style={{ fontSize: 18, color: C.textMuted }}>
+          {expanded ? "▲" : "▼"}
+        </Text>
       </TouchableOpacity>
 
       {/* Expandable body */}
       {expanded && (
         <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
           {/* Term table */}
-          <View style={{ backgroundColor: loan.color + '15', borderRadius: 10, padding: 10, marginBottom: 12 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: loan.color, letterSpacing: 1.5, marginBottom: 8 }}>TERM OF LOAN & RATES</Text>
+          <View
+            style={{
+              backgroundColor: loan.color + "15",
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 12,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 10,
+                color: loan.color,
+                letterSpacing: 1.5,
+                marginBottom: 8,
+              }}
+            >
+              TERM OF LOAN & RATES
+            </Text>
             {isMultiTerm ? (
               <>
-                <View style={{ flexDirection: 'row', marginBottom: 4 }}>
-                  {['Term', 'Amount', 'Interest', 'Service'].map(h => (
-                    <Text key={h} style={{ flex: 1, fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: loan.color, textAlign: 'center' }}>{h}</Text>
+                <View style={{ flexDirection: "row", marginBottom: 4 }}>
+                  {["Term", "Amount", "Interest", "Service"].map((h) => (
+                    <Text
+                      key={h}
+                      style={{
+                        flex: 1,
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 9,
+                        color: loan.color,
+                        textAlign: "center",
+                      }}
+                    >
+                      {h}
+                    </Text>
                   ))}
                 </View>
                 {loan.terms.map((t, i) => (
-                  <View key={i} style={{ flexDirection: 'row', paddingVertical: 4, borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.08)' }}>
-                    {[t.term, t.amount, t.interest, t.serviceCharge].map((v, j) => (
-                      <Text key={j} style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.text, textAlign: 'center', lineHeight: 15 }}>{v}</Text>
-                    ))}
+                  <View
+                    key={i}
+                    style={{
+                      flexDirection: "row",
+                      paddingVertical: 4,
+                      borderTopWidth: 1,
+                      borderColor: "rgba(15,30,53,0.08)",
+                    }}
+                  >
+                    {[t.term, t.amount, t.interest, t.serviceCharge].map(
+                      (v, j) => (
+                        <Text
+                          key={j}
+                          style={{
+                            flex: 1,
+                            fontFamily: "GoogleSans_400Regular",
+                            fontSize: 10,
+                            color: C.text,
+                            textAlign: "center",
+                            lineHeight: 15,
+                          }}
+                        >
+                          {v}
+                        </Text>
+                      ),
+                    )}
                   </View>
                 ))}
               </>
             ) : (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {[['Max Term', loan.terms.term], ['Max Amount', loan.terms.amount], ['Interest', loan.terms.interest], ['Service Charge', loan.terms.serviceCharge]].map(([l, v]) => (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {[
+                  ["Max Term", loan.terms.term],
+                  ["Max Amount", loan.terms.amount],
+                  ["Interest", loan.terms.interest],
+                  ["Service Charge", loan.terms.serviceCharge],
+                ].map(([l, v]) => (
                   <View key={l} style={{ minWidth: 120, flex: 1 }}>
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: loan.color }}>{l}</Text>
-                    <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: C.text, marginTop: 2 }}>{v}</Text>
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 9,
+                        color: loan.color,
+                      }}
+                    >
+                      {l}
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_500Medium",
+                        fontSize: 12,
+                        color: C.text,
+                        marginTop: 2,
+                      }}
+                    >
+                      {v}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -3524,21 +11923,75 @@ const LoanCard = ({ loan, expanded, onToggle }) => {
           <Row label="Qualification" value={loan.qualification} />
           <Row label="Security" value={loan.security} />
           <Row label="Loan Amount" value={loan.loanAmount} />
-          <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, width: 110, flexShrink: 0 }}>Approval Limits</Text>
+          <View
+            style={{
+              flexDirection: "row",
+              paddingVertical: 6,
+              borderBottomWidth: 1,
+              borderColor: "rgba(15,30,53,0.07)",
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 11,
+                color: C.textMuted,
+                width: 110,
+                flexShrink: 0,
+              }}
+            >
+              Approval Limits
+            </Text>
             <View style={{ flex: 1 }}>
               {loan.approvalLimits.map((a, i) => (
-                <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.text, lineHeight: 20 }}>• {a}</Text>
+                <Text
+                  key={i}
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 12,
+                    color: C.text,
+                    lineHeight: 20,
+                  }}
+                >
+                  • {a}
+                </Text>
               ))}
             </View>
           </View>
           <Row label="Processing Time" value={loan.processingTime} />
           <Row label="Renewal" value={loan.renewal} />
-          <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.07)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.textMuted, width: 110, flexShrink: 0 }}>Documents</Text>
+          <View
+            style={{
+              flexDirection: "row",
+              paddingVertical: 6,
+              borderBottomWidth: 1,
+              borderColor: "rgba(15,30,53,0.07)",
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 11,
+                color: C.textMuted,
+                width: 110,
+                flexShrink: 0,
+              }}
+            >
+              Documents
+            </Text>
             <View style={{ flex: 1 }}>
               {loan.documents.map((d, i) => (
-                <Text key={i} style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.text, lineHeight: 20 }}>• {d}</Text>
+                <Text
+                  key={i}
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 12,
+                    color: C.text,
+                    lineHeight: 20,
+                  }}
+                >
+                  • {d}
+                </Text>
               ))}
             </View>
           </View>
@@ -3551,13 +12004,24 @@ const LoanCard = ({ loan, expanded, onToggle }) => {
 
 const GuidelinesView = ({ contentHeight }) => {
   const [expanded, setExpanded] = useState(null);
-  const toggle = key => setExpanded(prev => prev === key ? null : key);
+  const toggle = (key) => setExpanded((prev) => (prev === key ? null : key));
   return (
-    <ScrollView contentContainerStyle={[s.pageOuter, { paddingBottom: 80 }]} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+    <ScrollView
+      contentContainerStyle={[s.pageOuter, { paddingBottom: 80 }]}
+      showsVerticalScrollIndicator={true}
+      style={contentHeight ? { height: contentHeight } : undefined}
+    >
       <Text style={s.pageTitle}>📖 Loan Guidelines</Text>
-      <Text style={s.pageSub}>Tap each loan type to view full details. Effective January 1, 2026.</Text>
-      {LOAN_TYPES.map(loan => (
-        <LoanCard key={loan.key} loan={loan} expanded={expanded === loan.key} onToggle={() => toggle(loan.key)} />
+      <Text style={s.pageSub}>
+        Tap each loan type to view full details. Effective January 1, 2026.
+      </Text>
+      {LOAN_TYPES.map((loan) => (
+        <LoanCard
+          key={loan.key}
+          loan={loan}
+          expanded={expanded === loan.key}
+          onToggle={() => toggle(loan.key)}
+        />
       ))}
     </ScrollView>
   );
@@ -3567,37 +12031,45 @@ const EditProfileView = ({ member, contentHeight }) => {
   const af0 = member.appForm || {};
 
   // Basic contact fields
-  const [contact, setContact] = useState(member.contact || af0.contactNo || '');
-  const [email,   setEmail]   = useState(member.email   || '');
-  const [address, setAddress] = useState(member.address || af0.presentAddress || '');
+  const [contact, setContact] = useState(member.contact || af0.contactNo || "");
+  const [email, setEmail] = useState(member.email || "");
+  const [address, setAddress] = useState(
+    member.address || af0.presentAddress || "",
+  );
 
   // Photo
-  const [photoUri,   setPhotoUri]   = useState(member.photoURL || null);
-  const [uploading,  setUploading]  = useState(false);
+  const [photoUri, setPhotoUri] = useState(member.photoURL || null);
+  const [uploading, setUploading] = useState(false);
 
   // App form editable fields
-  const [salutation,  setSalutation]  = useState(af0.salutation  || '');
-  const [suffix,      setSuffix]      = useState(af0.suffix      || '');
-  const [dob,         setDob]         = useState(af0.dob         || '');
-  const [placeOfBirth,setPlaceOfBirth]= useState(af0.placeOfBirth|| '');
-  const [religion,    setReligion]    = useState(af0.religion    || '');
-  const [religionOther,setReligionOther]=useState(af0.religionOther||'');
-  const [civilStatus, setCivilStatus] = useState(af0.civilStatus || '');
-  const [numDependents,setNumDependents]=useState(af0.numDependents||'0');
-  const [presentAddress,setPresentAddress]=useState(af0.presentAddress||'');
-  const [presentZip,  setPresentZip]  = useState(af0.presentZip  || '');
-  const [empType,     setEmpType]     = useState(af0.empType     || '');
-  const [employerName,setEmployerName]= useState(af0.employerName|| '');
-  const [positionRank,setPositionRank]= useState(af0.positionRank|| '');
-  const [monthlyIncome,setMonthlyIncome]=useState(af0.monthlyIncome||'');
+  const [salutation, setSalutation] = useState(af0.salutation || "");
+  const [suffix, setSuffix] = useState(af0.suffix || "");
+  const [dob, setDob] = useState(af0.dob || "");
+  const [placeOfBirth, setPlaceOfBirth] = useState(af0.placeOfBirth || "");
+  const [religion, setReligion] = useState(af0.religion || "");
+  const [religionOther, setReligionOther] = useState(af0.religionOther || "");
+  const [civilStatus, setCivilStatus] = useState(af0.civilStatus || "");
+  const [numDependents, setNumDependents] = useState(af0.numDependents || "0");
+  const [presentAddress, setPresentAddress] = useState(
+    af0.presentAddress || "",
+  );
+  const [presentZip, setPresentZip] = useState(af0.presentZip || "");
+  const [empType, setEmpType] = useState(af0.empType || "");
+  const [employerName, setEmployerName] = useState(af0.employerName || "");
+  const [positionRank, setPositionRank] = useState(af0.positionRank || "");
+  const [monthlyIncome, setMonthlyIncome] = useState(af0.monthlyIncome || "");
 
   const [saving, setSaving] = useState(false);
-  const [saved,  setSaved]  = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const pickPhoto = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') { alert('Permission needed to access photos.'); return; }
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        alert("Permission needed to access photos.");
+        return;
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -3610,7 +12082,9 @@ const EditProfileView = ({ member, contentHeight }) => {
         const dataUri = `data:image/jpeg;base64,${asset.base64}`;
         setPhotoUri(dataUri);
       }
-    } catch (e) { console.warn('Photo pick error:', e); }
+    } catch (e) {
+      console.warn("Photo pick error:", e);
+    }
   };
 
   const save = async () => {
@@ -3618,58 +12092,156 @@ const EditProfileView = ({ member, contentHeight }) => {
     try {
       const updatedAppForm = {
         ...af0,
-        salutation, suffix, dob, placeOfBirth,
-        religion, religionOther, civilStatus, numDependents,
-        presentAddress, presentZip,
+        salutation,
+        suffix,
+        dob,
+        placeOfBirth,
+        religion,
+        religionOther,
+        civilStatus,
+        numDependents,
+        presentAddress,
+        presentZip,
         contactNo: contact,
-        empType, employerName, positionRank, monthlyIncome,
+        empType,
+        employerName,
+        positionRank,
+        monthlyIncome,
       };
-      await updateDoc(doc(db, 'members', member.uid), {
-        contact, email, address,
+      await updateDoc(doc(db, "members", member.uid), {
+        contact,
+        email,
+        address,
         photoURL: photoUri || member.photoURL || null,
         appForm: updatedAppForm,
         updatedAt: serverTimestamp(),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch (e) { console.warn(e); }
-    finally { setSaving(false); }
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const SectionHead = ({ title }) => (
-    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10, marginTop: 14, paddingBottom: 6, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.10)' }}>{title}</Text>
+    <Text
+      style={{
+        fontFamily: "GoogleSans_700Bold",
+        fontSize: 10,
+        color: C.textMuted,
+        letterSpacing: 2,
+        textTransform: "uppercase",
+        marginBottom: 10,
+        marginTop: 14,
+        paddingBottom: 6,
+        borderBottomWidth: 1,
+        borderColor: "rgba(15,30,53,0.10)",
+      }}
+    >
+      {title}
+    </Text>
   );
 
   return (
-    <ScrollView contentContainerStyle={[s.pageOuter, { paddingBottom: 60 }]}
+    <ScrollView
+      contentContainerStyle={[s.pageOuter, { paddingBottom: 60 }]}
       showsVerticalScrollIndicator={true}
       style={contentHeight ? { height: contentHeight } : undefined}
-      keyboardShouldPersistTaps="handled">
-
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={s.pageTitle}>✏️ Edit Profile</Text>
-      <Text style={s.pageSub}>Changes will reflect automatically in My Profile.</Text>
+      <Text style={s.pageSub}>
+        Changes will reflect automatically in My Profile.
+      </Text>
 
       {/* ── Profile Photo ── */}
-      <GCard style={{ alignItems: 'center', padding: 20 }}>
-        <TouchableOpacity onPress={pickPhoto} activeOpacity={0.85} style={{ alignItems: 'center', gap: 10 }}>
-          {photoUri
-            ? <Image source={{ uri: photoUri }} style={{ width: 90, height: 90, borderRadius: 45, borderWidth: 3, borderColor: C.gold }} />
-            : (
-              <View style={{ width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(201,168,76,0.25)', borderWidth: 3, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }}>
-                <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 30, color: C.gold }}>{mkInit(member.name)}</Text>
-              </View>
-            )
-          }
-          <View style={{ backgroundColor: C.navyMid, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold }}>📷  {photoUri ? 'Change Photo' : 'Upload Photo'}</Text>
+      <GCard style={{ alignItems: "center", padding: 20 }}>
+        <TouchableOpacity
+          onPress={pickPhoto}
+          activeOpacity={0.85}
+          style={{ alignItems: "center", gap: 10 }}
+        >
+          {photoUri ? (
+            <Image
+              source={{ uri: photoUri }}
+              style={{
+                width: 90,
+                height: 90,
+                borderRadius: 45,
+                borderWidth: 3,
+                borderColor: C.gold,
+              }}
+            />
+          ) : (
+            <View
+              style={{
+                width: 90,
+                height: 90,
+                borderRadius: 45,
+                backgroundColor: "rgba(201,168,76,0.25)",
+                borderWidth: 3,
+                borderColor: C.gold,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "NotoSerif_700Bold",
+                  fontSize: 30,
+                  color: C.gold,
+                }}
+              >
+                {mkInit(member.name)}
+              </Text>
+            </View>
+          )}
+          <View
+            style={{
+              backgroundColor: C.navyMid,
+              borderRadius: 20,
+              paddingHorizontal: 16,
+              paddingVertical: 7,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 12,
+                color: C.gold,
+              }}
+            >
+              📷 {photoUri ? "Change Photo" : "Upload Photo"}
+            </Text>
           </View>
         </TouchableOpacity>
         {photoUri && (
-          <TouchableOpacity onPress={() => setPhotoUri(null)} style={{ marginTop: 6 }}>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.red }}>✕ Remove photo</Text>
+          <TouchableOpacity
+            onPress={() => setPhotoUri(null)}
+            style={{ marginTop: 6 }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 11,
+                color: C.red,
+              }}
+            >
+              ✕ Remove photo
+            </Text>
           </TouchableOpacity>
         )}
-        <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 6, textAlign: 'center' }}>
+        <Text
+          style={{
+            fontFamily: "GoogleSans_400Regular",
+            fontSize: 10,
+            color: C.textMuted,
+            marginTop: 6,
+            textAlign: "center",
+          }}
+        >
           Square photo recommended · max 1MB
         </Text>
       </GCard>
@@ -3677,180 +12249,538 @@ const EditProfileView = ({ member, contentHeight }) => {
       {/* ── Contact Info ── */}
       <GCard>
         <SectionHead title="📞 Contact Information" />
-        <DField label="CONTACT NUMBER" value={contact} onChangeText={setContact} placeholder="e.g. 09171234567" keyboardType="phone-pad" />
-        <DField label="EMAIL ADDRESS"  value={email}   onChangeText={setEmail}   placeholder="e.g. juan@email.com" keyboardType="email-address" />
-        <DField label="HOME ADDRESS"   value={address} onChangeText={setAddress} placeholder="e.g. Cagayan de Oro City" />
+        <DField
+          label="CONTACT NUMBER"
+          value={contact}
+          onChangeText={setContact}
+          placeholder="e.g. 09171234567"
+          keyboardType="phone-pad"
+        />
+        <DField
+          label="EMAIL ADDRESS"
+          value={email}
+          onChangeText={setEmail}
+          placeholder="e.g. juan@email.com"
+          keyboardType="email-address"
+        />
+        <DField
+          label="HOME ADDRESS"
+          value={address}
+          onChangeText={setAddress}
+          placeholder="e.g. Cagayan de Oro City"
+        />
       </GCard>
 
       {/* ── Personal Details ── */}
       <GCard>
         <SectionHead title="👤 Personal Details" />
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: 8 }}>
           <View style={{ flex: 1 }}>
             <Text style={s.fieldLabel}>SALUTATION</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
-              {['Mr.','Mrs.','Ms.'].map(opt => (
-                <TouchableOpacity key={opt} onPress={() => setSalutation(opt)}
-                  style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: salutation === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: salutation === opt ? 'rgba(201,168,76,0.15)' : C.surface }}>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 6,
+                marginBottom: 11,
+              }}
+            >
+              {["Mr.", "Mrs.", "Ms."].map((opt) => (
+                <TouchableOpacity
+                  key={opt}
+                  onPress={() => setSalutation(opt)}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 20,
+                    borderWidth: 1.5,
+                    borderColor:
+                      salutation === opt ? C.gold : "rgba(15,30,53,0.18)",
+                    backgroundColor:
+                      salutation === opt ? "rgba(201,168,76,0.15)" : C.surface,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 12,
+                      color: C.navy,
+                    }}
+                  >
+                    {opt}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
-          <DField label="SUFFIX" value={suffix} onChangeText={setSuffix} placeholder="Jr., Sr., II" />
+          <DField
+            label="SUFFIX"
+            value={suffix}
+            onChangeText={setSuffix}
+            placeholder="Jr., Sr., II"
+          />
         </View>
-        <DField label="DATE OF BIRTH (MM/DD/YYYY)" value={dob} onChangeText={setDob} placeholder="e.g. 01/15/1990" />
+        <DField
+          label="DATE OF BIRTH (MM/DD/YYYY)"
+          value={dob}
+          onChangeText={setDob}
+          placeholder="e.g. 01/15/1990"
+        />
         <Text style={s.fieldLabel}>PLACE OF BIRTH</Text>
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 11 }}>
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 11 }}>
           <View style={{ flex: 1 }}>
-            <Text style={[s.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>PROVINCE</Text>
-            <DropdownPicker l="" options={PROVINCES_PH} value={placeOfBirth.split(', ')[1] || ''} onSelect={v => setPlaceOfBirth(`${placeOfBirth.split(', ')[0] || ''}, ${v}`)} placeholder="Select province" />
+            <Text style={[s.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>
+              PROVINCE
+            </Text>
+            <DropdownPicker
+              l=""
+              options={PROVINCES_PH}
+              value={placeOfBirth.split(", ")[1] || ""}
+              onSelect={(v) =>
+                setPlaceOfBirth(`${placeOfBirth.split(", ")[0] || ""}, ${v}`)
+              }
+              placeholder="Select province"
+            />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[s.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>CITY / MUNICIPALITY</Text>
-            <DropdownPicker l="" options={placeOfBirth.split(', ')[1] ? (MUNICIPALITIES_BY_PROVINCE[placeOfBirth.split(', ')[1]] || []) : []} value={placeOfBirth.split(', ')[0] || ''} onSelect={v => setPlaceOfBirth(`${v}, ${placeOfBirth.split(', ')[1] || ''}`)} placeholder={placeOfBirth.split(', ')[1] ? 'Select city' : 'Select province first'} />
+            <Text style={[s.fieldLabel, { fontSize: 8, marginBottom: 4 }]}>
+              CITY / MUNICIPALITY
+            </Text>
+            <DropdownPicker
+              l=""
+              options={
+                placeOfBirth.split(", ")[1]
+                  ? MUNICIPALITIES_BY_PROVINCE[placeOfBirth.split(", ")[1]] ||
+                    []
+                  : []
+              }
+              value={placeOfBirth.split(", ")[0] || ""}
+              onSelect={(v) =>
+                setPlaceOfBirth(`${v}, ${placeOfBirth.split(", ")[1] || ""}`)
+              }
+              placeholder={
+                placeOfBirth.split(", ")[1]
+                  ? "Select city"
+                  : "Select province first"
+              }
+            />
           </View>
         </View>
         <Text style={s.fieldLabel}>CIVIL STATUS</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
-          {['Single','Married','Legally Separated','Others'].map(opt => (
-            <TouchableOpacity key={opt} onPress={() => setCivilStatus(opt)}
-              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: civilStatus === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: civilStatus === opt ? 'rgba(201,168,76,0.15)' : C.surface }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: 6,
+            marginBottom: 11,
+          }}
+        >
+          {["Single", "Married", "Legally Separated", "Others"].map((opt) => (
+            <TouchableOpacity
+              key={opt}
+              onPress={() => setCivilStatus(opt)}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 20,
+                borderWidth: 1.5,
+                borderColor:
+                  civilStatus === opt ? C.gold : "rgba(15,30,53,0.18)",
+                backgroundColor:
+                  civilStatus === opt ? "rgba(201,168,76,0.15)" : C.surface,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 12,
+                  color: C.navy,
+                }}
+              >
+                {opt}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
-        <DField label="NUMBER OF DEPENDENTS" value={numDependents} onChangeText={setNumDependents} placeholder="0" keyboardType="numeric" />
-        <DField label="RELIGION" value={religion} onChangeText={setReligion} placeholder="e.g. Roman Catholic" />
-        {religion === 'Others' && <DField label="SPECIFY RELIGION" value={religionOther} onChangeText={setReligionOther} placeholder="Enter religion" />}
+        <DField
+          label="NUMBER OF DEPENDENTS"
+          value={numDependents}
+          onChangeText={setNumDependents}
+          placeholder="0"
+          keyboardType="numeric"
+        />
+        <DField
+          label="RELIGION"
+          value={religion}
+          onChangeText={setReligion}
+          placeholder="e.g. Roman Catholic"
+        />
+        {religion === "Others" && (
+          <DField
+            label="SPECIFY RELIGION"
+            value={religionOther}
+            onChangeText={setReligionOther}
+            placeholder="Enter religion"
+          />
+        )}
       </GCard>
 
       {/* ── Present Address ── */}
       <GCard>
         <SectionHead title="🏠 Present Address" />
-        <DField label="PRESENT ADDRESS" value={presentAddress} onChangeText={setPresentAddress} placeholder="House No., Street, Barangay, City" />
-        <DField label="ZIP CODE" value={presentZip} onChangeText={setPresentZip} placeholder="e.g. 9000" keyboardType="numeric" />
+        <DField
+          label="PRESENT ADDRESS"
+          value={presentAddress}
+          onChangeText={setPresentAddress}
+          placeholder="House No., Street, Barangay, City"
+        />
+        <DField
+          label="ZIP CODE"
+          value={presentZip}
+          onChangeText={setPresentZip}
+          placeholder="e.g. 9000"
+          keyboardType="numeric"
+        />
       </GCard>
 
       {/* ── Employment ── */}
       <GCard>
         <SectionHead title="💼 Employment" />
         <Text style={s.fieldLabel}>EMPLOYMENT STATUS</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 11 }}>
-          {['Employed','Self-Employed','Unemployed'].map(opt => (
-            <TouchableOpacity key={opt} onPress={() => setEmpType(opt)}
-              style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: empType === opt ? C.gold : 'rgba(15,30,53,0.18)', backgroundColor: empType === opt ? 'rgba(201,168,76,0.15)' : C.surface }}>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy }}>{opt}</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: 6,
+            marginBottom: 11,
+          }}
+        >
+          {["Employed", "Self-Employed", "Unemployed"].map((opt) => (
+            <TouchableOpacity
+              key={opt}
+              onPress={() => setEmpType(opt)}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderRadius: 20,
+                borderWidth: 1.5,
+                borderColor: empType === opt ? C.gold : "rgba(15,30,53,0.18)",
+                backgroundColor:
+                  empType === opt ? "rgba(201,168,76,0.15)" : C.surface,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 12,
+                  color: C.navy,
+                }}
+              >
+                {opt}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
-        {empType === 'Employed' && <>
-          <DField label="EMPLOYER NAME"    value={employerName}   onChangeText={setEmployerName}   placeholder="Name of employer" />
-          <DField label="POSITION / RANK"  value={positionRank}   onChangeText={setPositionRank}   placeholder="e.g. Teacher I" />
-          <DField label="MONTHLY INCOME (₱)" value={monthlyIncome} onChangeText={setMonthlyIncome} placeholder="e.g. 25000" keyboardType="numeric" />
-        </>}
+        {empType === "Employed" && (
+          <>
+            <DField
+              label="EMPLOYER NAME"
+              value={employerName}
+              onChangeText={setEmployerName}
+              placeholder="Name of employer"
+            />
+            <DField
+              label="POSITION / RANK"
+              value={positionRank}
+              onChangeText={setPositionRank}
+              placeholder="e.g. Teacher I"
+            />
+            <DField
+              label="MONTHLY INCOME (₱)"
+              value={monthlyIncome}
+              onChangeText={setMonthlyIncome}
+              placeholder="e.g. 25000"
+              keyboardType="numeric"
+            />
+          </>
+        )}
       </GCard>
 
-      <SaveBtn onPress={save} loading={saving} done={saved} label="Save All Changes" doneLabel="Profile Updated!" />
+      <SaveBtn
+        onPress={save}
+        loading={saving}
+        done={saved}
+        label="Save All Changes"
+        doneLabel="Profile Updated!"
+      />
     </ScrollView>
   );
 };
 
 const ChangePasswordView = ({ member, contentHeight }) => {
-  const [oldPw, setOldPw]   = useState('');
-  const [newPw, setNewPw]   = useState('');
-  const [confPw, setConfPw] = useState('');
+  const [oldPw, setOldPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confPw, setConfPw] = useState("");
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
-  const [error, setError]   = useState('');
-  const [done,  setDone]    = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
   const save = async () => {
-    if (newPw.length < 6) { setError('New password must be at least 6 characters.'); return; }
-    if (newPw !== confPw) { setError('Passwords do not match.'); return; }
-    setLoading(true); setError('');
+    if (newPw.length < 6) {
+      setError("New password must be at least 6 characters.");
+      return;
+    }
+    if (newPw !== confPw) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setLoading(true);
+    setError("");
     try {
-      const snap = await getDocs(query(collection(db, 'members'), where('userId', '==', member.userId)));
-      if (snap.empty) throw new Error('Member not found.');
-      if (snap.docs[0].data().passwordHash !== hashPw(oldPw)) throw new Error('Current password is incorrect.');
-      await updateDoc(doc(db, 'members', member.uid), { passwordHash: hashPw(newPw), updatedAt: serverTimestamp() });
-      setDone(true); setOldPw(''); setNewPw(''); setConfPw('');
+      const snap = await getDocs(
+        query(collection(db, "members"), where("userId", "==", member.userId)),
+      );
+      if (snap.empty) throw new Error("Member not found.");
+      if (snap.docs[0].data().passwordHash !== hashPw(oldPw))
+        throw new Error("Current password is incorrect.");
+      await updateDoc(doc(db, "members", member.uid), {
+        passwordHash: hashPw(newPw),
+        updatedAt: serverTimestamp(),
+      });
+      setDone(true);
+      setOldPw("");
+      setNewPw("");
+      setConfPw("");
       setTimeout(() => setDone(false), 3000);
-    } catch (e) { setError(e.message || 'Failed.'); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setError(e.message || "Failed.");
+    } finally {
+      setLoading(false);
+    }
   };
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+    <ScrollView
+      contentContainerStyle={s.pageOuter}
+      showsVerticalScrollIndicator={true}
+      style={contentHeight ? { height: contentHeight } : undefined}
+    >
       <Text style={s.pageTitle}>🔑 Change Password</Text>
       <GCard>
-        <DField label="CURRENT PASSWORD"     value={oldPw}  onChangeText={v => { setOldPw(v);  setError(''); }} placeholder="Current password"    secureEntry={!showOld} showToggle onToggle={() => setShowOld(p => !p)} />
-        <DField label="NEW PASSWORD"         value={newPw}  onChangeText={v => { setNewPw(v);  setError(''); }} placeholder="Min. 6 characters"    secureEntry={!showNew} showToggle onToggle={() => setShowNew(p => !p)} />
-        <DField label="CONFIRM NEW PASSWORD" value={confPw} onChangeText={v => { setConfPw(v); setError(''); }} placeholder="Re-enter new password" secureEntry={!showNew} />
-        {error ? <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.red, textAlign: 'center', marginBottom: 8 }}>{error}</Text> : null}
-        {done  ? <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, textAlign: 'center', marginBottom: 8 }}>✓ Password changed!</Text> : null}
-        <SaveBtn onPress={save} loading={loading} done={false} label="Update Password" />
+        <DField
+          label="CURRENT PASSWORD"
+          value={oldPw}
+          onChangeText={(v) => {
+            setOldPw(v);
+            setError("");
+          }}
+          placeholder="Current password"
+          secureEntry={!showOld}
+          showToggle
+          onToggle={() => setShowOld((p) => !p)}
+        />
+        <DField
+          label="NEW PASSWORD"
+          value={newPw}
+          onChangeText={(v) => {
+            setNewPw(v);
+            setError("");
+          }}
+          placeholder="Min. 6 characters"
+          secureEntry={!showNew}
+          showToggle
+          onToggle={() => setShowNew((p) => !p)}
+        />
+        <DField
+          label="CONFIRM NEW PASSWORD"
+          value={confPw}
+          onChangeText={(v) => {
+            setConfPw(v);
+            setError("");
+          }}
+          placeholder="Re-enter new password"
+          secureEntry={!showNew}
+        />
+        {error ? (
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 12,
+              color: C.red,
+              textAlign: "center",
+              marginBottom: 8,
+            }}
+          >
+            {error}
+          </Text>
+        ) : null}
+        {done ? (
+          <Text
+            style={{
+              fontFamily: "GoogleSans_700Bold",
+              fontSize: 12,
+              color: C.green,
+              textAlign: "center",
+              marginBottom: 8,
+            }}
+          >
+            ✓ Password changed!
+          </Text>
+        ) : null}
+        <SaveBtn
+          onPress={save}
+          loading={loading}
+          done={false}
+          label="Update Password"
+        />
       </GCard>
     </ScrollView>
   );
 };
 
 const NotifsView = ({ member, contentHeight, onNav }) => {
-  const [notifs,  setNotifs]  = useState([]);
+  const [notifs, setNotifs] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    return onSnapshot(query(collection(db, 'members', member.uid, 'notifications'), orderBy('createdAt', 'desc')), snap => { setNotifs(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); }, () => setLoading(false));
+    return onSnapshot(
+      query(
+        collection(db, "members", member.uid, "notifications"),
+        orderBy("createdAt", "desc"),
+      ),
+      (snap) => {
+        setNotifs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setLoading(false);
+      },
+      () => setLoading(false),
+    );
   }, [member.uid]);
 
   const handleTap = async (n) => {
     // Mark read
-    if (!n.read && n.id !== 'sys') {
-      await updateDoc(doc(db, 'members', member.uid, 'notifications', n.id), { read: true }).catch(() => {});
+    if (!n.read && n.id !== "sys") {
+      await updateDoc(doc(db, "members", member.uid, "notifications", n.id), {
+        read: true,
+      }).catch(() => {});
     }
     // Navigate to chat if applicable
     if (n.navKey && onNav) onNav(n.navKey);
   };
 
-  const sysNotifs = member.approvedAt ? [{ id: 'sys', icon: '✅', title: 'Account Approved!', message: `Your membership was approved on ${fmtDate(member.approvedAt)}. You now have full access.`, color: C.green, createdAt: member.approvedAt, read: true }] : [];
+  const sysNotifs = member.approvedAt
+    ? [
+        {
+          id: "sys",
+          icon: "✅",
+          title: "Account Approved!",
+          message: `Your membership was approved on ${fmtDate(member.approvedAt)}. You now have full access.`,
+          color: C.green,
+          createdAt: member.approvedAt,
+          read: true,
+        },
+      ]
+    : [];
   // Exclude chat-type notifications — handled by FloatingChat
-  const all = [...sysNotifs, ...notifs.filter(n => n.type !== 'chat')];
-  const unreadCount = all.filter(n => !n.read).length;
+  const all = [...sysNotifs, ...notifs.filter((n) => n.type !== "chat")];
+  const unreadCount = all.filter((n) => !n.read).length;
   if (loading) return <Spinner msg="Loading notifications..." />;
   return (
-    <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+    <ScrollView
+      contentContainerStyle={s.pageOuter}
+      showsVerticalScrollIndicator={true}
+      style={contentHeight ? { height: contentHeight } : undefined}
+    >
       <Text style={s.pageTitle}>🔔 Notifications</Text>
-      <Text style={s.pageSub}>{unreadCount > 0 ? `${unreadCount} unread — tap a message to open.` : 'All caught up!'}</Text>
+      <Text style={s.pageSub}>
+        {unreadCount > 0
+          ? `${unreadCount} unread — tap a message to open.`
+          : "All caught up!"}
+      </Text>
       {all.length === 0 && (
-        <GCard style={{ alignItems: 'center', padding: 40 }}>
+        <GCard style={{ alignItems: "center", padding: 40 }}>
           <Text style={{ fontSize: 36, marginBottom: 10 }}>🔔</Text>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 14, color: C.textMuted, textAlign: 'center' }}>No notifications yet.</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 14,
+              color: C.textMuted,
+              textAlign: "center",
+            }}
+          >
+            No notifications yet.
+          </Text>
         </GCard>
       )}
-      {all.map(n => {
-        const isChat = n.type === 'chat';
-        const borderColor = isChat ? '#2563b0' : (n.color || C.gold);
+      {all.map((n) => {
+        const isChat = n.type === "chat";
+        const borderColor = isChat ? "#2563b0" : n.color || C.gold;
         return (
           <TouchableOpacity
             key={n.id}
-            style={[s.notifCard, { borderLeftColor: borderColor, opacity: n.read ? 0.60 : 1 }]}
+            style={[
+              s.notifCard,
+              { borderLeftColor: borderColor, opacity: n.read ? 0.6 : 1 },
+            ]}
             onPress={() => handleTap(n)}
             activeOpacity={0.8}
           >
-            <View style={[s.notifIcon, { backgroundColor: borderColor + '22' }]}>
-              <Text style={{ fontSize: 18 }}>{n.icon || '🔔'}</Text>
+            <View
+              style={[s.notifIcon, { backgroundColor: borderColor + "22" }]}
+            >
+              <Text style={{ fontSize: 18 }}>{n.icon || "🔔"}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                <Text style={[s.notifTitle, { flex: 1, marginRight: 6 }]} numberOfLines={1}>{n.title}</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 3,
+                }}
+              >
+                <Text
+                  style={[s.notifTitle, { flex: 1, marginRight: 6 }]}
+                  numberOfLines={1}
+                >
+                  {n.title}
+                </Text>
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                >
                   {isChat && !n.read && (
-                    <View style={{ backgroundColor: '#2563b0', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#fff' }}>TAP TO OPEN</Text>
+                    <View
+                      style={{
+                        backgroundColor: "#2563b0",
+                        borderRadius: 10,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 9,
+                          color: "#fff",
+                        }}
+                      >
+                        TAP TO OPEN
+                      </Text>
                     </View>
                   )}
-                  {!n.read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: borderColor }} />}
+                  {!n.read && (
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: borderColor,
+                      }}
+                    />
+                  )}
                 </View>
               </View>
-              <Text style={s.notifMsg} numberOfLines={2}>{n.message}</Text>
+              <Text style={s.notifMsg} numberOfLines={2}>
+                {n.message}
+              </Text>
               <Text style={s.notifTime}>{fmtTime(n.createdAt)}</Text>
             </View>
           </TouchableOpacity>
@@ -3867,50 +12797,66 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(true);
   const [selectedMember, setSelectedMember] = useState(null);
-  const [search, setSearch] = useState('');
-  const [text, setText] = useState('');
+  const [search, setSearch] = useState("");
+  const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const [screen, setScreen] = useState(chatType === 'admin' ? 'room' : 'list');
+  const [screen, setScreen] = useState(chatType === "admin" ? "room" : "list");
   const scrollRef = useRef(null);
 
   // Filtered members — recomputed reactively whenever search or members changes
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return members;
-    return members.filter(m =>
-      (m.name || '').toLowerCase().includes(q) ||
-      (m.userId || '').toLowerCase().includes(q) ||
-      (m.firstName || '').toLowerCase().includes(q) ||
-      (m.lastName || '').toLowerCase().includes(q)
+    return members.filter(
+      (m) =>
+        (m.name || "").toLowerCase().includes(q) ||
+        (m.userId || "").toLowerCase().includes(q) ||
+        (m.firstName || "").toLowerCase().includes(q) ||
+        (m.lastName || "").toLowerCase().includes(q),
     );
   }, [search, members]);
 
   // Setup room
   useEffect(() => {
-    if (chatType === 'admin') {
+    if (chatType === "admin") {
       const rId = `admin_${member.uid}`;
-      setDoc(doc(db, 'chatRooms', rId), {
-        type: 'admin', memberId: member.uid, memberName: member.name,
-        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
-      }, { merge: true }).then(() => setRoomId(rId));
-    } else if (chatType === 'members') {
-      setDoc(doc(db, 'chatRooms', 'group_members'), {
-        type: 'group', name: 'Members Group Chat',
-        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
-      }, { merge: true }).then(() => setRoomId('group_members'));
+      setDoc(
+        doc(db, "chatRooms", rId),
+        {
+          type: "admin",
+          memberId: member.uid,
+          memberName: member.name,
+          createdAt: serverTimestamp(),
+          lastMessage: null,
+          lastAt: serverTimestamp(),
+        },
+        { merge: true },
+      ).then(() => setRoomId(rId));
+    } else if (chatType === "members") {
+      setDoc(
+        doc(db, "chatRooms", "group_members"),
+        {
+          type: "group",
+          name: "Members Group Chat",
+          createdAt: serverTimestamp(),
+          lastMessage: null,
+          lastAt: serverTimestamp(),
+        },
+        { merge: true },
+      ).then(() => setRoomId("group_members"));
     }
   }, [chatType, member.uid]);
 
   // Load active members for DM list — fetch all, filter client-side (avoids composite index issues)
   useEffect(() => {
-    if (chatType !== 'members') return;
-    const q = query(collection(db, 'members'));
-    const unsub = onSnapshot(q, snap => {
+    if (chatType !== "members") return;
+    const q = query(collection(db, "members"));
+    const unsub = onSnapshot(q, (snap) => {
       setMembers(
         snap.docs
-          .map(d => ({ id: d.id, uid: d.id, ...d.data() }))
-          .filter(m => m.id !== member.uid && m.status === 'Active')
-          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+          .map((d) => ({ id: d.id, uid: d.id, ...d.data() }))
+          .filter((m) => m.id !== member.uid && m.status === "Active")
+          .sort((a, b) => (a.name || "").localeCompare(b.name || "")),
       );
       setMembersLoading(false);
     });
@@ -3920,9 +12866,13 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
   // Load messages for active room
   useEffect(() => {
     if (!roomId) return;
-    const q = query(collection(db, 'chatRooms', roomId, 'messages'), orderBy('createdAt', 'asc'), limit(100));
-    const unsub = onSnapshot(q, snap => {
-      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const q = query(
+      collection(db, "chatRooms", roomId, "messages"),
+      orderBy("createdAt", "asc"),
+      limit(100),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     });
     return unsub;
@@ -3933,163 +12883,516 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
     setSending(true);
     try {
       const msgText = text.trim();
-      await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
-        senderId: member.uid, senderName: member.name,
-        text: msgText, createdAt: serverTimestamp(), readBy: [member.uid],
+      await addDoc(collection(db, "chatRooms", roomId, "messages"), {
+        senderId: member.uid,
+        senderName: member.name,
+        text: msgText,
+        createdAt: serverTimestamp(),
+        readBy: [member.uid],
       });
-      await updateDoc(doc(db, 'chatRooms', roomId), {
-        lastMessage: msgText, lastAt: serverTimestamp(),
-        lastSender: member.name, lastSenderId: member.uid,  // ← needed for notification filtering
+      await updateDoc(doc(db, "chatRooms", roomId), {
+        lastMessage: msgText,
+        lastAt: serverTimestamp(),
+        lastSender: member.name,
+        lastSenderId: member.uid, // ← needed for notification filtering
       });
       // ── Notify admin when member sends to admin chat ──────────────────────
-      if (chatType === 'admin') {
-        await addDoc(collection(db, 'adminNotifications'), {
-          type: 'chat', icon: '💬',
+      if (chatType === "admin") {
+        await addDoc(collection(db, "adminNotifications"), {
+          type: "chat",
+          icon: "💬",
           title: `Message from ${member.name}`,
-          message: msgText.length > 80 ? msgText.slice(0, 80) + '…' : msgText,
-          memberId: member.uid, memberUserId: member.userId,
-          roomId, navKey: 'chat_inbox',
-          createdAt: serverTimestamp(), read: false,
+          message: msgText.length > 80 ? msgText.slice(0, 80) + "…" : msgText,
+          memberId: member.uid,
+          memberUserId: member.userId,
+          roomId,
+          navKey: "chat_inbox",
+          createdAt: serverTimestamp(),
+          read: false,
         });
       }
-      setText('');
-    } catch (e) { console.warn(e); }
-    finally { setSending(false); }
+      setText("");
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setSending(false);
+    }
   };
 
   const selectDM = async (target) => {
-    const dmId = [member.uid, target.uid].sort().join('_');
-    await setDoc(doc(db, 'chatRooms', dmId), {
-      type: 'dm', members: [member.uid, target.uid],
-      memberNames: { [member.uid]: member.name, [target.uid]: target.name },
-      createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
-    }, { merge: true });
+    const dmId = [member.uid, target.uid].sort().join("_");
+    await setDoc(
+      doc(db, "chatRooms", dmId),
+      {
+        type: "dm",
+        members: [member.uid, target.uid],
+        memberNames: { [member.uid]: member.name, [target.uid]: target.name },
+        createdAt: serverTimestamp(),
+        lastMessage: null,
+        lastAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
     setRoomId(dmId);
     setSelectedMember(target);
-    setScreen('dm');
+    setScreen("dm");
   };
 
-  const fmtT = ts => { if (!ts) return ''; const d = ts?.toDate?.() || new Date(ts); return d.toLocaleString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true }); };
-  const mkI = name => (name || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  const fmtT = (ts) => {
+    if (!ts) return "";
+    const d = ts?.toDate?.() || new Date(ts);
+    return d.toLocaleString("en-PH", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+  const mkI = (name) =>
+    (name || "?")
+      .split(/[\s,]+/)
+      .filter(Boolean)
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
 
   const RoomMessages = ({ title, subtitle }) => (
-    <View style={{ flex: 1, flexDirection: 'column' }}>
+    <View style={{ flex: 1, flexDirection: "column" }}>
       {/* Header */}
-      <LinearGradient colors={['#1a2d4e', '#243554']} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }}>
-        {chatType === 'members' && (
-          <TouchableOpacity onPress={() => { setScreen('list'); setSelectedMember(null); }}
-            style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+      <LinearGradient
+        colors={["#1a2d4e", "#243554"]}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          padding: 14,
+        }}
+      >
+        {chatType === "members" && (
+          <TouchableOpacity
+            onPress={() => {
+              setScreen("list");
+              setSelectedMember(null);
+            }}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: "rgba(255,255,255,0.15)",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
             <Text style={{ color: C.gold, fontSize: 16 }}>←</Text>
           </TouchableOpacity>
         )}
-        <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(201,168,76,0.25)', justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ fontSize: 18 }}>{chatType === 'admin' ? '🛡️' : screen === 'dm' ? '💬' : '👥'}</Text>
+        <View
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 10,
+            backgroundColor: "rgba(201,168,76,0.25)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontSize: 18 }}>
+            {chatType === "admin" ? "🛡️" : screen === "dm" ? "💬" : "👥"}
+          </Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff' }}>{title}</Text>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.55)' }}>{subtitle}</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_700Bold",
+              fontSize: 14,
+              color: "#fff",
+            }}
+          >
+            {title}
+          </Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 10,
+              color: "rgba(255,255,255,0.55)",
+            }}
+          >
+            {subtitle}
+          </Text>
         </View>
-        {chatType === 'admin' && (
-          <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: 'rgba(26,138,74,0.30)', borderWidth: 1, borderColor: 'rgba(26,138,74,0.60)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#4cde8a' }}>● Live</Text>
+        {chatType === "admin" && (
+          <View
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 10,
+              backgroundColor: "rgba(26,138,74,0.30)",
+              borderWidth: 1,
+              borderColor: "rgba(26,138,74,0.60)",
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 9,
+                color: "#4cde8a",
+              }}
+            >
+              ● Live
+            </Text>
           </View>
         )}
       </LinearGradient>
 
       {/* Messages */}
-      <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: 'rgba(152,186,213,0.12)' }}
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1, backgroundColor: "rgba(152,186,213,0.12)" }}
         contentContainerStyle={{ padding: 14, paddingBottom: 10 }}
         showsVerticalScrollIndicator={true}
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+        onContentSizeChange={() =>
+          scrollRef.current?.scrollToEnd({ animated: true })
+        }
+      >
         {messages.length === 0 && (
-          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-            <Text style={{ fontSize: 40, marginBottom: 12 }}>{chatType === 'admin' ? '🛡️' : screen === 'dm' ? '💬' : '👥'}</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>
-              {chatType === 'admin' ? 'Send a message to Admin.\nWe\'ll get back to you shortly.' :
-               screen === 'dm' ? `Start chatting with ${selectedMember?.name}.` :
-               'Welcome to the Group Chat!\nSay hello to your co-members.'}
+          <View style={{ alignItems: "center", paddingVertical: 40 }}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>
+              {chatType === "admin" ? "🛡️" : screen === "dm" ? "💬" : "👥"}
+            </Text>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 13,
+                color: C.textMuted,
+                textAlign: "center",
+                lineHeight: 20,
+              }}
+            >
+              {chatType === "admin"
+                ? "Send a message to Admin.\nWe'll get back to you shortly."
+                : screen === "dm"
+                  ? `Start chatting with ${selectedMember?.name}.`
+                  : "Welcome to the Group Chat!\nSay hello to your co-members."}
             </Text>
           </View>
         )}
         {messages.map((msg, i) => {
           const isMine = msg.senderId === member.uid;
           const prev = messages[i - 1];
-          const showName = !isMine && msg.senderId !== prev?.senderId && chatType !== 'admin' && screen !== 'dm';
+          const showName =
+            !isMine &&
+            msg.senderId !== prev?.senderId &&
+            chatType !== "admin" &&
+            screen !== "dm";
           return (
-            <View key={msg.id} style={[{ marginBottom: 8, maxWidth: '78%' }, isMine ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }]}>
-              {showName && <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: C.textMuted, marginBottom: 3, paddingLeft: 2 }}>{msg.senderName}</Text>}
-              <View style={[{ borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9 },
-                isMine ? { backgroundColor: '#1a2d4e', borderBottomRightRadius: 4 } : { backgroundColor: '#fff', borderBottomLeftRadius: 4, shadowColor: '#0f1e35', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } }]}>
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: isMine ? '#fff' : C.navy, lineHeight: 19 }}>{msg.text}</Text>
+            <View
+              key={msg.id}
+              style={[
+                { marginBottom: 8, maxWidth: "78%" },
+                isMine
+                  ? { alignSelf: "flex-end" }
+                  : { alignSelf: "flex-start" },
+              ]}
+            >
+              {showName && (
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 10,
+                    color: C.textMuted,
+                    marginBottom: 3,
+                    paddingLeft: 2,
+                  }}
+                >
+                  {msg.senderName}
+                </Text>
+              )}
+              <View
+                style={[
+                  {
+                    borderRadius: 16,
+                    paddingHorizontal: 13,
+                    paddingVertical: 9,
+                  },
+                  isMine
+                    ? { backgroundColor: "#1a2d4e", borderBottomRightRadius: 4 }
+                    : {
+                        backgroundColor: "#fff",
+                        borderBottomLeftRadius: 4,
+                        shadowColor: "#0f1e35",
+                        shadowOpacity: 0.06,
+                        shadowRadius: 4,
+                        shadowOffset: { width: 0, height: 1 },
+                      },
+                ]}
+              >
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 13,
+                    color: isMine ? "#fff" : C.navy,
+                    lineHeight: 19,
+                  }}
+                >
+                  {msg.text}
+                </Text>
               </View>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: C.textMuted, marginTop: 3, paddingHorizontal: 2, textAlign: isMine ? 'right' : 'left' }}>{fmtT(msg.createdAt)}</Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 9,
+                  color: C.textMuted,
+                  marginTop: 3,
+                  paddingHorizontal: 2,
+                  textAlign: isMine ? "right" : "left",
+                }}
+              >
+                {fmtT(msg.createdAt)}
+              </Text>
             </View>
           );
         })}
       </ScrollView>
 
       {/* Input */}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12, backgroundColor: 'rgba(255,255,255,0.80)', borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.10)' }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-end",
+          gap: 8,
+          padding: 12,
+          backgroundColor: "rgba(255,255,255,0.80)",
+          borderTopWidth: 1,
+          borderColor: "rgba(15,30,53,0.10)",
+        }}
+      >
         <TextInput
-          style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy, backgroundColor: 'rgba(240,246,252,0.90)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)', maxHeight: 90 }}
-          value={text} onChangeText={setText}
-          placeholder="Type a message..." placeholderTextColor={C.textMuted}
-          multiline maxLength={500}
+          style={{
+            flex: 1,
+            fontFamily: "GoogleSans_400Regular",
+            fontSize: 13,
+            color: C.navy,
+            backgroundColor: "rgba(240,246,252,0.90)",
+            borderRadius: 20,
+            paddingHorizontal: 14,
+            paddingVertical: 9,
+            borderWidth: 1.5,
+            borderColor: "rgba(200,218,235,0.75)",
+            maxHeight: 90,
+          }}
+          value={text}
+          onChangeText={setText}
+          placeholder="Type a message..."
+          placeholderTextColor={C.textMuted}
+          multiline
+          maxLength={500}
         />
-        <TouchableOpacity onPress={send} disabled={!text.trim() || sending}
-          style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: text.trim() ? '#1a2d4e' : 'rgba(15,30,53,0.20)', justifyContent: 'center', alignItems: 'center' }}>
-          {sending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ fontSize: 18 }}>➤</Text>}
+        <TouchableOpacity
+          onPress={send}
+          disabled={!text.trim() || sending}
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            backgroundColor: text.trim() ? "#1a2d4e" : "rgba(15,30,53,0.20)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          {sending ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={{ fontSize: 18 }}>➤</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
   );
 
   // Member List (for co-member chat)
-  if (chatType === 'members' && screen === 'list') {
+  if (chatType === "members" && screen === "list") {
     return (
-      <ScrollView contentContainerStyle={s.pageOuter} showsVerticalScrollIndicator={true} style={contentHeight ? { height: contentHeight } : undefined}>
+      <ScrollView
+        contentContainerStyle={s.pageOuter}
+        showsVerticalScrollIndicator={true}
+        style={contentHeight ? { height: contentHeight } : undefined}
+      >
         <Text style={s.pageTitle}>👥 Co-member Chat</Text>
-        <Text style={s.pageSub}>Chat with approved members. Choose a conversation below.</Text>
+        <Text style={s.pageSub}>
+          Chat with approved members. Choose a conversation below.
+        </Text>
         {/* Group Chat */}
-        <TouchableOpacity onPress={() => { setRoomId('group_members'); setScreen('group'); }}
-          style={{ borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
-          <LinearGradient colors={['#1a2d4e', '#243554']} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 }}>
-            <View style={{ width: 46, height: 46, borderRadius: 12, backgroundColor: 'rgba(201,168,76,0.25)', justifyContent: 'center', alignItems: 'center' }}>
+        <TouchableOpacity
+          onPress={() => {
+            setRoomId("group_members");
+            setScreen("group");
+          }}
+          style={{ borderRadius: 14, overflow: "hidden", marginBottom: 14 }}
+        >
+          <LinearGradient
+            colors={["#1a2d4e", "#243554"]}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              padding: 16,
+            }}
+          >
+            <View
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: 12,
+                backgroundColor: "rgba(201,168,76,0.25)",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
               <Text style={{ fontSize: 22 }}>👥</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 15, color: '#fff' }}>Members Group Chat</Text>
-              <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>Chat with all approved members</Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 15,
+                  color: "#fff",
+                }}
+              >
+                Members Group Chat
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 11,
+                  color: "rgba(255,255,255,0.55)",
+                  marginTop: 2,
+                }}
+              >
+                Chat with all approved members
+              </Text>
             </View>
             <Text style={{ color: C.gold, fontSize: 20 }}>›</Text>
           </LinearGradient>
         </TouchableOpacity>
         {/* DM Search */}
         <Text style={s.sHead}>💬 DIRECT MESSAGES</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.65)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.90)', marginBottom: 12 }}>
-          <Text style={{ color: C.textMuted, fontSize: 14, marginRight: 6 }}>🔍</Text>
-          <TextInput style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.navy }} value={search} onChangeText={setSearch} placeholder="Search member..." placeholderTextColor={C.textMuted} autoCapitalize="none" />
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: "rgba(255,255,255,0.65)",
+            borderRadius: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderWidth: 1.5,
+            borderColor: "rgba(255,255,255,0.90)",
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: C.textMuted, fontSize: 14, marginRight: 6 }}>
+            🔍
+          </Text>
+          <TextInput
+            style={{
+              flex: 1,
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 13,
+              color: C.navy,
+            }}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search member..."
+            placeholderTextColor={C.textMuted}
+            autoCapitalize="none"
+          />
         </View>
-        {filtered.map(m => (
-          <TouchableOpacity key={m.id} onPress={() => selectDM(m)} activeOpacity={0.8}>
+        {filtered.map((m) => (
+          <TouchableOpacity
+            key={m.id}
+            onPress={() => selectDM(m)}
+            activeOpacity={0.8}
+          >
             <GCard style={{ padding: 12, marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ position: 'relative' }}>
-                  <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(201,168,76,0.22)', borderWidth: 1.5, borderColor: C.gold, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.gold }}>{mkI(m.name)}</Text>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+              >
+                <View style={{ position: "relative" }}>
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 21,
+                      backgroundColor: "rgba(201,168,76,0.22)",
+                      borderWidth: 1.5,
+                      borderColor: C.gold,
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 14,
+                        color: C.gold,
+                      }}
+                    >
+                      {mkI(m.name)}
+                    </Text>
                   </View>
                   {m.isOnline && (
-                    <View style={{ position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#1a8a4a', borderWidth: 2, borderColor: '#fff' }} />
+                    <View
+                      style={{
+                        position: "absolute",
+                        bottom: 0,
+                        right: 0,
+                        width: 12,
+                        height: 12,
+                        borderRadius: 6,
+                        backgroundColor: "#1a8a4a",
+                        borderWidth: 2,
+                        borderColor: "#fff",
+                      }}
+                    />
                   )}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: C.navy }}>{m.name}</Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 13,
+                        color: C.navy,
+                      }}
+                    >
+                      {m.name}
+                    </Text>
                     {m.isOnline && (
-                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#1a8a4a' }}>● Active now</Text>
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_400Regular",
+                          fontSize: 9,
+                          color: "#1a8a4a",
+                        }}
+                      >
+                        ● Active now
+                      </Text>
                     )}
                   </View>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>{m.userId}</Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 10,
+                      color: C.textMuted,
+                    }}
+                  >
+                    {m.userId}
+                  </Text>
                 </View>
                 <Text style={{ color: C.textMuted, fontSize: 18 }}>›</Text>
               </View>
@@ -4097,15 +13400,32 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
           </TouchableOpacity>
         ))}
         {membersLoading && (
-          <GCard style={{ alignItems: 'center', padding: 32 }}>
+          <GCard style={{ alignItems: "center", padding: 32 }}>
             <ActivityIndicator color={C.gold} />
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted, marginTop: 10 }}>Loading members...</Text>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 13,
+                color: C.textMuted,
+                marginTop: 10,
+              }}
+            >
+              Loading members...
+            </Text>
           </GCard>
         )}
         {!membersLoading && filtered.length === 0 && (
-          <GCard style={{ alignItems: 'center', padding: 32 }}>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textMuted }}>
-              {search.trim() ? `No members found for "${search.trim()}".` : 'No active members found.'}
+          <GCard style={{ alignItems: "center", padding: 32 }}>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 13,
+                color: C.textMuted,
+              }}
+            >
+              {search.trim()
+                ? `No members found for "${search.trim()}".`
+                : "No active members found."}
             </Text>
           </GCard>
         )}
@@ -4115,16 +13435,25 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
 
   // Room view (admin / group / DM)
   const roomTitle =
-    chatType === 'admin' ? 'Admin / Support' :
-    screen === 'dm' ? (selectedMember?.name || 'Direct Message') :
-    'Members Group Chat';
+    chatType === "admin"
+      ? "Admin / Support"
+      : screen === "dm"
+        ? selectedMember?.name || "Direct Message"
+        : "Members Group Chat";
   const roomSub =
-    chatType === 'admin' ? 'Live support · CESLA MPC Admin' :
-    screen === 'dm' ? 'Direct Message' :
-    'Group · All Approved Members';
+    chatType === "admin"
+      ? "Live support · CESLA MPC Admin"
+      : screen === "dm"
+        ? "Direct Message"
+        : "Group · All Approved Members";
 
   return (
-    <View style={[{ flex: 1 }, contentHeight ? { height: contentHeight } : undefined]}>
+    <View
+      style={[
+        { flex: 1 },
+        contentHeight ? { height: contentHeight } : undefined,
+      ]}
+    >
       <RoomMessages title={roomTitle} subtitle={roomSub} />
     </View>
   );
@@ -4134,14 +13463,23 @@ const ChatDirectView = ({ member, chatType, contentHeight }) => {
 // ─── SMALL MESSAGE NOTIFICATION POPUP (near message icon, like Facebook) ──────
 const MsgNotifPopup = ({ notif, onClose, onOpen }) => {
   const translateY = useRef(new Animated.Value(-80)).current;
-  const opacity    = useRef(new Animated.Value(0)).current;
-  const timerRef   = useRef(null);
+  const opacity = useRef(new Animated.Value(0)).current;
+  const timerRef = useRef(null);
 
   useEffect(() => {
     if (!notif) return;
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 90, friction: 11 }),
-      Animated.timing(opacity,    { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 90,
+        friction: 11,
+      }),
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }),
     ]).start();
     timerRef.current = setTimeout(dismiss, 5000);
     return () => clearTimeout(timerRef.current);
@@ -4150,58 +13488,112 @@ const MsgNotifPopup = ({ notif, onClose, onOpen }) => {
   const dismiss = () => {
     clearTimeout(timerRef.current);
     Animated.parallel([
-      Animated.timing(translateY, { toValue: -80, duration: 220, useNativeDriver: true }),
-      Animated.timing(opacity,    { toValue: 0,   duration: 180, useNativeDriver: true }),
+      Animated.timing(translateY, {
+        toValue: -80,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
     ]).start(() => onClose?.());
   };
 
   if (!notif) return null;
 
   return (
-    <Animated.View style={{
-      position: 'absolute',
-      top: Platform.OS === 'web' ? 52 : 96,
-      right: 12,
-      width: 270,
-      transform: [{ translateY }],
-      opacity,
-      zIndex: 99999,
-    }}>
+    <Animated.View
+      style={{
+        position: "absolute",
+        top: Platform.OS === "web" ? 52 : 96,
+        right: 12,
+        width: 270,
+        transform: [{ translateY }],
+        opacity,
+        zIndex: 99999,
+      }}
+    >
       <TouchableOpacity
         activeOpacity={0.92}
-        onPress={() => { dismiss(); onOpen?.(); }}
+        onPress={() => {
+          dismiss();
+          onOpen?.();
+        }}
         style={{
-          flexDirection: 'row', alignItems: 'center', gap: 10,
-          backgroundColor: '#1a2d4e',
-          borderRadius: 16, padding: 12,
-          borderWidth: 1.5, borderColor: C.gold,
-          shadowColor: '#000', shadowOpacity: 0.28,
-          shadowRadius: 14, shadowOffset: { width: 0, height: 5 },
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          backgroundColor: "#1a2d4e",
+          borderRadius: 16,
+          padding: 12,
+          borderWidth: 1.5,
+          borderColor: C.gold,
+          shadowColor: "#000",
+          shadowOpacity: 0.28,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 5 },
         }}
       >
         {/* Admin shield icon */}
-        <View style={{
-          width: 38, height: 38, borderRadius: 19,
-          backgroundColor: 'rgba(201,168,76,0.25)',
-          borderWidth: 1.5, borderColor: C.gold,
-          justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-        }}>
+        <View
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            backgroundColor: "rgba(201,168,76,0.25)",
+            borderWidth: 1.5,
+            borderColor: C.gold,
+            justifyContent: "center",
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+        >
           <Text style={{ fontSize: 17 }}>🛡️</Text>
         </View>
         {/* Text */}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff' }}>Admin</Text>
-          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.68)', marginTop: 1 }} numberOfLines={2}>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_700Bold",
+              fontSize: 12,
+              color: "#fff",
+            }}
+          >
+            Admin
+          </Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_400Regular",
+              fontSize: 11,
+              color: "rgba(255,255,255,0.68)",
+              marginTop: 1,
+            }}
+            numberOfLines={2}
+          >
             {notif.text}
           </Text>
         </View>
         {/* Dismiss */}
         <TouchableOpacity
-          onPress={(e) => { e?.stopPropagation?.(); dismiss(); }}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            dismiss();
+          }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' }}
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 10,
+            backgroundColor: "rgba(255,255,255,0.14)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
         >
-          <Text style={{ color: 'rgba(255,255,255,0.70)', fontSize: 11 }}>✕</Text>
+          <Text style={{ color: "rgba(255,255,255,0.70)", fontSize: 11 }}>
+            ✕
+          </Text>
         </TouchableOpacity>
       </TouchableOpacity>
     </Animated.View>
@@ -4213,56 +13605,69 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
   const uid = member?.uid;
   const { width: screenW, height: screenH } = useWindowDimensions();
   // Panel fills more of screen — 92% width on mobile, capped at 420 on wide
-  const panelW  = Math.min(screenW * 0.92, 420);
+  const panelW = Math.min(screenW * 0.92, 420);
   // Max content height = screen height minus top offset and some margin
-  const topOffset   = Platform.OS === 'web' ? 52 : 96;
-  const panelMaxH   = screenH - topOffset - 20; // 20px bottom margin
-  const listH       = Math.min(panelMaxH - 120, 460);  // conversation list area
-  const chatH       = Math.min(panelMaxH - 120, 400);  // chat messages area
-  const composeH    = Math.min(panelMaxH - 80,  440);  // compose/newgroup list
+  const topOffset = Platform.OS === "web" ? 62 : 96;
+  const panelMaxH =
+    Platform.OS === "web"
+      ? Math.min(screenH - topOffset - 20, 580)
+      : screenH - topOffset - 20;
+  const listH = Math.min(panelMaxH - 80, 500); // conversation list area
+  const chatH = Math.min(panelMaxH - 110, 460); // chat messages area
+  const composeH = Math.min(panelMaxH - 80, 480); // compose/newgroup list
 
   // ── Screens: 'list' | 'room' | 'compose' | 'newgroup' | 'settings' ────────
-  const [screen,         setScreen]         = useState('list');
-  const [convos,         setConvos]         = useState([]);
-  const [loadingList,    setLoadingList]    = useState(true);
-  const [activeRoom,     setActiveRoom]     = useState(null); // { roomId, name, type }
-  const [messages,       setMessages]       = useState([]);
-  const [loadingMsgs,    setLoadingMsgs]    = useState(false);
-  const [text,           setText]           = useState('');
-  const [sending,        setSending]        = useState(false);
+  const [screen, setScreen] = useState("list");
+  const [convos, setConvos] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [activeRoom, setActiveRoom] = useState(null); // { roomId, name, type }
+  const [messages, setMessages] = useState([]);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
   // Compose
-  const [allPeople,      setAllPeople]      = useState([]); // members + admin entry
-  const [peopleSearch,   setPeopleSearch]   = useState('');
-  const [loadingPeople,  setLoadingPeople]  = useState(false);
+  const [allPeople, setAllPeople] = useState([]); // members + admin entry
+  const [peopleSearch, setPeopleSearch] = useState("");
+  const [loadingPeople, setLoadingPeople] = useState(false);
   // New Group
-  const [groupName,      setGroupName]      = useState('');
-  const [groupPicks,     setGroupPicks]     = useState([]); // uids picked
-  const [creatingGroup,  setCreatingGroup]  = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupPicks, setGroupPicks] = useState([]); // uids picked
+  const [creatingGroup, setCreatingGroup] = useState(false);
   // Context menu (long-press on convo row)
-  const [ctxMenu,        setCtxMenu]        = useState(null); // { convo, x, y }
+  const [ctxMenu, setCtxMenu] = useState(null); // { convo, x, y }
   // Message long-press menu
-  const [msgMenu,        setMsgMenu]        = useState(null); // { msg }
+  const [msgMenu, setMsgMenu] = useState(null); // { msg }
   // Message Settings
-  const [msgSettings,    setMsgSettings]    = useState(DEFAULT_MSG_SETTINGS);
-  const [settingsSaved,  setSettingsSaved]  = useState(false);
+  const [msgSettings, setMsgSettings] = useState(DEFAULT_MSG_SETTINGS);
+  const [settingsSaved, setSettingsSaved] = useState(false);
   // Archived toggle
-  const [showArchived,   setShowArchived]   = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   // Conversation list search
-  const [listSearch,     setListSearch]     = useState('');
+  const [listSearch, setListSearch] = useState("");
   const scrollRef = useRef(null);
 
   // Load settings on mount
   useEffect(() => {
-    AsyncStorage.getItem(MSG_SETTINGS_KEY).then(raw => {
-      if (raw) {
-        try { setMsgSettings({ ...DEFAULT_MSG_SETTINGS, ...JSON.parse(raw) }); } catch { /* ignore */ }
-      }
-    }).catch(() => {});
+    AsyncStorage.getItem(MSG_SETTINGS_KEY)
+      .then((raw) => {
+        if (raw) {
+          try {
+            setMsgSettings({ ...DEFAULT_MSG_SETTINGS, ...JSON.parse(raw) });
+          } catch {
+            /* ignore */
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const saveMsgSettings = async (updated) => {
     setMsgSettings(updated);
-    try { await AsyncStorage.setItem(MSG_SETTINGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
+    try {
+      await AsyncStorage.setItem(MSG_SETTINGS_KEY, JSON.stringify(updated));
+    } catch {
+      /* ignore */
+    }
     // If activeNow changed, update Firestore presence
     if (updated.activeNow !== msgSettings.activeNow && uid) {
       setOnlineStatus(uid, updated.activeNow);
@@ -4272,28 +13677,42 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
   };
 
   // Reset badge on open
-  useEffect(() => { onResetUnread?.(); }, []);
+  useEffect(() => {
+    onResetUnread?.();
+  }, []);
 
   // ── Load people for compose (members + admin) ─────────────────────────────
   const loadPeople = () => {
     setLoadingPeople(true);
-    getDocs(query(collection(db, 'members'))).then(snap => {
-      const members = snap.docs
-        .map(d => ({ uid: d.id, ...d.data() }))
-        .filter(m => m.uid !== uid && m.status === 'Active')
-        .sort((a, b) => {
-          // Online members first, then alphabetical
-          if (a.isOnline && !b.isOnline) return -1;
-          if (!a.isOnline && b.isOnline) return 1;
-          return (a.name || '').localeCompare(b.name || '');
-        });
-      setAllPeople([
-        { uid: '__admin__', name: 'Admin / Support', icon: '🛡️', isAdmin: true },
-        { uid: '__group_members__', name: 'Co-member Group Chat', icon: '👥', isGroup: true },
-        ...members,
-      ]);
-      setLoadingPeople(false);
-    }).catch(() => setLoadingPeople(false));
+    getDocs(query(collection(db, "members")))
+      .then((snap) => {
+        const members = snap.docs
+          .map((d) => ({ uid: d.id, ...d.data() }))
+          .filter((m) => m.uid !== uid && m.status === "Active")
+          .sort((a, b) => {
+            // Online members first, then alphabetical
+            if (a.isOnline && !b.isOnline) return -1;
+            if (!a.isOnline && b.isOnline) return 1;
+            return (a.name || "").localeCompare(b.name || "");
+          });
+        setAllPeople([
+          {
+            uid: "__admin__",
+            name: "Admin / Support",
+            icon: "🛡️",
+            isAdmin: true,
+          },
+          {
+            uid: "__group_members__",
+            name: "Co-member Group Chat",
+            icon: "👥",
+            isGroup: true,
+          },
+          ...members,
+        ]);
+        setLoadingPeople(false);
+      })
+      .catch(() => setLoadingPeople(false));
   };
 
   // ── Build conversation list ───────────────────────────────────────────────
@@ -4303,58 +13722,89 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
     const adminId = `admin_${uid}`;
 
     const upsert = (roomId, entry) => {
-      setConvos(prev => {
-        const rest = prev.filter(c => c.roomId !== roomId);
-        return [entry, ...rest].sort((a, b) => (b.lastAtMs ?? 0) - (a.lastAtMs ?? 0));
+      setConvos((prev) => {
+        const rest = prev.filter((c) => c.roomId !== roomId);
+        return [entry, ...rest].sort(
+          (a, b) => (b.lastAtMs ?? 0) - (a.lastAtMs ?? 0),
+        );
       });
     };
 
     // Admin room
-    subs.push(onSnapshot(doc(db, 'chatRooms', adminId), snap => {
-      const d = snap.data() || {};
-      upsert(adminId, {
-        roomId: adminId, name: 'Admin / Support', icon: '🛡️', type: 'admin',
-        lastMsg: d.lastMessage || '', lastAtMs: d.lastAt?.toMillis?.() ?? 0,
-        archived: d.archived || false,
-      });
-      setLoadingList(false);
-    }, () => setLoadingList(false)));
-
-    // Group members room
-    subs.push(onSnapshot(doc(db, 'chatRooms', 'group_members'), snap => {
-      const d = snap.data() || {};
-      upsert('group_members', {
-        roomId: 'group_members', name: 'Co-member Group', icon: '👥', type: 'group',
-        lastMsg: d.lastMessage || '', lastAtMs: d.lastAt?.toMillis?.() ?? 0,
-        archived: d.archived || false,
-      });
-    }, () => {}));
-
-    // DM rooms & custom groups
-    subs.push(onSnapshot(
-      query(collection(db, 'chatRooms'), where('members', 'array-contains', uid)),
-      snap => {
-        snap.docs.forEach(rDoc => {
-          const rId = rDoc.id;
-          if (rId === adminId || rId === 'group_members') return;
-          const d = rDoc.data() || {};
-          const isGrp = d.type === 'group_custom';
-          const otherName = isGrp
-            ? (d.groupName || 'Group Chat')
-            : (Object.entries(d.memberNames || {}).find(([k]) => k !== uid)?.[1] || 'Member');
-          upsert(rId, {
-            roomId: rId, name: otherName,
-            icon: isGrp ? '👥' : '💬',
-            type: isGrp ? 'group_custom' : 'dm',
-            lastMsg: d.lastMessage || '',
+    subs.push(
+      onSnapshot(
+        doc(db, "chatRooms", adminId),
+        (snap) => {
+          const d = snap.data() || {};
+          upsert(adminId, {
+            roomId: adminId,
+            name: "Admin / Support",
+            icon: "🛡️",
+            type: "admin",
+            lastMsg: d.lastMessage || "",
             lastAtMs: d.lastAt?.toMillis?.() ?? 0,
             archived: d.archived || false,
           });
-        });
-      }, () => {}
-    ));
+          setLoadingList(false);
+        },
+        () => setLoadingList(false),
+      ),
+    );
 
-    return () => subs.forEach(fn => typeof fn === 'function' && fn());
+    // Group members room
+    subs.push(
+      onSnapshot(
+        doc(db, "chatRooms", "group_members"),
+        (snap) => {
+          const d = snap.data() || {};
+          upsert("group_members", {
+            roomId: "group_members",
+            name: "Co-member Group",
+            icon: "👥",
+            type: "group",
+            lastMsg: d.lastMessage || "",
+            lastAtMs: d.lastAt?.toMillis?.() ?? 0,
+            archived: d.archived || false,
+          });
+        },
+        () => {},
+      ),
+    );
+
+    // DM rooms & custom groups
+    subs.push(
+      onSnapshot(
+        query(
+          collection(db, "chatRooms"),
+          where("members", "array-contains", uid),
+        ),
+        (snap) => {
+          snap.docs.forEach((rDoc) => {
+            const rId = rDoc.id;
+            if (rId === adminId || rId === "group_members") return;
+            const d = rDoc.data() || {};
+            const isGrp = d.type === "group_custom";
+            const otherName = isGrp
+              ? d.groupName || "Group Chat"
+              : Object.entries(d.memberNames || {}).find(
+                  ([k]) => k !== uid,
+                )?.[1] || "Member";
+            upsert(rId, {
+              roomId: rId,
+              name: otherName,
+              icon: isGrp ? "👥" : "💬",
+              type: isGrp ? "group_custom" : "dm",
+              lastMsg: d.lastMessage || "",
+              lastAtMs: d.lastAt?.toMillis?.() ?? 0,
+              archived: d.archived || false,
+            });
+          });
+        },
+        () => {},
+      ),
+    );
+
+    return () => subs.forEach((fn) => typeof fn === "function" && fn());
   }, [uid]);
 
   // ── Load messages when room selected ─────────────────────────────────────
@@ -4363,14 +13813,22 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
     setLoadingMsgs(true);
     setMessages([]);
     const q = query(
-      collection(db, 'chatRooms', activeRoom.roomId, 'messages'),
-      orderBy('createdAt', 'asc'), limit(80)
+      collection(db, "chatRooms", activeRoom.roomId, "messages"),
+      orderBy("createdAt", "asc"),
+      limit(80),
     );
-    const unsub = onSnapshot(q, snap => {
-      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoadingMsgs(false);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 80);
-    }, () => setLoadingMsgs(false));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setLoadingMsgs(false);
+        setTimeout(
+          () => scrollRef.current?.scrollToEnd({ animated: false }),
+          80,
+        );
+      },
+      () => setLoadingMsgs(false),
+    );
     return () => unsub();
   }, [activeRoom?.roomId]);
 
@@ -4379,24 +13837,33 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
     const trimmed = text.trim();
     if (!trimmed || sending || !activeRoom) return;
     setSending(true);
-    setText('');
+    setText("");
     try {
-      await addDoc(collection(db, 'chatRooms', activeRoom.roomId, 'messages'), {
-        text: trimmed, senderId: uid, senderName: member.name,
-        createdAt: serverTimestamp(), deleted: false,
+      await addDoc(collection(db, "chatRooms", activeRoom.roomId, "messages"), {
+        text: trimmed,
+        senderId: uid,
+        senderName: member.name,
+        createdAt: serverTimestamp(),
+        deleted: false,
       });
-      await updateDoc(doc(db, 'chatRooms', activeRoom.roomId), {
-        lastMessage: trimmed, lastSender: member.name,
-        lastSenderId: uid, lastAt: serverTimestamp(),
+      await updateDoc(doc(db, "chatRooms", activeRoom.roomId), {
+        lastMessage: trimmed,
+        lastSender: member.name,
+        lastSenderId: uid,
+        lastAt: serverTimestamp(),
       });
-      if (activeRoom.type === 'admin') {
-        addDoc(collection(db, 'adminNotifications'), {
-          type: 'chat', icon: '💬',
+      if (activeRoom.type === "admin") {
+        addDoc(collection(db, "adminNotifications"), {
+          type: "chat",
+          icon: "💬",
           title: `Message from ${member.name}`,
-          message: trimmed.length > 80 ? trimmed.slice(0, 80) + '…' : trimmed,
-          memberId: uid, memberUserId: member.userId,
-          roomId: activeRoom.roomId, navKey: 'chat_inbox',
-          createdAt: serverTimestamp(), read: false,
+          message: trimmed.length > 80 ? trimmed.slice(0, 80) + "…" : trimmed,
+          memberId: uid,
+          memberUserId: member.userId,
+          roomId: activeRoom.roomId,
+          navKey: "chat_inbox",
+          createdAt: serverTimestamp(),
+          read: false,
         }).catch(() => {});
       }
     } catch (_) {}
@@ -4407,40 +13874,50 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
   const deleteMsg = async (msg) => {
     if (msg.senderId !== uid) return;
     try {
-      await updateDoc(doc(db, 'chatRooms', activeRoom.roomId, 'messages', msg.id), {
-        deleted: true, text: '',
-      });
+      await updateDoc(
+        doc(db, "chatRooms", activeRoom.roomId, "messages", msg.id),
+        {
+          deleted: true,
+          text: "",
+        },
+      );
     } catch (_) {}
     setMsgMenu(null);
   };
 
   // ── Convo context actions ─────────────────────────────────────────────────
   const archiveConvo = async (convo) => {
-    await updateDoc(doc(db, 'chatRooms', convo.roomId), { archived: true }).catch(() => {});
+    await updateDoc(doc(db, "chatRooms", convo.roomId), {
+      archived: true,
+    }).catch(() => {});
     setCtxMenu(null);
   };
   const unarchiveConvo = async (convo) => {
-    await updateDoc(doc(db, 'chatRooms', convo.roomId), { archived: false }).catch(() => {});
+    await updateDoc(doc(db, "chatRooms", convo.roomId), {
+      archived: false,
+    }).catch(() => {});
     setCtxMenu(null);
   };
   const deleteConvo = async (convo) => {
     // For DMs/custom groups created by member — soft delete by removing from members list
     try {
-      if (convo.type === 'dm') {
-        await updateDoc(doc(db, 'chatRooms', convo.roomId), {
-          members: [],  // member removes themselves
+      if (convo.type === "dm") {
+        await updateDoc(doc(db, "chatRooms", convo.roomId), {
+          members: [], // member removes themselves
           deleted: true,
         });
       } else {
         // For admin/group: just archive
-        await updateDoc(doc(db, 'chatRooms', convo.roomId), { archived: true });
+        await updateDoc(doc(db, "chatRooms", convo.roomId), { archived: true });
       }
     } catch (_) {}
-    setConvos(prev => prev.filter(c => c.roomId !== convo.roomId));
+    setConvos((prev) => prev.filter((c) => c.roomId !== convo.roomId));
     setCtxMenu(null);
   };
   const markRead = (convo) => {
-    updateDoc(doc(db, 'chatRooms', convo.roomId), { [`memberLastReadAt_${uid}`]: serverTimestamp() }).catch(() => {});
+    updateDoc(doc(db, "chatRooms", convo.roomId), {
+      [`memberLastReadAt_${uid}`]: serverTimestamp(),
+    }).catch(() => {});
     setCtxMenu(null);
   };
 
@@ -4448,28 +13925,56 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
   const openDM = async (person) => {
     let roomId, name, type;
     if (person.isAdmin) {
-      roomId = `admin_${uid}`; name = 'Admin / Support'; type = 'admin';
-      await setDoc(doc(db, 'chatRooms', roomId), {
-        type: 'admin', memberId: uid, memberName: member.name,
-        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
-      }, { merge: true });
+      roomId = `admin_${uid}`;
+      name = "Admin / Support";
+      type = "admin";
+      await setDoc(
+        doc(db, "chatRooms", roomId),
+        {
+          type: "admin",
+          memberId: uid,
+          memberName: member.name,
+          createdAt: serverTimestamp(),
+          lastMessage: null,
+          lastAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
     } else if (person.isGroup) {
-      roomId = 'group_members'; name = 'Co-member Group'; type = 'group';
-      await setDoc(doc(db, 'chatRooms', roomId), {
-        type: 'group', name: 'Members Group Chat',
-        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
-      }, { merge: true });
+      roomId = "group_members";
+      name = "Co-member Group";
+      type = "group";
+      await setDoc(
+        doc(db, "chatRooms", roomId),
+        {
+          type: "group",
+          name: "Members Group Chat",
+          createdAt: serverTimestamp(),
+          lastMessage: null,
+          lastAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
     } else {
-      const dmId = [uid, person.uid].sort().join('_');
-      roomId = dmId; name = person.name; type = 'dm';
-      await setDoc(doc(db, 'chatRooms', dmId), {
-        type: 'dm', members: [uid, person.uid],
-        memberNames: { [uid]: member.name, [person.uid]: person.name },
-        createdAt: serverTimestamp(), lastMessage: null, lastAt: serverTimestamp(),
-      }, { merge: true });
+      const dmId = [uid, person.uid].sort().join("_");
+      roomId = dmId;
+      name = person.name;
+      type = "dm";
+      await setDoc(
+        doc(db, "chatRooms", dmId),
+        {
+          type: "dm",
+          members: [uid, person.uid],
+          memberNames: { [uid]: member.name, [person.uid]: person.name },
+          createdAt: serverTimestamp(),
+          lastMessage: null,
+          lastAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
     }
-    setScreen('list');
-    setPeopleSearch('');
+    setScreen("list");
+    setPeopleSearch("");
     setActiveRoom({ roomId, name, type });
   };
 
@@ -4480,277 +13985,900 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
     try {
       const allMembers = [uid, ...groupPicks];
       const nameMap = { [uid]: member.name };
-      groupPicks.forEach(pUid => {
-        const p = allPeople.find(x => x.uid === pUid);
+      groupPicks.forEach((pUid) => {
+        const p = allPeople.find((x) => x.uid === pUid);
         if (p) nameMap[pUid] = p.name;
       });
-      const ref = await addDoc(collection(db, 'chatRooms'), {
-        type: 'group_custom', groupName: groupName.trim(),
-        members: allMembers, memberNames: nameMap,
-        createdBy: uid, createdAt: serverTimestamp(),
-        lastMessage: null, lastAt: serverTimestamp(),
+      const ref = await addDoc(collection(db, "chatRooms"), {
+        type: "group_custom",
+        groupName: groupName.trim(),
+        members: allMembers,
+        memberNames: nameMap,
+        createdBy: uid,
+        createdAt: serverTimestamp(),
+        lastMessage: null,
+        lastAt: serverTimestamp(),
       });
-      setScreen('list');
-      setGroupName('');
+      setScreen("list");
+      setGroupName("");
       setGroupPicks([]);
-      setActiveRoom({ roomId: ref.id, name: groupName.trim(), type: 'group_custom' });
+      setActiveRoom({
+        roomId: ref.id,
+        name: groupName.trim(),
+        type: "group_custom",
+      });
     } catch (_) {}
     setCreatingGroup(false);
   };
 
   // ── Shared panel style ────────────────────────────────────────────────────
+  const isWideChat = false;
+  const finalPanelW = Math.min(screenW * 0.94, 460);
   const panelStyle = {
-    position: 'absolute',
+    position: "absolute",
     top: topOffset,
     right: 8,
-    width: panelW,
+    width: finalPanelW,
     maxHeight: panelMaxH,
-    backgroundColor: '#ffffff',
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: C.gold,
-    shadowColor: '#000',
-    shadowOpacity: 0.38,
-    shadowRadius: 24,
+    backgroundColor: "#f0f4f9",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(99,91,255,0.18)",
+    shadowColor: "#635bff",
+    shadowOpacity: 0.18,
+    shadowRadius: 32,
     shadowOffset: { width: 0, height: 8 },
     zIndex: 9999,
-    overflow: 'hidden',
+    overflow: "hidden",
+    flexDirection: "column",
   };
 
-  const fmtDate = ts => {
-    if (!ts) return '';
-    const d = typeof ts === 'number' ? new Date(ts) : (ts?.toDate?.() || new Date(ts));
-    return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const fmtDate = (ts) => {
+    if (!ts) return "";
+    const d =
+      typeof ts === "number" ? new Date(ts) : ts?.toDate?.() || new Date(ts);
+    return d.toLocaleTimeString("en-PH", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
   };
 
   // ── Header title & back action ────────────────────────────────────────────
-  const headerTitle = screen === 'compose' ? 'New Message'
-    : screen === 'newgroup' ? 'New Group Chat'
-    : screen === 'settings' ? 'Message Settings'
-    : activeRoom ? activeRoom.name
-    : 'Messages';
+  const headerTitle =
+    screen === "compose"
+      ? "New Message"
+      : screen === "newgroup"
+        ? "New Group Chat"
+        : screen === "settings"
+          ? "Message Settings"
+          : activeRoom
+            ? activeRoom.name
+            : "Messages";
 
   const goBack = () => {
-    if (activeRoom) { setActiveRoom(null); setMessages([]); return; }
-    if (screen !== 'list') { setScreen('list'); setPeopleSearch(''); setGroupName(''); setGroupPicks([]); }
+    if (activeRoom) {
+      setActiveRoom(null);
+      setMessages([]);
+      return;
+    }
+    if (screen !== "list") {
+      setScreen("list");
+      setPeopleSearch("");
+      setGroupName("");
+      setGroupPicks([]);
+    }
   };
-  const showBack = !!activeRoom || screen !== 'list';
+  const showBack = !!activeRoom || screen !== "list";
 
   return (
     <>
       {/* Backdrop */}
       <TouchableOpacity
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9998 }}
-        activeOpacity={1} onPress={() => { setCtxMenu(null); setMsgMenu(null); if (!ctxMenu && !msgMenu) onClose(); }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 9998,
+        }}
+        activeOpacity={1}
+        onPress={() => {
+          setCtxMenu(null);
+          setMsgMenu(null);
+          if (!ctxMenu && !msgMenu) onClose();
+        }}
       />
 
       {/* Context menu backdrop */}
       {(ctxMenu || msgMenu) && (
         <TouchableOpacity
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000 }}
-          activeOpacity={1} onPress={() => { setCtxMenu(null); setMsgMenu(null); }}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 10000,
+          }}
+          activeOpacity={1}
+          onPress={() => {
+            setCtxMenu(null);
+            setMsgMenu(null);
+          }}
         />
       )}
 
       <View style={panelStyle}>
         {/* ── HEADER ──────────────────────────────────────────────────── */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.12)', backgroundColor: '#1a2d4e', borderTopLeftRadius: 18, borderTopRightRadius: 18 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            paddingHorizontal: 16,
+            paddingVertical: 13,
+            borderBottomWidth: 1,
+            borderColor: "rgba(99,91,255,0.12)",
+            backgroundColor: "#635bff",
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+          }}
+        >
           {showBack ? (
-            <TouchableOpacity onPress={goBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.70)" />
+            <TouchableOpacity
+              onPress={goBack}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: "rgba(255,255,255,0.15)",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <MaterialIcons name="arrow-back" size={18} color="#fff" />
             </TouchableOpacity>
           ) : (
-            <MaterialIcons name="chat-bubble-outline" size={17} color={C.gold} />
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: "rgba(255,255,255,0.20)",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <MaterialIcons
+                name="chat-bubble-outline"
+                size={16}
+                color="#fff"
+              />
+            </View>
           )}
-          <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff', flex: 1 }} numberOfLines={1}>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_700Bold",
+              fontSize: 14,
+              color: "#fff",
+              flex: 1,
+              letterSpacing: 0.2,
+            }}
+            numberOfLines={1}
+          >
             {headerTitle}
           </Text>
           {/* New message / new group buttons — only on list */}
-          {screen === 'list' && !activeRoom && (
-            <View style={{ flexDirection: 'row', gap: 6 }}>
+          {screen === "list" && !activeRoom && (
+            <View style={{ flexDirection: "row", gap: 6 }}>
               <TouchableOpacity
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                onPress={() => setScreen('settings')}
-                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center' }}
+                onPress={() => setScreen("settings")}
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 15,
+                  backgroundColor: "rgba(255,255,255,0.18)",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
               >
-                <MaterialIcons name="settings" size={14} color={C.gold} />
+                <MaterialIcons name="settings" size={15} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                onPress={() => { setScreen('newgroup'); loadPeople(); }}
-                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center' }}
+                onPress={() => {
+                  setScreen("newgroup");
+                  loadPeople();
+                }}
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 15,
+                  backgroundColor: "rgba(255,255,255,0.18)",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
               >
-                <MaterialIcons name="group-add" size={14} color={C.gold} />
+                <MaterialIcons name="group-add" size={15} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                onPress={() => { setScreen('compose'); loadPeople(); }}
-                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center' }}
+                onPress={() => {
+                  setScreen("compose");
+                  loadPeople();
+                }}
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 15,
+                  backgroundColor: "rgba(255,255,255,0.18)",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
               >
-                <MaterialIcons name="edit" size={14} color={C.gold} />
+                <MaterialIcons name="edit" size={15} color="#fff" />
               </TouchableOpacity>
             </View>
           )}
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.55)" />
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              backgroundColor: "rgba(255,255,255,0.15)",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <MaterialIcons name="close" size={16} color="#fff" />
           </TouchableOpacity>
         </View>
 
         {/* ── SETTINGS SCREEN ──────────────────────────────────────────── */}
-        {screen === 'settings' && !activeRoom && (
-          <ScrollView style={{ maxHeight: listH }} showsVerticalScrollIndicator={false}>
+        {screen === "settings" && !activeRoom && (
+          <ScrollView
+            style={{ maxHeight: listH, backgroundColor: "#ffffff" }}
+            showsVerticalScrollIndicator={false}
+          >
             {/* Active Now */}
-            <View style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 6, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold, letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 10 }}>Presence</Text>
+            <View
+              style={{
+                paddingHorizontal: 14,
+                paddingTop: 14,
+                paddingBottom: 6,
+                borderBottomWidth: 1,
+                borderColor: "rgba(99,91,255,0.10)",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 9,
+                  color: "#635bff",
+                  letterSpacing: 1.8,
+                  textTransform: "uppercase",
+                  marginBottom: 10,
+                }}
+              >
+                Presence
+              </Text>
               {/* Active Now toggle */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 8,
+                }}
+              >
                 <View style={{ flex: 1, marginRight: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: msgSettings.activeNow ? '#4cde8a' : 'rgba(255,255,255,0.25)' }} />
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>Active Now</Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: msgSettings.activeNow
+                          ? "#22c55e"
+                          : "#d1d5db",
+                      }}
+                    />
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 13,
+                        color: "#1a1a2e",
+                      }}
+                    >
+                      Active Now
+                    </Text>
                   </View>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3, lineHeight: 16 }}>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 11,
+                      color: "#6b7280",
+                      marginTop: 3,
+                      lineHeight: 16,
+                    }}
+                  >
                     Show others that you are currently online
                   </Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => saveMsgSettings({ ...msgSettings, activeNow: !msgSettings.activeNow })}
-                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.activeNow ? '#4cde8a' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                  onPress={() =>
+                    saveMsgSettings({
+                      ...msgSettings,
+                      activeNow: !msgSettings.activeNow,
+                    })
+                  }
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor: msgSettings.activeNow
+                      ? "#4cde8a"
+                      : "rgba(255,255,255,0.15)",
+                    justifyContent: "center",
+                    paddingHorizontal: 3,
+                  }}
                 >
-                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.activeNow ? 'flex-end' : 'flex-start', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 3 }} />
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      backgroundColor: "#fff",
+                      alignSelf: msgSettings.activeNow
+                        ? "flex-end"
+                        : "flex-start",
+                      shadowColor: "#000",
+                      shadowOpacity: 0.2,
+                      shadowRadius: 3,
+                    }}
+                  />
                 </TouchableOpacity>
               </View>
             </View>
 
             {/* Notification Sound */}
-            <View style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 6, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold, letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 10 }}>Notifications</Text>
+            <View
+              style={{
+                paddingHorizontal: 14,
+                paddingTop: 14,
+                paddingBottom: 6,
+                borderBottomWidth: 1,
+                borderColor: "rgba(99,91,255,0.10)",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 9,
+                  color: "#635bff",
+                  letterSpacing: 1.8,
+                  textTransform: "uppercase",
+                  marginBottom: 10,
+                }}
+              >
+                Notifications
+              </Text>
 
               {/* Mute All */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 14,
+                }}
+              >
                 <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: msgSettings.notifMuted ? '#e55' : '#fff' }}>🔕  Mute All Messages</Text>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>No sound or vibration from chats</Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 13,
+                      color: msgSettings.notifMuted ? "#e55" : "#1a1a2e",
+                    }}
+                  >
+                    🔕 Mute All Messages
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 11,
+                      color: "#6b7280",
+                      marginTop: 3,
+                    }}
+                  >
+                    No sound or vibration from chats
+                  </Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => saveMsgSettings({ ...msgSettings, notifMuted: !msgSettings.notifMuted })}
-                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.notifMuted ? '#e55' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                  onPress={() =>
+                    saveMsgSettings({
+                      ...msgSettings,
+                      notifMuted: !msgSettings.notifMuted,
+                    })
+                  }
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor: msgSettings.notifMuted
+                      ? "#e55"
+                      : "rgba(255,255,255,0.15)",
+                    justifyContent: "center",
+                    paddingHorizontal: 3,
+                  }}
                 >
-                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.notifMuted ? 'flex-end' : 'flex-start' }} />
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      backgroundColor: "#fff",
+                      alignSelf: msgSettings.notifMuted
+                        ? "flex-end"
+                        : "flex-start",
+                    }}
+                  />
                 </TouchableOpacity>
               </View>
 
               {/* Sound */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, opacity: msgSettings.notifMuted ? 0.35 : 1 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 14,
+                  opacity: msgSettings.notifMuted ? 0.35 : 1,
+                }}
+              >
                 <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>🔔  Notification Sound</Text>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>Play a sound for new messages</Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 13,
+                      color: "#1a1a2e",
+                    }}
+                  >
+                    🔔 Notification Sound
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 11,
+                      color: "#6b7280",
+                      marginTop: 3,
+                    }}
+                  >
+                    Play a sound for new messages
+                  </Text>
                 </View>
                 <TouchableOpacity
                   disabled={msgSettings.notifMuted}
-                  onPress={() => saveMsgSettings({ ...msgSettings, notifSound: !msgSettings.notifSound })}
-                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.notifSound && !msgSettings.notifMuted ? '#4cde8a' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                  onPress={() =>
+                    saveMsgSettings({
+                      ...msgSettings,
+                      notifSound: !msgSettings.notifSound,
+                    })
+                  }
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor:
+                      msgSettings.notifSound && !msgSettings.notifMuted
+                        ? "#4cde8a"
+                        : "rgba(255,255,255,0.15)",
+                    justifyContent: "center",
+                    paddingHorizontal: 3,
+                  }}
                 >
-                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.notifSound ? 'flex-end' : 'flex-start' }} />
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      backgroundColor: "#fff",
+                      alignSelf: msgSettings.notifSound
+                        ? "flex-end"
+                        : "flex-start",
+                    }}
+                  />
                 </TouchableOpacity>
               </View>
 
               {/* Vibrate */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, opacity: msgSettings.notifMuted ? 0.35 : 1 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 14,
+                  opacity: msgSettings.notifMuted ? 0.35 : 1,
+                }}
+              >
                 <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>📳  Vibration</Text>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>Vibrate on new messages</Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 13,
+                      color: "#1a1a2e",
+                    }}
+                  >
+                    📳 Vibration
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 11,
+                      color: "#6b7280",
+                      marginTop: 3,
+                    }}
+                  >
+                    Vibrate on new messages
+                  </Text>
                 </View>
                 <TouchableOpacity
                   disabled={msgSettings.notifMuted}
-                  onPress={() => saveMsgSettings({ ...msgSettings, notifVibrate: !msgSettings.notifVibrate })}
-                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.notifVibrate && !msgSettings.notifMuted ? '#4cde8a' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                  onPress={() =>
+                    saveMsgSettings({
+                      ...msgSettings,
+                      notifVibrate: !msgSettings.notifVibrate,
+                    })
+                  }
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor:
+                      msgSettings.notifVibrate && !msgSettings.notifMuted
+                        ? "#4cde8a"
+                        : "rgba(255,255,255,0.15)",
+                    justifyContent: "center",
+                    paddingHorizontal: 3,
+                  }}
                 >
-                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.notifVibrate ? 'flex-end' : 'flex-start' }} />
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      backgroundColor: "#fff",
+                      alignSelf: msgSettings.notifVibrate
+                        ? "flex-end"
+                        : "flex-start",
+                    }}
+                  />
                 </TouchableOpacity>
               </View>
 
               {/* Preview */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, opacity: msgSettings.notifMuted ? 0.35 : 1 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 14,
+                  opacity: msgSettings.notifMuted ? 0.35 : 1,
+                }}
+              >
                 <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>👁  Message Preview</Text>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>Show message content in notification</Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 13,
+                      color: "#1a1a2e",
+                    }}
+                  >
+                    👁 Message Preview
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 11,
+                      color: "#6b7280",
+                      marginTop: 3,
+                    }}
+                  >
+                    Show message content in notification
+                  </Text>
                 </View>
                 <TouchableOpacity
                   disabled={msgSettings.notifMuted}
-                  onPress={() => saveMsgSettings({ ...msgSettings, notifPreview: !msgSettings.notifPreview })}
-                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.notifPreview && !msgSettings.notifMuted ? '#4cde8a' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                  onPress={() =>
+                    saveMsgSettings({
+                      ...msgSettings,
+                      notifPreview: !msgSettings.notifPreview,
+                    })
+                  }
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor:
+                      msgSettings.notifPreview && !msgSettings.notifMuted
+                        ? "#4cde8a"
+                        : "rgba(255,255,255,0.15)",
+                    justifyContent: "center",
+                    paddingHorizontal: 3,
+                  }}
                 >
-                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.notifPreview ? 'flex-end' : 'flex-start' }} />
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      backgroundColor: "#fff",
+                      alignSelf: msgSettings.notifPreview
+                        ? "flex-end"
+                        : "flex-start",
+                    }}
+                  />
                 </TouchableOpacity>
               </View>
 
               {/* Admin Only */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, opacity: msgSettings.notifMuted ? 0.35 : 1 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 6,
+                  opacity: msgSettings.notifMuted ? 0.35 : 1,
+                }}
+              >
                 <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }}>🛡️  Admin Messages Only</Text>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>Only notify for admin chat messages</Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 13,
+                      color: "#fff",
+                    }}
+                  >
+                    🛡️ Admin Messages Only
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.45)",
+                      marginTop: 3,
+                    }}
+                  >
+                    Only notify for admin chat messages
+                  </Text>
                 </View>
                 <TouchableOpacity
                   disabled={msgSettings.notifMuted}
-                  onPress={() => saveMsgSettings({ ...msgSettings, notifAdminOnly: !msgSettings.notifAdminOnly })}
-                  style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: msgSettings.notifAdminOnly && !msgSettings.notifMuted ? '#4cde8a' : 'rgba(255,255,255,0.15)', justifyContent: 'center', paddingHorizontal: 3 }}
+                  onPress={() =>
+                    saveMsgSettings({
+                      ...msgSettings,
+                      notifAdminOnly: !msgSettings.notifAdminOnly,
+                    })
+                  }
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor:
+                      msgSettings.notifAdminOnly && !msgSettings.notifMuted
+                        ? "#4cde8a"
+                        : "rgba(255,255,255,0.15)",
+                    justifyContent: "center",
+                    paddingHorizontal: 3,
+                  }}
                 >
-                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', alignSelf: msgSettings.notifAdminOnly ? 'flex-end' : 'flex-start' }} />
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      backgroundColor: "#fff",
+                      alignSelf: msgSettings.notifAdminOnly
+                        ? "flex-end"
+                        : "flex-start",
+                    }}
+                  />
                 </TouchableOpacity>
               </View>
             </View>
 
             {settingsSaved && (
-              <View style={{ margin: 12, backgroundColor: 'rgba(26,138,74,0.25)', borderRadius: 10, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(26,138,74,0.50)' }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#4cde8a' }}>✓  Settings saved</Text>
+              <View
+                style={{
+                  margin: 12,
+                  backgroundColor: "rgba(26,138,74,0.25)",
+                  borderRadius: 10,
+                  padding: 10,
+                  alignItems: "center",
+                  borderWidth: 1,
+                  borderColor: "rgba(26,138,74,0.50)",
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 12,
+                    color: "#4cde8a",
+                  }}
+                >
+                  ✓ Settings saved
+                </Text>
               </View>
             )}
           </ScrollView>
         )}
 
         {/* ── COMPOSE SCREEN ───────────────────────────────────────────── */}
-        {screen === 'compose' && !activeRoom && (
-          <ScrollView style={{ maxHeight: composeH }} keyboardShouldPersistTaps="handled">
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, margin: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
-              <MaterialIcons name="search" size={15} color="rgba(255,255,255,0.40)" />
+        {screen === "compose" && !activeRoom && (
+          <ScrollView
+            style={{ maxHeight: composeH }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: "rgba(255,255,255,0.08)",
+                borderRadius: 10,
+                margin: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <MaterialIcons
+                name="search"
+                size={15}
+                color="rgba(255,255,255,0.40)"
+              />
               <TextInput
-                style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff', paddingHorizontal: 8, paddingVertical: 4 }}
-                value={peopleSearch} onChangeText={setPeopleSearch}
-                placeholder="Search name..." placeholderTextColor="rgba(255,255,255,0.30)"
+                style={{
+                  flex: 1,
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 12,
+                  color: "#fff",
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                }}
+                value={peopleSearch}
+                onChangeText={setPeopleSearch}
+                placeholder="Search name..."
+                placeholderTextColor="rgba(255,255,255,0.30)"
                 autoFocus
               />
             </View>
             {loadingPeople ? (
-              <View style={{ padding: 20, alignItems: 'center' }}><ActivityIndicator size="small" color={C.gold} /></View>
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <ActivityIndicator size="small" color={C.gold} />
+              </View>
             ) : (
               allPeople
-                .filter(p => { const q = peopleSearch.trim().toLowerCase(); return !q || (p.name || '').toLowerCase().includes(q); })
+                .filter((p) => {
+                  const q = peopleSearch.trim().toLowerCase();
+                  return !q || (p.name || "").toLowerCase().includes(q);
+                })
                 .map((p, i, arr) => (
-                  <TouchableOpacity key={p.uid} activeOpacity={0.75}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(255,255,255,0.07)' }}
+                  <TouchableOpacity
+                    key={p.uid}
+                    activeOpacity={0.75}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      paddingHorizontal: 14,
+                      paddingVertical: 11,
+                      borderBottomWidth: i < arr.length - 1 ? 1 : 0,
+                      borderColor: "rgba(99,91,255,0.08)",
+                    }}
                     onPress={() => openDM(p)}
                   >
-                    <View style={{ position: 'relative' }}>
-                      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.35)', justifyContent: 'center', alignItems: 'center' }}>
-                        <Text style={{ fontSize: p.icon ? 16 : 12, fontFamily: 'GoogleSans_700Bold', color: C.gold }}>
-                          {p.icon || (p.name || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+                    <View style={{ position: "relative" }}>
+                      <View
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 20,
+                          backgroundColor: "#635bff",
+                          justifyContent: "center",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: p.icon ? 16 : 12,
+                            fontFamily: "GoogleSans_700Bold",
+                            color: "#fff",
+                          }}
+                        >
+                          {p.icon ||
+                            (p.name || "?")
+                              .split(/[\s,]+/)
+                              .filter(Boolean)
+                              .map((w) => w[0])
+                              .slice(0, 2)
+                              .join("")
+                              .toUpperCase()}
                         </Text>
                       </View>
                       {!p.isAdmin && !p.isGroup && p.isOnline && (
-                        <View style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#4cde8a', borderWidth: 1.5, borderColor: '#1a2d4e' }} />
+                        <View
+                          style={{
+                            position: "absolute",
+                            bottom: 0,
+                            right: 0,
+                            width: 10,
+                            height: 10,
+                            borderRadius: 5,
+                            backgroundColor: "#4cde8a",
+                            borderWidth: 1.5,
+                            borderColor: "#fff",
+                          }}
+                        />
                       )}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff' }} numberOfLines={1}>{p.name}</Text>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 5,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: "GoogleSans_700Bold",
+                            fontSize: 13,
+                            color: "#1a1a2e",
+                          }}
+                          numberOfLines={1}
+                        >
+                          {fmtChatName(p.name, p.firstName, p.lastName)}
+                        </Text>
                         {!p.isAdmin && !p.isGroup && p.isOnline && (
-                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: '#4cde8a' }}>● Active now</Text>
+                          <Text
+                            style={{
+                              fontFamily: "GoogleSans_400Regular",
+                              fontSize: 9,
+                              color: "#4cde8a",
+                            }}
+                          >
+                            ● Active now
+                          </Text>
                         )}
                       </View>
-                      {p.userId && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.38)' }}>{p.userId}</Text>}
+                      {p.userId && (
+                        <Text
+                          style={{
+                            fontFamily: "GoogleSans_400Regular",
+                            fontSize: 10,
+                            color: "rgba(255,255,255,0.38)",
+                          }}
+                        >
+                          {p.userId}
+                        </Text>
+                      )}
                     </View>
-                    <MaterialIcons name="chevron-right" size={16} color="rgba(255,255,255,0.28)" />
+                    <MaterialIcons
+                      name="chevron-right"
+                      size={16}
+                      color="rgba(255,255,255,0.28)"
+                    />
                   </TouchableOpacity>
                 ))
             )}
@@ -4758,25 +14886,75 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
         )}
 
         {/* ── NEW GROUP SCREEN ─────────────────────────────────────────── */}
-        {screen === 'newgroup' && !activeRoom && (
-          <ScrollView style={{ maxHeight: composeH }} keyboardShouldPersistTaps="handled">
+        {screen === "newgroup" && !activeRoom && (
+          <ScrollView
+            style={{ maxHeight: composeH, backgroundColor: "#ffffff" }}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Group name input */}
-            <View style={{ padding: 10, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+            <View
+              style={{
+                padding: 10,
+                borderBottomWidth: 1,
+                borderColor: "rgba(99,91,255,0.10)",
+              }}
+            >
               <TextInput
-                style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: '#fff', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
-                value={groupName} onChangeText={setGroupName}
-                placeholder="Group name..." placeholderTextColor="rgba(255,255,255,0.30)"
-                autoFocus maxLength={50}
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 13,
+                  color: "#1a1a2e",
+                  backgroundColor: "#f3f4f6",
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderWidth: 1.5,
+                  borderColor: "rgba(99,91,255,0.15)",
+                }}
+                value={groupName}
+                onChangeText={setGroupName}
+                placeholder="Group name..."
+                placeholderTextColor="#9ca3af"
+                autoFocus
+                maxLength={50}
               />
               {groupPicks.length > 0 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8, flexDirection: 'row' }}>
-                  {groupPicks.map(pUid => {
-                    const p = allPeople.find(x => x.uid === pUid);
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginTop: 8, flexDirection: "row" }}
+                >
+                  {groupPicks.map((pUid) => {
+                    const p = allPeople.find((x) => x.uid === pUid);
                     return (
-                      <TouchableOpacity key={pUid} onPress={() => setGroupPicks(prev => prev.filter(x => x !== pUid))}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(201,168,76,0.25)', borderRadius: 14, paddingHorizontal: 8, paddingVertical: 4, marginRight: 6 }}>
-                        <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: C.gold }}>{p?.name?.split(' ')[0]}</Text>
-                        <MaterialIcons name="close" size={11} color={C.gold} />
+                      <TouchableOpacity
+                        key={pUid}
+                        onPress={() =>
+                          setGroupPicks((prev) =>
+                            prev.filter((x) => x !== pUid),
+                          )
+                        }
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                          backgroundColor: "rgba(99,91,255,0.12)",
+                          borderRadius: 14,
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          marginRight: 6,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: "GoogleSans_500Medium",
+                            fontSize: 11,
+                            color: "#635bff",
+                          }}
+                        >
+                          {p?.name?.split(" ")[0]}
+                        </Text>
+                        <MaterialIcons name="close" size={11} color="#635bff" />
                       </TouchableOpacity>
                     );
                   })}
@@ -4784,36 +14962,127 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
               )}
             </View>
             {/* Member picker */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, margin: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
-              <MaterialIcons name="search" size={15} color="rgba(255,255,255,0.40)" />
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: "#f3f4f6",
+                borderRadius: 12,
+                marginHorizontal: 14,
+                marginTop: 12,
+                marginBottom: 6,
+                paddingHorizontal: 12,
+                paddingVertical: Platform.OS === "web" ? 9 : 7,
+                borderWidth: 1.5,
+                borderColor: "rgba(99,91,255,0.15)",
+              }}
+            >
+              <MaterialIcons name="search" size={16} color="#9ca3af" />
               <TextInput
-                style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff', paddingHorizontal: 8, paddingVertical: 4 }}
-                value={peopleSearch} onChangeText={setPeopleSearch}
-                placeholder="Add members..." placeholderTextColor="rgba(255,255,255,0.30)"
+                style={{
+                  flex: 1,
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 13,
+                  color: "#1a1a2e",
+                  paddingHorizontal: 8,
+                  paddingVertical: 0,
+                }}
+                value={peopleSearch}
+                onChangeText={setPeopleSearch}
+                placeholder="Add members..."
+                placeholderTextColor="#9ca3af"
               />
             </View>
             {loadingPeople ? (
-              <View style={{ padding: 20, alignItems: 'center' }}><ActivityIndicator size="small" color={C.gold} /></View>
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <ActivityIndicator size="small" color="#635bff" />
+              </View>
             ) : (
               allPeople
-                .filter(p => !p.isAdmin && !p.isGroup)
-                .filter(p => { const q = peopleSearch.trim().toLowerCase(); return !q || (p.name || '').toLowerCase().includes(q); })
+                .filter((p) => !p.isAdmin && !p.isGroup)
+                .filter((p) => {
+                  const q = peopleSearch.trim().toLowerCase();
+                  return !q || (p.name || "").toLowerCase().includes(q);
+                })
                 .map((p, i, arr) => {
                   const picked = groupPicks.includes(p.uid);
                   return (
-                    <TouchableOpacity key={p.uid} activeOpacity={0.75}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(255,255,255,0.07)' }}
-                      onPress={() => setGroupPicks(prev => picked ? prev.filter(x => x !== p.uid) : [...prev, p.uid])}
+                    <TouchableOpacity
+                      key={p.uid}
+                      activeOpacity={0.75}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 10,
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        borderBottomWidth: i < arr.length - 1 ? 1 : 0,
+                        borderColor: "rgba(99,91,255,0.08)",
+                        backgroundColor: picked
+                          ? "rgba(99,91,255,0.05)"
+                          : "transparent",
+                      }}
+                      onPress={() =>
+                        setGroupPicks((prev) =>
+                          picked
+                            ? prev.filter((x) => x !== p.uid)
+                            : [...prev, p.uid],
+                        )
+                      }
                     >
-                      <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: picked ? C.gold : 'rgba(255,255,255,0.25)', backgroundColor: picked ? C.gold : 'transparent', justifyContent: 'center', alignItems: 'center' }}>
-                        {picked && <MaterialIcons name="check" size={12} color={C.navy} />}
+                      <View
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 10,
+                          borderWidth: 2,
+                          borderColor: picked ? "#635bff" : "#d1d5db",
+                          backgroundColor: picked ? "#635bff" : "transparent",
+                          justifyContent: "center",
+                          alignItems: "center",
+                        }}
+                      >
+                        {picked && (
+                          <MaterialIcons name="check" size={12} color="#fff" />
+                        )}
                       </View>
-                      <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(201,168,76,0.18)', justifyContent: 'center', alignItems: 'center' }}>
-                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: C.gold }}>
-                          {(p.name || '?').split(/[\s,]+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+                      <View
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 17,
+                          backgroundColor: "rgba(201,168,76,0.20)",
+                          justifyContent: "center",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: "GoogleSans_700Bold",
+                            fontSize: 11,
+                            color: C.gold,
+                          }}
+                        >
+                          {(p.name || "?")
+                            .split(/[\s,]+/)
+                            .filter(Boolean)
+                            .map((w) => w[0])
+                            .slice(0, 2)
+                            .join("")
+                            .toUpperCase()}
                         </Text>
                       </View>
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#fff', flex: 1 }} numberOfLines={1}>{p.name}</Text>
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 13,
+                          color: "#1a1a2e",
+                          flex: 1,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {p.name}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })
@@ -4821,116 +15090,369 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
             {/* Create button */}
             <TouchableOpacity
               onPress={createGroup}
-              disabled={!groupName.trim() || groupPicks.length < 2 || creatingGroup}
-              style={{ margin: 12, backgroundColor: groupName.trim() && groupPicks.length >= 2 ? C.gold : 'rgba(255,255,255,0.10)', borderRadius: 10, paddingVertical: 11, alignItems: 'center' }}
-            >
-              {creatingGroup
-                ? <ActivityIndicator size="small" color={C.navy} />
-                : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: groupName.trim() && groupPicks.length >= 2 ? C.navy : 'rgba(255,255,255,0.30)' }}>
-                    {groupPicks.length < 2 ? `Add at least ${2 - groupPicks.length} more member${groupPicks.length === 1 ? '' : 's'}` : `Create "${groupName.trim() || 'Group'}" →`}
-                  </Text>
+              disabled={
+                !groupName.trim() || groupPicks.length < 2 || creatingGroup
               }
+              style={{
+                margin: 12,
+                backgroundColor:
+                  groupName.trim() && groupPicks.length >= 2
+                    ? "#635bff"
+                    : "#e5e7eb",
+                borderRadius: 10,
+                paddingVertical: 11,
+                alignItems: "center",
+              }}
+            >
+              {creatingGroup ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 13,
+                    color:
+                      groupName.trim() && groupPicks.length >= 2
+                        ? "#fff"
+                        : "#9ca3af",
+                  }}
+                >
+                  {groupPicks.length < 2
+                    ? `Add at least ${2 - groupPicks.length} more member${groupPicks.length === 1 ? "" : "s"}`
+                    : `Create "${groupName.trim() || "Group"}" →`}
+                </Text>
+              )}
             </TouchableOpacity>
           </ScrollView>
         )}
 
         {/* ── CONVERSATION LIST ─────────────────────────────────────────── */}
-        {screen === 'list' && !activeRoom && (
-          <ScrollView style={{ maxHeight: listH }} showsVerticalScrollIndicator={false}>
+        {screen === "list" && !activeRoom && (
+          <ScrollView
+            style={{ maxHeight: listH, backgroundColor: "#ffffff" }}
+            showsVerticalScrollIndicator={false}
+          >
             {/* Search bar */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(15,30,53,0.07)', borderRadius: 10, marginHorizontal: 12, marginTop: 10, marginBottom: 4, paddingHorizontal: 10, paddingVertical: 7 }}>
-              <MaterialIcons name="search" size={15} color="rgba(15,30,53,0.40)" />
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: "#f3f4f6",
+                borderRadius: 12,
+                marginHorizontal: 14,
+                marginTop: 12,
+                marginBottom: 6,
+                paddingHorizontal: 12,
+                paddingVertical: Platform.OS === "web" ? 9 : 7,
+                borderWidth: 1.5,
+                borderColor: "rgba(99,91,255,0.15)",
+              }}
+            >
+              <MaterialIcons name="search" size={16} color="#9ca3af" />
               <TextInput
-                style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.navy, paddingHorizontal: 8, paddingVertical: 2 }}
-                value={listSearch ?? ''}
+                style={{
+                  flex: 1,
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 13,
+                  color: "#1a1a2e",
+                  paddingHorizontal: 8,
+                  paddingVertical: 0,
+                }}
+                value={listSearch ?? ""}
                 onChangeText={setListSearch}
                 placeholder="Search conversations..."
-                placeholderTextColor="rgba(15,30,53,0.35)"
+                placeholderTextColor="#9ca3af"
               />
               {listSearch ? (
-                <TouchableOpacity onPress={() => setListSearch('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <MaterialIcons name="close" size={14} color="rgba(15,30,53,0.40)" />
+                <TouchableOpacity
+                  onPress={() => setListSearch("")}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <MaterialIcons
+                    name="close"
+                    size={14}
+                    color="rgba(15,30,53,0.40)"
+                  />
                 </TouchableOpacity>
               ) : null}
             </View>
             {loadingList ? (
-              <View style={{ padding: 24, alignItems: 'center' }}>
+              <View style={{ padding: 24, alignItems: "center" }}>
                 <ActivityIndicator size="small" color={C.gold} />
               </View>
-            ) : convos.filter(c => !c.archived && (!listSearch || (c.name || '').toLowerCase().includes((listSearch || '').toLowerCase()))).length === 0 ? (
-              <View style={{ padding: 24, alignItems: 'center', gap: 8 }}>
-                <MaterialIcons name="chat-bubble-outline" size={32} color="rgba(15,30,53,0.18)" />
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(15,30,53,0.40)', textAlign: 'center' }}>
-                  {listSearch ? `No results for "${listSearch}".` : 'No conversations yet.\nTap ✏️ to start a new chat.'}
+            ) : convos.filter(
+                (c) =>
+                  !c.archived &&
+                  (!listSearch ||
+                    (c.name || "")
+                      .toLowerCase()
+                      .includes((listSearch || "").toLowerCase())),
+              ).length === 0 ? (
+              <View style={{ padding: 24, alignItems: "center", gap: 8 }}>
+                <MaterialIcons
+                  name="chat-bubble-outline"
+                  size={32}
+                  color="rgba(15,30,53,0.18)"
+                />
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 13,
+                    color: "#9ca3af",
+                    textAlign: "center",
+                  }}
+                >
+                  {listSearch
+                    ? `No results for "${listSearch}".`
+                    : "No conversations yet. Tap ✏️ to start a new chat."}
                 </Text>
               </View>
             ) : (
-              convos.filter(c => !c.archived && (!listSearch || (c.name || '').toLowerCase().includes((listSearch || '').toLowerCase()))).map((c, i, arr) => (
-                <TouchableOpacity
-                  key={c.roomId}
-                  onPress={() => setActiveRoom({ roomId: c.roomId, name: c.name, type: c.type })}
-                  onLongPress={() => setCtxMenu({ convo: c })}
-                  delayLongPress={400}
-                  activeOpacity={0.75}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(15,30,53,0.08)', backgroundColor: ctxMenu?.convo?.roomId === c.roomId ? 'rgba(201,168,76,0.10)' : 'transparent' }}
-                >
-                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(201,168,76,0.15)', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.40)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
-                    <Text style={{ fontSize: 20 }}>{c.icon}</Text>
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy }} numberOfLines={1}>{c.name}</Text>
-                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: C.textSec, marginTop: 2 }} numberOfLines={1}>
-                      {c.lastMsg || 'No messages yet'}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                    {c.lastAtMs > 0 && <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted }}>{fmtDate(c.lastAtMs)}</Text>}
-                    <MaterialIcons name="chevron-right" size={18} color="rgba(15,30,53,0.28)" />
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
-
-            {/* ── Archived section ─────────────────────────────────────── */}
-            {convos.some(c => c.archived) && (
-              <>
-                <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderColor: 'rgba(15,30,53,0.08)', backgroundColor: 'rgba(15,30,53,0.03)' }}
-                  onPress={() => setShowArchived(v => !v)}
-                  activeOpacity={0.75}
-                >
-                  <MaterialIcons name="archive" size={16} color={showArchived ? C.gold : 'rgba(15,30,53,0.40)'} />
-                  <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 12, color: showArchived ? C.gold : 'rgba(15,30,53,0.50)', flex: 1 }}>
-                    Archived ({convos.filter(c => c.archived).length})
-                  </Text>
-                  <MaterialIcons name={showArchived ? 'expand-less' : 'expand-more'} size={18} color="rgba(15,30,53,0.35)" />
-                </TouchableOpacity>
-                {showArchived && convos.filter(c => c.archived).map((c, i, arr) => (
+              convos
+                .filter(
+                  (c) =>
+                    !c.archived &&
+                    (!listSearch ||
+                      (c.name || "")
+                        .toLowerCase()
+                        .includes((listSearch || "").toLowerCase())),
+                )
+                .map((c, i, arr) => (
                   <TouchableOpacity
                     key={c.roomId}
-                    onPress={() => setActiveRoom({ roomId: c.roomId, name: c.name, type: c.type })}
+                    onPress={() =>
+                      setActiveRoom({
+                        roomId: c.roomId,
+                        name: c.name,
+                        type: c.type,
+                      })
+                    }
                     onLongPress={() => setCtxMenu({ convo: c })}
                     delayLongPress={400}
                     activeOpacity={0.75}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderColor: 'rgba(15,30,53,0.05)', backgroundColor: 'rgba(15,30,53,0.04)' }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      borderBottomWidth: 1,
+                      borderColor: "rgba(99,91,255,0.07)",
+                      backgroundColor:
+                        ctxMenu?.convo?.roomId === c.roomId
+                          ? "rgba(99,91,255,0.08)"
+                          : "transparent",
+                    }}
                   >
-                    <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(15,30,53,0.07)', borderWidth: 1, borderColor: 'rgba(15,30,53,0.15)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
-                      <Text style={{ fontSize: 18, opacity: 0.6 }}>{c.icon}</Text>
+                    <View
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 24,
+                        backgroundColor: "#635bff",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        flexShrink: 0,
+                        shadowColor: "#635bff",
+                        shadowOpacity: 0.3,
+                        shadowRadius: 6,
+                        shadowOffset: { width: 0, height: 2 },
+                      }}
+                    >
+                      <Text style={{ fontSize: 22 }}>{c.icon}</Text>
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: 'rgba(15,30,53,0.50)' }} numberOfLines={1}>{c.name}</Text>
-                        <View style={{ backgroundColor: 'rgba(15,30,53,0.10)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
-                          <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(15,30,53,0.35)', letterSpacing: 0.5 }}>ARCHIVED</Text>
-                        </View>
-                      </View>
-                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(15,30,53,0.35)', marginTop: 2 }} numberOfLines={1}>
-                        {c.lastMsg || 'No messages'}
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 14,
+                          color: "#1a1a2e",
+                        }}
+                        numberOfLines={1}
+                      >
+                        {c.type === "dm"
+                          ? fmtChatName(c.name, c.firstName, c.lastName)
+                          : c.name}
+                      </Text>
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_400Regular",
+                          fontSize: 12,
+                          color: "#6b7280",
+                          marginTop: 2,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {c.lastMsg || "No messages yet"}
                       </Text>
                     </View>
-                    <MaterialIcons name="chevron-right" size={16} color="rgba(15,30,53,0.25)" />
+                    <View
+                      style={{ alignItems: "flex-end", gap: 5, flexShrink: 0 }}
+                    >
+                      {c.lastAtMs > 0 && (
+                        <Text
+                          style={{
+                            fontFamily: "GoogleSans_400Regular",
+                            fontSize: 10,
+                            color: "#9ca3af",
+                          }}
+                        >
+                          {fmtDate(c.lastAtMs)}
+                        </Text>
+                      )}
+                      <View
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 4,
+                          backgroundColor: "#635bff",
+                          opacity: c.lastMsg ? 1 : 0,
+                        }}
+                      />
+                    </View>
                   </TouchableOpacity>
-                ))}
+                ))
+            )}
+
+            {/* ── Archived section ─────────────────────────────────────── */}
+            {convos.some((c) => c.archived) && (
+              <>
+                <TouchableOpacity
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    borderTopWidth: 1,
+                    borderColor: "rgba(15,30,53,0.08)",
+                    backgroundColor: "rgba(15,30,53,0.03)",
+                  }}
+                  onPress={() => setShowArchived((v) => !v)}
+                  activeOpacity={0.75}
+                >
+                  <MaterialIcons
+                    name="archive"
+                    size={16}
+                    color={showArchived ? C.gold : "rgba(15,30,53,0.40)"}
+                  />
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_500Medium",
+                      fontSize: 12,
+                      color: showArchived ? C.gold : "rgba(15,30,53,0.50)",
+                      flex: 1,
+                    }}
+                  >
+                    Archived ({convos.filter((c) => c.archived).length})
+                  </Text>
+                  <MaterialIcons
+                    name={showArchived ? "expand-less" : "expand-more"}
+                    size={18}
+                    color="rgba(15,30,53,0.35)"
+                  />
+                </TouchableOpacity>
+                {showArchived &&
+                  convos
+                    .filter((c) => c.archived)
+                    .map((c, i, arr) => (
+                      <TouchableOpacity
+                        key={c.roomId}
+                        onPress={() =>
+                          setActiveRoom({
+                            roomId: c.roomId,
+                            name: c.name,
+                            type: c.type,
+                          })
+                        }
+                        onLongPress={() => setCtxMenu({ convo: c })}
+                        delayLongPress={400}
+                        activeOpacity={0.75}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 11,
+                          paddingHorizontal: 14,
+                          paddingVertical: 11,
+                          borderBottomWidth: i < arr.length - 1 ? 1 : 0,
+                          borderColor: "rgba(15,30,53,0.05)",
+                          backgroundColor: "rgba(15,30,53,0.04)",
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 42,
+                            height: 42,
+                            borderRadius: 21,
+                            backgroundColor: "rgba(15,30,53,0.07)",
+                            borderWidth: 1,
+                            borderColor: "rgba(15,30,53,0.15)",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Text style={{ fontSize: 18, opacity: 0.6 }}>
+                            {c.icon}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontFamily: "GoogleSans_700Bold",
+                                fontSize: 13,
+                                color: "rgba(15,30,53,0.50)",
+                              }}
+                              numberOfLines={1}
+                            >
+                              {c.name}
+                            </Text>
+                            <View
+                              style={{
+                                backgroundColor: "rgba(15,30,53,0.10)",
+                                borderRadius: 4,
+                                paddingHorizontal: 5,
+                                paddingVertical: 1,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontFamily: "GoogleSans_400Regular",
+                                  fontSize: 8,
+                                  color: "rgba(15,30,53,0.35)",
+                                  letterSpacing: 0.5,
+                                }}
+                              >
+                                ARCHIVED
+                              </Text>
+                            </View>
+                          </View>
+                          <Text
+                            style={{
+                              fontFamily: "GoogleSans_400Regular",
+                              fontSize: 11,
+                              color: "rgba(15,30,53,0.35)",
+                              marginTop: 2,
+                            }}
+                            numberOfLines={1}
+                          >
+                            {c.lastMsg || "No messages"}
+                          </Text>
+                        </View>
+                        <MaterialIcons
+                          name="chevron-right"
+                          size={16}
+                          color="rgba(15,30,53,0.25)"
+                        />
+                      </TouchableOpacity>
+                    ))}
               </>
             )}
           </ScrollView>
@@ -4939,17 +15461,121 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
         {/* ── CHAT ROOM VIEW ────────────────────────────────────────────── */}
         {activeRoom && (
           <>
+            {/* Active room sub-header */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                backgroundColor: "#ffffff",
+                borderBottomWidth: 1,
+                borderColor: "rgba(99,91,255,0.10)",
+              }}
+            >
+              <View
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: "#635bff",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontSize: 18 }}>
+                  {activeRoom.type === "admin"
+                    ? "🛡️"
+                    : activeRoom.type === "group" ||
+                        activeRoom.type === "group_custom"
+                      ? "👥"
+                      : "💬"}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 14,
+                    color: "#1a1a2e",
+                  }}
+                  numberOfLines={1}
+                >
+                  {activeRoom.type === "dm"
+                    ? fmtChatName(
+                        activeRoom.name,
+                        activeRoom.firstName,
+                        activeRoom.lastName,
+                      )
+                    : activeRoom.name}
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    marginTop: 1,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: 3.5,
+                      backgroundColor: "#22c55e",
+                    }}
+                  />
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 11,
+                      color: "#6b7280",
+                    }}
+                  >
+                    Online
+                  </Text>
+                </View>
+              </View>
+            </View>
             <ScrollView
               ref={scrollRef}
-              style={{ maxHeight: chatH }}
-              contentContainerStyle={{ padding: 14, paddingBottom: 4 }}
+              style={{ maxHeight: chatH, backgroundColor: "#f0f4f9" }}
+              contentContainerStyle={{ padding: 16, paddingBottom: 8, gap: 2 }}
               showsVerticalScrollIndicator={false}
             >
               {loadingMsgs ? (
-                <View style={{ padding: 20, alignItems: 'center' }}><ActivityIndicator size="small" color={C.gold} /></View>
+                <View style={{ padding: 20, alignItems: "center" }}>
+                  <ActivityIndicator size="small" color={C.gold} />
+                </View>
               ) : messages.length === 0 ? (
-                <View style={{ padding: 20, alignItems: 'center' }}>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.38)', textAlign: 'center' }}>No messages yet. Say something!</Text>
+                <View style={{ padding: 30, alignItems: "center", gap: 10 }}>
+                  <View
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 28,
+                      backgroundColor: "rgba(99,91,255,0.10)",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <MaterialIcons
+                      name="chat-bubble-outline"
+                      size={26}
+                      color="#635bff"
+                    />
+                  </View>
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 13,
+                      color: "#9ca3af",
+                      textAlign: "center",
+                    }}
+                  >
+                    No messages yet. Say something!
+                  </Text>
                 </View>
               ) : (
                 messages.map((msg, i) => {
@@ -4958,49 +15584,169 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
                   const showName = !isMine && msg.senderId !== prev?.senderId;
                   const isDeleted = msg.deleted;
                   return (
-                    <View key={msg.id} style={{ alignItems: isMine ? 'flex-end' : 'flex-start', marginBottom: 6 }}>
+                    <View
+                      key={msg.id}
+                      style={{
+                        alignItems: isMine ? "flex-end" : "flex-start",
+                        marginBottom: 6,
+                      }}
+                    >
                       {showName && (
-                        <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: C.gold, marginBottom: 2, marginHorizontal: 4 }}>
-                          {msg.senderName || 'Member'}
+                        <Text
+                          style={{
+                            fontFamily: "GoogleSans_700Bold",
+                            fontSize: 10,
+                            color: "#635bff",
+                            marginBottom: 3,
+                            marginHorizontal: 4,
+                          }}
+                        >
+                          {/* sender name */}
+                          {msg.senderName || "Member"}
                         </Text>
                       )}
                       <TouchableOpacity
-                        onLongPress={() => isMine && !isDeleted && setMsgMenu({ msg })}
+                        onLongPress={() =>
+                          isMine && !isDeleted && setMsgMenu({ msg })
+                        }
                         delayLongPress={400}
                         activeOpacity={0.85}
                       >
-                        <View style={{
-                          maxWidth: panelW * 0.65, backgroundColor: isDeleted ? 'rgba(255,255,255,0.05)' : isMine ? 'rgba(37,99,176,0.75)' : 'rgba(255,255,255,0.12)',
-                          borderRadius: 14, borderBottomRightRadius: isMine ? 3 : 14, borderBottomLeftRadius: isMine ? 14 : 3,
-                          paddingHorizontal: 11, paddingVertical: 7,
-                          borderWidth: isDeleted ? 1 : 0, borderColor: 'rgba(255,255,255,0.10)',
-                        }}>
-                          <Text style={{ fontFamily: isDeleted ? 'GoogleSans_400Regular' : 'GoogleSans_400Regular', fontSize: 12, color: isDeleted ? 'rgba(255,255,255,0.30)' : '#fff', lineHeight: 18, fontStyle: isDeleted ? 'italic' : 'normal' }}>
-                            {isDeleted ? 'You deleted this message' : msg.text}
+                        <View
+                          style={{
+                            maxWidth: panelW * 0.7,
+                            backgroundColor: isDeleted
+                              ? "#e5e7eb"
+                              : isMine
+                                ? "#635bff"
+                                : "#ffffff",
+                            borderRadius: 18,
+                            borderBottomRightRadius: isMine ? 4 : 18,
+                            borderBottomLeftRadius: isMine ? 18 : 4,
+                            paddingHorizontal: 14,
+                            paddingVertical: 10,
+                            shadowColor: isMine ? "#635bff" : "#000",
+                            shadowOpacity: isMine ? 0.25 : 0.06,
+                            shadowRadius: 8,
+                            shadowOffset: { width: 0, height: 2 },
+                            borderWidth: isDeleted ? 1 : 0,
+                            borderColor: "#e5e7eb",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontFamily: "GoogleSans_400Regular",
+                              fontSize: 13,
+                              color: isDeleted
+                                ? "#9ca3af"
+                                : isMine
+                                  ? "#fff"
+                                  : "#1a1a2e",
+                              lineHeight: 19,
+                              fontStyle: isDeleted ? "italic" : "normal",
+                            }}
+                          >
+                            {isDeleted ? "You deleted this message" : msg.text}
                           </Text>
                         </View>
                       </TouchableOpacity>
-                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.28)', marginTop: 2, marginHorizontal: 4 }}>
-                        {msg.createdAt ? new Date(msg.createdAt?.toDate?.() || msg.createdAt).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true }) : ''}
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_400Regular",
+                          fontSize: 9,
+                          color: "#9ca3af",
+                          marginTop: 3,
+                          marginHorizontal: 4,
+                        }}
+                      >
+                        {msg.createdAt
+                          ? new Date(
+                              msg.createdAt?.toDate?.() || msg.createdAt,
+                            ).toLocaleTimeString("en-PH", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                              hour12: true,
+                            })
+                          : ""}
                       </Text>
                     </View>
                   );
                 })
               )}
             </ScrollView>
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 9, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}>
-                <TextInput
-                  style={{ flex: 1, fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#fff', backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 13 }}
-                  value={text} onChangeText={setText}
-                  placeholder="Type a message..." placeholderTextColor="rgba(255,255,255,0.28)"
-                  onSubmitEditing={sendMsg} returnKeyType="send" maxLength={500}
-                />
-                <TouchableOpacity
-                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: text.trim() ? C.gold : 'rgba(255,255,255,0.10)', justifyContent: 'center', alignItems: 'center' }}
-                  onPress={sendMsg} disabled={!text.trim() || sending}
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : undefined}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  borderTopWidth: 1,
+                  borderColor: "rgba(99,91,255,0.12)",
+                  backgroundColor: "#ffffff",
+                }}
+              >
+                <View
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: "#f3f4f6",
+                    borderRadius: 24,
+                    paddingHorizontal: 14,
+                    paddingVertical: 0,
+                    borderWidth: 1.5,
+                    borderColor: text.trim()
+                      ? "#635bff"
+                      : "rgba(99,91,255,0.15)",
+                  }}
                 >
-                  {sending ? <ActivityIndicator size="small" color={C.navy} /> : <MaterialIcons name="send" size={16} color={text.trim() ? C.navy : 'rgba(255,255,255,0.35)'} />}
+                  <TextInput
+                    style={{
+                      flex: 1,
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 13,
+                      color: "#1a1a2e",
+                      paddingVertical: Platform.OS === "web" ? 10 : 8,
+                      minHeight: 40,
+                    }}
+                    value={text}
+                    onChangeText={setText}
+                    placeholder="Type a message..."
+                    placeholderTextColor="#9ca3af"
+                    onSubmitEditing={sendMsg}
+                    returnKeyType="send"
+                    maxLength={500}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 21,
+                    backgroundColor: text.trim() ? "#635bff" : "#e5e7eb",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    shadowColor: "#635bff",
+                    shadowOpacity: text.trim() ? 0.35 : 0,
+                    shadowRadius: 8,
+                    shadowOffset: { width: 0, height: 3 },
+                  }}
+                  onPress={sendMsg}
+                  disabled={!text.trim() || sending}
+                >
+                  {sending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <MaterialIcons
+                      name="send"
+                      size={18}
+                      color={text.trim() ? "#fff" : "#9ca3af"}
+                    />
+                  )}
                 </TouchableOpacity>
               </View>
             </KeyboardAvoidingView>
@@ -5010,25 +15756,91 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
 
       {/* ── CONTEXT MENU (long-press on convo) ──────────────────────── */}
       {ctxMenu && (
-        <View style={{
-          position: 'absolute', top: topOffset, right: 8,
-          width: 220, backgroundColor: '#1a2d4e', borderRadius: 12,
-          borderWidth: 1.5, borderColor: C.gold,
-          shadowColor: '#000', shadowOpacity: 0.40, shadowRadius: 16, shadowOffset: { width: 0, height: 4 },
-          zIndex: 10001, overflow: 'hidden',
-        }}>
-          <View style={{ padding: 10, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}>
-            <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.gold }} numberOfLines={1}>{ctxMenu.convo.name}</Text>
+        <View
+          style={{
+            position: "absolute",
+            top: topOffset,
+            right: 8,
+            width: 220,
+            backgroundColor: "#1a2d4e",
+            borderRadius: 12,
+            borderWidth: 1.5,
+            borderColor: C.gold,
+            shadowColor: "#000",
+            shadowOpacity: 0.4,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 4 },
+            zIndex: 10001,
+            overflow: "hidden",
+          }}
+        >
+          <View
+            style={{
+              padding: 10,
+              borderBottomWidth: 1,
+              borderColor: "rgba(255,255,255,0.10)",
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 12,
+                color: C.gold,
+              }}
+              numberOfLines={1}
+            >
+              {ctxMenu.convo.name}
+            </Text>
           </View>
           {[
-            { icon: 'done-all', label: 'Mark as read', action: () => markRead(ctxMenu.convo) },
-            { icon: 'archive', label: ctxMenu.convo.archived ? 'Unarchive' : 'Archive', action: () => ctxMenu.convo.archived ? unarchiveConvo(ctxMenu.convo) : archiveConvo(ctxMenu.convo) },
-            { icon: 'delete-outline', label: 'Delete chat', action: () => deleteConvo(ctxMenu.convo), danger: true },
+            {
+              icon: "done-all",
+              label: "Mark as read",
+              action: () => markRead(ctxMenu.convo),
+            },
+            {
+              icon: "archive",
+              label: ctxMenu.convo.archived ? "Unarchive" : "Archive",
+              action: () =>
+                ctxMenu.convo.archived
+                  ? unarchiveConvo(ctxMenu.convo)
+                  : archiveConvo(ctxMenu.convo),
+            },
+            {
+              icon: "delete-outline",
+              label: "Delete chat",
+              action: () => deleteConvo(ctxMenu.convo),
+              danger: true,
+            },
           ].map((item, i) => (
-            <TouchableOpacity key={i} onPress={item.action} activeOpacity={0.75}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < 2 ? 1 : 0, borderColor: 'rgba(255,255,255,0.07)' }}>
-              <MaterialIcons name={item.icon} size={17} color={item.danger ? '#e55' : 'rgba(255,255,255,0.70)'} />
-              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: item.danger ? '#e55' : '#fff' }}>{item.label}</Text>
+            <TouchableOpacity
+              key={i}
+              onPress={item.action}
+              activeOpacity={0.75}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderBottomWidth: i < 2 ? 1 : 0,
+                borderColor: "rgba(255,255,255,0.07)",
+              }}
+            >
+              <MaterialIcons
+                name={item.icon}
+                size={17}
+                color={item.danger ? "#e55" : "rgba(255,255,255,0.70)"}
+              />
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_500Medium",
+                  fontSize: 13,
+                  color: item.danger ? "#e55" : "#fff",
+                }}
+              >
+                {item.label}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -5036,24 +15848,73 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
 
       {/* ── MESSAGE CONTEXT MENU (long-press on own message) ─────────── */}
       {msgMenu && (
-        <View style={{
-          position: 'absolute', top: topOffset, right: 8,
-          width: 200, backgroundColor: '#1a2d4e', borderRadius: 12,
-          borderWidth: 1.5, borderColor: C.gold,
-          shadowColor: '#000', shadowOpacity: 0.40, shadowRadius: 16, shadowOffset: { width: 0, height: 4 },
-          zIndex: 10001, overflow: 'hidden',
-        }}>
+        <View
+          style={{
+            position: "absolute",
+            top: topOffset,
+            right: 8,
+            width: 200,
+            backgroundColor: "#1a2d4e",
+            borderRadius: 12,
+            borderWidth: 1.5,
+            borderColor: C.gold,
+            shadowColor: "#000",
+            shadowOpacity: 0.4,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 4 },
+            zIndex: 10001,
+            overflow: "hidden",
+          }}
+        >
           <TouchableOpacity
-            onPress={() => deleteMsg(msgMenu.msg)} activeOpacity={0.75}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 14 }}>
+            onPress={() => deleteMsg(msgMenu.msg)}
+            activeOpacity={0.75}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 14,
+            }}
+          >
             <MaterialIcons name="delete-outline" size={17} color="#e55" />
-            <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: '#e55' }}>Delete message</Text>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_500Medium",
+                fontSize: 13,
+                color: "#e55",
+              }}
+            >
+              Delete message
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => setMsgMenu(null)} activeOpacity={0.75}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-            <MaterialIcons name="close" size={17} color="rgba(255,255,255,0.55)" />
-            <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.70)' }}>Cancel</Text>
+            onPress={() => setMsgMenu(null)}
+            activeOpacity={0.75}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderTopWidth: 1,
+              borderColor: "rgba(255,255,255,0.08)",
+            }}
+          >
+            <MaterialIcons
+              name="close"
+              size={17}
+              color="rgba(255,255,255,0.55)"
+            />
+            <Text
+              style={{
+                fontFamily: "GoogleSans_500Medium",
+                fontSize: 13,
+                color: "rgba(255,255,255,0.70)",
+              }}
+            >
+              Cancel
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -5061,95 +15922,156 @@ const MsgDropdown = ({ member, onClose, onResetUnread }) => {
   );
 };
 
-
 const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   const { height, isMobile } = useRwd();
   // Rounded header: marginTop (web=16, mobile=44) + header height (~62) + gap (~8)
-  const topbarHeight = Platform.OS === 'web' ? 86 : isSmall ? 114 : 114;
+  const topbarHeight = Platform.OS === "web" ? 86 : isSmall ? 114 : 114;
   const contentHeight = height - topbarHeight;
 
-  const isRegistered = memberInit?.status === 'Registered';
+  const isRegistered = memberInit?.status === "Registered";
 
-  const [nav,        setNav]        = useState(isRegistered ? 'appform' : 'overview');
-  const [navHistory, setNavHistory] = useState([isRegistered ? 'appform' : 'overview']); // for back button
+  const [nav, setNav] = useState(isRegistered ? "appform" : "overview");
+  const [navHistory, setNavHistory] = useState([
+    isRegistered ? "appform" : "overview",
+  ]); // for back button
   const [member, setMember] = useState(memberInit);
   const [drawer, setDrawer] = useState(false);
   const [unread, setUnread] = useState(0);
   // Quick deposit / withdrawal modal from topbar icons
   const [quickTxn, setQuickTxn] = useState(null); // { mode: 'deposit'|'withdraw', type: 'savings'|'shares' } | null
-  const [quickAmt,     setQuickAmt]     = useState('');
-  const [quickType,    setQuickType]    = useState('savings'); // which account
-  const [quickMode,    setQuickMode]    = useState(null);      // 'deposit'|'withdraw'
-  const [quickBusy,    setQuickBusy]    = useState(false);
-  const [quickDone,    setQuickDone]    = useState('');
-  const [quickErr,     setQuickErr]     = useState('');
+  const [quickAmt, setQuickAmt] = useState("");
+  const [quickType, setQuickType] = useState("savings"); // which account
+  const [quickMode, setQuickMode] = useState(null); // 'deposit'|'withdraw'
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickDone, setQuickDone] = useState("");
+  const [quickErr, setQuickErr] = useState("");
   const [showQuickModal, setShowQuickModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const openQuickModal = (mode) => {
-    setQuickMode(mode); setQuickType(mode === 'withdraw' ? 'savings' : 'savings');
-    setQuickAmt(''); setQuickErr(''); setQuickDone('');
+    setQuickMode(mode);
+    setQuickType(mode === "withdraw" ? "savings" : "savings");
+    setQuickAmt("");
+    setQuickErr("");
+    setQuickDone("");
     setShowQuickModal(true);
   };
-  const closeQuickModal = () => { setShowQuickModal(false); setQuickAmt(''); setQuickErr(''); setQuickDone(''); };
+  const closeQuickModal = () => {
+    setShowQuickModal(false);
+    setQuickAmt("");
+    setQuickErr("");
+    setQuickDone("");
+  };
 
   const handleQuickTxn = async () => {
     const amt = parseFloat(quickAmt);
-    if (!amt || amt <= 0)  { setQuickErr('Enter a valid amount.'); return; }
-    if (amt > 9999999)     { setQuickErr('Amount too large.'); return; }
-    const curBal = Number((quickType === 'savings' ? member.savings : quickType === 'loan' ? member.loanBalance : member.shares) || 0);
-    if (quickMode === 'withdraw' && amt > curBal) { setQuickErr(`Insufficient balance. Current: ${fmtCur(curBal)}`); return; }
-    setQuickBusy(true); setQuickErr('');
+    if (!amt || amt <= 0) {
+      setQuickErr("Enter a valid amount.");
+      return;
+    }
+    if (amt > 9999999) {
+      setQuickErr("Amount too large.");
+      return;
+    }
+    const curBal = Number(
+      (quickType === "savings"
+        ? member.savings
+        : quickType === "loan"
+          ? member.loanBalance
+          : member.shares) || 0,
+    );
+    if (quickMode === "withdraw" && amt > curBal) {
+      setQuickErr(`Insufficient balance. Current: ${fmtCur(curBal)}`);
+      return;
+    }
+    setQuickBusy(true);
+    setQuickErr("");
     try {
-      if (quickMode === 'deposit') {
-        const txnNo  = genMemberTxnNo(quickType);
+      if (quickMode === "deposit") {
+        const txnNo = genMemberTxnNo(quickType);
         const newBal = curBal + amt;
-        const desc   = quickType === 'savings' ? 'Savings Deposit' : 'Share Capital Deposit';
-        await addDoc(collection(db, 'transactions'), {
-          memberId: member.uid, memberName: member.name, memberUserId: member.userId,
-          type: quickType, txnNo, amount: amt, description: desc,
-          remarks: '', createdAt: serverTimestamp(),
-        });
-        await updateDoc(doc(db, 'members', member.uid), {
-          [quickType === 'savings' ? 'savings' : 'shares']: newBal,
-          updatedAt: serverTimestamp(),
-        });
-        await addDoc(collection(db, 'adminNotifications'), {
-          type: 'deposit', icon: '💰', title: `${desc} — ${member.name}`,
-          message: `${member.name} (${member.userId}) deposited ${fmtCur(amt)} to ${quickType}.`,
-          memberId: member.uid, memberUserId: member.userId,
-          createdAt: serverTimestamp(), read: false,
-        });
-        setQuickDone(`✓ Deposited ${fmtCur(amt)} to ${quickType === 'savings' ? 'Savings' : 'Share Capital'}!`);
-      } else {
-        // Withdrawal request
-        const existingPending = await getDocs(query(
-          collection(db, 'withdrawalRequests'),
-          where('memberId', '==', member.uid),
-          where('type', '==', quickType),
-          where('status', '==', 'Pending')
-        ));
-        if (!existingPending.empty) { setQuickErr('You already have a pending withdrawal for this account.'); setQuickBusy(false); return; }
-        await addDoc(collection(db, 'withdrawalRequests'), {
-          memberId: member.uid, memberName: member.name, memberUserId: member.userId,
-          type: quickType, amount: amt, remarks: '', status: 'Pending',
+        const desc =
+          quickType === "savings" ? "Savings Deposit" : "Share Capital Deposit";
+        await addDoc(collection(db, "transactions"), {
+          memberId: member.uid,
+          memberName: member.name,
+          memberUserId: member.userId,
+          type: quickType,
+          txnNo,
+          amount: amt,
+          description: desc,
+          remarks: "",
           createdAt: serverTimestamp(),
         });
-        await addDoc(collection(db, 'adminNotifications'), {
-          type: 'withdrawal_request', icon: '📤',
+        await updateDoc(doc(db, "members", member.uid), {
+          [quickType === "savings" ? "savings" : "shares"]: newBal,
+          updatedAt: serverTimestamp(),
+        });
+        await addDoc(collection(db, "adminNotifications"), {
+          type: "deposit",
+          icon: "💰",
+          title: `${desc} — ${member.name}`,
+          message: `${member.name} (${member.userId}) deposited ${fmtCur(amt)} to ${quickType}.`,
+          memberId: member.uid,
+          memberUserId: member.userId,
+          createdAt: serverTimestamp(),
+          read: false,
+        });
+        setQuickDone(
+          `✓ Deposited ${fmtCur(amt)} to ${quickType === "savings" ? "Savings" : "Share Capital"}!`,
+        );
+      } else {
+        // Withdrawal request
+        const existingPending = await getDocs(
+          query(
+            collection(db, "withdrawalRequests"),
+            where("memberId", "==", member.uid),
+            where("type", "==", quickType),
+            where("status", "==", "Pending"),
+          ),
+        );
+        if (!existingPending.empty) {
+          setQuickErr(
+            "You already have a pending withdrawal for this account.",
+          );
+          setQuickBusy(false);
+          return;
+        }
+        await addDoc(collection(db, "withdrawalRequests"), {
+          memberId: member.uid,
+          memberName: member.name,
+          memberUserId: member.userId,
+          type: quickType,
+          amount: amt,
+          remarks: "",
+          status: "Pending",
+          createdAt: serverTimestamp(),
+        });
+        await addDoc(collection(db, "adminNotifications"), {
+          type: "withdrawal_request",
+          icon: "📤",
           title: `Withdrawal Request — ${member.name}`,
           message: `${member.name} (${member.userId}) requesting ${quickType} withdrawal of ${fmtCur(amt)}.`,
-          memberId: member.uid, memberUserId: member.userId,
-          createdAt: serverTimestamp(), read: false,
+          memberId: member.uid,
+          memberUserId: member.userId,
+          createdAt: serverTimestamp(),
+          read: false,
         });
-        setQuickDone(`✓ Withdrawal request of ${fmtCur(amt)} submitted! Awaiting admin approval.`);
+        setQuickDone(
+          `✓ Withdrawal request of ${fmtCur(amt)} submitted! Awaiting admin approval.`,
+        );
       }
-      setQuickAmt('');
-      setTimeout(() => { closeQuickModal(); }, 2200);
-    } catch (e) { setQuickErr(e.message || 'Transaction failed.'); }
-    finally { setQuickBusy(false); }
+      setQuickAmt("");
+      setTimeout(() => {
+        closeQuickModal();
+      }, 2200);
+    } catch (e) {
+      setQuickErr(e.message || "Transaction failed.");
+    } finally {
+      setQuickBusy(false);
+    }
   };
-  const fadeAnim  = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   // Message notification popup state
@@ -5158,8 +16080,13 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   const [showMsgDropdown, setShowMsgDropdown] = useState(false);
 
   // Real-time member sync
-  useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(doc(db, 'members', memberInit.uid), snap => { if (snap.exists()) setMember({ uid: snap.id, ...snap.data() }); }); }, [memberInit?.uid]);
-  
+  useEffect(() => {
+    if (!memberInit?.uid) return;
+    return onSnapshot(doc(db, "members", memberInit.uid), (snap) => {
+      if (snap.exists()) setMember({ uid: snap.id, ...snap.data() });
+    });
+  }, [memberInit?.uid]);
+
   // ── Keep online status alive — set offline on unmount ────────────────────
   useEffect(() => {
     if (!memberInit?.uid) return;
@@ -5167,27 +16094,39 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
     return () => setOnlineStatus(memberInit.uid, false);
   }, [memberInit?.uid]);
   // Unread count — exclude chat-type (handled by FloatingChat)
-  useEffect(() => { if (!memberInit?.uid) return; return onSnapshot(query(collection(db, 'members', memberInit.uid, 'notifications'), where('read', '==', false)), snap => { const nonChat = snap.docs.filter(d => d.data().type !== 'chat'); setUnread(nonChat.length); }); }, [memberInit?.uid]);
+  useEffect(() => {
+    if (!memberInit?.uid) return;
+    return onSnapshot(
+      query(
+        collection(db, "members", memberInit.uid, "notifications"),
+        where("read", "==", false),
+      ),
+      (snap) => {
+        const nonChat = snap.docs.filter((d) => d.data().type !== "chat");
+        setUnread(nonChat.length);
+      },
+    );
+  }, [memberInit?.uid]);
   // unreadChat is managed in-memory via watchRoomDoc bump + reset on open
   const [unreadChat, setUnreadChat] = useState(0);
 
   // ── Notification setup: permissions + Android channel + Push Token ──────────
   const notifReadyRef = useRef(false);
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === "web") return;
     (async () => {
       try {
         const { status } = await Notifications.requestPermissionsAsync();
-        if (status !== 'granted') return;
+        if (status !== "granted") return;
 
-        if (Platform.OS === 'android') {
-          await Notifications.setNotificationChannelAsync('chat_messages', {
-            name:             'Chat Messages',
-            importance:        Notifications.AndroidImportance.MAX,
+        if (Platform.OS === "android") {
+          await Notifications.setNotificationChannelAsync("chat_messages", {
+            name: "Chat Messages",
+            importance: Notifications.AndroidImportance.MAX,
             vibrationPattern: [0, 250, 250, 250],
-            enableVibrate:    true,
-            showBadge:        true,
-            sound:            'default',
+            enableVibrate: true,
+            showBadge: true,
+            sound: "default",
           });
         }
         notifReadyRef.current = true;
@@ -5198,32 +16137,33 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
           try {
             const tokenData = await Notifications.getExpoPushTokenAsync();
             const pushToken = tokenData.data;
-            await updateDoc(doc(db, 'members', memberInit.uid), {
-              expoPushToken:  pushToken,
+            await updateDoc(doc(db, "members", memberInit.uid), {
+              expoPushToken: pushToken,
               tokenUpdatedAt: serverTimestamp(),
               devicePlatform: Platform.OS,
             });
           } catch (tokenErr) {
             // Token save failed — foreground notifications still work
-            console.warn('[CESLA] Push token save failed:', tokenErr);
+            console.warn("[CESLA] Push token save failed:", tokenErr);
           }
         }
-
-      } catch (e) { console.error('[CESLA] notif setup error:', e); }
+      } catch (e) {
+        console.error("[CESLA] notif setup error:", e);
+      }
     })();
   }, [memberInit?.uid]);
 
   // ── Web audio helper — plays a short ping sound for incoming messages ───────
   const playMsgSound = () => {
     try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (Platform.OS === "web" && typeof window !== "undefined") {
         // Build a short "ding" using Web Audio API — no external file needed
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.type = 'sine';
+        osc.type = "sine";
         osc.frequency.setValueAtTime(880, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.18);
         gain.gain.setValueAtTime(0.55, ctx.currentTime);
@@ -5237,8 +16177,8 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
   // ── Watch chatRoom DOCUMENTS for incoming messages (mobile + web) ──────────
   useEffect(() => {
     if (!memberInit?.uid) return;
-    const uid  = memberInit.uid;
-    const isWeb = Platform.OS === 'web';
+    const uid = memberInit.uid;
+    const isWeb = Platform.OS === "web";
     const subs = [];
     const dmWatching = new Set();
 
@@ -5248,10 +16188,12 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       try {
         const raw = await AsyncStorage.getItem(MSG_SETTINGS_KEY);
         if (raw) settings = { ...DEFAULT_MSG_SETTINGS, ...JSON.parse(raw) };
-      } catch { /* use defaults */ }
+      } catch {
+        /* use defaults */
+      }
 
       // ── Admin-only filter ──────────────────────────────────────────────────
-      if (settings.notifAdminOnly && navKey !== 'chat_admin') return;
+      if (settings.notifAdminOnly && navKey !== "chat_admin") return;
 
       // ── Web: play sound only ────────────────────────────────────────────
       if (isWeb) {
@@ -5264,34 +16206,46 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       try {
         await Notifications.scheduleNotificationAsync({
           content: {
-            title:  `💬 ${senderName}`,
-            body:   settings.notifPreview
-              ? (text.length > 80 ? text.slice(0, 80) + '…' : text)
-              : 'You have a new message',
-            sound:  settings.notifSound ? 'default' : null,
-            data:   { navKey },
-            ...(Platform.OS === 'android' ? {
-              channelId: 'chat_messages',
-              vibrationPattern: settings.notifVibrate ? [0, 250, 250, 250] : [],
-            } : {}),
+            title: `💬 ${senderName}`,
+            body: settings.notifPreview
+              ? text.length > 80
+                ? text.slice(0, 80) + "…"
+                : text
+              : "You have a new message",
+            sound: settings.notifSound ? "default" : null,
+            data: { navKey },
+            ...(Platform.OS === "android"
+              ? {
+                  channelId: "chat_messages",
+                  vibrationPattern: settings.notifVibrate
+                    ? [0, 250, 250, 250]
+                    : [],
+                }
+              : {}),
           },
           trigger: null,
         });
-      } catch (e) { console.error('[CESLA] scheduleNotification error:', e); }
+      } catch (e) {
+        console.error("[CESLA] scheduleNotification error:", e);
+      }
     };
 
     // Watch a single chatRoom doc — fires when lastAt increases
     const watchRoomDoc = (roomId, navKey) => {
       let baselineMs = -1;
       return onSnapshot(
-        doc(db, 'chatRooms', roomId),
-        snap => {
+        doc(db, "chatRooms", roomId),
+        (snap) => {
           if (!snap.exists()) return;
-          const d    = snap.data();
-          const atMs = d.lastAt?.toMillis?.()
-            ?? (d.lastAt?.seconds != null ? d.lastAt.seconds * 1000 : 0);
+          const d = snap.data();
+          const atMs =
+            d.lastAt?.toMillis?.() ??
+            (d.lastAt?.seconds != null ? d.lastAt.seconds * 1000 : 0);
 
-          if (baselineMs === -1) { baselineMs = atMs; return; }
+          if (baselineMs === -1) {
+            baselineMs = atMs;
+            return;
+          }
           if (atMs <= baselineMs) return;
           baselineMs = atMs;
 
@@ -5299,53 +16253,56 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
           if (d.lastSenderId === uid) return;
           if (!d.lastSenderId && d.lastSender === memberInit.name) return;
 
-          const senderName = d.lastSender  || 'New message';
-          const msgText    = d.lastMessage || '📩 New message';
+          const senderName = d.lastSender || "New message";
+          const msgText = d.lastMessage || "📩 New message";
 
           // Play sound / push notif — no more Firestore notif doc (avoids repeat)
           fireNotif(senderName, msgText, navKey);
 
           // Show popup near message icon (admin chat only)
-          if (navKey === 'chat_admin') {
-            setMsgNotif({ id: roomId + '_' + atMs, text: msgText });
+          if (navKey === "chat_admin") {
+            setMsgNotif({ id: roomId + "_" + atMs, text: msgText });
           }
 
           // Bump unread chat badge in-memory only
-          setUnreadChat(prev => prev + 1);
+          setUnreadChat((prev) => prev + 1);
         },
-        err => console.error('[CESLA] watchRoomDoc error:', roomId, err),
+        (err) => console.error("[CESLA] watchRoomDoc error:", roomId, err),
       );
     };
 
     // Always watch admin chat + group chat
-    subs.push(watchRoomDoc(`admin_${uid}`, 'chat_admin'));
-    subs.push(watchRoomDoc('group_members', 'chat_members'));
+    subs.push(watchRoomDoc(`admin_${uid}`, "chat_admin"));
+    subs.push(watchRoomDoc("group_members", "chat_members"));
 
     // Watch DM rooms
     const dmUnsub = onSnapshot(
-      query(collection(db, 'chatRooms'), where('members', 'array-contains', uid)),
-      snap => {
-        snap.docs.forEach(rDoc => {
+      query(
+        collection(db, "chatRooms"),
+        where("members", "array-contains", uid),
+      ),
+      (snap) => {
+        snap.docs.forEach((rDoc) => {
           const rId = rDoc.id;
           if (dmWatching.has(rId)) return;
           dmWatching.add(rId);
-          subs.push(watchRoomDoc(rId, 'chat_members'));
+          subs.push(watchRoomDoc(rId, "chat_members"));
         });
       },
-      err => console.error('[CESLA] DM rooms query error:', err),
+      (err) => console.error("[CESLA] DM rooms query error:", err),
     );
     subs.push(dmUnsub);
 
-    return () => subs.forEach(fn => typeof fn === 'function' && fn());
+    return () => subs.forEach((fn) => typeof fn === "function" && fn());
   }, [memberInit?.uid]);
 
   // ── Handle notification tap → open correct chatbox ─────────────────────
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === "web") return;
 
     // App was opened BY tapping the notification (terminated state)
     Notifications.getLastNotificationResponseAsync()
-      .then(resp => {
+      .then((resp) => {
         if (!resp) return;
         const { navKey } = resp.notification.request.content.data || {};
         if (navKey) switchNav(navKey);
@@ -5353,43 +16310,67 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       .catch(() => {});
 
     // Notification tapped while app is in fg / bg
-    const sub = Notifications.addNotificationResponseReceivedListener(resp => {
-      const { navKey } = resp.notification.request.content.data || {};
-      if (navKey) switchNav(navKey);
-    });
+    const sub = Notifications.addNotificationResponseReceivedListener(
+      (resp) => {
+        const { navKey } = resp.notification.request.content.data || {};
+        if (navKey) switchNav(navKey);
+      },
+    );
     return () => sub.remove();
   }, []);
 
   // Android hardware back button — show logout confirmation
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+    if (Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
       Alert.alert(
-        'Logout',
-        'Are you sure you want to log-out your account?',
+        "Logout",
+        "Are you sure you want to log-out your account?",
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Logout', style: 'destructive', onPress: onLogout },
+          { text: "Cancel", style: "cancel" },
+          { text: "Logout", style: "destructive", onPress: onLogout },
         ],
-        { cancelable: true }
+        { cancelable: true },
       );
       return true; // prevent default back behavior
     });
     return () => sub.remove();
   }, [onLogout]);
 
-  const switchNav = key => {
+  const switchNav = (key) => {
     // Registered members can only access appform
     if (isRegistered) {
-      const allChildren = NAV.flatMap(g => g.children || []);
-      const child = allChildren.find(c => c.key === key);
-      const isSingle = NAV.find(g => g.single && g.key === key);
+      const allChildren = NAV.flatMap((g) => g.children || []);
+      const child = allChildren.find((c) => c.key === key);
+      const isSingle = NAV.find((g) => g.single && g.key === key);
       if (!child?.registeredOk && !isSingle) return; // block locked nav
     }
-    Animated.parallel([Animated.timing(fadeAnim, { toValue: 0, duration: 130, useNativeDriver: true }), Animated.timing(slideAnim, { toValue: 10, duration: 130, useNativeDriver: true })]).start(() => {
-      setNavHistory(prev => [...prev, key]);
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 130,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 10,
+        duration: 130,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setNavHistory((prev) => [...prev, key]);
       setNav(key);
-      Animated.parallel([Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: true }), Animated.timing(slideAnim, { toValue: 0, duration: 220, useNativeDriver: true })]).start();
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start();
     });
   };
 
@@ -5398,10 +16379,32 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
     if (navHistory.length <= 1) return;
     const newHistory = navHistory.slice(0, -1);
     const prevNav = newHistory[newHistory.length - 1];
-    Animated.parallel([Animated.timing(fadeAnim, { toValue: 0, duration: 130, useNativeDriver: true }), Animated.timing(slideAnim, { toValue: 10, duration: 130, useNativeDriver: true })]).start(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 130,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 10,
+        duration: 130,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
       setNavHistory(newHistory);
       setNav(prevNav);
-      Animated.parallel([Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: true }), Animated.timing(slideAnim, { toValue: 0, duration: 220, useNativeDriver: true })]).start();
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start();
     });
   };
 
@@ -5410,21 +16413,81 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
     const m = isMobile;
 
     // Registered members: only appform is accessible
-    if (isRegistered && nav !== 'appform') {
+    if (isRegistered && nav !== "appform") {
       return (
-        <ScrollView contentContainerStyle={[s.pageOuter, { alignItems: 'center', justifyContent: 'center', flex: 1 }]} showsVerticalScrollIndicator={false} style={h ? { height: h } : undefined}>
-          <View style={{ backgroundColor: 'rgba(201,168,76,0.14)', borderRadius: 16, borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.40)', padding: 24, alignItems: 'center', maxWidth: 340, width: '100%' }}>
+        <ScrollView
+          contentContainerStyle={[
+            s.pageOuter,
+            { alignItems: "center", justifyContent: "center", flex: 1 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          style={h ? { height: h } : undefined}
+        >
+          <View
+            style={{
+              backgroundColor: "rgba(201,168,76,0.14)",
+              borderRadius: 16,
+              borderWidth: 1.5,
+              borderColor: "rgba(201,168,76,0.40)",
+              padding: 24,
+              alignItems: "center",
+              maxWidth: 340,
+              width: "100%",
+            }}
+          >
             <Text style={{ fontSize: 40, marginBottom: 12 }}>📋</Text>
-            <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: C.navy, textAlign: 'center', marginBottom: 8 }}>Complete Your Application</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: C.textSec, textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
-              Your account is registered but not yet fully approved.{'\n\n'}
-              Please fill out your <Text style={{ fontFamily: 'GoogleSans_700Bold', color: C.navy }}>Application Form</Text> and wait for admin approval to unlock the full member portal.
+            <Text
+              style={{
+                fontFamily: "NotoSerif_700Bold",
+                fontSize: 18,
+                color: C.navy,
+                textAlign: "center",
+                marginBottom: 8,
+              }}
+            >
+              Complete Your Application
+            </Text>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 13,
+                color: C.textSec,
+                textAlign: "center",
+                lineHeight: 20,
+                marginBottom: 20,
+              }}
+            >
+              Your account is registered but not yet fully approved.{"\n\n"}
+              Please fill out your{" "}
+              <Text style={{ fontFamily: "GoogleSans_700Bold", color: C.navy }}>
+                Application Form
+              </Text>{" "}
+              and wait for admin approval to unlock the full member portal.
             </Text>
             <TouchableOpacity
-              onPress={() => switchNav('appform')}
-              style={{ backgroundColor: C.gold, borderRadius: 12, paddingVertical: 13, paddingHorizontal: 32, shadowColor: C.gold, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }}
-              activeOpacity={0.85}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: C.navy, letterSpacing: 1 }}>OPEN APPLICATION FORM →</Text>
+              onPress={() => switchNav("appform")}
+              style={{
+                backgroundColor: C.gold,
+                borderRadius: 12,
+                paddingVertical: 13,
+                paddingHorizontal: 32,
+                shadowColor: C.gold,
+                shadowOpacity: 0.35,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 3 },
+              }}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 14,
+                  color: C.navy,
+                  letterSpacing: 1,
+                }}
+              >
+                OPEN APPLICATION FORM →
+              </Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -5432,159 +16495,460 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
     }
 
     switch (nav) {
-      case 'overview':     return <OverviewView     member={member} onNav={switchNav} contentHeight={h} isMobile={m} />;
-      case 'profile':      return <ProfileView      member={member} contentHeight={h} isMobile={m} />;
-      case 'appform':      return <AppFormView       member={member} contentHeight={h} isMobile={m} />;
-      case 'savings':      return <FinanceView title="Savings"       icon="💰" value={member.savings} label="Total Savings Balance" color={C.green}  member={member} contentHeight={h} isMobile={m} type="savings" />;
-      case 'sharecap':     return <FinanceView title="Share Capital" icon="📊" value={member.shares}  label="Total Share Capital"   color={C.gold}   member={member} contentHeight={h} isMobile={m} type="shares" />;
-      case 'timedeposit':  return <FinanceView title="Time Deposit"  icon="🏦" value={0}              label="Time Deposit Balance"  color={C.blueLt} member={member} contentHeight={h} isMobile={m} />;
-      case 'applyloan':    return <ApplyLoanView     member={member} contentHeight={h} isMobile={m} />;
-      case 'myloans':      return <MyLoansView       member={member} contentHeight={h} isMobile={m} />;
-      case 'guidelines':   return <GuidelinesView    contentHeight={h} isMobile={m} />;
-      case 'editprofile':  return <EditProfileView   member={member} contentHeight={h} isMobile={m} />;
-      case 'changepw':     return <ChangePasswordView member={member} contentHeight={h} isMobile={m} />;
-      case 'notifs':       return <NotifsView        member={member} contentHeight={h} isMobile={m} onNav={switchNav} />;
-      case 'chat_admin':   return <ChatDirectView    member={member} chatType="admin"   contentHeight={h} />;
-      case 'chat_members': return <ChatDirectView    member={member} chatType="members" contentHeight={h} />;
-      default:             return <OverviewView      member={member} onNav={switchNav} contentHeight={h} isMobile={m} />;
+      case "overview":
+        return (
+          <OverviewView
+            member={member}
+            onNav={switchNav}
+            contentHeight={h}
+            isMobile={m}
+          />
+        );
+      case "profile":
+        return <ProfileView member={member} contentHeight={h} isMobile={m} />;
+      case "appform":
+        return <AppFormView member={member} contentHeight={h} isMobile={m} />;
+      case "savings":
+        return (
+          <FinanceView
+            title="Savings"
+            icon="💰"
+            value={member.savings}
+            label="Total Savings Balance"
+            color={C.green}
+            member={member}
+            contentHeight={h}
+            isMobile={m}
+            type="savings"
+          />
+        );
+      case "sharecap":
+        return (
+          <FinanceView
+            title="Share Capital"
+            icon="📊"
+            value={member.shares}
+            label="Total Share Capital"
+            color={C.gold}
+            member={member}
+            contentHeight={h}
+            isMobile={m}
+            type="shares"
+          />
+        );
+      case "timedeposit":
+        return (
+          <FinanceView
+            title="Time Deposit"
+            icon="🏦"
+            value={0}
+            label="Time Deposit Balance"
+            color={C.blueLt}
+            member={member}
+            contentHeight={h}
+            isMobile={m}
+          />
+        );
+      case "applyloan":
+        return <ApplyLoanView member={member} contentHeight={h} isMobile={m} />;
+      case "myloans":
+        return <MyLoansView member={member} contentHeight={h} isMobile={m} />;
+      case "guidelines":
+        return <GuidelinesView contentHeight={h} isMobile={m} />;
+      case "editprofile":
+        return (
+          <EditProfileView member={member} contentHeight={h} isMobile={m} />
+        );
+      case "changepw":
+        return (
+          <ChangePasswordView member={member} contentHeight={h} isMobile={m} />
+        );
+      case "notifs":
+        return (
+          <NotifsView
+            member={member}
+            contentHeight={h}
+            isMobile={m}
+            onNav={switchNav}
+          />
+        );
+      case "chat_admin":
+        return (
+          <ChatDirectView member={member} chatType="admin" contentHeight={h} />
+        );
+      case "chat_members":
+        return (
+          <ChatDirectView
+            member={member}
+            chatType="members"
+            contentHeight={h}
+          />
+        );
+      default:
+        return (
+          <OverviewView
+            member={member}
+            onNav={switchNav}
+            contentHeight={h}
+            isMobile={m}
+          />
+        );
     }
   };
 
   // Header margin + padding — used for sidebar top offset
-  const headerMarginTop = Platform.OS === 'web' ? 16 : 44;
-  const headerVertPad   = isWide ? 14 : 8;
+  const headerMarginTop = Platform.OS === "web" ? 16 : 44;
+  const headerVertPad = isWide ? 14 : 8;
   // Approx header height: avatar 34 + 2*vertPad + 2px border ≈ 34+28+2 = 64 wide, 34+16+2 = 52 narrow
-  const headerHeight    = 34 + headerVertPad * 2 + 2;
+  const headerHeight = 34 + headerVertPad * 2 + 2;
   // Sidebar top = marginTop + headerHeight + 8 gap (to sit flush below header)
-  const sidebarTop      = headerMarginTop + headerHeight + 8;
+  const sidebarTop = headerMarginTop + headerHeight + 8;
 
   return (
     <View style={{ flex: 1 }}>
       {/* Top bar — CanteenVisitor-style rounded header */}
-      <View style={{ marginTop: headerMarginTop, marginHorizontal: isSmall ? 8 : 10, zIndex: 20 }}>
-        <View style={[s.dashTopbar, { paddingHorizontal: isWide ? 28 : 12, paddingVertical: headerVertPad }]}>
-
+      <View
+        style={{
+          marginTop: headerMarginTop,
+          marginHorizontal: isSmall ? 8 : 10,
+          zIndex: 20,
+        }}
+      >
+        <View
+          style={[
+            s.dashTopbar,
+            {
+              paddingHorizontal: isWide ? 28 : 12,
+              paddingVertical: headerVertPad,
+            },
+          ]}
+        >
           {/* LEFT — menu icon (always visible, toggles sidebar) */}
-          <TouchableOpacity style={[s.dashRoundBtn, drawer && { backgroundColor: 'rgba(201,168,76,0.30)', borderColor: 'rgba(201,168,76,0.60)' }]} onPress={() => setDrawer(v => !v)}>
-            <MaterialIcons name={drawer ? 'close' : 'menu'} size={22} color="#fff" />
+          <TouchableOpacity
+            style={[
+              s.dashRoundBtn,
+              drawer && {
+                backgroundColor: "rgba(201,168,76,0.30)",
+                borderColor: "rgba(201,168,76,0.60)",
+              },
+            ]}
+            onPress={() => setDrawer((v) => !v)}
+          >
+            <MaterialIcons
+              name={drawer ? "close" : "menu"}
+              size={22}
+              color="#fff"
+            />
           </TouchableOpacity>
 
           {/* CENTER — title */}
           <View style={s.dashHeaderCenter}>
-            <Text style={[s.dashTitle, { fontSize: isWide ? 16 : isSmall ? 13 : 15 }]} numberOfLines={1}>
-              Member Dashboard
-            </Text>
-            {!isSmall && (
+            {isWide && (
+              <Text style={[s.dashTitle, { fontSize: 16 }]} numberOfLines={1}>
+                Member Dashboard
+              </Text>
+            )}
+            {isWide && (
               <View style={s.dashSubTag}>
-                <Text style={s.dashSubTagTxt}>CESLA MPC · CLIMBS Employee Cooperative</Text>
+                <Text style={s.dashSubTagTxt}>
+                  CESLA MPC · CLIMBS Employee Cooperative
+                </Text>
               </View>
             )}
           </View>
 
           {/* RIGHT — message + bell + profile dropdown */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             {/* Message icon — open messages dropdown, reset badge */}
-            <TouchableOpacity style={s.dashRoundBtn} onPress={() => {
-              setShowMsgDropdown(v => !v);
-              if (!showMsgDropdown) setUnreadChat(0);
-            }}>
-              <MaterialIcons name="chat-bubble-outline" size={19} color="#fff" />
+            <TouchableOpacity
+              style={s.dashRoundBtn}
+              onPress={() => {
+                setShowMsgDropdown((v) => !v);
+                if (!showMsgDropdown) setUnreadChat(0);
+              }}
+            >
+              <MaterialIcons
+                name="chat-bubble-outline"
+                size={19}
+                color="#fff"
+              />
               {unreadChat > 0 && (
                 <View style={s.bellBadge}>
-                  <Text style={s.bellBadgeTxt}>{unreadChat > 9 ? '9+' : unreadChat}</Text>
+                  <Text style={s.bellBadgeTxt}>
+                    {unreadChat > 9 ? "9+" : unreadChat}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
             {/* Notification bell — opens all notifications */}
-            <TouchableOpacity style={s.dashRoundBtn} onPress={() => switchNav('notifs')}>
-              <Text style={{ fontSize: 16, textAlign: 'center', lineHeight: 22, includeFontPadding: false }}>🔔</Text>
-              {unread > 0 && <View style={s.bellBadge}><Text style={s.bellBadgeTxt}>{unread > 9 ? '9+' : unread}</Text></View>}
+            <TouchableOpacity
+              style={s.dashRoundBtn}
+              onPress={() => switchNav("notifs")}
+            >
+              <Text
+                style={{
+                  fontSize: 16,
+                  textAlign: "center",
+                  lineHeight: 22,
+                  includeFontPadding: false,
+                }}
+              >
+                🔔
+              </Text>
+              {unread > 0 && (
+                <View style={s.bellBadge}>
+                  <Text style={s.bellBadgeTxt}>
+                    {unread > 9 ? "9+" : unread}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
             {/* Profile pic + firstname — tapping opens dropdown */}
             <TouchableOpacity
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 20, backgroundColor: showProfileMenu ? 'rgba(201,168,76,0.20)' : 'transparent' }}
-              onPress={() => setShowProfileMenu(v => !v)}
-              activeOpacity={0.8}>
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 7,
+                paddingHorizontal: 6,
+                paddingVertical: 4,
+                borderRadius: 20,
+                backgroundColor: showProfileMenu
+                  ? "rgba(201,168,76,0.20)"
+                  : "transparent",
+              }}
+              onPress={() => setShowProfileMenu((v) => !v)}
+              activeOpacity={0.8}
+            >
               <MemberAvatar member={member} size={34} />
-              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.90)', maxWidth: 90 }} numberOfLines={1}>
-                {member.firstName || member.name?.split(/[\s,]+/).find(w => w) || member.name}
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_500Medium",
+                  fontSize: 13,
+                  color: "rgba(255,255,255,0.90)",
+                  maxWidth: 90,
+                }}
+                numberOfLines={1}
+              >
+                {member.firstName ||
+                  member.name?.split(/[\s,]+/).find((w) => w) ||
+                  member.name}
               </Text>
-              <MaterialIcons name={showProfileMenu ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={16} color="rgba(255,255,255,0.70)" />
+              <MaterialIcons
+                name={
+                  showProfileMenu ? "keyboard-arrow-up" : "keyboard-arrow-down"
+                }
+                size={16}
+                color="rgba(255,255,255,0.70)"
+              />
             </TouchableOpacity>
           </View>
-
         </View>
       </View>
 
       {/* Profile dropdown menu */}
       {showProfileMenu && (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 500 }}>
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 500,
+          }}
+        >
           {/* Backdrop */}
           <TouchableOpacity
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-            activeOpacity={1} onPress={() => setShowProfileMenu(false)} />
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }}
+            activeOpacity={1}
+            onPress={() => setShowProfileMenu(false)}
+          />
           {/* Dropdown panel — top-right aligned */}
-          <View style={{
-            position: 'absolute',
-            top: headerMarginTop + headerHeight + 6,
-            right: isSmall ? 8 : 10,
-            width: 210,
-            backgroundColor: '#1a2d4e',
-            borderRadius: 16,
-            borderWidth: 1,
-            borderColor: 'rgba(201,168,76,0.30)',
-            shadowColor: '#011f4b',
-            shadowOpacity: 0.35,
-            shadowRadius: 20,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 16,
-            overflow: 'hidden',
-          }}>
+          <View
+            style={{
+              position: "absolute",
+              top: headerMarginTop + headerHeight + 6,
+              right: isSmall ? 8 : 10,
+              width: 210,
+              backgroundColor: "#1a2d4e",
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: "rgba(201,168,76,0.30)",
+              shadowColor: "#011f4b",
+              shadowOpacity: 0.35,
+              shadowRadius: 20,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 16,
+              overflow: "hidden",
+            }}
+          >
             {/* User info header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                padding: 14,
+                borderBottomWidth: 1,
+                borderColor: "rgba(255,255,255,0.10)",
+              }}
+            >
               <MemberAvatar member={member} size={38} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#fff' }} numberOfLines={1}>
-                  {member.firstName || member.name?.split(/[\s,]+/).find(w => w) || member.name}
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_700Bold",
+                    fontSize: 13,
+                    color: "#fff",
+                  }}
+                  numberOfLines={1}
+                >
+                  {member.firstName ||
+                    member.name?.split(/[\s,]+/).find((w) => w) ||
+                    member.name}
                 </Text>
-                <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.50)', marginTop: 1 }} numberOfLines={1}>{member.userId}</Text>
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 10,
+                    color: "rgba(255,255,255,0.50)",
+                    marginTop: 1,
+                  }}
+                  numberOfLines={1}
+                >
+                  {member.userId}
+                </Text>
               </View>
             </View>
             {/* View Profile */}
             <TouchableOpacity
-              onPress={() => { setShowProfileMenu(false); switchNav('profile'); }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}
-              activeOpacity={0.75}>
-              <MaterialIcons name="person-outline" size={18} color="rgba(255,255,255,0.70)" />
-              <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: '#fff' }}>View Profile</Text>
+              onPress={() => {
+                setShowProfileMenu(false);
+                switchNav("profile");
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 13,
+                borderBottomWidth: 1,
+                borderColor: "rgba(255,255,255,0.07)",
+              }}
+              activeOpacity={0.75}
+            >
+              <MaterialIcons
+                name="person-outline"
+                size={18}
+                color="rgba(255,255,255,0.70)"
+              />
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_500Medium",
+                  fontSize: 13,
+                  color: "#fff",
+                }}
+              >
+                View Profile
+              </Text>
             </TouchableOpacity>
             {/* Deposit */}
             {!isRegistered && (
               <TouchableOpacity
-                onPress={() => { setShowProfileMenu(false); openQuickModal('deposit'); }}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}
-                activeOpacity={0.75}>
-                <Image source={require('../../assets/wallet.png')} style={{ width: 18, height: 18, tintColor: '#4cde8a' }} />
-                <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: '#4cde8a' }}>Deposit</Text>
+                onPress={() => {
+                  setShowProfileMenu(false);
+                  openQuickModal("deposit");
+                }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: 16,
+                  paddingVertical: 13,
+                  borderBottomWidth: 1,
+                  borderColor: "rgba(255,255,255,0.07)",
+                }}
+                activeOpacity={0.75}
+              >
+                <Image
+                  source={require("../../assets/wallet.png")}
+                  style={{ width: 18, height: 18, tintColor: "#4cde8a" }}
+                />
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_500Medium",
+                    fontSize: 13,
+                    color: "#4cde8a",
+                  }}
+                >
+                  Deposit
+                </Text>
               </TouchableOpacity>
             )}
             {/* Withdraw */}
             {!isRegistered && (
               <TouchableOpacity
-                onPress={() => { setShowProfileMenu(false); openQuickModal('withdraw'); }}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}
-                activeOpacity={0.75}>
-                <Image source={require('../../assets/withdraw.png')} style={{ width: 18, height: 18, tintColor: '#e87a7a' }} />
-                <Text style={{ fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: '#e87a7a' }}>Withdraw</Text>
+                onPress={() => {
+                  setShowProfileMenu(false);
+                  openQuickModal("withdraw");
+                }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: 16,
+                  paddingVertical: 13,
+                  borderBottomWidth: 1,
+                  borderColor: "rgba(255,255,255,0.07)",
+                }}
+                activeOpacity={0.75}
+              >
+                <Image
+                  source={require("../../assets/withdraw.png")}
+                  style={{ width: 18, height: 18, tintColor: "#e87a7a" }}
+                />
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_500Medium",
+                    fontSize: 13,
+                    color: "#e87a7a",
+                  }}
+                >
+                  Withdraw
+                </Text>
               </TouchableOpacity>
             )}
             {/* Logout */}
             <TouchableOpacity
-              onPress={() => { setShowProfileMenu(false); onLogout(); }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13 }}
-              activeOpacity={0.75}>
+              onPress={() => {
+                setShowProfileMenu(false);
+                onLogout();
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 13,
+              }}
+              activeOpacity={0.75}
+            >
               <MaterialIcons name="logout" size={18} color="#e8c87a" />
-              <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#e8c87a' }}>Logout</Text>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 13,
+                  color: "#e8c87a",
+                }}
+              >
+                Logout
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -5594,115 +16958,345 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       <View style={{ flex: 1 }}>
         {/* Limited access banner for Registered members */}
         {isRegistered && (
-          <View style={{ marginHorizontal: isSmall ? 8 : 10, marginTop: 8, backgroundColor: 'rgba(201,168,76,0.20)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.50)', paddingVertical: 8, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View
+            style={{
+              marginHorizontal: isSmall ? 8 : 10,
+              marginTop: 8,
+              backgroundColor: "rgba(201,168,76,0.20)",
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: "rgba(201,168,76,0.50)",
+              paddingVertical: 8,
+              paddingHorizontal: 13,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
             <Text style={{ fontSize: 15 }}>⚠️</Text>
-            <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.navy, flex: 1, lineHeight: 16 }}>
-              <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>Limited Access — </Text>
-              Fill out your Application Form and wait for admin approval to unlock all features.
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 11,
+                color: C.navy,
+                flex: 1,
+                lineHeight: 16,
+              }}
+            >
+              <Text style={{ fontFamily: "GoogleSans_700Bold" }}>
+                Limited Access —{" "}
+              </Text>
+              Fill out your Application Form and wait for admin approval to
+              unlock all features.
             </Text>
           </View>
         )}
-        <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+        <Animated.View
+          style={{
+            flex: 1,
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          }}
+        >
           {renderContent()}
         </Animated.View>
       </View>
 
       {/* Drawer — slides in from RIGHT, positioned below header, aligned to right edge */}
       {drawer && (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}>
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 999,
+          }}
+        >
           {/* Backdrop */}
           <TouchableOpacity
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' }}
-            activeOpacity={1} onPress={() => setDrawer(false)} />
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.45)",
+            }}
+            activeOpacity={1}
+            onPress={() => setDrawer(false)}
+          />
           {/* Sidebar panel — floating, rounded, right-aligned, starts below header */}
-          <View style={{
-            position: 'absolute',
-            top: sidebarTop,
-            left: isSmall ? 8 : 10,
-            bottom: isSmall ? 8 : 14,
-            width: 220,
-            backgroundColor: '#1a2d4e',
-            borderRadius: 16,
-            borderWidth: 1,
-            borderColor: 'rgba(201,168,76,0.25)',
-            shadowColor: '#011f4b',
-            shadowOpacity: 0.30,
-            shadowRadius: 24,
-            shadowOffset: { width: -4, height: 6 },
-            elevation: 14,
-            overflow: 'hidden',
-            flexDirection: 'column',
-          }}>
-            <MemberSidebar active={nav} onNav={switchNav} onClose={() => setDrawer(false)} unread={unread}
-              onLogout={() => { setDrawer(false); onLogout(); }}
-              onBack={() => { goBack(); setDrawer(false); }}
+          <View
+            style={{
+              position: "absolute",
+              top: sidebarTop,
+              left: isSmall ? 8 : 10,
+              bottom: isSmall ? 8 : 14,
+              width: 220,
+              backgroundColor: "#1a2d4e",
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: "rgba(201,168,76,0.25)",
+              shadowColor: "#011f4b",
+              shadowOpacity: 0.3,
+              shadowRadius: 24,
+              shadowOffset: { width: -4, height: 6 },
+              elevation: 14,
+              overflow: "hidden",
+              flexDirection: "column",
+            }}
+          >
+            <MemberSidebar
+              active={nav}
+              onNav={switchNav}
+              onClose={() => setDrawer(false)}
+              unread={unread}
+              onLogout={() => {
+                setDrawer(false);
+                onLogout();
+              }}
+              onBack={() => {
+                goBack();
+                setDrawer(false);
+              }}
               canGoBack={navHistory.length > 1}
-              isRegistered={isRegistered} />
+              isRegistered={isRegistered}
+            />
           </View>
         </View>
       )}
 
-
-
       {/* Quick Deposit / Withdrawal Modal */}
       {showQuickModal && (
         <Modal visible transparent animationType="fade">
-          <View style={{ flex: 1, backgroundColor: 'rgba(10,20,40,0.65)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-            <View style={{ width: '100%', maxWidth: 380, backgroundColor: '#deeaf3', borderRadius: 20, overflow: 'hidden', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)', shadowColor: '#0f1e35', shadowOpacity: 0.25, shadowRadius: 20, shadowOffset: { width: 0, height: 6 } }}>
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(10,20,40,0.65)",
+              justifyContent: "center",
+              alignItems: "center",
+              padding: 20,
+            }}
+          >
+            <View
+              style={{
+                width: "100%",
+                maxWidth: 380,
+                backgroundColor: "#deeaf3",
+                borderRadius: 20,
+                overflow: "hidden",
+                borderWidth: 1.5,
+                borderColor: "rgba(255,255,255,0.85)",
+                shadowColor: "#0f1e35",
+                shadowOpacity: 0.25,
+                shadowRadius: 20,
+                shadowOffset: { width: 0, height: 6 },
+              }}
+            >
               {/* Header */}
-              <LinearGradient colors={['#1a2d4e', '#243554']} style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: quickMode === 'deposit' ? 'rgba(26,138,74,0.30)' : 'rgba(192,57,43,0.30)', justifyContent: 'center', alignItems: 'center' }}>
+              <LinearGradient
+                colors={["#1a2d4e", "#243554"]}
+                style={{
+                  padding: 16,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    backgroundColor:
+                      quickMode === "deposit"
+                        ? "rgba(26,138,74,0.30)"
+                        : "rgba(192,57,43,0.30)",
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
                   <Image
-                    source={quickMode === 'deposit' ? require('../../assets/wallet.png') : require('../../assets/withdraw.png')}
-                    style={{ width: 20, height: 20, tintColor: quickMode === 'deposit' ? '#4cde8a' : '#e87a7a' }}
+                    source={
+                      quickMode === "deposit"
+                        ? require("../../assets/wallet.png")
+                        : require("../../assets/withdraw.png")
+                    }
+                    style={{
+                      width: 20,
+                      height: 20,
+                      tintColor:
+                        quickMode === "deposit" ? "#4cde8a" : "#e87a7a",
+                    }}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: 'NotoSerif_700Bold', fontSize: 16, color: '#fff' }}>
-                    {quickMode === 'deposit' ? 'Quick Deposit' : 'Withdrawal Request'}
+                  <Text
+                    style={{
+                      fontFamily: "NotoSerif_700Bold",
+                      fontSize: 16,
+                      color: "#fff",
+                    }}
+                  >
+                    {quickMode === "deposit"
+                      ? "Quick Deposit"
+                      : "Withdrawal Request"}
                   </Text>
-                  <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(255,255,255,0.50)', marginTop: 1 }}>
-                    {quickMode === 'deposit' ? 'Funds applied immediately' : 'Requires admin approval'}
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.50)",
+                      marginTop: 1,
+                    }}
+                  >
+                    {quickMode === "deposit"
+                      ? "Funds applied immediately"
+                      : "Requires admin approval"}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={closeQuickModal} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' }}>
-                  <Text style={{ color: '#fff', fontSize: 14, lineHeight: 18 }}>✕</Text>
+                <TouchableOpacity
+                  onPress={closeQuickModal}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: "rgba(255,255,255,0.12)",
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 14, lineHeight: 18 }}>
+                    ✕
+                  </Text>
                 </TouchableOpacity>
               </LinearGradient>
 
               <View style={{ padding: 18 }}>
                 {/* Account type selector */}
                 <Text style={[s.fieldLabel, { marginBottom: 8 }]}>ACCOUNT</Text>
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                <View
+                  style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}
+                >
                   {[
-                    { key: 'savings',    label: 'Savings',      bal: member.savings,     color: C.green },
-                    ...(quickMode === 'withdraw' ? [{ key: 'loan', label: 'Loan Wallet', bal: member.loanBalance, color: C.blue }] : []),
-                  ].map(opt => (
-                    <TouchableOpacity key={opt.key} onPress={() => { setQuickType(opt.key); setQuickErr(''); }}
-                      style={{ flex: 1, borderRadius: 12, borderWidth: 2, borderColor: quickType === opt.key ? opt.color : 'rgba(15,30,53,0.15)', backgroundColor: quickType === opt.key ? (opt.color + '18') : 'rgba(255,255,255,0.55)', padding: 10, alignItems: 'center' }}>
-                      <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: opt.color }}>{opt.label}</Text>
-                      <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: C.textMuted, marginTop: 2 }}>{fmtCur(opt.bal)}</Text>
+                    {
+                      key: "savings",
+                      label: "Savings",
+                      bal: member.savings,
+                      color: C.green,
+                    },
+                    ...(quickMode === "withdraw"
+                      ? [
+                          {
+                            key: "loan",
+                            label: "Loan Wallet",
+                            bal: member.loanBalance,
+                            color: C.blue,
+                          },
+                        ]
+                      : []),
+                  ].map((opt) => (
+                    <TouchableOpacity
+                      key={opt.key}
+                      onPress={() => {
+                        setQuickType(opt.key);
+                        setQuickErr("");
+                      }}
+                      style={{
+                        flex: 1,
+                        borderRadius: 12,
+                        borderWidth: 2,
+                        borderColor:
+                          quickType === opt.key
+                            ? opt.color
+                            : "rgba(15,30,53,0.15)",
+                        backgroundColor:
+                          quickType === opt.key
+                            ? opt.color + "18"
+                            : "rgba(255,255,255,0.55)",
+                        padding: 10,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 12,
+                          color: opt.color,
+                        }}
+                      >
+                        {opt.label}
+                      </Text>
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_400Regular",
+                          fontSize: 10,
+                          color: C.textMuted,
+                          marginTop: 2,
+                        }}
+                      >
+                        {fmtCur(opt.bal)}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
 
                 {/* Warning for withdrawal */}
-                {quickMode === 'withdraw' && (
-                  <View style={{ backgroundColor: 'rgba(196,125,14,0.12)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(196,125,14,0.35)', padding: 10, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                {quickMode === "withdraw" && (
+                  <View
+                    style={{
+                      backgroundColor: "rgba(196,125,14,0.12)",
+                      borderRadius: 9,
+                      borderWidth: 1,
+                      borderColor: "rgba(196,125,14,0.35)",
+                      padding: 10,
+                      marginBottom: 12,
+                      flexDirection: "row",
+                      gap: 8,
+                      alignItems: "flex-start",
+                    }}
+                  >
                     <Text style={{ fontSize: 13 }}>⚠️</Text>
-                    <Text style={{ fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: C.orange, flex: 1, lineHeight: 16 }}>
-                      Withdrawal needs <Text style={{ fontFamily: 'GoogleSans_700Bold' }}>admin approval</Text> before processing.
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_400Regular",
+                        fontSize: 11,
+                        color: C.orange,
+                        flex: 1,
+                        lineHeight: 16,
+                      }}
+                    >
+                      Withdrawal needs{" "}
+                      <Text style={{ fontFamily: "GoogleSans_700Bold" }}>
+                        admin approval
+                      </Text>{" "}
+                      before processing.
                     </Text>
                   </View>
                 )}
 
                 {/* Amount input */}
-                <Text style={[s.fieldLabel, { marginBottom: 6 }]}>AMOUNT (₱)</Text>
+                <Text style={[s.fieldLabel, { marginBottom: 6 }]}>
+                  AMOUNT (₱)
+                </Text>
                 <View style={[s.fieldRow, { marginBottom: 14 }]}>
                   <TextInput
-                    style={[s.fieldInput, { flex: 1, fontSize: 18, fontFamily: 'NotoSerif_700Bold', color: quickMode === 'deposit' ? C.green : C.red }]}
+                    style={[
+                      s.fieldInput,
+                      {
+                        flex: 1,
+                        fontSize: 18,
+                        fontFamily: "NotoSerif_700Bold",
+                        color: quickMode === "deposit" ? C.green : C.red,
+                      },
+                    ]}
                     value={quickAmt}
-                    onChangeText={v => { setQuickAmt(v.replace(/[^0-9.]/g, '')); setQuickErr(''); }}
+                    onChangeText={(v) => {
+                      setQuickAmt(v.replace(/[^0-9.]/g, ""));
+                      setQuickErr("");
+                    }}
                     placeholder="0.00"
                     placeholderTextColor={C.textMuted}
                     keyboardType="decimal-pad"
@@ -5713,16 +17307,42 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
                 {/* Error */}
                 {quickErr ? (
                   <View style={[s.errorBox, { marginBottom: 12 }]}>
-                    <MaterialIcons name="error-outline" size={14} color={C.red} />
+                    <MaterialIcons
+                      name="error-outline"
+                      size={14}
+                      color={C.red}
+                    />
                     <Text style={s.errorTxt}>{quickErr}</Text>
                   </View>
                 ) : null}
 
                 {/* Success */}
                 {quickDone ? (
-                  <View style={{ backgroundColor: 'rgba(26,138,74,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(26,138,74,0.40)', padding: 10, marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                  <View
+                    style={{
+                      backgroundColor: "rgba(26,138,74,0.14)",
+                      borderRadius: 9,
+                      borderWidth: 1,
+                      borderColor: "rgba(26,138,74,0.40)",
+                      padding: 10,
+                      marginBottom: 12,
+                      flexDirection: "row",
+                      gap: 8,
+                      alignItems: "flex-start",
+                    }}
+                  >
                     <Text style={{ fontSize: 14 }}>✅</Text>
-                    <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: C.green, flex: 1, lineHeight: 17 }}>{quickDone}</Text>
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 12,
+                        color: C.green,
+                        flex: 1,
+                        lineHeight: 17,
+                      }}
+                    >
+                      {quickDone}
+                    </Text>
                   </View>
                 ) : null}
 
@@ -5731,12 +17351,31 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
                   <TouchableOpacity
                     onPress={handleQuickTxn}
                     disabled={quickBusy}
-                    style={{ borderRadius: 12, paddingVertical: 13, alignItems: 'center', backgroundColor: quickMode === 'deposit' ? C.green : C.red, opacity: quickBusy ? 0.65 : 1 }}>
-                    {quickBusy
-                      ? <ActivityIndicator color="#fff" />
-                      : <Text style={{ fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff', letterSpacing: 0.5 }}>
-                          {quickMode === 'deposit' ? '⬆️  Confirm Deposit' : '⬇️  Submit Request'}
-                        </Text>}
+                    style={{
+                      borderRadius: 12,
+                      paddingVertical: 13,
+                      alignItems: "center",
+                      backgroundColor:
+                        quickMode === "deposit" ? C.green : C.red,
+                      opacity: quickBusy ? 0.65 : 1,
+                    }}
+                  >
+                    {quickBusy ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 14,
+                          color: "#fff",
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        {quickMode === "deposit"
+                          ? "⬆️  Confirm Deposit"
+                          : "⬇️  Submit Request"}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 )}
               </View>
@@ -5749,7 +17388,10 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
       <MsgNotifPopup
         notif={msgNotif}
         onClose={() => setMsgNotif(null)}
-        onOpen={() => { setMsgNotif(null); switchNav('chat_admin'); }}
+        onOpen={() => {
+          setMsgNotif(null);
+          switchNav("chat_admin");
+        }}
       />
 
       {/* Message Dropdown Preview — shown when message icon in topbar is clicked */}
@@ -5770,13 +17412,19 @@ const MemberDashboard = ({ memberInit, onLogout, isWide, isSmall }) => {
 // ═════════════════════════════════════════════════════════════════════════════
 export default function CoopScreen({ navigation, route }) {
   const { width } = useWindowDimensions();
-  const isWide  = width >= 768;
+  const isWide = width >= 768;
   const isSmall = width < 400;
 
-  const [fontsLoaded] = useFonts({ NotoSerif_700Bold, NotoSerif_700Bold_Italic, GoogleSans_400Regular, GoogleSans_500Medium, GoogleSans_700Bold });
+  const [fontsLoaded] = useFonts({
+    NotoSerif_700Bold,
+    NotoSerif_700Bold_Italic,
+    GoogleSans_400Regular,
+    GoogleSans_500Medium,
+    GoogleSans_700Bold,
+  });
 
   // view: 'login' | 'register' | 'success' | 'dashboard'
-  const [view,   setView]   = useState(route?.params?.view || 'login');
+  const [view, setView] = useState(route?.params?.view || "login");
   const [member, setMember] = useState(null);
 
   // Jump to register view if navigated with params (e.g. from ad tap)
@@ -5790,279 +17438,754 @@ export default function CoopScreen({ navigation, route }) {
   useEffect(() => {
     if (route?.params?.view) return; // respect explicit nav param
     AsyncStorage.getItem(SESSION_KEY)
-      .then(raw => {
+      .then((raw) => {
         if (!raw) return;
         try {
           const saved = JSON.parse(raw);
-          if (saved?.uid) { setMember(saved); setView('dashboard'); setOnlineStatus(saved.uid, true); }
-        } catch { /* ignore corrupt data */ }
+          if (saved?.uid) {
+            setMember(saved);
+            setView("dashboard");
+            setOnlineStatus(saved.uid, true);
+          }
+        } catch {
+          /* ignore corrupt data */
+        }
       })
       .catch(() => {});
   }, []);
 
   // Login state
-  const [userId,       setUserId]       = useState('');
-  const [pw,           setPw]           = useState('');
-  const [showPw,       setShowPw]       = useState(false);
-  const [loginErr,     setLoginErr]     = useState('');
+  const [userId, setUserId] = useState("");
+  const [pw, setPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [loginErr, setLoginErr] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
 
   // Register state
-  const [lastName,    setLastName]    = useState('');
-  const [firstName,   setFirstName]   = useState('');
-  const [middleName,  setMiddleName]  = useState('');
-  const [regPw,       setRegPw]       = useState('');
-  const [regConfirm,  setRegConfirm]  = useState('');
-  const [showRegPw,   setShowRegPw]   = useState(false);
+  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [regPw, setRegPw] = useState("");
+  const [regConfirm, setRegConfirm] = useState("");
+  const [showRegPw, setShowRegPw] = useState(false);
   const [showRegConf, setShowRegConf] = useState(false);
-  const [genUid,      setGenUid]      = useState('Loading...');
-  const [copied,      setCopied]      = useState(false);
-  const [regErrors,   setRegErrors]   = useState({});
-  const [regLoading,  setRegLoading]  = useState(false);
-  const [regMember,   setRegMember]   = useState(null);
+  const [genUid, setGenUid] = useState("Loading...");
+  const [copied, setCopied] = useState(false);
+  const [regErrors, setRegErrors] = useState({});
+  const [regLoading, setRegLoading] = useState(false);
+  const [regMember, setRegMember] = useState(null);
 
   // Animations
-  const hdrFade  = useRef(new Animated.Value(0)).current;
+  const hdrFade = useRef(new Animated.Value(0)).current;
   const hdrTrans = useRef(new Animated.Value(-18)).current;
   const cardFade = useRef(new Animated.Value(0)).current;
-  const cardTrans= useRef(new Animated.Value(32)).current;
+  const cardTrans = useRef(new Animated.Value(32)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(hdrFade,  { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.timing(hdrTrans, { toValue: 0, duration: 600, useNativeDriver: true }),
-      Animated.timing(cardFade, { toValue: 1, duration: 550, delay: 180, useNativeDriver: true }),
-      Animated.timing(cardTrans,{ toValue: 0, duration: 550, delay: 180, useNativeDriver: true }),
+      Animated.timing(hdrFade, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(hdrTrans, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardFade, {
+        toValue: 1,
+        duration: 550,
+        delay: 180,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardTrans, {
+        toValue: 0,
+        duration: 550,
+        delay: 180,
+        useNativeDriver: true,
+      }),
     ]).start();
   }, []);
 
   useEffect(() => {
-    if (view === 'register') {
-      setGenUid('Loading...');
-      generateNextUserId().then(setGenUid).catch(() => setGenUid('CESLA-2026-XXXXX'));
+    if (view === "register") {
+      setGenUid("Loading...");
+      generateNextUserId()
+        .then(setGenUid)
+        .catch(() => setGenUid("CESLA-2026-XXXXX"));
     }
   }, [view]);
 
-  const switchView = next => {
-    Animated.timing(cardFade, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => {
-      setView(next); setLoginErr(''); setRegErrors({});
-      Animated.timing(cardFade, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+  const switchView = (next) => {
+    Animated.timing(cardFade, {
+      toValue: 0,
+      duration: 160,
+      useNativeDriver: true,
+    }).start(() => {
+      setView(next);
+      setLoginErr("");
+      setRegErrors({});
+      Animated.timing(cardFade, {
+        toValue: 1,
+        duration: 280,
+        useNativeDriver: true,
+      }).start();
     });
   };
 
   const handleLogin = async () => {
-    if (!userId.trim()) { setLoginErr('Please enter your User ID.'); return; }
-    if (!pw.trim())     { setLoginErr('Please enter your password.'); return; }
-    setLoginLoading(true); setLoginErr('');
+    if (!userId.trim()) {
+      setLoginErr("Please enter your User ID.");
+      return;
+    }
+    if (!pw.trim()) {
+      setLoginErr("Please enter your password.");
+      return;
+    }
+    setLoginLoading(true);
+    setLoginErr("");
     try {
       const m = await loginByUserIdFS(userId.trim(), pw);
       // ── Persist session so app stays logged in after restart ──────────────
-      try { await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(m)); } catch { /* silent */ }
+      try {
+        await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(m));
+      } catch {
+        /* silent */
+      }
       // ── Mark member as online ─────────────────────────────────────────────
       setOnlineStatus(m.uid, true);
       setMember(m);
-      setView('dashboard'); // ← stays in same screen, no navigation needed
-    } catch (e) { setLoginErr(e.message || 'Invalid User ID or password.'); }
-    finally { setLoginLoading(false); }
+      setView("dashboard"); // ← stays in same screen, no navigation needed
+    } catch (e) {
+      setLoginErr(e.message || "Invalid User ID or password.");
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
   const handleRegister = async () => {
     const e = {};
-    if (!lastName.trim())     e.lastName  = 'Last name is required.';
-    if (!firstName.trim())    e.firstName = 'First name is required.';
-    if (regPw.length < 6)     e.pw        = 'Min. 6 characters.';
-    if (regPw !== regConfirm) e.cpw       = 'Passwords do not match.';
-    if (Object.keys(e).length > 0) { setRegErrors(e); return; }
+    if (!lastName.trim()) e.lastName = "Last name is required.";
+    if (!firstName.trim()) e.firstName = "First name is required.";
+    if (regPw.length < 6) e.pw = "Min. 6 characters.";
+    if (regPw !== regConfirm) e.cpw = "Passwords do not match.";
+    if (Object.keys(e).length > 0) {
+      setRegErrors(e);
+      return;
+    }
     setRegLoading(true);
     try {
-      const m = await registerMemberFS({ lastName: lastName.trim(), firstName: firstName.trim(), middleName: middleName.trim(), password: regPw });
-      setRegMember(m); switchView('success');
-    } catch (err) { setRegErrors({ general: err.message || 'Registration failed.' }); }
-    finally { setRegLoading(false); }
+      const m = await registerMemberFS({
+        lastName: lastName.trim(),
+        firstName: firstName.trim(),
+        middleName: middleName.trim(),
+        password: regPw,
+      });
+      setRegMember(m);
+      switchView("success");
+    } catch (err) {
+      setRegErrors({ general: err.message || "Registration failed." });
+    } finally {
+      setRegLoading(false);
+    }
   };
 
-  const handleCopy = async uid => { await Clipboard.setStringAsync(uid); setCopied(true); setTimeout(() => setCopied(false), 2500); };
+  const handleCopy = async (uid) => {
+    await Clipboard.setStringAsync(uid);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
   const handleLogout = () => {
     // ── Mark offline ─────────────────────────────────────────────────────────
     if (member?.uid) setOnlineStatus(member.uid, false);
     // ── Clear persisted session ──────────────────────────────────────────────
-    try { AsyncStorage.removeItem(SESSION_KEY); } catch { /* silent */ }
-    setMember(null); setUserId(''); setPw(''); setView('login');
+    try {
+      AsyncStorage.removeItem(SESSION_KEY);
+    } catch {
+      /* silent */
+    }
+    setMember(null);
+    setUserId("");
+    setPw("");
+    setView("login");
     // Reset navigation stack — skip AdminScreen to avoid auto-redirecting to ManageCanteenScreen
     if (navigation) {
       const state = navigation.getState();
       const routes = state?.routes || [];
       const prevRoute = routes[routes.length - 2];
-      if (prevRoute && prevRoute.name === 'AdminScreen') {
-        navigation.navigate('Home');
+      if (prevRoute && prevRoute.name === "AdminScreen") {
+        navigation.navigate("Home");
       } else if (navigation.canGoBack()) {
         navigation.goBack();
       } else {
-        navigation.navigate('Home');
+        navigation.navigate("Home");
       }
     }
   };
 
   if (!fontsLoaded) {
-    return <View style={{ flex: 1 }}><AppBg /><View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" color="#c9a84c" /></View></View>;
+    return (
+      <View style={{ flex: 1 }}>
+        <AppBg />
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <ActivityIndicator size="large" color="#c9a84c" />
+        </View>
+      </View>
+    );
   }
 
   // ── DASHBOARD — full screen, no header ──────────────────────────────────
-  if (view === 'dashboard' && member) {
+  if (view === "dashboard" && member) {
     const handleDashboardLogout = () => {
-      if (Platform.OS === 'web') {
-        const confirmed = window.confirm('Are you sure you want to log-out your account?');
+      if (Platform.OS === "web") {
+        const confirmed = window.confirm(
+          "Are you sure you want to log-out your account?",
+        );
         if (confirmed) handleLogout();
       } else {
         Alert.alert(
-          'Logout',
-          'Are you sure you want to log-out your account?',
+          "Logout",
+          "Are you sure you want to log-out your account?",
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Logout', style: 'destructive', onPress: handleLogout },
+            { text: "Cancel", style: "cancel" },
+            { text: "Logout", style: "destructive", onPress: handleLogout },
           ],
-          { cancelable: true }
+          { cancelable: true },
         );
       }
     };
     return (
       <View style={{ flex: 1 }}>
         <AppBg />
-        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-        <MemberDashboard memberInit={member} onLogout={handleDashboardLogout} isWide={isWide} isSmall={isSmall} />
+        <StatusBar
+          barStyle="light-content"
+          translucent
+          backgroundColor="transparent"
+        />
+        <MemberDashboard
+          memberInit={member}
+          onLogout={handleDashboardLogout}
+          isWide={isWide}
+          isSmall={isSmall}
+        />
       </View>
     );
   }
 
   // ── AUTH SCREENS ─────────────────────────────────────────────────────────
   const headerLabel =
-    view === 'register' ? <><Text style={s.headerWhite}>Register as </Text><Text style={s.headerGold}>New Member</Text></> :
-    view === 'success'  ? <><Text style={s.headerWhite}>Registration </Text><Text style={s.headerGold}>Complete!</Text></> :
-                          <><Text style={s.headerWhite}>Member </Text><Text style={s.headerGold}>Login</Text></>;
+    view === "register" ? (
+      <>
+        <Text style={s.headerWhite}>Register as </Text>
+        <Text style={s.headerGold}>New Member</Text>
+      </>
+    ) : view === "success" ? (
+      <>
+        <Text style={s.headerWhite}>Registration </Text>
+        <Text style={s.headerGold}>Complete!</Text>
+      </>
+    ) : (
+      <>
+        <Text style={s.headerWhite}>Member </Text>
+        <Text style={s.headerGold}>Login</Text>
+      </>
+    );
 
   return (
     <View style={{ flex: 1 }}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <StatusBar
+        barStyle="light-content"
+        translucent
+        backgroundColor="transparent"
+      />
       <AppBg />
 
       {/* Header */}
-      <Animated.View style={[s.headerWrap, { paddingTop: Platform.OS === 'web' ? 16 : 50, marginHorizontal: isWide ? 20 : isSmall ? 10 : 16, opacity: hdrFade, transform: [{ translateY: hdrTrans }] }]}>
-        <View style={[s.header, { paddingHorizontal: isWide ? 36 : 14, paddingVertical: isWide ? 16 : 10 }]}>
-          <TouchableOpacity style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => {
-              if (view !== 'login') {
-                switchView('login');
+      <Animated.View
+        style={[
+          s.headerWrap,
+          {
+            paddingTop: Platform.OS === "web" ? 16 : 50,
+            marginHorizontal: isWide ? 20 : isSmall ? 10 : 16,
+            opacity: hdrFade,
+            transform: [{ translateY: hdrTrans }],
+          },
+        ]}
+      >
+        <View
+          style={[
+            s.header,
+            {
+              paddingHorizontal: isWide ? 36 : 14,
+              paddingVertical: isWide ? 16 : 10,
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={s.backBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => {
+              if (view !== "login") {
+                switchView("login");
               } else if (navigation) {
                 const state = navigation.getState();
                 const routes = state?.routes || [];
                 const prevRoute = routes[routes.length - 2];
-                if (prevRoute && prevRoute.name === 'AdminScreen') {
-                  navigation.navigate('Home');
+                if (prevRoute && prevRoute.name === "AdminScreen") {
+                  navigation.navigate("Home");
                 } else if (navigation.canGoBack()) {
                   navigation.goBack();
                 } else {
-                  navigation.navigate('Home');
+                  navigation.navigate("Home");
                 }
               }
-            }}>
+            }}
+          >
             <Text style={s.backIcon}>←</Text>
           </TouchableOpacity>
           <View style={s.headerCenter}>
-            <Text style={[s.headerH1, { fontSize: isWide ? 22 : isSmall ? 14 : 17 }]} numberOfLines={1} adjustsFontSizeToFit>{headerLabel}</Text>
-            <Text style={[s.headerSub, { fontSize: isWide ? 10 : 8 }]}>CESLA MULTI-PURPOSE COOPERATIVE</Text>
+            <Text
+              style={[
+                s.headerH1,
+                { fontSize: isWide ? 22 : isSmall ? 14 : 17 },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {headerLabel}
+            </Text>
+            <Text style={[s.headerSub, { fontSize: isWide ? 10 : 8 }]}>
+              CESLA MULTI-PURPOSE COOPERATIVE
+            </Text>
           </View>
           <View style={{ width: 40, flexShrink: 0 }} />
         </View>
       </Animated.View>
 
       {/* Body */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingHorizontal: isWide ? 60 : 20, paddingVertical: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <Animated.View style={[s.card, { opacity: cardFade, transform: [{ translateY: cardTrans }], width: '100%', maxWidth: isWide ? 420 : 400 }]}>
-
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            alignItems: "center",
+            paddingHorizontal: isWide ? 60 : 20,
+            paddingVertical: 16,
+            paddingBottom: 40,
+          }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View
+            style={[
+              s.card,
+              {
+                opacity: cardFade,
+                transform: [{ translateY: cardTrans }],
+                width: "100%",
+                maxWidth: isWide ? 420 : 400,
+              },
+            ]}
+          >
             {/* ══ LOGIN ══ */}
-            {view === 'login' && (
+            {view === "login" && (
               <>
-                <View style={s.avatarWrap}><LinearGradient colors={['rgba(201,168,76,0.30)', 'rgba(201,168,76,0.10)']} style={s.avatarGrad}><MaterialIcons name="person" size={isWide ? 34 : 28} color="#c9a84c" /></LinearGradient></View>
-                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>Welcome Back!</Text>
-                <Text style={s.cardSub}>Login to access your membership account</Text>
-                <View style={s.fbBadge}><View style={s.fbDot} /><Text style={s.fbBadgeTxt}>Connected to Firebase · Real-time sync</Text></View>
-                <View style={s.hintBox}><Text style={s.hintTxt}>{'🔑 Use your '}<Text style={s.hintBold}>User ID</Text>{' (e.g. '}<Text style={[s.hintBold, { color: '#c9a84c' }]}>CESLA-2026-00001</Text>{') and '}<Text style={[s.hintBold, { color: '#c9a84c' }]}>Password</Text>{' to login.'}</Text></View>
-                <Field label="USER ID"  value={userId} onChangeText={v => { setUserId(v); setLoginErr(''); }} placeholder="CESLA-2026-00001" />
-                <Field label="PASSWORD" value={pw}     onChangeText={v => { setPw(v);     setLoginErr(''); }} placeholder="Enter your password" secureEntry={!showPw} showToggle onToggle={() => setShowPw(p => !p)} />
-                {loginErr ? <View style={s.errorBox}><MaterialIcons name="error-outline" size={14} color="#c0392b" style={{ marginTop: 1 }} /><Text style={s.errorTxt}>{loginErr}</Text></View> : null}
-                <TouchableOpacity style={[s.primaryBtn, loginLoading && { opacity: 0.65 }]} onPress={handleLogin} activeOpacity={0.85} disabled={loginLoading}>
-                  <LinearGradient colors={['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.primaryBtnGrad}>
-                    {loginLoading ? <ActivityIndicator color="#0d1b3e" /> : <><Text style={s.primaryBtnArrow}>→</Text><Text style={s.primaryBtnTxt}>LOGIN</Text></>}
+                <View style={s.avatarWrap}>
+                  <LinearGradient
+                    colors={["rgba(201,168,76,0.30)", "rgba(201,168,76,0.10)"]}
+                    style={s.avatarGrad}
+                  >
+                    <MaterialIcons
+                      name="person"
+                      size={isWide ? 34 : 28}
+                      color="#c9a84c"
+                    />
+                  </LinearGradient>
+                </View>
+                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>
+                  Welcome Back!
+                </Text>
+                <Text style={s.cardSub}>
+                  Login to access your membership account
+                </Text>
+                <View style={s.fbBadge}>
+                  <View style={s.fbDot} />
+                  <Text style={s.fbBadgeTxt}>
+                    Connected to Firebase · Real-time sync
+                  </Text>
+                </View>
+                <View style={s.hintBox}>
+                  <Text style={s.hintTxt}>
+                    {"🔑 Use your "}
+                    <Text style={s.hintBold}>User ID</Text>
+                    {" (e.g. "}
+                    <Text style={[s.hintBold, { color: "#c9a84c" }]}>
+                      CESLA-2026-00001
+                    </Text>
+                    {") and "}
+                    <Text style={[s.hintBold, { color: "#c9a84c" }]}>
+                      Password
+                    </Text>
+                    {" to login."}
+                  </Text>
+                </View>
+                <Field
+                  label="USER ID"
+                  value={userId}
+                  onChangeText={(v) => {
+                    setUserId(v);
+                    setLoginErr("");
+                  }}
+                  placeholder="CESLA-2026-00001"
+                />
+                <Field
+                  label="PASSWORD"
+                  value={pw}
+                  onChangeText={(v) => {
+                    setPw(v);
+                    setLoginErr("");
+                  }}
+                  placeholder="Enter your password"
+                  secureEntry={!showPw}
+                  showToggle
+                  onToggle={() => setShowPw((p) => !p)}
+                />
+                {loginErr ? (
+                  <View style={s.errorBox}>
+                    <MaterialIcons
+                      name="error-outline"
+                      size={14}
+                      color="#c0392b"
+                      style={{ marginTop: 1 }}
+                    />
+                    <Text style={s.errorTxt}>{loginErr}</Text>
+                  </View>
+                ) : null}
+                <TouchableOpacity
+                  style={[s.primaryBtn, loginLoading && { opacity: 0.65 }]}
+                  onPress={handleLogin}
+                  activeOpacity={0.85}
+                  disabled={loginLoading}
+                >
+                  <LinearGradient
+                    colors={["#c9a84c", "#e8c87a"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={s.primaryBtnGrad}
+                  >
+                    {loginLoading ? (
+                      <ActivityIndicator color="#0d1b3e" />
+                    ) : (
+                      <>
+                        <Text style={s.primaryBtnArrow}>→</Text>
+                        <Text style={s.primaryBtnTxt}>LOGIN</Text>
+                      </>
+                    )}
                   </LinearGradient>
                 </TouchableOpacity>
-                <View style={s.switchRow}><Text style={s.switchTxt}>Don't have an account? </Text><TouchableOpacity onPress={() => switchView('register')} activeOpacity={0.75}><Text style={s.switchLink}>Register as New Member</Text></TouchableOpacity></View>
+                <View style={s.switchRow}>
+                  <Text style={s.switchTxt}>Don't have an account? </Text>
+                  <TouchableOpacity
+                    onPress={() => switchView("register")}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={s.switchLink}>Register as New Member</Text>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
 
             {/* ══ REGISTER ══ */}
-            {view === 'register' && (
+            {view === "register" && (
               <>
-                <View style={s.avatarWrap}><LinearGradient colors={['rgba(201,168,76,0.30)', 'rgba(201,168,76,0.10)']} style={s.avatarGrad}><MaterialIcons name="person-add" size={isWide ? 30 : 24} color="#c9a84c" /></LinearGradient></View>
-                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>Create Your Account</Text>
-                <Text style={s.cardSub}>CESLA Multi-Purpose Cooperative · CLIMBS Employee</Text>
+                <View style={s.avatarWrap}>
+                  <LinearGradient
+                    colors={["rgba(201,168,76,0.30)", "rgba(201,168,76,0.10)"]}
+                    style={s.avatarGrad}
+                  >
+                    <MaterialIcons
+                      name="person-add"
+                      size={isWide ? 30 : 24}
+                      color="#c9a84c"
+                    />
+                  </LinearGradient>
+                </View>
+                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>
+                  Create Your Account
+                </Text>
+                <Text style={s.cardSub}>
+                  CESLA Multi-Purpose Cooperative · CLIMBS Employee
+                </Text>
                 <View style={s.stepRow}>
-                  {[{ n: 1, lbl: 'Create\nAccount' }, { n: 2, lbl: 'Fill App\nForm' }, { n: 3, lbl: 'Admin\nApproves' }].map((step, i) => (
-                    <View key={step.n} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                      <View style={s.stepItem}><View style={[s.stepCircle, step.n === 1 && s.stepCircleActive]}><Text style={[s.stepNum, step.n === 1 && s.stepNumActive]}>{step.n}</Text></View><Text style={[s.stepLbl, step.n === 1 && s.stepLblActive]}>{step.lbl}</Text></View>
+                  {[
+                    { n: 1, lbl: "Create\nAccount" },
+                    { n: 2, lbl: "Fill App\nForm" },
+                    { n: 3, lbl: "Admin\nApproves" },
+                  ].map((step, i) => (
+                    <View
+                      key={step.n}
+                      style={{ flexDirection: "row", alignItems: "flex-start" }}
+                    >
+                      <View style={s.stepItem}>
+                        <View
+                          style={[
+                            s.stepCircle,
+                            step.n === 1 && s.stepCircleActive,
+                          ]}
+                        >
+                          <Text
+                            style={[s.stepNum, step.n === 1 && s.stepNumActive]}
+                          >
+                            {step.n}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[s.stepLbl, step.n === 1 && s.stepLblActive]}
+                        >
+                          {step.lbl}
+                        </Text>
+                      </View>
                       {i < 2 && <View style={s.stepLine} />}
                     </View>
                   ))}
                 </View>
                 <View style={s.uidBox}>
-                  <View style={{ flex: 1 }}><Text style={s.uidLabel}>🔑 YOUR UNIQUE USER ID (GAMITON SA LOGIN)</Text><Text style={s.uidValue}>{genUid}</Text></View>
-                  <TouchableOpacity style={[s.copyBtn, copied && s.copyBtnDone]} onPress={() => handleCopy(genUid)}><Text style={s.copyBtnTxt}>{copied ? '✓ Copied' : '📋 Copy'}</Text></TouchableOpacity>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.uidLabel}>
+                      🔑 YOUR UNIQUE USER ID (GAMITON SA LOGIN)
+                    </Text>
+                    <Text style={s.uidValue}>{genUid}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[s.copyBtn, copied && s.copyBtnDone]}
+                    onPress={() => handleCopy(genUid)}
+                  >
+                    <Text style={s.copyBtnTxt}>
+                      {copied ? "✓ Copied" : "📋 Copy"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-                <View style={s.uidWarning}><Text style={s.uidWarningTxt}>{'⚠️ I-save ang imong User ID! '}<Text style={s.uidWarningBold}>Kini gamiton sa pag-login human ma-approve sa admin.</Text></Text></View>
+                <View style={s.uidWarning}>
+                  <Text style={s.uidWarningTxt}>
+                    {"⚠️ I-save ang imong User ID! "}
+                    <Text style={s.uidWarningBold}>
+                      Kini gamiton sa pag-login human ma-approve sa admin.
+                    </Text>
+                  </Text>
+                </View>
                 <View style={s.fieldRow2}>
-                  <FieldReg label="LAST NAME"  value={lastName}  onChangeText={v => { setLastName(v);  setRegErrors(e => ({ ...e, lastName: '' })); }}  placeholder="Dela Cruz" error={regErrors.lastName}  autoCapitalize="words" />
-                  <FieldReg label="FIRST NAME" value={firstName} onChangeText={v => { setFirstName(v); setRegErrors(e => ({ ...e, firstName: '' })); }} placeholder="Juan"      error={regErrors.firstName} autoCapitalize="words" />
+                  <FieldReg
+                    label="LAST NAME"
+                    value={lastName}
+                    onChangeText={(v) => {
+                      setLastName(v);
+                      setRegErrors((e) => ({ ...e, lastName: "" }));
+                    }}
+                    placeholder="Dela Cruz"
+                    error={regErrors.lastName}
+                    autoCapitalize="words"
+                  />
+                  <FieldReg
+                    label="FIRST NAME"
+                    value={firstName}
+                    onChangeText={(v) => {
+                      setFirstName(v);
+                      setRegErrors((e) => ({ ...e, firstName: "" }));
+                    }}
+                    placeholder="Juan"
+                    error={regErrors.firstName}
+                    autoCapitalize="words"
+                  />
                 </View>
                 <View style={s.fieldRow2}>
-                  <FieldReg label="MIDDLE NAME" value={middleName} onChangeText={v => setMiddleName(v)} placeholder="Santos (opt.)" autoCapitalize="words" />
-                  <FieldReg label="PASSWORD"    value={regPw}      onChangeText={v => { setRegPw(v);      setRegErrors(e => ({ ...e, pw: '' })); }}  placeholder="Min. 6 chars" secureEntry={!showRegPw} showToggle onToggle={() => setShowRegPw(p => !p)} error={regErrors.pw} />
+                  <FieldReg
+                    label="MIDDLE NAME"
+                    value={middleName}
+                    onChangeText={(v) => setMiddleName(v)}
+                    placeholder="Santos (opt.)"
+                    autoCapitalize="words"
+                  />
+                  <FieldReg
+                    label="PASSWORD"
+                    value={regPw}
+                    onChangeText={(v) => {
+                      setRegPw(v);
+                      setRegErrors((e) => ({ ...e, pw: "" }));
+                    }}
+                    placeholder="Min. 6 chars"
+                    secureEntry={!showRegPw}
+                    showToggle
+                    onToggle={() => setShowRegPw((p) => !p)}
+                    error={regErrors.pw}
+                  />
                 </View>
-                <View style={{ width: '100%' }}>
-                  <FieldReg label="CONFIRM PASSWORD" value={regConfirm} onChangeText={v => { setRegConfirm(v); setRegErrors(e => ({ ...e, cpw: '' })); }} placeholder="Re-enter password" secureEntry={!showRegConf} showToggle onToggle={() => setShowRegConf(p => !p)} error={regErrors.cpw} />
+                <View style={{ width: "100%" }}>
+                  <FieldReg
+                    label="CONFIRM PASSWORD"
+                    value={regConfirm}
+                    onChangeText={(v) => {
+                      setRegConfirm(v);
+                      setRegErrors((e) => ({ ...e, cpw: "" }));
+                    }}
+                    placeholder="Re-enter password"
+                    secureEntry={!showRegConf}
+                    showToggle
+                    onToggle={() => setShowRegConf((p) => !p)}
+                    error={regErrors.cpw}
+                  />
                 </View>
-                {regErrors.general ? <View style={s.errorBox}><MaterialIcons name="error-outline" size={14} color="#c0392b" style={{ marginTop: 1 }} /><Text style={s.errorTxt}>{regErrors.general}</Text></View> : null}
-                <TouchableOpacity style={[s.primaryBtn, regLoading && { opacity: 0.65 }]} onPress={handleRegister} activeOpacity={0.85} disabled={regLoading}>
-                  <LinearGradient colors={['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.primaryBtnGrad}>
-                    {regLoading ? <ActivityIndicator color="#0d1b3e" /> : <Text style={s.primaryBtnTxt}>CREATE ACCOUNT</Text>}
+                {regErrors.general ? (
+                  <View style={s.errorBox}>
+                    <MaterialIcons
+                      name="error-outline"
+                      size={14}
+                      color="#c0392b"
+                      style={{ marginTop: 1 }}
+                    />
+                    <Text style={s.errorTxt}>{regErrors.general}</Text>
+                  </View>
+                ) : null}
+                <TouchableOpacity
+                  style={[s.primaryBtn, regLoading && { opacity: 0.65 }]}
+                  onPress={handleRegister}
+                  activeOpacity={0.85}
+                  disabled={regLoading}
+                >
+                  <LinearGradient
+                    colors={["#c9a84c", "#e8c87a"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={s.primaryBtnGrad}
+                  >
+                    {regLoading ? (
+                      <ActivityIndicator color="#0d1b3e" />
+                    ) : (
+                      <Text style={s.primaryBtnTxt}>CREATE ACCOUNT</Text>
+                    )}
                   </LinearGradient>
                 </TouchableOpacity>
-                <View style={s.switchRow}><Text style={s.switchTxt}>Already have an account? </Text><TouchableOpacity onPress={() => switchView('login')} activeOpacity={0.75}><Text style={s.switchLink}>Login here</Text></TouchableOpacity></View>
+                <View style={s.switchRow}>
+                  <Text style={s.switchTxt}>Already have an account? </Text>
+                  <TouchableOpacity
+                    onPress={() => switchView("login")}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={s.switchLink}>Login here</Text>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
 
             {/* ══ SUCCESS ══ */}
-            {view === 'success' && regMember && (
+            {view === "success" && regMember && (
               <>
-                <View style={s.avatarWrap}><LinearGradient colors={['rgba(26,138,74,0.30)', 'rgba(26,138,74,0.10)']} style={s.avatarGrad}><MaterialIcons name="check-circle" size={isWide ? 32 : 28} color="#1a8a4a" /></LinearGradient></View>
-                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>Registration Complete!</Text>
-                <Text style={s.cardSub}>Your account is created. You can login now with limited access.</Text>
+                <View style={s.avatarWrap}>
+                  <LinearGradient
+                    colors={["rgba(26,138,74,0.30)", "rgba(26,138,74,0.10)"]}
+                    style={s.avatarGrad}
+                  >
+                    <MaterialIcons
+                      name="check-circle"
+                      size={isWide ? 32 : 28}
+                      color="#1a8a4a"
+                    />
+                  </LinearGradient>
+                </View>
+                <Text style={[s.cardTitle, { fontSize: isWide ? 22 : 19 }]}>
+                  Registration Complete!
+                </Text>
+                <Text style={s.cardSub}>
+                  Your account is created. You can login now with limited
+                  access.
+                </Text>
                 <View style={[s.uidBox, { marginTop: 6 }]}>
-                  <View style={{ flex: 1 }}><Text style={s.uidLabel}>🔑 YOUR USER ID (GAMITON SA LOGIN)</Text><Text style={s.uidValue}>{regMember.userId}</Text></View>
-                  <TouchableOpacity style={[s.copyBtn, copied && s.copyBtnDone]} onPress={() => handleCopy(regMember.userId)}><Text style={s.copyBtnTxt}>{copied ? '✓ Copied' : '📋 Copy'}</Text></TouchableOpacity>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.uidLabel}>
+                      🔑 YOUR USER ID (GAMITON SA LOGIN)
+                    </Text>
+                    <Text style={s.uidValue}>{regMember.userId}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[s.copyBtn, copied && s.copyBtnDone]}
+                    onPress={() => handleCopy(regMember.userId)}
+                  >
+                    <Text style={s.copyBtnTxt}>
+                      {copied ? "✓ Copied" : "📋 Copy"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
                 <View style={s.flowCard}>
-                  {[{ icon: '✅', label: 'Account created — login agad!', done: true }, { icon: '📋', label: 'Fill Application Form (limited access)', done: true }, { icon: '⏳', label: 'Admin reviews your Application Form', done: false }, { icon: '🔓', label: 'Full access after admin approval', done: false }].map((step, i) => (
-                    <View key={i} style={s.flowRow}><Text style={{ fontSize: 14 }}>{step.icon}</Text><Text style={[s.flowTxt, step.done && s.flowTxtDone]}>{step.label}</Text></View>
+                  {[
+                    {
+                      icon: "✅",
+                      label: "Account created — login agad!",
+                      done: true,
+                    },
+                    {
+                      icon: "📋",
+                      label: "Fill Application Form (limited access)",
+                      done: true,
+                    },
+                    {
+                      icon: "⏳",
+                      label: "Admin reviews your Application Form",
+                      done: false,
+                    },
+                    {
+                      icon: "🔓",
+                      label: "Full access after admin approval",
+                      done: false,
+                    },
+                  ].map((step, i) => (
+                    <View key={i} style={s.flowRow}>
+                      <Text style={{ fontSize: 14 }}>{step.icon}</Text>
+                      <Text style={[s.flowTxt, step.done && s.flowTxtDone]}>
+                        {step.label}
+                      </Text>
+                    </View>
                   ))}
                 </View>
-                <View style={s.pendingBox}><MaterialIcons name="info-outline" size={18} color="#c9a84c" /><Text style={s.pendingTxt}>You can <Text style={s.pendingBold}>login now</Text> and fill your Application Form.{'\n'}Full access (savings, loans, etc.) will be unlocked after admin approves your application.</Text></View>
-                <TouchableOpacity style={s.primaryBtn} onPress={() => { setUserId(regMember.userId); setPw(''); setRegMember(null); switchView('login'); }} activeOpacity={0.85}>
-                  <LinearGradient colors={['#c9a84c', '#e8c87a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.primaryBtnGrad}>
-                    <Text style={s.primaryBtnArrow}>→</Text><Text style={s.primaryBtnTxt}>GO TO LOGIN</Text>
+                <View style={s.pendingBox}>
+                  <MaterialIcons
+                    name="info-outline"
+                    size={18}
+                    color="#c9a84c"
+                  />
+                  <Text style={s.pendingTxt}>
+                    You can <Text style={s.pendingBold}>login now</Text> and
+                    fill your Application Form.{"\n"}Full access (savings,
+                    loans, etc.) will be unlocked after admin approves your
+                    application.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={s.primaryBtn}
+                  onPress={() => {
+                    setUserId(regMember.userId);
+                    setPw("");
+                    setRegMember(null);
+                    switchView("login");
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient
+                    colors={["#c9a84c", "#e8c87a"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={s.primaryBtnGrad}
+                  >
+                    <Text style={s.primaryBtnArrow}>→</Text>
+                    <Text style={s.primaryBtnTxt}>GO TO LOGIN</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </>
             )}
-
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -6075,132 +18198,721 @@ export default function CoopScreen({ navigation, route }) {
 // ═════════════════════════════════════════════════════════════════════════════
 const s = StyleSheet.create({
   // Auth header
-  headerWrap:   { zIndex: 100 },
-  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#304674', borderRadius: 14, borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.25)', shadowColor: '#011f4b', shadowOpacity: 0.20, shadowRadius: 20, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
-  backBtn:      { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  backIcon:     { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 10 },
-  headerH1:     { fontFamily: 'NotoSerif_700Bold', fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
-  headerWhite:  { color: '#ffffff' },
-  headerGold:   { fontFamily: 'NotoSerif_700Bold_Italic', color: '#c9a84c', fontStyle: 'italic' },
-  headerSub:    { fontFamily: 'GoogleSans_400Regular', color: 'rgba(232,200,122,0.75)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 2, textAlign: 'center' },
+  headerWrap: { zIndex: 100 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#304674",
+    borderRadius: 14,
+    borderBottomWidth: 1,
+    borderColor: "rgba(201,168,76,0.25)",
+    shadowColor: "#011f4b",
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.30)",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  backIcon: { color: "#fff", fontSize: 17, fontWeight: "600" },
+  headerCenter: { flex: 1, alignItems: "center", paddingHorizontal: 10 },
+  headerH1: {
+    fontFamily: "NotoSerif_700Bold",
+    fontWeight: "800",
+    textAlign: "center",
+    letterSpacing: 0.5,
+  },
+  headerWhite: { color: "#ffffff" },
+  headerGold: {
+    fontFamily: "NotoSerif_700Bold_Italic",
+    color: "#c9a84c",
+    fontStyle: "italic",
+  },
+  headerSub: {
+    fontFamily: "GoogleSans_400Regular",
+    color: "rgba(232,200,122,0.75)",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginTop: 2,
+    textAlign: "center",
+  },
 
   // Auth card
-  card:         { width: '100%', borderRadius: 18, backgroundColor: 'rgba(178,203,222,0.38)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)', padding: 14, alignItems: 'center', shadowColor: '#011f4b', shadowOpacity: 0.13, shadowRadius: 18, shadowOffset: { width: 0, height: 5 }, elevation: 5, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)' } : {}) },
-  avatarWrap:   { marginBottom: 8 },
-  avatarGrad:   { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.45)' },
-  cardTitle:    { fontFamily: 'NotoSerif_700Bold', fontWeight: '800', color: '#011f4b', textAlign: 'center', marginBottom: 2, letterSpacing: 0.3 },
-  cardSub:      { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.60)', textAlign: 'center', marginBottom: 10, lineHeight: 16 },
-  fbBadge:      { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(26,138,74,0.12)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(26,138,74,0.35)', paddingHorizontal: 10, paddingVertical: 5, marginBottom: 12 },
-  fbDot:        { width: 6, height: 6, borderRadius: 3, backgroundColor: '#1a8a4a' },
-  fbBadgeTxt:   { fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: '#1a8a4a' },
-  hintBox:      { width: '100%', backgroundColor: 'rgba(201,168,76,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(201,168,76,0.38)', padding: 9, marginBottom: 11 },
-  hintTxt:      { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.80)', lineHeight: 17 },
-  hintBold:     { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#011f4b' },
+  card: {
+    width: "100%",
+    borderRadius: 18,
+    backgroundColor: "rgba(178,203,222,0.38)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.55)",
+    padding: 14,
+    alignItems: "center",
+    shadowColor: "#011f4b",
+    shadowOpacity: 0.13,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 5,
+    ...(Platform.OS === "web" ? { backdropFilter: "blur(16px)" } : {}),
+  },
+  avatarWrap: { marginBottom: 8 },
+  avatarGrad: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "rgba(201,168,76,0.45)",
+  },
+  cardTitle: {
+    fontFamily: "NotoSerif_700Bold",
+    fontWeight: "800",
+    color: "#011f4b",
+    textAlign: "center",
+    marginBottom: 2,
+    letterSpacing: 0.3,
+  },
+  cardSub: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.60)",
+    textAlign: "center",
+    marginBottom: 10,
+    lineHeight: 16,
+  },
+  fbBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(26,138,74,0.12)",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(26,138,74,0.35)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginBottom: 12,
+  },
+  fbDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#1a8a4a" },
+  fbBadgeTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 10,
+    color: "#1a8a4a",
+  },
+  hintBox: {
+    width: "100%",
+    backgroundColor: "rgba(201,168,76,0.14)",
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.38)",
+    padding: 9,
+    marginBottom: 11,
+  },
+  hintTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.80)",
+    lineHeight: 17,
+  },
+  hintBold: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#011f4b",
+  },
 
   // Fields
-  fieldGroup:   { width: '100%', marginBottom: 9 },
-  fieldLabel:   { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: 'rgba(1,31,75,0.55)', letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 4 },
-  fieldRow:     { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(240,246,252,0.92)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10, borderWidth: 1.5, borderColor: 'rgba(200,218,235,0.75)', shadowColor: '#011f4b', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  fieldRowErr:  { borderColor: '#c0392b' },
-  fieldInput:   { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: '#0d1b3e', letterSpacing: 0.2 },
-  fieldErr:     { fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: '#c0392b', marginTop: 3 },
-  errorBox:     { flexDirection: 'row', alignItems: 'flex-start', gap: 6, width: '100%', backgroundColor: 'rgba(192,57,43,0.10)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(192,57,43,0.28)', padding: 9, marginBottom: 5 },
-  errorTxt:     { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: '#c0392b', flex: 1, lineHeight: 17 },
+  fieldGroup: { width: "100%", marginBottom: 9 },
+  fieldLabel: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 9,
+    color: "rgba(1,31,75,0.55)",
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  fieldRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(240,246,252,0.92)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: "rgba(200,218,235,0.75)",
+    shadowColor: "#011f4b",
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  fieldRowErr: { borderColor: "#c0392b" },
+  fieldInput: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 12,
+    color: "#0d1b3e",
+    letterSpacing: 0.2,
+  },
+  fieldErr: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 10,
+    color: "#c0392b",
+    marginTop: 3,
+  },
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    width: "100%",
+    backgroundColor: "rgba(192,57,43,0.10)",
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "rgba(192,57,43,0.28)",
+    padding: 9,
+    marginBottom: 5,
+  },
+  errorTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "#c0392b",
+    flex: 1,
+    lineHeight: 17,
+  },
 
   // Buttons
-  primaryBtn:     { width: '100%', borderRadius: 28, overflow: 'hidden', marginTop: 6, marginBottom: 10, shadowColor: '#c9a84c', shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
-  primaryBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 13, gap: 8 },
-  primaryBtnArrow:{ fontSize: 16, color: '#0d1b3e', fontWeight: '800' },
-  primaryBtnTxt:  { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#0d1b3e', letterSpacing: 2.5 },
-  saveBtn:        { backgroundColor: '#243554', borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 16, shadowColor: '#0f1e35', shadowOpacity: 0.20, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
-  saveBtnTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#fff', letterSpacing: 1 },
-  switchRow:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', gap: 2 },
-  switchTxt:      { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.55)' },
-  switchLink:     { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#c9a84c', textDecorationLine: 'underline' },
+  primaryBtn: {
+    width: "100%",
+    borderRadius: 28,
+    overflow: "hidden",
+    marginTop: 6,
+    marginBottom: 10,
+    shadowColor: "#c9a84c",
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
+  },
+  primaryBtnGrad: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+    gap: 8,
+  },
+  primaryBtnArrow: { fontSize: 16, color: "#0d1b3e", fontWeight: "800" },
+  primaryBtnTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 13,
+    color: "#0d1b3e",
+    letterSpacing: 2.5,
+  },
+  saveBtn: {
+    backgroundColor: "#243554",
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: "center",
+    marginTop: 16,
+    shadowColor: "#0f1e35",
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  saveBtnTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 14,
+    color: "#fff",
+    letterSpacing: 1,
+  },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 2,
+  },
+  switchTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.55)",
+  },
+  switchLink: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#c9a84c",
+    textDecorationLine: "underline",
+  },
 
   // Register
-  fieldRow2:      { flexDirection: 'row', width: '100%', gap: 6, marginBottom: 0 },
-  stepRow:        { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', marginBottom: 11, width: '100%' },
-  stepItem:       { alignItems: 'center', width: 68 },
-  stepCircle:     { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.40)', justifyContent: 'center', alignItems: 'center', marginBottom: 3 },
-  stepCircleActive:{ backgroundColor: '#c9a84c', borderColor: '#c9a84c' },
-  stepNum:        { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: 'rgba(1,31,75,0.45)' },
-  stepNumActive:  { color: '#0d1b3e' },
-  stepLbl:        { fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: 'rgba(1,31,75,0.50)', textAlign: 'center', lineHeight: 12 },
-  stepLblActive:  { color: '#011f4b', fontFamily: 'GoogleSans_700Bold' },
-  stepLine:       { width: 20, height: 1, backgroundColor: 'rgba(255,255,255,0.40)', marginTop: 10 },
-  uidBox:         { flexDirection: 'row', alignItems: 'center', width: '100%', backgroundColor: 'rgba(15,30,53,0.78)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', padding: 11, marginBottom: 8, gap: 10 },
-  uidLabel:       { fontFamily: 'GoogleSans_700Bold', fontSize: 8, color: 'rgba(255,255,255,0.55)', letterSpacing: 1.5, marginBottom: 3 },
-  uidValue:       { fontFamily: 'GoogleSans_700Bold', fontSize: 14, color: '#c9a84c', letterSpacing: 0.5 },
-  copyBtn:        { backgroundColor: 'rgba(201,168,76,0.20)', borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: 'rgba(201,168,76,0.50)' },
-  copyBtnDone:    { backgroundColor: 'rgba(26,138,74,0.28)', borderColor: '#1a8a4a' },
-  copyBtnTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#c9a84c' },
-  uidWarning:     { width: '100%', backgroundColor: 'rgba(201,168,76,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(201,168,76,0.38)', padding: 9, marginBottom: 10 },
-  uidWarningTxt:  { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.80)', lineHeight: 17 },
-  uidWarningBold: { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#011f4b' },
+  fieldRow2: { flexDirection: "row", width: "100%", gap: 6, marginBottom: 0 },
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    marginBottom: 11,
+    width: "100%",
+  },
+  stepItem: { alignItems: "center", width: 68 },
+  stepCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.40)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 3,
+  },
+  stepCircleActive: { backgroundColor: "#c9a84c", borderColor: "#c9a84c" },
+  stepNum: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.45)",
+  },
+  stepNumActive: { color: "#0d1b3e" },
+  stepLbl: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 8,
+    color: "rgba(1,31,75,0.50)",
+    textAlign: "center",
+    lineHeight: 12,
+  },
+  stepLblActive: { color: "#011f4b", fontFamily: "GoogleSans_700Bold" },
+  stepLine: {
+    width: 20,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.40)",
+    marginTop: 10,
+  },
+  uidBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    backgroundColor: "rgba(15,30,53,0.78)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.40)",
+    padding: 11,
+    marginBottom: 8,
+    gap: 10,
+  },
+  uidLabel: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 8,
+    color: "rgba(255,255,255,0.55)",
+    letterSpacing: 1.5,
+    marginBottom: 3,
+  },
+  uidValue: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 14,
+    color: "#c9a84c",
+    letterSpacing: 0.5,
+  },
+  copyBtn: {
+    backgroundColor: "rgba(201,168,76,0.20)",
+    borderRadius: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.50)",
+  },
+  copyBtnDone: {
+    backgroundColor: "rgba(26,138,74,0.28)",
+    borderColor: "#1a8a4a",
+  },
+  copyBtnTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 10,
+    color: "#c9a84c",
+  },
+  uidWarning: {
+    width: "100%",
+    backgroundColor: "rgba(201,168,76,0.14)",
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.38)",
+    padding: 9,
+    marginBottom: 10,
+  },
+  uidWarningTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.80)",
+    lineHeight: 17,
+  },
+  uidWarningBold: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#011f4b",
+  },
 
   // Success
-  flowCard:      { width: '100%', backgroundColor: 'rgba(255,255,255,0.45)', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.70)', padding: 12, marginBottom: 10, gap: 8 },
-  flowRow:       { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  flowTxt:       { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(1,31,75,0.50)', flex: 1 },
-  flowTxtDone:   { fontFamily: 'GoogleSans_700Bold', color: '#1a8a4a' },
-  pendingBox:    { width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: 'rgba(201,168,76,0.14)', borderRadius: 9, borderWidth: 1, borderColor: 'rgba(201,168,76,0.38)', padding: 10, marginBottom: 12 },
-  pendingTxt:    { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(1,31,75,0.80)', lineHeight: 17, flex: 1 },
-  pendingBold:   { fontFamily: 'GoogleSans_700Bold', color: '#011f4b' },
+  flowCard: {
+    width: "100%",
+    backgroundColor: "rgba(255,255,255,0.45)",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.70)",
+    padding: 12,
+    marginBottom: 10,
+    gap: 8,
+  },
+  flowRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  flowTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 12,
+    color: "rgba(1,31,75,0.50)",
+    flex: 1,
+  },
+  flowTxtDone: { fontFamily: "GoogleSans_700Bold", color: "#1a8a4a" },
+  pendingBox: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    backgroundColor: "rgba(201,168,76,0.14)",
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.38)",
+    padding: 10,
+    marginBottom: 12,
+  },
+  pendingTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.80)",
+    lineHeight: 17,
+    flex: 1,
+  },
+  pendingBold: { fontFamily: "GoogleSans_700Bold", color: "#011f4b" },
 
   // Dashboard top bar — CanteenVisitor-style rounded header
-  dashTopbar:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#304674', borderRadius: 14, borderBottomWidth: 1, borderColor: 'rgba(201,168,76,0.25)', shadowColor: '#011f4b', shadowOpacity: 0.20, shadowRadius: 20, shadowOffset: { width: 0, height: 4 }, elevation: 8, gap: 8 },
-  dashHeaderCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
-  dashTitle:        { fontFamily: 'NotoSerif_700Bold', fontWeight: '700', color: '#ffffff', textAlign: 'center', letterSpacing: 0.3 },
-  dashSubTag:       { marginTop: 2, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.60)', alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
-  dashSubTagTxt:    { fontFamily: 'GoogleSans_700Bold', fontSize: 9, color: '#c9a84c', letterSpacing: 1.2, textTransform: 'uppercase', textAlign: 'center', lineHeight: 13, includeFontPadding: false },
-  dashRoundBtn:     { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)', justifyContent: 'center', alignItems: 'center', flexShrink: 0, position: 'relative' },
-  bellBadge:        { position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: '#c0392b', justifyContent: 'center', alignItems: 'center' },
-  bellBadgeTxt:     { fontFamily: 'GoogleSans_700Bold', fontSize: 8, color: '#fff' },
-  logoutBtn:        { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8, backgroundColor: 'rgba(201,168,76,0.18)', borderWidth: 1.5, borderColor: 'rgba(201,168,76,0.50)' },
-  logoutTxt:        { fontFamily: 'GoogleSans_700Bold', fontSize: 12, color: '#c9a84c' },
+  dashTopbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#304674",
+    borderRadius: 14,
+    borderBottomWidth: 1,
+    borderColor: "rgba(201,168,76,0.25)",
+    shadowColor: "#011f4b",
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    gap: 8,
+  },
+  dashHeaderCenter: { flex: 1, alignItems: "center", paddingHorizontal: 8 },
+  dashTitle: {
+    fontFamily: "NotoSerif_700Bold",
+    fontWeight: "700",
+    color: "#ffffff",
+    textAlign: "center",
+    letterSpacing: 0.3,
+  },
+  dashSubTag: {
+    marginTop: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.60)",
+    alignSelf: "center",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dashSubTagTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 9,
+    color: "#c9a84c",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    textAlign: "center",
+    lineHeight: 13,
+    includeFontPadding: false,
+  },
+  dashRoundBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.30)",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+    position: "relative",
+  },
+  bellBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#c0392b",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  bellBadgeTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 8,
+    color: "#fff",
+  },
+  logoutBtn: {
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "rgba(201,168,76,0.18)",
+    borderWidth: 1.5,
+    borderColor: "rgba(201,168,76,0.50)",
+  },
+  logoutTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 12,
+    color: "#c9a84c",
+  },
 
   // Sidebar
-  sidebar:        { flex: 1, flexShrink: 0, flexGrow: 1, backgroundColor: 'transparent', flexDirection: 'column' },
-  sidebarBrand:   { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 10, paddingTop: 14 },
-  sidebarLogo:    { width: 26, height: 26, borderRadius: 6, backgroundColor: '#c9a84c', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  sidebarLogoTxt: { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: '#0f1e35' },
-  sidebarName:    { fontFamily: 'NotoSerif_700Bold', fontSize: 11, color: '#fff' },
-  sidebarRole:    { fontFamily: 'GoogleSans_400Regular', fontSize: 8, color: '#c9a84c' },
-  sideHead:       { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 8, borderRadius: 8, minHeight: 36 },
-  sideActive:     { backgroundColor: '#c9a84c' },
-  sideIcon:       { fontSize: 12, width: 16, textAlign: 'center', color: 'rgba(255,255,255,0.50)' },
-  sideLabel:      { fontFamily: 'GoogleSans_500Medium', fontSize: 11, color: 'rgba(255,255,255,0.65)', flex: 1 },
-  sideChild:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, marginHorizontal: 3, borderRadius: 7, marginBottom: 1, minHeight: 32 },
-  sideChildActive:{ backgroundColor: 'rgba(201,168,76,0.20)' },
-  sideChildTxt:   { fontFamily: 'GoogleSans_400Regular', fontSize: 11, color: 'rgba(210,225,255,0.55)', flex: 1 },
-  sideNotifBadge: { margin: 10, backgroundColor: 'rgba(201,168,76,0.18)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.40)', padding: 10 },
-  sideNotifTxt:   { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#e8c87a', textAlign: 'center' },
+  sidebar: {
+    flex: 1,
+    flexShrink: 0,
+    flexGrow: 1,
+    backgroundColor: "transparent",
+    flexDirection: "column",
+  },
+  sidebarBrand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    padding: 10,
+    paddingTop: 14,
+  },
+  sidebarLogo: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    backgroundColor: "#c9a84c",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  sidebarLogoTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 10,
+    color: "#0f1e35",
+  },
+  sidebarName: { fontFamily: "NotoSerif_700Bold", fontSize: 11, color: "#fff" },
+  sidebarRole: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 8,
+    color: "#c9a84c",
+  },
+  sideHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    minHeight: 36,
+  },
+  sideActive: { backgroundColor: "#c9a84c" },
+  sideIcon: {
+    fontSize: 12,
+    width: 16,
+    textAlign: "center",
+    color: "rgba(255,255,255,0.50)",
+  },
+  sideLabel: {
+    fontFamily: "GoogleSans_500Medium",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.65)",
+    flex: 1,
+  },
+  sideChild: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginHorizontal: 3,
+    borderRadius: 7,
+    marginBottom: 1,
+    minHeight: 32,
+  },
+  sideChildActive: { backgroundColor: "rgba(201,168,76,0.20)" },
+  sideChildTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(210,225,255,0.55)",
+    flex: 1,
+  },
+  sideNotifBadge: {
+    margin: 10,
+    backgroundColor: "rgba(201,168,76,0.18)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.40)",
+    padding: 10,
+  },
+  sideNotifTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#e8c87a",
+    textAlign: "center",
+  },
 
   // Dashboard pages
-  pageOuter:     { padding: 16, paddingBottom: 48 },
-  pageTitle:     { fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: '#0f1e35', marginBottom: 4 },
-  pageSub:       { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(15,30,53,0.65)', marginBottom: 16, lineHeight: 20 },
-  sHead:         { fontFamily: 'GoogleSans_700Bold', fontSize: 10, color: 'rgba(15,30,53,0.42)', letterSpacing: 2.2, textTransform: 'uppercase', marginBottom: 10, marginTop: 6 },
-  secTitle:      { fontFamily: 'GoogleSans_700Bold', fontSize: 11, color: '#0f1e35', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.10)' },
-  infoRow:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderColor: 'rgba(15,30,53,0.06)' },
-  infoLabel:     { fontFamily: 'GoogleSans_400Regular', fontSize: 13, color: 'rgba(15,30,53,0.65)', flex: 1 },
-  infoVal:       { fontFamily: 'GoogleSans_500Medium', fontSize: 13, color: '#0f1e35', flex: 2, textAlign: 'right' },
+  pageOuter: { padding: 16, paddingBottom: 48 },
+  pageTitle: {
+    fontFamily: "NotoSerif_700Bold",
+    fontSize: 20,
+    color: "#0f1e35",
+    marginBottom: 4,
+  },
+  pageSub: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 13,
+    color: "rgba(15,30,53,0.65)",
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  sHead: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 10,
+    color: "rgba(15,30,53,0.42)",
+    letterSpacing: 2.2,
+    textTransform: "uppercase",
+    marginBottom: 10,
+    marginTop: 6,
+  },
+  secTitle: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#0f1e35",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderColor: "rgba(15,30,53,0.10)",
+  },
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderColor: "rgba(15,30,53,0.06)",
+  },
+  infoLabel: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 13,
+    color: "rgba(15,30,53,0.65)",
+    flex: 1,
+  },
+  infoVal: {
+    fontFamily: "GoogleSans_500Medium",
+    fontSize: 13,
+    color: "#0f1e35",
+    flex: 2,
+    textAlign: "right",
+  },
 
   // Welcome / profile avatars
-  wAvatar:       { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(201,168,76,0.25)', borderWidth: 2, borderColor: '#c9a84c', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  wAvatarTxt:    { fontFamily: 'NotoSerif_700Bold', fontSize: 18, color: '#c9a84c' },
-  profAvatar:    { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(201,168,76,0.28)', borderWidth: 2.5, borderColor: '#c9a84c', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  profAvatarTxt: { fontFamily: 'NotoSerif_700Bold', fontSize: 20, color: '#c9a84c' },
+  wAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(201,168,76,0.25)",
+    borderWidth: 2,
+    borderColor: "#c9a84c",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  wAvatarTxt: {
+    fontFamily: "NotoSerif_700Bold",
+    fontSize: 18,
+    color: "#c9a84c",
+  },
+  profAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(201,168,76,0.28)",
+    borderWidth: 2.5,
+    borderColor: "#c9a84c",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  profAvatarTxt: {
+    fontFamily: "NotoSerif_700Bold",
+    fontSize: 20,
+    color: "#c9a84c",
+  },
 
   // Quick actions
-  quickBtn:      { backgroundColor: 'rgba(255,255,255,0.50)', borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.78)', shadowColor: '#1a2d4e', shadowOpacity: 0.07, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
+  quickBtn: {
+    backgroundColor: "rgba(255,255,255,0.50)",
+    borderRadius: 14,
+    padding: 14,
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.78)",
+    shadowColor: "#1a2d4e",
+    shadowOpacity: 0.07,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+  },
 
   // Notifications
-  notifCard:     { backgroundColor: 'rgba(255,255,255,0.50)', borderRadius: 14, padding: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.78)', borderLeftWidth: 4, marginBottom: 10, flexDirection: 'row', gap: 12 },
-  notifIcon:     { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  notifTitle:    { fontFamily: 'GoogleSans_700Bold', fontSize: 13, color: '#0f1e35' },
-  notifMsg:      { fontFamily: 'GoogleSans_400Regular', fontSize: 12, color: 'rgba(15,30,53,0.65)', lineHeight: 18, marginTop: 2 },
-  notifTime:     { fontFamily: 'GoogleSans_400Regular', fontSize: 10, color: 'rgba(15,30,53,0.42)', marginTop: 3 },
+  notifCard: {
+    backgroundColor: "rgba(255,255,255,0.50)",
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.78)",
+    borderLeftWidth: 4,
+    marginBottom: 10,
+    flexDirection: "row",
+    gap: 12,
+  },
+  notifIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  notifTitle: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 13,
+    color: "#0f1e35",
+  },
+  notifMsg: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 12,
+    color: "rgba(15,30,53,0.65)",
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  notifTime: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 10,
+    color: "rgba(15,30,53,0.42)",
+    marginTop: 3,
+  },
 });
