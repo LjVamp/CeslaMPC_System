@@ -3476,179 +3476,169 @@ const CreditsScreen = () => {
         )}
       </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {filtered.length === 0 ? (
-          <View style={{ alignItems: "center", paddingVertical: 60 }}>
-            <Text style={{ fontSize: 48, marginBottom: 12 }}>🪙</Text>
+      {filtered.length === 0 ? (
+        <View style={{ alignItems: "center", paddingVertical: 60 }}>
+          <Text style={{ fontSize: 48, marginBottom: 12 }}>🪙</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_700Bold",
+              fontSize: 15,
+              color: "rgba(1,31,75,0.45)",
+              textAlign: "center",
+            }}
+          >
+            {search ? "No members match your search." : "No credit orders yet."}
+          </Text>
+        </View>
+      ) : (
+        /* ── Compact table list ── */
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(255,255,255,0.55)",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.80)",
+            overflow: "hidden",
+          }}
+        >
+          {/* Table header */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "rgba(26,58,107,0.10)",
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderBottomWidth: 1,
+              borderBottomColor: "rgba(26,58,107,0.12)",
+            }}
+          >
+            <Text
+              style={{
+                flex: 1,
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 10,
+                color: "rgba(1,31,75,0.50)",
+                letterSpacing: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              Member
+            </Text>
             <Text
               style={{
                 fontFamily: "GoogleSans_700Bold",
-                fontSize: 15,
-                color: "rgba(1,31,75,0.45)",
-                textAlign: "center",
+                fontSize: 10,
+                color: "rgba(231,76,60,0.70)",
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                marginRight: 22,
               }}
             >
-              {search
-                ? "No members match your search."
-                : "No credit orders yet."}
+              Unpaid
             </Text>
           </View>
-        ) : (
-          filtered.map((group) => {
-            const unpaid = group.orders.filter((o) => o.settled !== true);
-            const totalOwed = unpaid.reduce(
-              (s, o) => s + Number(o.total || 0),
-              0,
-            );
-            const isSettled = totalOwed === 0;
-            return (
-              <TouchableOpacity
-                key={group.memberId || group.memberName}
-                onPress={() => {
-                  setSelectedMember(group.memberId || group.memberName);
-                  setActiveModalTab("unpaid");
-                }}
-                activeOpacity={0.8}
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.55)",
-                  borderRadius: 14,
-                  marginBottom: 8,
-                  borderWidth: 1.5,
-                  borderColor: isSettled
-                    ? "rgba(39,174,96,0.35)"
-                    : "rgba(201,168,76,0.40)",
-                  overflow: "hidden",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: 14,
-                  paddingLeft: 18,
-                }}
-              >
-                <View
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 4,
-                    backgroundColor: isSettled ? "#27ae60" : "#c9a84c",
+
+          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+            {filtered.map((group, idx) => {
+              const unpaid = group.orders.filter((o) => o.settled !== true);
+              const totalOwed = unpaid.reduce(
+                (s, o) => s + Number(o.total || 0),
+                0,
+              );
+              const isLast = idx === filtered.length - 1;
+              return (
+                <TouchableOpacity
+                  key={group.memberId || group.memberName}
+                  onPress={() => {
+                    setSelectedMember(group.memberId || group.memberName);
+                    setActiveModalTab("unpaid");
                   }}
-                />
-                <View
+                  activeOpacity={0.7}
                   style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    backgroundColor: isSettled
-                      ? "rgba(39,174,96,0.15)"
-                      : "rgba(201,168,76,0.20)",
-                    borderWidth: 2,
-                    borderColor: isSettled ? "#27ae60" : "#c9a84c",
-                    justifyContent: "center",
+                    flexDirection: "row",
                     alignItems: "center",
-                    flexShrink: 0,
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    borderBottomWidth: isLast ? 0 : 1,
+                    borderBottomColor: "rgba(26,58,107,0.07)",
+                    backgroundColor:
+                      idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.35)",
                   }}
                 >
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_700Bold",
-                      fontSize: 15,
-                      color: isSettled ? "#27ae60" : "#c9a84c",
-                    }}
-                  >
-                    {(group.memberName || "?")
-                      .split(" ")
-                      .map((w) => w[0])
-                      .slice(0, 2)
-                      .join("")}
-                  </Text>
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_700Bold",
-                      fontSize: 14,
-                      color: "#0f1e35",
-                    }}
-                    numberOfLines={1}
-                  >
-                    {group.memberName}
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_400Regular",
-                      fontSize: 11,
-                      color: "rgba(1,31,75,0.50)",
-                      marginTop: 2,
-                    }}
-                  >
-                    {group.memberUserId || "—"}
-                  </Text>
-                  <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                  {/* Name + optional ID */}
+                  <View style={{ flex: 1, paddingRight: 8 }}>
                     <Text
+                      numberOfLines={1}
                       style={{
-                        fontFamily: "GoogleSans_400Regular",
-                        fontSize: 10,
-                        color: "#e67e22",
+                        fontFamily: "GoogleSans_500Medium",
+                        fontSize: 12,
+                        color: "#0f1e35",
                       }}
                     >
-                      ⏳ {unpaid.length} unpaid
+                      {group.memberName}
                     </Text>
-                    <Text
-                      style={{
-                        fontFamily: "GoogleSans_400Regular",
-                        fontSize: 10,
-                        color: "#27ae60",
-                      }}
-                    >
-                      ✅ {group.orders.filter((o) => o.settled === true).length}{" "}
-                      paid
-                    </Text>
-                  </View>
-                </View>
-                <View style={{ alignItems: "flex-end", gap: 4 }}>
-                  <Text
-                    style={{
-                      fontFamily: "NotoSerif_700Bold",
-                      fontSize: 18,
-                      color: isSettled ? "#27ae60" : "#c9a84c",
-                    }}
-                  >
-                    ₱ {totalOwed.toFixed(2)}
-                  </Text>
-                  {isSettled && (
-                    <View
-                      style={{
-                        backgroundColor: "rgba(39,174,96,0.15)",
-                        borderRadius: 10,
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        borderWidth: 1,
-                        borderColor: "rgba(39,174,96,0.40)",
-                      }}
-                    >
+                    {group.memberUserId ? (
                       <Text
+                        numberOfLines={1}
                         style={{
-                          fontFamily: "GoogleSans_700Bold",
-                          fontSize: 9,
-                          color: "#27ae60",
+                          fontFamily: "GoogleSans_400Regular",
+                          fontSize: 10,
+                          color: "rgba(1,31,75,0.40)",
+                          marginTop: 1,
                         }}
                       >
-                        ✓ SETTLED
+                        {group.memberUserId}
                       </Text>
-                    </View>
+                    ) : null}
+                  </View>
+
+                  {/* Unpaid amount — show ✓ if fully settled */}
+                  {unpaid.length > 0 ? (
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 11,
+                        color: "#e74c3c",
+                        marginRight: 6,
+                      }}
+                    >
+                      ₱{totalOwed.toFixed(2)}{" "}
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_400Regular",
+                          fontSize: 10,
+                          color: "rgba(231,76,60,0.55)",
+                        }}
+                      >
+                        ({unpaid.length})
+                      </Text>
+                    </Text>
+                  ) : (
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_400Regular",
+                        fontSize: 12,
+                        color: "rgba(39,174,96,0.70)",
+                        marginRight: 6,
+                      }}
+                    >
+                      ✓
+                    </Text>
                   )}
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-      </ScrollView>
+
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={16}
+                    color="rgba(1,31,75,0.25)"
+                  />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Member detail modal */}
       <Modal
@@ -5068,10 +5058,11 @@ const OrderingMonitoring = ({ orders, items }) => {
     try {
       const ts =
         o.createdAt?.toDate?.() || new Date(o.createdAt || o.time || 0);
-      return ts.toLocaleTimeString("en-PH", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      let h = ts.getHours();
+      const m = String(ts.getMinutes()).padStart(2, "0");
+      const ampm = h >= 12 ? "PM" : "AM";
+      h = h % 12 || 12;
+      return `${h}:${m} ${ampm}`;
     } catch {
       return "";
     }
@@ -5128,72 +5119,93 @@ const OrderingMonitoring = ({ orders, items }) => {
         </LinearGradient>
       </View>
 
-      <Text style={lp.recentLabel}>RECENT ORDERS</Text>
+      <Text style={lp.recentLabel}>TODAY'S ORDERS</Text>
 
-      <WebScrollView
-        style={{ flex: 1, minHeight: 0 }}
-        contentContainerStyle={{ gap: 5, paddingBottom: 12 }}
-      >
-        {recentOrders.length === 0 ? (
-          <View style={lp.emptyBox}>
-            <Text style={lp.emptyIco}>🛒</Text>
-            <Text style={lp.emptyTxt}>No orders today</Text>
-          </View>
-        ) : (
-          recentOrders.map((order) => {
-            const itemsList = (order.items || [])
-              .map((i) => `${i.item?.name || i.name || "?"} ×${i.qty || 1}`)
-              .join(", ");
-            const payIcon =
-              order.payment === "gcash"
-                ? "📱"
-                : order.payment === "credit"
-                  ? "🪙"
-                  : "💵";
-            return (
-              <View key={order.id || order.docId} style={lp.orderRow}>
+      {/* ── Compact table ── */}
+      <View style={lp.tableWrap}>
+        {/* Table header */}
+        <View style={lp.tableHeader}>
+          <Text style={[lp.tableHeadTxt, { flex: 1 }]}>Order</Text>
+          <Text style={[lp.tableHeadTxt, { width: 48, textAlign: "center" }]}>
+            Pay
+          </Text>
+          <Text style={[lp.tableHeadTxt, { width: 38, textAlign: "right" }]}>
+            Time
+          </Text>
+          <Text style={[lp.tableHeadTxt, { width: 50, textAlign: "right" }]}>
+            Total
+          </Text>
+        </View>
+
+        <WebScrollView style={{ flex: 1, minHeight: 0 }}>
+          {recentOrders.length === 0 ? (
+            <View style={lp.emptyBox}>
+              <Text style={lp.emptyIco}>🛒</Text>
+              <Text style={lp.emptyTxt}>No orders today</Text>
+            </View>
+          ) : (
+            recentOrders.map((order, idx) => {
+              const itemsList = (order.items || [])
+                .map((i) => `${i.item?.name || i.name || "?"} x${i.qty || 1}`)
+                .join(", ");
+              const payLabel =
+                order.payment === "gcash"
+                  ? "GCash"
+                  : order.payment === "credit"
+                    ? "Credit"
+                    : "Cash";
+              const isLast = idx === recentOrders.length - 1;
+              return (
                 <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
+                  key={order.id || order.docId}
+                  style={[
+                    lp.tableRow,
+                    {
+                      borderBottomWidth: isLast ? 0 : 1,
+                      backgroundColor:
+                        idx % 2 === 0
+                          ? "transparent"
+                          : "rgba(255,255,255,0.35)",
+                    },
+                  ]}
                 >
-                  <Text style={lp.orderId}>
-                    {payIcon} #{order.orderNo || order.id?.slice(-4) || "--"}
-                  </Text>
-                  <View
+                  <View style={{ flex: 1, paddingRight: 6 }}>
+                    <Text style={lp.orderId} numberOfLines={1}>
+                      #{order.orderNo || order.id?.slice(-4) || "--"}
+                    </Text>
+                    <Text style={lp.orderItems} numberOfLines={1}>
+                      {itemsList}
+                    </Text>
+                  </View>
+                  <Text
                     style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
+                      width: 48,
+                      textAlign: "center",
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 8,
+                      color: "rgba(1,31,75,0.60)",
                     }}
+                    numberOfLines={1}
                   >
-                    <Text style={lp.orderTime}>{fmtTime(order)}</Text>
-                    <Text style={lp.orderTotal}>
-                      ₱{Number(order.total).toFixed(0)}
-                    </Text>
-                  </View>
+                    {payLabel}
+                  </Text>
+                  <Text
+                    style={[lp.orderTime, { width: 38, textAlign: "right" }]}
+                    numberOfLines={1}
+                  >
+                    {fmtTime(order)}
+                  </Text>
+                  <Text
+                    style={[lp.orderTotal, { width: 50, textAlign: "right" }]}
+                  >
+                    ₱{Number(order.total).toFixed(0)}
+                  </Text>
                 </View>
-                <Text style={lp.orderItems} numberOfLines={2}>
-                  {itemsList}
-                </Text>
-                {order.payment && (
-                  <View style={lp.payBadge}>
-                    <Text style={lp.payBadgeTxt}>
-                      {order.payment === "gcash"
-                        ? "GCash"
-                        : order.payment === "credit"
-                          ? "Credit"
-                          : "Cash"}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            );
-          })
-        )}
-      </WebScrollView>
+              );
+            })
+          )}
+        </WebScrollView>
+      </View>
     </View>
   );
 };
@@ -5254,19 +5266,40 @@ const lp = StyleSheet.create({
     color: "rgba(1,31,75,0.35)",
     textAlign: "center",
   },
-  orderRow: {
-    backgroundColor: "rgba(255,255,255,0.80)",
-    borderRadius: 10,
-    padding: 9,
+  // ── Compact table styles ──
+  tableWrap: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: "rgba(255,255,255,0.55)",
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.95)",
-    gap: 3,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
+    borderColor: "rgba(255,255,255,0.80)",
+    overflow: "hidden",
   },
-  orderId: { fontFamily: "GoogleSans_700Bold", fontSize: 11, color: "#0d2540" },
+  tableHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(26,58,107,0.10)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(26,58,107,0.12)",
+  },
+  tableHeadTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 8,
+    color: "rgba(1,31,75,0.50)",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  tableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderBottomColor: "rgba(26,58,107,0.07)",
+  },
+  orderId: { fontFamily: "GoogleSans_700Bold", fontSize: 10, color: "#0d2540" },
   orderTime: {
     fontFamily: "GoogleSans_400Regular",
     fontSize: 9,
@@ -5274,28 +5307,14 @@ const lp = StyleSheet.create({
   },
   orderTotal: {
     fontFamily: "GoogleSans_700Bold",
-    fontSize: 12,
+    fontSize: 11,
     color: "#c9a84c",
   },
   orderItems: {
     fontFamily: "GoogleSans_400Regular",
     fontSize: 9,
-    color: "rgba(1,31,75,0.60)",
-    lineHeight: 13,
-  },
-  payBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(39,174,96,0.12)",
-    borderRadius: 5,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: "rgba(39,174,96,0.25)",
-  },
-  payBadgeTxt: {
-    fontFamily: "GoogleSans_700Bold",
-    fontSize: 8,
-    color: "#1a6b3a",
+    color: "rgba(1,31,75,0.55)",
+    lineHeight: 12,
   },
 });
 

@@ -1,11 +1,11 @@
-// src/screens/CanteenMemberScreen.js
+// src/screens/GroceryMemberScreen.js
 // CESLA MPC — Canteen Member Portal
 // Based 100% on CanteenVisitor.js — same design, same UI, same layout
 // Differences: Firebase login (CoopScreen credentials) + member chip + order history
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useCanteen } from "../context/CanteenContext";
+import { useGrocery } from "../context/GroceryContext";
 
 // ── Firebase (CoopScreen login method) ──────────────────────────────────────
 import {
@@ -1154,8 +1154,8 @@ const ReceiptModal = ({
           >
             {/* Header */}
             <View style={styles.receiptHeader}>
-              <Text style={styles.receiptShopName}>🍽️ CLIMBS CANTEEN</Text>
-              <Text style={styles.receiptShopSub}>Canteen Ordering System</Text>
+              <Text style={styles.receiptShopName}>🛒 CESLA GROCERY</Text>
+              <Text style={styles.receiptShopSub}>Grocery Ordering System</Text>
               <View style={styles.receiptDividerDashed} />
               <Text style={styles.receiptMeta}>Order No.: #{orderNo}</Text>
               <Text style={styles.receiptMeta}>{time}</Text>
@@ -2870,7 +2870,7 @@ const CreditOrderCard = ({ order }) => {
   );
 };
 
-export default function CanteenMemberScreen({ navigation }) {
+export default function GroceryMemberScreen({ navigation }) {
   const {
     items: MENU_ITEMS,
     ads: CONTEXT_ADS,
@@ -2879,7 +2879,7 @@ export default function CanteenMemberScreen({ navigation }) {
     deductStock,
     orders,
     reloadFromStorage,
-  } = useCanteen();
+  } = useGrocery();
   const { width, height } = useWindowDimensions();
   const isWide = width >= 768;
   const isSmall = width < 400;
@@ -3002,7 +3002,7 @@ export default function CanteenMemberScreen({ navigation }) {
     setOrderHistory([]);
     if (!member?.uid) return;
     const q = query(
-      collection(db, "canteen_orders"),
+      collection(db, "grocery_orders"),
       where("memberId", "==", member.uid),
     );
     const unsub = onSnapshot(
@@ -3363,8 +3363,8 @@ export default function CanteenMemberScreen({ navigation }) {
   const CART_W = isWide ? 230 : 0;
   const CAT_W = isWide ? 170 : 0;
   const MARGIN = isWide ? 80 : 20; // centerPanel paddingH(10)*2
-  const GAP_C = Platform.OS === "web" ? (isWide ? 10 : 5) : 5;
-  const COLS = Platform.OS === "web" ? (isWide ? 5 : 3) : 3;
+  const GAP_C = Platform.OS === "web" ? 10 : 5;
+  const COLS = Platform.OS === "web" ? 5 : 3;
   const AVAIL =
     width - CAT_W - CART_W - MARGIN - (Platform.OS === "web" ? 24 : 12); // padding*2
   const CARD_W = Math.floor((AVAIL - (COLS - 1) * GAP_C) / COLS);
@@ -3416,7 +3416,7 @@ export default function CanteenMemberScreen({ navigation }) {
         style={{
           opacity: hdrFade,
           transform: [{ translateY: hdrTrans }],
-          marginTop: Platform.OS === "web" ? (isWide ? 16 : 36) : 36,
+          marginTop: Platform.OS === "web" ? 16 : 36,
           marginHorizontal: isSmall ? 8 : 10,
           zIndex: 10,
         }}
@@ -3464,17 +3464,15 @@ export default function CanteenMemberScreen({ navigation }) {
               adjustsFontSizeToFit
             >
               <Text style={styles.headerGold}>CLIMBS </Text>
-              {isWide ? "Canteen Ordering System" : "Canteen"}
+              Grocery Ordering System
             </Text>
-            {isWide && (
-              <View style={styles.visitorTag}>
-                <Text style={styles.visitorTagText}>
-                  {member
-                    ? `MEMBER · ${member.name?.split(" ")[0]?.toUpperCase()}`
-                    : "MEMBER LOGIN"}
-                </Text>
-              </View>
-            )}
+            <View style={styles.visitorTag}>
+              <Text style={styles.visitorTagText}>
+                {member
+                  ? `MEMBER · ${member.name?.split(" ")[0]?.toUpperCase()}`
+                  : "MEMBER LOGIN"}
+              </Text>
+            </View>
           </View>
 
           {/* Right side: avatar + firstName + menu icon if logged in, else spacer */}
@@ -3649,7 +3647,7 @@ export default function CanteenMemberScreen({ navigation }) {
                 marginBottom: 4,
               }}
             >
-              Canteen Member Portal
+              Grocery Member Portal
             </Text>
             <Text
               style={{
@@ -3897,7 +3895,7 @@ export default function CanteenMemberScreen({ navigation }) {
               alignItems: "stretch",
               opacity: bodyFade,
               minHeight: 0,
-              overflow: "hidden",
+              overflow: Platform.OS === "web" ? "hidden" : "visible",
             }}
           >
             {/* ══════════════════
@@ -4756,7 +4754,6 @@ export default function CanteenMemberScreen({ navigation }) {
 
 // ─── TABLE STYLES — shared by Order History & My Credit ──────────────────────
 
-// ─── HISTORY TAB CONTENT — same layout as MerchandiseMemberScreen ────────────
 const HistoryTabContent = ({
   orderHistory,
   isWide,
@@ -6017,7 +6014,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     ...(Platform.OS === "web"
-      ? { height: "100dvh", maxHeight: "100dvh", overflow: "hidden" }
+      ? { height: "100vh", maxHeight: "100vh", overflow: "hidden" }
       : {}),
   },
 
@@ -6181,7 +6178,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: Platform.OS === "web" ? 12 : 6,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: Platform.OS === "web" ? "hidden" : "visible",
   },
 
   // LEFT — Categories panel
@@ -6236,10 +6233,10 @@ const styles = StyleSheet.create({
   centerPanel: {
     flex: 1,
     flexDirection: "column",
-    paddingHorizontal: 10,
+    paddingHorizontal: Platform.OS === "web" ? 12 : 10,
     paddingBottom: Platform.OS === "web" ? 16 : 0,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: Platform.OS === "web" ? "hidden" : "visible",
   },
   itemsPanel: {
     backgroundColor: "rgba(255,255,255,0.22)",

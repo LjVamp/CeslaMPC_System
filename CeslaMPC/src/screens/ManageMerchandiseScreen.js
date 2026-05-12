@@ -3481,6 +3481,433 @@ const CashierSizePickerModal = ({ visible, item, onConfirm, onClose }) => {
   );
 };
 
+// ─── PAYMENT CONFIRMATION MODAL ───────────────────────────────────────────────
+const PaymentConfirmModal = ({
+  visible,
+  paymentMode,
+  total,
+  cartItems,
+  memberName,
+  memberId,
+  onConfirm,
+  onCancel,
+}) => {
+  const [amountPaid, setAmountPaid] = useState("");
+  const [gcashRef, setGcashRef] = useState("");
+  const [gcashConfirmed, setGcashConfirmed] = useState(false);
+  const [placing, setPlacing] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setAmountPaid("");
+      setGcashRef("");
+      setGcashConfirmed(false);
+      setPlacing(false);
+    }
+  }, [visible, paymentMode]);
+
+  const paid = parseFloat(amountPaid) || 0;
+  const change = paid - total;
+
+  const canConfirm = () => {
+    if (!cartItems || cartItems.length === 0) return false;
+    if (paymentMode === "cash") return paid >= total;
+    if (paymentMode === "gcash")
+      return gcashRef.trim().length >= 4 && gcashConfirmed;
+    if (paymentMode === "credit") return (memberName || "").trim().length > 0;
+    return false;
+  };
+
+  const handleConfirm = async () => {
+    if (!canConfirm() || placing) return;
+    setPlacing(true);
+    await onConfirm({
+      payment: paymentMode,
+      amountPaid: paymentMode === "cash" ? paid : total,
+      change: paymentMode === "cash" ? change : 0,
+      gcashRef: paymentMode === "gcash" ? gcashRef.trim() : null,
+      memberName: paymentMode === "credit" ? memberName : null,
+      memberId: paymentMode === "credit" ? memberId : null,
+      settled: paymentMode !== "credit",
+    });
+    setPlacing(false);
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={pcm.overlay}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          onPress={onCancel}
+          activeOpacity={1}
+        />
+        <View style={pcm.card}>
+          <LinearGradient colors={["#1a2d4e", "#243554"]} style={pcm.header}>
+            <Text style={pcm.headerTitle}>
+              {paymentMode === "cash"
+                ? "💵 Cash Payment"
+                : paymentMode === "gcash"
+                  ? "📱 GCash Payment"
+                  : "🪙 Credit / Utang"}
+            </Text>
+            <Text style={pcm.headerSub}>Total: ₱{total.toFixed(2)}</Text>
+          </LinearGradient>
+
+          <View style={pcm.body}>
+            {paymentMode === "cash" && (
+              <>
+                <Text style={pcm.label}>Amount Received from Customer</Text>
+                <TextInput
+                  style={pcm.input}
+                  value={amountPaid}
+                  onChangeText={setAmountPaid}
+                  keyboardType="numeric"
+                  placeholder="₱ 0.00"
+                  placeholderTextColor="rgba(1,31,75,0.30)"
+                  autoFocus
+                />
+                {amountPaid !== "" && (
+                  <View
+                    style={[
+                      pcm.changeBox,
+                      {
+                        backgroundColor:
+                          change < 0
+                            ? "rgba(231,76,60,0.10)"
+                            : "rgba(39,174,96,0.10)",
+                        borderColor:
+                          change < 0
+                            ? "rgba(231,76,60,0.25)"
+                            : "rgba(39,174,96,0.25)",
+                      },
+                    ]}
+                  >
+                    <Text style={pcm.changeLbl}>
+                      {change < 0 ? "⚠️ Kulang pa:" : "Change:"}
+                    </Text>
+                    <Text
+                      style={[
+                        pcm.changeVal,
+                        { color: change < 0 ? "#e74c3c" : "#27ae60" },
+                      ]}
+                    >
+                      ₱{Math.abs(change).toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+                {paid < total && amountPaid !== "" && (
+                  <Text style={pcm.errorTxt}>
+                    Hindi pa pwede mag-place ng order — kulang ang bayad.
+                  </Text>
+                )}
+              </>
+            )}
+
+            {paymentMode === "gcash" && (
+              <>
+                <Text style={pcm.label}>GCash Reference Number</Text>
+                <TextInput
+                  style={pcm.input}
+                  value={gcashRef}
+                  onChangeText={setGcashRef}
+                  placeholder="e.g. 1234567890"
+                  placeholderTextColor="rgba(1,31,75,0.30)"
+                  keyboardType="numeric"
+                  maxLength={20}
+                  autoFocus
+                />
+                <Text style={pcm.hint}>
+                  Itype ang reference number gikan sa GCash receipt/notification
+                  sa customer.
+                </Text>
+                <TouchableOpacity
+                  style={[pcm.checkRow, gcashConfirmed && pcm.checkRowActive]}
+                  onPress={() => setGcashConfirmed((v) => !v)}
+                  activeOpacity={0.8}
+                >
+                  <View
+                    style={[pcm.checkbox, gcashConfirmed && pcm.checkboxActive]}
+                  >
+                    {gcashConfirmed && (
+                      <Text
+                        style={{ color: "#fff", fontSize: 12, lineHeight: 16 }}
+                      >
+                        ✓
+                      </Text>
+                    )}
+                  </View>
+                  <Text
+                    style={[
+                      pcm.checkLabel,
+                      gcashConfirmed && { color: "#1a3a6b" },
+                    ]}
+                  >
+                    Na-verify na nako ang GCash payment sa phone — ₱
+                    {total.toFixed(2)} na-receive.
+                  </Text>
+                </TouchableOpacity>
+                {gcashRef.trim().length > 0 && gcashRef.trim().length < 4 && (
+                  <Text style={pcm.errorTxt}>
+                    Reference number too short — minimum 4 digits.
+                  </Text>
+                )}
+                {gcashRef.trim().length >= 4 && !gcashConfirmed && (
+                  <Text style={pcm.warnTxt}>
+                    ⚠️ I-check ang GCash app ug i-tick ang confirmation box.
+                  </Text>
+                )}
+              </>
+            )}
+
+            {paymentMode === "credit" && (
+              <>
+                <View style={pcm.creditBanner}>
+                  <Text style={pcm.creditBannerIco}>🪙</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={pcm.creditBannerName}>
+                      {memberName || "Unknown Member"}
+                    </Text>
+                    {memberId ? (
+                      <Text style={pcm.creditBannerId}>ID: {memberId}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={pcm.creditBannerAmt}>+₱{total.toFixed(2)}</Text>
+                </View>
+                <Text style={pcm.hint}>
+                  Ang order ibutang sa credit/utang ni {memberName || "member"}.
+                  Dili kini bayad karon — makita sa Credits tab para sa
+                  settlement.
+                </Text>
+                {!(memberName || "").trim() && (
+                  <Text style={pcm.errorTxt}>
+                    Walay napili nga member — dili pwede mag-proceed.
+                  </Text>
+                )}
+              </>
+            )}
+          </View>
+
+          <View style={pcm.actions}>
+            <TouchableOpacity style={pcm.cancelBtn} onPress={onCancel}>
+              <Text style={pcm.cancelTxt}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                pcm.confirmBtn,
+                (!canConfirm() || placing) && { opacity: 0.45 },
+              ]}
+              onPress={handleConfirm}
+              activeOpacity={0.8}
+              disabled={!canConfirm() || placing}
+            >
+              <LinearGradient
+                colors={
+                  canConfirm() && !placing
+                    ? ["#27ae60", "#2ecc71"]
+                    : ["#aaa", "#bbb"]
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={pcm.confirmGrad}
+              >
+                <MaterialIcons name="check-circle" size={16} color="#fff" />
+                <Text style={pcm.confirmTxt}>
+                  {placing
+                    ? "Saving..."
+                    : paymentMode === "credit"
+                      ? "Confirm Credit"
+                      : "Confirm Payment"}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const pcm = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(1,20,50,0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#f0f5f9",
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 16,
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    alignItems: "center",
+    gap: 4,
+  },
+  headerTitle: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 16,
+    color: "#fff",
+    letterSpacing: 0.3,
+  },
+  headerSub: {
+    fontFamily: "NotoSerif_700Bold",
+    fontSize: 20,
+    color: "#c9a84c",
+  },
+  body: { padding: 20, gap: 12 },
+  label: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 10,
+    color: "rgba(1,31,75,0.55)",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  input: {
+    backgroundColor: "rgba(255,255,255,0.90)",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 16,
+    color: "#011f4b",
+    borderWidth: 1.5,
+    borderColor: "rgba(1,31,75,0.15)",
+  },
+  changeBox: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+  },
+  changeLbl: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 13,
+    color: "rgba(1,31,75,0.65)",
+  },
+  changeVal: { fontFamily: "NotoSerif_700Bold", fontSize: 18 },
+  hint: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.50)",
+    lineHeight: 17,
+  },
+  errorTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#e74c3c",
+    textAlign: "center",
+  },
+  warnTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#e67e22",
+    textAlign: "center",
+  },
+  checkRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "rgba(255,255,255,0.70)",
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1.5,
+    borderColor: "rgba(1,31,75,0.12)",
+  },
+  checkRowActive: {
+    borderColor: "#27ae60",
+    backgroundColor: "rgba(39,174,96,0.08)",
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "rgba(1,31,75,0.30)",
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  checkboxActive: { backgroundColor: "#27ae60", borderColor: "#27ae60" },
+  checkLabel: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 12,
+    color: "rgba(1,31,75,0.55)",
+    flex: 1,
+    lineHeight: 18,
+  },
+  creditBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(201,168,76,0.12)",
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(201,168,76,0.35)",
+  },
+  creditBannerIco: { fontSize: 28 },
+  creditBannerName: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 14,
+    color: "#1a2d4e",
+  },
+  creditBannerId: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.50)",
+    marginTop: 2,
+  },
+  creditBannerAmt: {
+    fontFamily: "NotoSerif_700Bold",
+    fontSize: 18,
+    color: "#c9a84c",
+  },
+  actions: {
+    flexDirection: "row",
+    gap: 10,
+    padding: 16,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderColor: "rgba(1,31,75,0.08)",
+  },
+  cancelBtn: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: "rgba(1,31,75,0.07)",
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  cancelTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 13,
+    color: "rgba(1,31,75,0.50)",
+  },
+  confirmBtn: { flex: 2, borderRadius: 10, overflow: "hidden" },
+  confirmGrad: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+  },
+  confirmTxt: { fontFamily: "GoogleSans_700Bold", fontSize: 13, color: "#fff" },
+});
+
 // ─── CASHIER SCREEN ───────────────────────────────────────────────────────────
 const CashierScreen = ({
   items,
@@ -3492,13 +3919,13 @@ const CashierScreen = ({
   const [activeCat, setActiveCat] = useState("All");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState({});
-  const [amountPaid, setAmountPaid] = useState("");
+  const [paymentMode, setPaymentMode] = useState("cash");
+  const [memberName, setMemberName] = useState("");
+  const [memberId, setMemberId] = useState("");
+  const [payModalVisible, setPayModalVisible] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
-  const [paymentMode, setPaymentMode] = useState("cash");
-  // Size picker state
   const [sizePickerItem, setSizePickerItem] = useState(null);
-  // Mobile: cart panel collapsed state
   const [cartCollapsed, setCartCollapsed] = useState(true);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const openCart = () => {
@@ -3529,10 +3956,7 @@ const CashierScreen = ({
 
   const cartItems = Object.values(cart).filter((c) => c.qty > 0);
   const total = cartItems.reduce((s, { item, qty }) => s + item.price * qty, 0);
-  const paid = parseFloat(amountPaid) || 0;
-  const change = paid - total;
 
-  // Size-aware cart key: "itemId-SIZE" for sized items, "itemId" for others
   const cartKey = (item, size) => (size ? `${item.id}-${size}` : item.id);
 
   const addToCart = (item, size) => {
@@ -3566,18 +3990,20 @@ const CashierScreen = ({
 
   const clearCart = () => {
     setCart({});
-    setAmountPaid("");
+    setMemberName("");
+    setMemberId("");
   };
 
-  const handlePlaceOrder = async () => {
-    if (cartItems.length === 0) return;
-    if (paymentMode === "cash" && paid < total) {
-      Alert.alert(
-        "Insufficient Amount",
-        "Please enter the correct amount paid.",
-      );
-      return;
-    }
+  // Only called after PaymentConfirmModal validates — order is guaranteed paid/verified
+  const handleConfirmedOrder = async ({
+    payment,
+    amountPaid,
+    change,
+    gcashRef,
+    memberName: mn,
+    memberId: mid,
+    settled,
+  }) => {
     const orderNo = Math.floor(1000 + Math.random() * 9000);
     const now = new Date();
     const time =
@@ -3594,20 +4020,25 @@ const CashierScreen = ({
       time,
       items: cartItems,
       total,
-      amountPaid: paymentMode === "cash" ? paid : total,
-      change: paymentMode === "cash" ? change : 0,
-      payment: paymentMode,
+      amountPaid,
+      change,
+      payment,
+      gcashRef: gcashRef || null,
+      memberName: mn || null,
+      memberId: mid || null,
+      settled,
       status: "done",
       source: "cashier",
     };
     await addOrder(order);
     await deductStock(cartItems);
     setLastOrder(order);
+    setPayModalVisible(false);
     clearCart();
     setTimeout(() => setReceiptVisible(true), 200);
   };
 
-  // Responsive columns: 3 on mobile, 4 on tablet, 6 on wide
+  // Responsive columns
   const COLS = isWide ? 6 : 3;
 
   return (
@@ -3829,6 +4260,8 @@ const CashierScreen = ({
             <Text style={cs.totalLbl}>TOTAL</Text>
             <Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text>
           </View>
+
+          {/* Payment method tabs */}
           <View style={{ gap: 4 }}>
             <Text
               style={{
@@ -3839,33 +4272,37 @@ const CashierScreen = ({
                 textTransform: "uppercase",
               }}
             >
-              Payment Mode
+              Payment Method
             </Text>
-            <View style={{ flexDirection: "row", gap: 6 }}>
+            <View style={{ flexDirection: "row", gap: 4 }}>
               {[
-                { k: "cash", l: "💵 Cash" },
-                { k: "gcash", l: "📱 GCash" },
-                { k: "credit", l: "💳 Credit" },
-              ].map((p) => (
+                ["cash", "💵", "Cash"],
+                ["gcash", "📱", "GCash"],
+                ["credit", "🪙", "Credit"],
+              ].map(([mode, icon, label]) => (
                 <TouchableOpacity
-                  key={p.k}
-                  onPress={() => setPaymentMode(p.k)}
-                  style={[cs.payChip, paymentMode === p.k && cs.payChipActive]}
+                  key={mode}
+                  style={[cs.payChip, paymentMode === mode && cs.payChipActive]}
+                  onPress={() => setPaymentMode(mode)}
+                  activeOpacity={0.8}
                 >
+                  <Text style={{ fontSize: 13 }}>{icon}</Text>
                   <Text
                     style={[
                       cs.payChipTxt,
-                      paymentMode === p.k && cs.payChipTxtActive,
+                      paymentMode === mode && cs.payChipTxtActive,
                     ]}
                   >
-                    {p.l}
+                    {label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
-          {paymentMode === "cash" && (
-            <View style={{ gap: 3 }}>
+
+          {/* Credit: member name fields */}
+          {paymentMode === "credit" && (
+            <View style={{ gap: 4 }}>
               <Text
                 style={{
                   fontFamily: "GoogleSans_700Bold",
@@ -3875,58 +4312,72 @@ const CashierScreen = ({
                   textTransform: "uppercase",
                 }}
               >
-                Amount Paid (Cash)
+                Member Name *
               </Text>
               <TextInput
                 style={cs.amtInput}
-                value={amountPaid}
-                onChangeText={setAmountPaid}
-                keyboardType="numeric"
-                placeholder="₱ 0.00"
+                value={memberName}
+                onChangeText={setMemberName}
+                placeholder="Full name / ID number"
+                placeholderTextColor="rgba(1,31,75,0.30)"
+              />
+              <TextInput
+                style={[cs.amtInput, { marginTop: 4 }]}
+                value={memberId}
+                onChangeText={setMemberId}
+                placeholder="Member ID (optional)"
                 placeholderTextColor="rgba(1,31,75,0.30)"
               />
             </View>
           )}
-          {paymentMode === "cash" && amountPaid !== "" && (
-            <View
-              style={[
-                cs.changeRow,
-                {
-                  backgroundColor:
-                    change < 0
-                      ? "rgba(231,76,60,0.10)"
-                      : "rgba(39,174,96,0.10)",
-                  borderRadius: 8,
-                  padding: 8,
-                },
-              ]}
-            >
-              <Text style={cs.changeLbl}>Change</Text>
-              <Text
-                style={[
-                  cs.changeVal,
-                  { color: change < 0 ? "#e74c3c" : "#27ae60" },
-                ]}
-              >
-                ₱ {change.toFixed(2)}
-              </Text>
-            </View>
-          )}
+
           <TouchableOpacity
-            style={[cs.orderBtn, cartItems.length === 0 && { opacity: 0.45 }]}
-            onPress={handlePlaceOrder}
+            style={[
+              cs.orderBtn,
+              (cartItems.length === 0 ||
+                (paymentMode === "credit" && !memberName.trim())) && {
+                opacity: 0.45,
+              },
+            ]}
+            onPress={() => {
+              if (cartItems.length === 0) return;
+              if (paymentMode === "credit" && !memberName.trim()) {
+                Alert.alert(
+                  "Member Required",
+                  "Ibutang ang pangalan sa member para sa credit order.",
+                );
+                return;
+              }
+              setPayModalVisible(true);
+            }}
             activeOpacity={0.8}
           >
             <LinearGradient
               colors={
-                cartItems.length > 0 ? ["#27ae60", "#2ecc71"] : ["#aaa", "#bbb"]
+                cartItems.length > 0 ? ["#1a3a6b", "#2e5fa3"] : ["#aaa", "#bbb"]
               }
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={cs.orderBtnGrad}
             >
-              <MaterialIcons name="check-circle" size={16} color="#fff" />
-              <Text style={cs.orderBtnTxt}>Place Order</Text>
+              <MaterialIcons
+                name={
+                  paymentMode === "cash"
+                    ? "payments"
+                    : paymentMode === "gcash"
+                      ? "phone-android"
+                      : "account-balance"
+                }
+                size={16}
+                color="#fff"
+              />
+              <Text style={cs.orderBtnTxt}>
+                {paymentMode === "cash"
+                  ? "Proceed to Payment"
+                  : paymentMode === "gcash"
+                    ? "Verify GCash"
+                    : "Add to Credit"}
+              </Text>
             </LinearGradient>
           </TouchableOpacity>
           <TouchableOpacity style={cs.clearBtn} onPress={clearCart}>
@@ -4057,6 +4508,8 @@ const CashierScreen = ({
                       <Text style={cs.totalLbl}>TOTAL</Text>
                       <Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text>
                     </View>
+
+                    {/* Payment method tabs */}
                     <View style={{ gap: 4 }}>
                       <Text
                         style={{
@@ -4067,36 +4520,39 @@ const CashierScreen = ({
                           textTransform: "uppercase",
                         }}
                       >
-                        Payment Mode
+                        Payment Method
                       </Text>
-                      <View style={{ flexDirection: "row", gap: 6 }}>
+                      <View style={{ flexDirection: "row", gap: 4 }}>
                         {[
-                          { k: "cash", l: "💵 Cash" },
-                          { k: "gcash", l: "📱 GCash" },
-                          { k: "credit", l: "💳 Credit" },
-                        ].map((p) => (
+                          ["cash", "💵", "Cash"],
+                          ["gcash", "📱", "GCash"],
+                          ["credit", "🪙", "Credit"],
+                        ].map(([mode, icon, label]) => (
                           <TouchableOpacity
-                            key={p.k}
-                            onPress={() => setPaymentMode(p.k)}
+                            key={mode}
                             style={[
                               cs.payChip,
-                              paymentMode === p.k && cs.payChipActive,
+                              paymentMode === mode && cs.payChipActive,
                             ]}
+                            onPress={() => setPaymentMode(mode)}
+                            activeOpacity={0.8}
                           >
+                            <Text style={{ fontSize: 13 }}>{icon}</Text>
                             <Text
                               style={[
                                 cs.payChipTxt,
-                                paymentMode === p.k && cs.payChipTxtActive,
+                                paymentMode === mode && cs.payChipTxtActive,
                               ]}
                             >
-                              {p.l}
+                              {label}
                             </Text>
                           </TouchableOpacity>
                         ))}
                       </View>
                     </View>
-                    {paymentMode === "cash" && (
-                      <View style={{ gap: 3 }}>
+
+                    {paymentMode === "credit" && (
+                      <View style={{ gap: 4 }}>
                         <Text
                           style={{
                             fontFamily: "GoogleSans_700Bold",
@@ -4106,55 +4562,50 @@ const CashierScreen = ({
                             textTransform: "uppercase",
                           }}
                         >
-                          Amount Paid (Cash)
+                          Member Name *
                         </Text>
                         <TextInput
                           style={cs.amtInput}
-                          value={amountPaid}
-                          onChangeText={setAmountPaid}
-                          keyboardType="numeric"
-                          placeholder="₱ 0.00"
+                          value={memberName}
+                          onChangeText={setMemberName}
+                          placeholder="Full name / ID number"
+                          placeholderTextColor="rgba(1,31,75,0.30)"
+                        />
+                        <TextInput
+                          style={[cs.amtInput, { marginTop: 4 }]}
+                          value={memberId}
+                          onChangeText={setMemberId}
+                          placeholder="Member ID (optional)"
                           placeholderTextColor="rgba(1,31,75,0.30)"
                         />
                       </View>
                     )}
-                    {paymentMode === "cash" && amountPaid !== "" && (
-                      <View
-                        style={[
-                          cs.changeRow,
-                          {
-                            backgroundColor:
-                              change < 0
-                                ? "rgba(231,76,60,0.10)"
-                                : "rgba(39,174,96,0.10)",
-                            borderRadius: 8,
-                            padding: 8,
-                          },
-                        ]}
-                      >
-                        <Text style={cs.changeLbl}>Change</Text>
-                        <Text
-                          style={[
-                            cs.changeVal,
-                            { color: change < 0 ? "#e74c3c" : "#27ae60" },
-                          ]}
-                        >
-                          ₱ {change.toFixed(2)}
-                        </Text>
-                      </View>
-                    )}
+
                     <TouchableOpacity
                       style={[
                         cs.orderBtn,
-                        cartItems.length === 0 && { opacity: 0.45 },
+                        (cartItems.length === 0 ||
+                          (paymentMode === "credit" && !memberName.trim())) && {
+                          opacity: 0.45,
+                        },
                       ]}
-                      onPress={handlePlaceOrder}
+                      onPress={() => {
+                        if (cartItems.length === 0) return;
+                        if (paymentMode === "credit" && !memberName.trim()) {
+                          Alert.alert(
+                            "Member Required",
+                            "Ibutang ang pangalan sa member para sa credit order.",
+                          );
+                          return;
+                        }
+                        setPayModalVisible(true);
+                      }}
                       activeOpacity={0.8}
                     >
                       <LinearGradient
                         colors={
                           cartItems.length > 0
-                            ? ["#27ae60", "#2ecc71"]
+                            ? ["#1a3a6b", "#2e5fa3"]
                             : ["#aaa", "#bbb"]
                         }
                         start={{ x: 0, y: 0 }}
@@ -4162,11 +4613,23 @@ const CashierScreen = ({
                         style={cs.orderBtnGrad}
                       >
                         <MaterialIcons
-                          name="check-circle"
+                          name={
+                            paymentMode === "cash"
+                              ? "payments"
+                              : paymentMode === "gcash"
+                                ? "phone-android"
+                                : "account-balance"
+                          }
                           size={16}
                           color="#fff"
                         />
-                        <Text style={cs.orderBtnTxt}>Place Order</Text>
+                        <Text style={cs.orderBtnTxt}>
+                          {paymentMode === "cash"
+                            ? "Proceed to Payment"
+                            : paymentMode === "gcash"
+                              ? "Verify GCash"
+                              : "Add to Credit"}
+                        </Text>
                       </LinearGradient>
                     </TouchableOpacity>
                     <TouchableOpacity style={cs.clearBtn} onPress={clearCart}>
@@ -4184,6 +4647,18 @@ const CashierScreen = ({
           )}
         </>
       )}
+
+      {/* Payment confirmation modal — gated before order saves */}
+      <PaymentConfirmModal
+        visible={payModalVisible}
+        paymentMode={paymentMode}
+        total={total}
+        cartItems={cartItems}
+        memberName={memberName}
+        memberId={memberId}
+        onConfirm={handleConfirmedOrder}
+        onCancel={() => setPayModalVisible(false)}
+      />
 
       {receiptVisible && lastOrder && (
         <Modal
@@ -4295,9 +4770,9 @@ const CashierScreen = ({
                       marginTop: 3,
                     }}
                   >
-                    <Text style={cs.receiptSubLbl}>Cash</Text>
+                    <Text style={cs.receiptSubLbl}>💵 Cash</Text>
                     <Text style={cs.receiptSubVal}>
-                      ₱{lastOrder.amountPaid.toFixed(2)}
+                      ₱{Number(lastOrder.amountPaid).toFixed(2)}
                     </Text>
                   </View>
                   <View
@@ -4309,9 +4784,67 @@ const CashierScreen = ({
                   >
                     <Text style={cs.receiptSubLbl}>Change</Text>
                     <Text style={[cs.receiptSubVal, { color: "#27ae60" }]}>
-                      ₱{lastOrder.change.toFixed(2)}
+                      ₱{Number(lastOrder.change).toFixed(2)}
                     </Text>
                   </View>
+                </>
+              )}
+              {lastOrder.payment === "gcash" && (
+                <>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      marginTop: 3,
+                    }}
+                  >
+                    <Text style={cs.receiptSubLbl}>📱 GCash</Text>
+                    <Text style={[cs.receiptSubVal, { color: "#27ae60" }]}>
+                      ✓ Verified
+                    </Text>
+                  </View>
+                  {lastOrder.gcashRef && (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        marginTop: 3,
+                      }}
+                    >
+                      <Text style={cs.receiptSubLbl}>Ref #</Text>
+                      <Text style={cs.receiptSubVal}>{lastOrder.gcashRef}</Text>
+                    </View>
+                  )}
+                </>
+              )}
+              {lastOrder.payment === "credit" && (
+                <>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      marginTop: 3,
+                    }}
+                  >
+                    <Text style={cs.receiptSubLbl}>🪙 Credit</Text>
+                    <Text style={[cs.receiptSubVal, { color: "#c9a84c" }]}>
+                      Utang
+                    </Text>
+                  </View>
+                  {lastOrder.memberName && (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        marginTop: 3,
+                      }}
+                    >
+                      <Text style={cs.receiptSubLbl}>Member</Text>
+                      <Text style={cs.receiptSubVal}>
+                        {lastOrder.memberName}
+                      </Text>
+                    </View>
+                  )}
                 </>
               )}
               <Text
@@ -4502,42 +5035,44 @@ const cs = StyleSheet.create({
   cartRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingVertical: 5,
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
     borderColor: "rgba(1,31,75,0.06)",
   },
-  cartEmoji: { fontSize: 15 },
+  cartEmoji: { fontSize: 22 },
   cartName: {
     fontFamily: "GoogleSans_700Bold",
-    fontSize: 10,
+    fontSize: 12,
     color: "#011f4b",
   },
   cartSub: {
     fontFamily: "GoogleSans_400Regular",
-    fontSize: 9,
+    fontSize: 10,
     color: "rgba(1,31,75,0.50)",
+    marginTop: 1,
   },
-  qtyRow: { flexDirection: "row", alignItems: "center", gap: 3 },
+  qtyRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   qBtn: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: "rgba(1,31,75,0.10)",
     justifyContent: "center",
     alignItems: "center",
   },
   qBtnTxt: {
-    fontSize: 11,
+    fontSize: 15,
     color: "#011f4b",
     fontWeight: "700",
-    lineHeight: 14,
+    lineHeight: 18,
   },
   qVal: {
     fontFamily: "GoogleSans_700Bold",
-    fontSize: 11,
+    fontSize: 13,
     color: "#011f4b",
-    minWidth: 12,
+    minWidth: 16,
     textAlign: "center",
   },
   totalRow: {
@@ -4555,17 +5090,20 @@ const cs = StyleSheet.create({
   totalVal: { fontFamily: "NotoSerif_700Bold", fontSize: 13, color: "#c9a84c" },
   payChip: {
     flex: 1,
-    paddingVertical: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    paddingVertical: 7,
     borderRadius: 8,
     backgroundColor: "rgba(255,255,255,0.50)",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.80)",
-    alignItems: "center",
   },
   payChipActive: { backgroundColor: "#1a3a6b", borderColor: "#c9a84c" },
   payChipTxt: {
-    fontFamily: "GoogleSans_400Regular",
-    fontSize: 9,
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 10,
     color: "rgba(1,31,75,0.60)",
   },
   payChipTxtActive: { fontFamily: "GoogleSans_700Bold", color: "#fff" },
@@ -6449,199 +6987,215 @@ const EmployeeCreditsScreen = () => {
           </Text>
         </View>
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-          {filtered.map((group) => {
-            const unpaid = group.orders.filter((o) => o.settled !== true);
-            const paid = group.orders.filter((o) => o.settled === true);
-            const totalU = unpaid.reduce((s, o) => s + Number(o.total || 0), 0);
-            return (
-              <TouchableOpacity
-                key={group.memberId || group.memberName}
-                onPress={() => {
-                  setSelectedMember(group.memberId || group.memberName);
-                  setActiveModalTab("unpaid");
-                }}
-                activeOpacity={0.78}
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.60)",
-                  borderRadius: 14,
-                  padding: 14,
-                  marginBottom: 8,
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.80)",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                }}
-              >
-                <View
+        /* ── Compact table list ── */
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(255,255,255,0.55)",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.80)",
+            overflow: "hidden",
+          }}
+        >
+          {/* Table header */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "rgba(26,58,107,0.10)",
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderBottomWidth: 1,
+              borderBottomColor: "rgba(26,58,107,0.12)",
+            }}
+          >
+            <Text
+              style={{
+                flex: 1,
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 10,
+                color: "rgba(1,31,75,0.50)",
+                letterSpacing: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              Member
+            </Text>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 10,
+                color: "rgba(231,76,60,0.70)",
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                marginRight: 22,
+              }}
+            >
+              Unpaid
+            </Text>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+            {filtered.map((group, idx) => {
+              const unpaid = group.orders.filter((o) => o.settled !== true);
+              const totalU = unpaid.reduce(
+                (s, o) => s + Number(o.total || 0),
+                0,
+              );
+              const isLast = idx === filtered.length - 1;
+              return (
+                <TouchableOpacity
+                  key={group.memberId || group.memberName}
+                  onPress={() => {
+                    setSelectedMember(group.memberId || group.memberName);
+                    setActiveModalTab("unpaid");
+                  }}
+                  activeOpacity={0.7}
                   style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    backgroundColor: "#1a3a6b",
-                    justifyContent: "center",
+                    flexDirection: "row",
                     alignItems: "center",
-                    flexShrink: 0,
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    borderBottomWidth: isLast ? 0 : 1,
+                    borderBottomColor: "rgba(26,58,107,0.07)",
+                    backgroundColor:
+                      idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.35)",
                   }}
                 >
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_700Bold",
-                      fontSize: 14,
-                      color: "#c9a84c",
-                    }}
-                  >
-                    {(group.memberName || "?")
-                      .split(" ")
-                      .map((w) => w[0])
-                      .slice(0, 2)
-                      .join("")}
-                  </Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_700Bold",
-                      fontSize: 13,
-                      color: "#0f1e35",
-                    }}
-                  >
-                    {group.memberName}
-                  </Text>
-                  {group.memberUserId ? (
+                  {/* Name + optional ID */}
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        fontFamily: "GoogleSans_500Medium",
+                        fontSize: 12,
+                        color: "#0f1e35",
+                      }}
+                    >
+                      {group.memberName}
+                    </Text>
+                    {group.memberUserId ? (
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          fontFamily: "GoogleSans_400Regular",
+                          fontSize: 10,
+                          color: "rgba(1,31,75,0.40)",
+                          marginTop: 1,
+                        }}
+                      >
+                        {group.memberUserId}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {/* Unpaid amount — show dash if fully settled */}
+                  {unpaid.length > 0 ? (
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 11,
+                        color: "#e74c3c",
+                        marginRight: 6,
+                      }}
+                    >
+                      ₱{totalU.toFixed(2)}{" "}
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_400Regular",
+                          fontSize: 10,
+                          color: "rgba(231,76,60,0.55)",
+                        }}
+                      >
+                        ({unpaid.length})
+                      </Text>
+                    </Text>
+                  ) : (
                     <Text
                       style={{
                         fontFamily: "GoogleSans_400Regular",
-                        fontSize: 11,
-                        color: "rgba(1,31,75,0.45)",
-                        marginTop: 1,
+                        fontSize: 12,
+                        color: "rgba(39,174,96,0.70)",
+                        marginRight: 6,
                       }}
                     >
-                      {group.memberUserId}
+                      ✓
                     </Text>
-                  ) : null}
-                  <View style={{ flexDirection: "row", gap: 10, marginTop: 5 }}>
-                    {unpaid.length > 0 && (
-                      <View
-                        style={{
-                          backgroundColor: "rgba(231,76,60,0.12)",
-                          borderRadius: 6,
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderWidth: 1,
-                          borderColor: "rgba(231,76,60,0.25)",
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontFamily: "GoogleSans_700Bold",
-                            fontSize: 10,
-                            color: "#e74c3c",
-                          }}
-                        >
-                          Unpaid ₱{totalU.toFixed(2)} ({unpaid.length})
-                        </Text>
-                      </View>
-                    )}
-                    {paid.length > 0 && (
-                      <View
-                        style={{
-                          backgroundColor: "rgba(39,174,96,0.10)",
-                          borderRadius: 6,
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderWidth: 1,
-                          borderColor: "rgba(39,174,96,0.25)",
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontFamily: "GoogleSans_700Bold",
-                            fontSize: 10,
-                            color: "#27ae60",
-                          }}
-                        >
-                          Settled ({paid.length})
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-                <MaterialIcons
-                  name="chevron-right"
-                  size={20}
-                  color="rgba(1,31,75,0.30)"
-                />
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+                  )}
+
+                  <MaterialIcons
+                    name="chevron-right"
+                    size="{16,}"
+                    color="rgba(1,31,75,0.25)"
+                  />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
       )}
 
       <Modal
-        visible={!!selectedMember}
         transparent
-        animationType="slide"
+        visible={!!selectedMember}
+        animationType="fade"
         onRequestClose={() => setSelectedMember(null)}
       >
         <View
           style={{
             flex: 1,
-            backgroundColor: "rgba(1,20,50,0.55)",
-            justifyContent: "flex-end",
+            backgroundColor: "rgba(1,15,40,0.55)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 16,
           }}
         >
           <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
+            style={{ ...StyleSheet.absoluteFillObject }}
             activeOpacity={1}
             onPress={() => setSelectedMember(null)}
           />
           <View
             style={{
-              backgroundColor: "#f0f5f9",
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
+              width: "100%",
+              maxWidth: 700,
               maxHeight: "88%",
-              paddingBottom: 32,
+              backgroundColor: "#f0f5f9",
+              borderRadius: 20,
+              shadowColor: "#000",
+              shadowOpacity: 0.3,
+              shadowRadius: 24,
+              elevation: 20,
+              overflow: "hidden",
             }}
           >
-            <View
+            {/* Dark header */}
+            <LinearGradient
+              colors={["#1a2d4e", "#243554"]}
               style={{
-                width: 40,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: "rgba(1,31,75,0.20)",
-                alignSelf: "center",
-                marginTop: 10,
-                marginBottom: 10,
-              }}
-            />
-            <View
-              style={{
+                padding: 16,
                 flexDirection: "row",
                 alignItems: "center",
-                paddingHorizontal: 20,
-                paddingBottom: 12,
-                borderBottomWidth: 1,
-                borderColor: "rgba(1,31,75,0.10)",
+                gap: 12,
               }}
             >
               <View
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  backgroundColor: "#1a3a6b",
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  backgroundColor: "rgba(201,168,76,0.25)",
+                  borderWidth: 2,
+                  borderColor: "#c9a84c",
                   justifyContent: "center",
                   alignItems: "center",
-                  marginRight: 12,
                 }}
               >
                 <Text
                   style={{
                     fontFamily: "GoogleSans_700Bold",
-                    fontSize: 14,
+                    fontSize: 15,
                     color: "#c9a84c",
                   }}
                 >
@@ -6657,22 +7211,21 @@ const EmployeeCreditsScreen = () => {
                   style={{
                     fontFamily: "GoogleSans_700Bold",
                     fontSize: 15,
-                    color: "#0f1e35",
+                    color: "#fff",
                   }}
                 >
                   {modalGroup?.memberName || "—"}
                 </Text>
-                {modalGroup?.memberUserId ? (
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_400Regular",
-                      fontSize: 11,
-                      color: "rgba(1,31,75,0.45)",
-                    }}
-                  >
-                    {modalGroup.memberUserId}
-                  </Text>
-                ) : null}
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 11,
+                    color: "rgba(255,255,255,0.50)",
+                    marginTop: 2,
+                  }}
+                >
+                  {modalGroup?.memberUserId || "—"}
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={() => setSelectedMember(null)}
@@ -6680,130 +7233,173 @@ const EmployeeCreditsScreen = () => {
                   width: 32,
                   height: 32,
                   borderRadius: 16,
-                  backgroundColor: "rgba(1,31,75,0.08)",
+                  backgroundColor: "rgba(255,255,255,0.15)",
                   justifyContent: "center",
                   alignItems: "center",
                 }}
               >
-                <MaterialIcons
-                  name="close"
-                  size={18}
-                  color="rgba(1,31,75,0.55)"
-                />
+                <Text style={{ color: "#fff", fontSize: 14 }}>✕</Text>
               </TouchableOpacity>
-            </View>
+            </LinearGradient>
 
+            {/* Unpaid / Paid summary cards */}
             <View
               style={{
                 flexDirection: "row",
                 gap: 10,
-                paddingHorizontal: 20,
-                paddingTop: 14,
-                paddingBottom: 6,
+                padding: 14,
+                paddingBottom: 0,
               }}
             >
               {[
-                {
-                  label: "Unpaid",
-                  value: `₱${totalUnpaid.toFixed(2)}`,
-                  count: unpaidOrders.length,
-                  color: "#e74c3c",
-                  bg: "rgba(231,76,60,0.10)",
-                },
-                {
-                  label: "Settled",
-                  value: `₱${totalPaid.toFixed(2)}`,
-                  count: paidOrders.length,
-                  color: "#27ae60",
-                  bg: "rgba(39,174,96,0.10)",
-                },
-              ].map((s) => (
-                <View
-                  key={s.label}
-                  style={{
-                    flex: 1,
-                    backgroundColor: s.bg,
-                    borderRadius: 12,
-                    padding: 12,
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
+                [
+                  "unpaid",
+                  "⏳ Unpaid",
+                  totalUnpaid,
+                  unpaidOrders.length,
+                  "#1a2d4e",
+                  "#c9a84c",
+                  "rgba(201,168,76,0.15)",
+                ],
+                [
+                  "paid",
+                  "✅ Paid",
+                  totalPaid,
+                  paidOrders.length,
+                  "#1a4a2e",
+                  "#4cde8a",
+                  "rgba(39,174,96,0.10)",
+                ],
+              ].map(
+                ([key, label, amt, cnt, activeBg, activeColor, inactiveBg]) => (
+                  <TouchableOpacity
+                    key={key}
+                    onPress={() => setActiveModalTab(key)}
+                    activeOpacity={0.85}
                     style={{
-                      fontFamily: "GoogleSans_700Bold",
-                      fontSize: 16,
-                      color: s.color,
+                      flex: 1,
+                      borderRadius: 12,
+                      padding: 12,
+                      backgroundColor:
+                        activeModalTab === key
+                          ? activeBg
+                          : "rgba(255,255,255,0.55)",
+                      borderWidth: 1.5,
+                      borderColor:
+                        activeModalTab === key
+                          ? key === "unpaid"
+                            ? "#c9a84c"
+                            : "#27ae60"
+                          : "rgba(255,255,255,0.70)",
                     }}
                   >
-                    {s.value}
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_400Regular",
-                      fontSize: 10,
-                      color: "rgba(1,31,75,0.50)",
-                      marginTop: 2,
-                    }}
-                  >
-                    {s.count} order{s.count !== 1 ? "s" : ""}{" "}
-                    {s.label.toLowerCase()}
-                  </Text>
-                </View>
-              ))}
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 10,
+                        color:
+                          activeModalTab === key
+                            ? "rgba(255,255,255,0.55)"
+                            : "rgba(1,31,75,0.45)",
+                        letterSpacing: 1.2,
+                        textTransform: "uppercase",
+                        marginBottom: 4,
+                      }}
+                    >
+                      {label}
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: "NotoSerif_700Bold",
+                        fontSize: 22,
+                        color:
+                          activeModalTab === key
+                            ? activeColor
+                            : key === "unpaid"
+                              ? "#e67e22"
+                              : "#27ae60",
+                      }}
+                    >
+                      ₱ {amt.toFixed(2)}
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_400Regular",
+                        fontSize: 11,
+                        color:
+                          activeModalTab === key
+                            ? "rgba(255,255,255,0.45)"
+                            : "rgba(1,31,75,0.45)",
+                        marginTop: 3,
+                      }}
+                    >
+                      {cnt} order{cnt !== 1 ? "s" : ""}
+                    </Text>
+                  </TouchableOpacity>
+                ),
+              )}
             </View>
 
-            <View
-              style={{
-                flexDirection: "row",
-                marginHorizontal: 20,
-                marginBottom: 10,
-                backgroundColor: "rgba(1,31,75,0.07)",
-                borderRadius: 10,
-                padding: 3,
-              }}
-            >
-              {["unpaid", "paid"].map((tab) => (
-                <TouchableOpacity
-                  key={tab}
-                  onPress={() => setActiveModalTab(tab)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 8,
-                    borderRadius: 8,
-                    backgroundColor:
-                      activeModalTab === tab ? "#fff" : "transparent",
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_700Bold",
-                      fontSize: 12,
-                      color:
-                        activeModalTab === tab
-                          ? "#1a3a6b"
-                          : "rgba(1,31,75,0.45)",
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {tab}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
+            {/* Table */}
             <ScrollView
-              style={{ flex: 1, paddingHorizontal: 20 }}
+              style={{ flex: 1, margin: 14, marginTop: 12 }}
               showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
             >
+              {/* Table header */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  backgroundColor: "#1a2d4e",
+                  borderRadius: 8,
+                  paddingVertical: 9,
+                  paddingHorizontal: 8,
+                  marginBottom: 4,
+                }}
+              >
+                {[
+                  { l: "ORDER NO.", f: 0.8 },
+                  { l: "DATE / TIME", f: 1.3 },
+                  { l: "ITEMS", f: 2.0 },
+                  { l: "QTY", f: 0.5 },
+                  { l: "PRICE", f: 0.7 },
+                  { l: "AMOUNT", f: 0.8 },
+                  { l: "", f: 0.8 },
+                ].map((col) => (
+                  <Text
+                    key={col.l}
+                    style={{
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 9,
+                      color: "#c9a84c",
+                      letterSpacing: 1.2,
+                      textTransform: "uppercase",
+                      flex: col.f,
+                      textAlign:
+                        col.l === "AMOUNT" ||
+                        col.l === "QTY" ||
+                        col.l === "PRICE"
+                          ? "right"
+                          : "left",
+                    }}
+                  >
+                    {col.l}
+                  </Text>
+                ))}
+              </View>
+
               {(activeModalTab === "unpaid" ? unpaidOrders : paidOrders)
                 .length === 0 ? (
-                <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                <View style={{ alignItems: "center", paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 32, marginBottom: 8 }}>
+                    {activeModalTab === "unpaid" ? "🎉" : "📋"}
+                  </Text>
                   <Text
                     style={{
                       fontFamily: "GoogleSans_700Bold",
                       fontSize: 13,
-                      color: "rgba(1,31,75,0.35)",
+                      color: "rgba(1,31,75,0.45)",
+                      textAlign: "center",
                     }}
                   >
                     {activeModalTab === "unpaid"
@@ -6815,131 +7411,187 @@ const EmployeeCreditsScreen = () => {
                 (activeModalTab === "unpaid" ? unpaidOrders : paidOrders).map(
                   (order, idx) => {
                     const orderItems = order.items || [];
-                    const itemSummary =
-                      orderItems
-                        .slice(0, 2)
-                        .map(
-                          (it) =>
-                            `${it?.item?.name || it?.name || "Item"} ×${it.qty || it.quantity || 1}`,
-                        )
-                        .join(", ") +
-                      (orderItems.length > 2
-                        ? ` +${orderItems.length - 2} more`
-                        : "");
-                    return (
-                      <View
-                        key={order.docId || idx}
-                        style={{
-                          backgroundColor: "rgba(255,255,255,0.70)",
-                          borderRadius: 12,
-                          padding: 12,
-                          marginBottom: 8,
-                          borderWidth: 1,
-                          borderColor: "rgba(255,255,255,0.85)",
-                        }}
-                      >
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            marginBottom: 6,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontFamily: "GoogleSans_700Bold",
-                              fontSize: 12,
-                              color: "#1a3a6b",
-                              flex: 1,
-                            }}
-                          >
-                            Order #{order.orderNo || "—"}
-                          </Text>
-                          <Text
-                            style={{
-                              fontFamily: "GoogleSans_700Bold",
-                              fontSize: 13,
-                              color: "#c9a84c",
-                            }}
-                          >
-                            ₱{Number(order.total || 0).toFixed(2)}
-                          </Text>
-                        </View>
-                        <Text
-                          style={{
-                            fontFamily: "GoogleSans_400Regular",
-                            fontSize: 11,
-                            color: "rgba(1,31,75,0.60)",
-                            marginBottom: 4,
-                          }}
-                          numberOfLines={2}
-                        >
-                          {itemSummary || "—"}
-                        </Text>
-                        <Text
-                          style={{
-                            fontFamily: "GoogleSans_400Regular",
-                            fontSize: 10,
-                            color: "rgba(1,31,75,0.40)",
-                          }}
-                        >
-                          {fmtDateTime(order.createdAt)}
-                        </Text>
-                        {order.settled ? (
+                    const isPaid = activeModalTab === "paid";
+                    const rowBg =
+                      idx % 2 === 0
+                        ? "rgba(255,255,255,0.55)"
+                        : "rgba(255,255,255,0.30)";
+                    const orderTotal = Number(order.total || 0);
+                    return [
+                      ...orderItems.map((it, j) => {
+                        const item = it.item || it;
+                        const qty = it.qty || it.quantity || 1;
+                        const lineAmt = Number(item.price || 0) * qty;
+                        const isFirst = j === 0;
+                        return (
                           <View
+                            key={`${order.docId}-${j}`}
                             style={{
-                              marginTop: 8,
                               flexDirection: "row",
                               alignItems: "center",
-                              gap: 5,
-                            }}
-                          >
-                            <MaterialIcons
-                              name="check-circle"
-                              size={14}
-                              color="#27ae60"
-                            />
-                            <Text
-                              style={{
-                                fontFamily: "GoogleSans_400Regular",
-                                fontSize: 10,
-                                color: "#27ae60",
-                              }}
-                            >
-                              Settled{" "}
-                              {order.settledAt
-                                ? fmtDateTime(order.settledAt)
-                                : ""}
-                            </Text>
-                          </View>
-                        ) : (
-                          <TouchableOpacity
-                            onPress={() => markSettled(order.docId)}
-                            disabled={settlingId === order.docId}
-                            style={{
-                              marginTop: 8,
-                              backgroundColor: "#1a3a6b",
-                              borderRadius: 8,
                               paddingVertical: 8,
-                              alignItems: "center",
-                              opacity: settlingId === order.docId ? 0.6 : 1,
+                              paddingHorizontal: 8,
+                              backgroundColor: rowBg,
+                              borderTopLeftRadius: isFirst ? 8 : 0,
+                              borderTopRightRadius: isFirst ? 8 : 0,
+                              borderBottomWidth: 1,
+                              borderColor: "rgba(1,31,75,0.06)",
                             }}
                           >
                             <Text
                               style={{
                                 fontFamily: "GoogleSans_700Bold",
-                                fontSize: 12,
-                                color: "#c9a84c",
+                                fontSize: 11,
+                                color: isFirst ? "#0f1e35" : "transparent",
+                                flex: 0.8,
                               }}
                             >
-                              {settlingId === order.docId
-                                ? "Marking..."
-                                : "✓ Mark as Settled"}
+                              {isFirst ? `#${order.orderNo || "—"}` : ""}
                             </Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    );
+                            <Text
+                              style={{
+                                fontFamily: "GoogleSans_400Regular",
+                                fontSize: 9.5,
+                                color: isFirst
+                                  ? "rgba(1,31,75,0.55)"
+                                  : "transparent",
+                                flex: 1.3,
+                                lineHeight: 14,
+                              }}
+                            >
+                              {isFirst ? fmtDateTime(order.createdAt) : ""}
+                            </Text>
+                            <Text
+                              style={{
+                                fontFamily: "GoogleSans_400Regular",
+                                fontSize: 11,
+                                color: "#0f1e35",
+                                flex: 2.0,
+                              }}
+                              numberOfLines={1}
+                            >
+                              📦 {item.name || "—"}
+                            </Text>
+                            <Text
+                              style={{
+                                fontFamily: "GoogleSans_700Bold",
+                                fontSize: 11,
+                                color: "#0f1e35",
+                                flex: 0.5,
+                                textAlign: "right",
+                              }}
+                            >
+                              {qty}
+                            </Text>
+                            <Text
+                              style={{
+                                fontFamily: "GoogleSans_400Regular",
+                                fontSize: 11,
+                                color: "rgba(1,31,75,0.55)",
+                                flex: 0.7,
+                                textAlign: "right",
+                              }}
+                            >
+                              ₱{Number(item.price || 0).toFixed(2)}
+                            </Text>
+                            <Text
+                              style={{
+                                fontFamily: "GoogleSans_400Regular",
+                                fontSize: 11,
+                                color: "rgba(1,31,75,0.65)",
+                                flex: 0.8,
+                                textAlign: "right",
+                              }}
+                            >
+                              ₱{lineAmt.toFixed(2)}
+                            </Text>
+                            <View style={{ flex: 0.8 }} />
+                          </View>
+                        );
+                      }),
+                      <View
+                        key={`${order.docId}-subtotal`}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          paddingVertical: 8,
+                          paddingHorizontal: 8,
+                          backgroundColor: rowBg,
+                          borderBottomLeftRadius: 8,
+                          borderBottomRightRadius: 8,
+                          marginBottom: 6,
+                          borderTopWidth: 1,
+                          borderColor: "rgba(1,31,75,0.12)",
+                        }}
+                      >
+                        <Text style={{ flex: 0.8 }} />
+                        <Text style={{ flex: 1.3 }} />
+                        <Text
+                          style={{
+                            fontFamily: "GoogleSans_700Bold",
+                            fontSize: 10,
+                            color: "rgba(1,31,75,0.45)",
+                            flex: 2.0,
+                            letterSpacing: 1,
+                          }}
+                        >
+                          ORDER TOTAL
+                        </Text>
+                        <Text style={{ flex: 0.5 }} />
+                        <Text style={{ flex: 0.7 }} />
+                        <Text
+                          style={{
+                            fontFamily: "NotoSerif_700Bold",
+                            fontSize: 13,
+                            color: isPaid ? "#27ae60" : "#c9a84c",
+                            flex: 0.8,
+                            textAlign: "right",
+                          }}
+                        >
+                          ₱{orderTotal.toFixed(2)}
+                        </Text>
+                        <View style={{ flex: 0.8, alignItems: "flex-end" }}>
+                          {!isPaid ? (
+                            <TouchableOpacity
+                              onPress={async () => {
+                                await markSettled(order.docId);
+                                setActiveModalTab("paid");
+                              }}
+                              disabled={settlingId === order.docId}
+                              activeOpacity={0.8}
+                              style={{
+                                backgroundColor: "#27ae60",
+                                borderRadius: 8,
+                                paddingHorizontal: 10,
+                                paddingVertical: 6,
+                                opacity: settlingId === order.docId ? 0.6 : 1,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontFamily: "GoogleSans_700Bold",
+                                  fontSize: 10,
+                                  color: "#fff",
+                                }}
+                              >
+                                {settlingId === order.docId ? "..." : "Paid"}
+                              </Text>
+                            </TouchableOpacity>
+                          ) : order.settledAt ? (
+                            <Text
+                              style={{
+                                fontFamily: "GoogleSans_400Regular",
+                                fontSize: 9,
+                                color: "#27ae60",
+                                textAlign: "right",
+                              }}
+                            >
+                              ✓ {fmtDateTime(order.settledAt)}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>,
+                    ];
                   },
                 )
               )}
@@ -9886,79 +10538,10 @@ const rpt2 = StyleSheet.create({
 
 // ─── SALES REPORT ───────────────────────────────
 
-const STATUS_CFG = {
-  pending: {
-    label: "PENDING",
-    color: "#c0392b",
-    btnLabel: "Start Preparing",
-    btnColor: "#e67e22",
-    next: "preparing",
-  },
-  preparing: {
-    label: "PREPARING",
-    color: "#b9660a",
-    btnLabel: "Mark as Ready",
-    btnColor: "#2980b9",
-    next: "ready",
-  },
-  ready: {
-    label: "READY",
-    color: "#1a6b2a",
-    btnLabel: "Mark as Done",
-    btnColor: "#27ae60",
-    next: "done",
-  },
-  done: {
-    label: "DONE",
-    color: "#1a3a6b",
-    btnLabel: null,
-    btnColor: null,
-    next: null,
-  },
-};
-
-// ─── ORDER MONITORING PANEL ──────────────────────
 // ─── MERCHANDISE SALES PANEL ─────────────────────────────────────────────────
 const MerchandiseSalesPanel = ({ orders, items }) => {
-  const [activeFilter, setActiveFilter] = useState("today");
-
-  // ── Stats ──────────────────────────────────────────────────────────────────
-  const now = new Date();
-  const todayKey = now.toDateString();
-
-  const todayOrders = orders.filter((o) => {
-    try {
-      // createdAt is Date.now() number — most reliable
-      if (o.createdAt) return new Date(o.createdAt).toDateString() === todayKey;
-      // fallback to time string
-      if (o.time) return new Date(o.time).toDateString() === todayKey;
-      return false;
-    } catch {
-      return false;
-    }
-  });
-
-  const totalRevenue = todayOrders.reduce(
-    (s, o) => s + Number(o.total || 0),
-    0,
-  );
-  const totalItems = todayOrders.reduce(
-    (s, o) => s + (o.items || []).reduce((ss, i) => ss + (i.qty || 0), 0),
-    0,
-  );
-  const lowStock = items.filter((i) => i.stock <= 5 && i.stock > 0).length;
-  const outOfStock = items.filter((i) => i.stock === 0).length;
-
-  // ── Recent orders (last 8) ────────────────────────────────────────────────
-  const recentOrders = [...orders]
-    .sort((a, b) => {
-      const ta = b.createdAt || new Date(b.time || 0).getTime() || 0;
-      const tb = a.createdAt || new Date(a.time || 0).getTime() || 0;
-      return ta - tb;
-    })
-    .slice(0, 8);
-
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -9978,117 +10561,187 @@ const MerchandiseSalesPanel = ({ orders, items }) => {
     return () => loop.stop();
   }, []);
 
-  const STAT_CARDS = [
-    {
-      label: "Today's Sales",
-      value: "₱" + totalRevenue.toLocaleString(),
-      color: "#1a6b45",
-      bg: "#27ae60",
-    },
-    {
-      label: "Items Sold",
-      value: String(totalItems),
-      color: "#1a3a6b",
-      bg: "#2e5fa3",
-    },
-    {
-      label: "Low Stock",
-      value: String(lowStock),
-      color: "#7a4400",
-      bg: "#e67e22",
-    },
-    {
-      label: "Out of Stock",
-      value: String(outOfStock),
-      color: "#7a0000",
-      bg: "#e74c3c",
-    },
-  ];
+  const today = new Date().toDateString();
+
+  const todayOrders = orders.filter((o) => {
+    try {
+      if (o.createdAt) return new Date(o.createdAt).toDateString() === today;
+      if (o.time) return new Date(o.time).toDateString() === today;
+      return false;
+    } catch {
+      return false;
+    }
+  });
+
+  const todaySales = todayOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+  const itemsSold = todayOrders.reduce(
+    (s, o) => s + (o.items || []).reduce((a, i) => a + (i.qty || 1), 0),
+    0,
+  );
+  const lowStockCount = (items || []).filter(
+    (i) => i.stock > 0 && i.stock <= 5,
+  ).length;
+  const outOfStockCount = (items || []).filter((i) => i.stock === 0).length;
+
+  const recentOrders = [...todayOrders].sort((a, b) => {
+    const ta = b.createdAt || new Date(b.time || 0).getTime() || 0;
+    const tb = a.createdAt || new Date(a.time || 0).getTime() || 0;
+    return ta - tb;
+  });
+
+  const fmtTime = (o) => {
+    try {
+      const ts = o.createdAt || o.time;
+      const d = new Date(ts);
+      if (isNaN(d)) return "";
+      let h = d.getHours();
+      const m = String(d.getMinutes()).padStart(2, "0");
+      const ampm = h >= 12 ? "PM" : "AM";
+      h = h % 12 || 12;
+      return `${h}:${m} ${ampm}`;
+    } catch {
+      return "";
+    }
+  };
 
   return (
     <View style={sp.root}>
-      {/* Title */}
       <View style={sp.titleRow}>
         <Animated.View style={[sp.liveDot, { opacity: pulseAnim }]} />
         <Text style={sp.title}>SALES OVERVIEW</Text>
       </View>
 
-      {/* 4 stat cards */}
-      <View style={sp.statGrid}>
-        {STAT_CARDS.map((c) => (
-          <View key={c.label} style={[sp.statCard, { backgroundColor: c.bg }]}>
-            <Text style={sp.statVal}>{c.value}</Text>
-            <Text style={sp.statLbl}>{c.label}</Text>
-          </View>
-        ))}
+      {/* Stat cards row 1 */}
+      <View style={sp.statRow}>
+        <LinearGradient
+          colors={["#27ae60", "#2ecc71"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={sp.statCard}
+        >
+          <Text style={sp.statVal}>₱{todaySales.toFixed(0)}</Text>
+          <Text style={sp.statLabel}>Today's Sales</Text>
+        </LinearGradient>
+        <LinearGradient
+          colors={["#1a3a6b", "#2e5fa3"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={sp.statCard}
+        >
+          <Text style={sp.statVal}>{itemsSold}</Text>
+          <Text style={sp.statLabel}>Items Sold</Text>
+        </LinearGradient>
       </View>
 
-      {/* Recent orders */}
-      <Text style={sp.sectionLabel}>RECENT ORDERS</Text>
-      <WebScrollView
-        style={{ flex: 1, minHeight: 0 }}
-        contentContainerStyle={{ gap: 5, paddingBottom: 12 }}
-      >
-        {recentOrders.length === 0 ? (
-          <View style={sp.emptyBox}>
-            <Text style={sp.emptyIco}>🛍️</Text>
-            <Text style={sp.emptyTxt}>No orders yet today</Text>
-          </View>
-        ) : (
-          recentOrders.map((order) => {
-            const timeStr = (() => {
-              try {
-                const ts = order.createdAt || order.time;
-                const d = new Date(ts);
-                return isNaN(d)
-                  ? ""
-                  : d.toLocaleTimeString("en-PH", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    });
-              } catch {
-                return "";
-              }
-            })();
-            const itemsSummary = (order.items || [])
-              .map((i) => (i.item?.name || i.name || "Item") + " ×" + i.qty)
-              .join(", ");
-            const src = order.source === "visitor" ? "🌐" : "🖥️";
-            return (
-              <View key={order.id} style={sp.orderCard}>
-                <View style={sp.orderTop}>
-                  <Text style={sp.orderNo}>
-                    {src} #{order.orderNo || order.id?.slice(-4) || "--"}
-                  </Text>
-                  <Text style={sp.orderTime}>{timeStr}</Text>
-                  <Text style={sp.orderAmt}>
-                    ₱{Number(order.total).toFixed(0)}
-                  </Text>
-                </View>
-                <Text style={sp.orderItems} numberOfLines={2}>
-                  {itemsSummary}
-                </Text>
+      {/* Stat cards row 2 */}
+      <View style={sp.statRow}>
+        <LinearGradient
+          colors={["#e67e22", "#f39c12"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={sp.statCard}
+        >
+          <Text style={sp.statVal}>{lowStockCount}</Text>
+          <Text style={sp.statLabel}>Low Stock</Text>
+        </LinearGradient>
+        <LinearGradient
+          colors={["#c0392b", "#e74c3c"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={sp.statCard}
+        >
+          <Text style={sp.statVal}>{outOfStockCount}</Text>
+          <Text style={sp.statLabel}>Out of Stock</Text>
+        </LinearGradient>
+      </View>
+
+      <Text style={sp.recentLabel}>TODAY'S ORDERS</Text>
+
+      {/* ── Compact table ── */}
+      <View style={sp.tableWrap}>
+        {/* Table header */}
+        <View style={sp.tableHeader}>
+          <Text style={[sp.tableHeadTxt, { flex: 1 }]}>Order</Text>
+          <Text style={[sp.tableHeadTxt, { width: 48, textAlign: "center" }]}>
+            Pay
+          </Text>
+          <Text style={[sp.tableHeadTxt, { width: 38, textAlign: "right" }]}>
+            Time
+          </Text>
+          <Text style={[sp.tableHeadTxt, { width: 50, textAlign: "right" }]}>
+            Total
+          </Text>
+        </View>
+
+        <WebScrollView style={{ flex: 1, minHeight: 0 }}>
+          {recentOrders.length === 0 ? (
+            <View style={sp.emptyBox}>
+              <Text style={sp.emptyIco}>🛍️</Text>
+              <Text style={sp.emptyTxt}>No orders today</Text>
+            </View>
+          ) : (
+            recentOrders.map((order, idx) => {
+              const itemsList = (order.items || [])
+                .map((i) => `${i.item?.name || i.name || "?"} x${i.qty || 1}`)
+                .join(", ");
+              const payLabel =
+                order.payment === "gcash"
+                  ? "GCash"
+                  : order.payment === "credit"
+                    ? "Credit"
+                    : "Cash";
+              const isLast = idx === recentOrders.length - 1;
+              return (
                 <View
+                  key={order.id}
                   style={[
-                    sp.payBadge,
-                    order.payment === "gcash" && {
-                      backgroundColor: "rgba(52,152,219,0.15)",
+                    sp.tableRow,
+                    {
+                      borderBottomWidth: isLast ? 0 : 1,
+                      backgroundColor:
+                        idx % 2 === 0
+                          ? "transparent"
+                          : "rgba(255,255,255,0.35)",
                     },
                   ]}
                 >
-                  <Text style={sp.payBadgeTxt}>
-                    {order.payment === "gcash"
-                      ? "📱 GCash"
-                      : order.payment === "credit"
-                        ? "💳 Credit"
-                        : "💵 Cash"}
+                  <View style={{ flex: 1, paddingRight: 6 }}>
+                    <Text style={sp.orderId} numberOfLines={1}>
+                      #{order.orderNo || order.id?.slice(-4) || "--"}
+                    </Text>
+                    <Text style={sp.orderItems} numberOfLines={1}>
+                      {itemsList}
+                    </Text>
+                  </View>
+                  <Text
+                    style={{
+                      width: 48,
+                      textAlign: "center",
+                      fontFamily: "GoogleSans_700Bold",
+                      fontSize: 8,
+                      color: "rgba(1,31,75,0.60)",
+                    }}
+                    numberOfLines={1}
+                  >
+                    {payLabel}
+                  </Text>
+                  <Text
+                    style={[sp.orderTime, { width: 38, textAlign: "right" }]}
+                    numberOfLines={1}
+                  >
+                    {fmtTime(order)}
+                  </Text>
+                  <Text
+                    style={[sp.orderTotal, { width: 50, textAlign: "right" }]}
+                  >
+                    ₱{Number(order.total).toFixed(0)}
                   </Text>
                 </View>
-              </View>
-            );
-          })
-        )}
-      </WebScrollView>
+              );
+            })
+          )}
+        </WebScrollView>
+      </View>
     </View>
   );
 };
@@ -10111,45 +10764,36 @@ const sp = StyleSheet.create({
     textDecorationLine: "underline",
     textAlign: "center",
   },
-
-  statGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
-    marginBottom: 10,
-  },
+  statRow: { flexDirection: "row", gap: 6, marginBottom: 6 },
   statCard: {
     flex: 1,
-    minWidth: "45%",
     borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     alignItems: "center",
-    gap: 1,
+    gap: 2,
   },
   statVal: {
     fontFamily: "GoogleSans_700Bold",
-    fontSize: 16,
+    fontSize: 18,
     color: "#fff",
-    lineHeight: 20,
+    lineHeight: 22,
   },
-  statLbl: {
-    fontFamily: "GoogleSans_700Bold",
-    fontSize: 6,
-    color: "rgba(255,255,255,0.85)",
-    letterSpacing: 0.6,
-    textAlign: "center",
-  },
-
-  sectionLabel: {
+  statLabel: {
     fontFamily: "GoogleSans_700Bold",
     fontSize: 8,
-    color: "rgba(1,31,75,0.45)",
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    marginBottom: 5,
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: 0.5,
+    textAlign: "center",
   },
-
+  recentLabel: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 9,
+    color: "rgba(1,31,75,0.50)",
+    letterSpacing: 1.2,
+    marginBottom: 5,
+    marginTop: 4,
+  },
   emptyBox: { padding: 20, alignItems: "center", gap: 6 },
   emptyIco: { fontSize: 28 },
   emptyTxt: {
@@ -10158,53 +10802,55 @@ const sp = StyleSheet.create({
     color: "rgba(1,31,75,0.35)",
     textAlign: "center",
   },
-
-  orderCard: {
-    backgroundColor: "rgba(255,255,255,0.88)",
-    borderRadius: 10,
-    padding: 8,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.95)",
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  orderTop: { flexDirection: "row", alignItems: "center", gap: 4 },
-  orderNo: {
-    fontFamily: "GoogleSans_700Bold",
-    fontSize: 11,
-    color: "#1a3a6b",
+  // ── Compact table styles ──
+  tableWrap: {
     flex: 1,
+    minHeight: 0,
+    backgroundColor: "rgba(255,255,255,0.55)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.80)",
+    overflow: "hidden",
   },
+  tableHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(26,58,107,0.10)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(26,58,107,0.12)",
+  },
+  tableHeadTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 8,
+    color: "rgba(1,31,75,0.50)",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  tableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderBottomColor: "rgba(26,58,107,0.07)",
+  },
+  orderId: { fontFamily: "GoogleSans_700Bold", fontSize: 10, color: "#0d2540" },
   orderTime: {
     fontFamily: "GoogleSans_400Regular",
     fontSize: 9,
-    color: "rgba(1,31,75,0.40)",
+    color: "rgba(1,31,75,0.45)",
   },
-  orderAmt: {
+  orderTotal: {
     fontFamily: "GoogleSans_700Bold",
-    fontSize: 12,
+    fontSize: 11,
     color: "#c9a84c",
   },
   orderItems: {
     fontFamily: "GoogleSans_400Regular",
     fontSize: 9,
-    color: "rgba(1,31,75,0.60)",
-    lineHeight: 13,
-  },
-  payBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(1,31,75,0.07)",
-    borderRadius: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  payBadgeTxt: {
-    fontFamily: "GoogleSans_700Bold",
-    fontSize: 8,
     color: "rgba(1,31,75,0.55)",
+    lineHeight: 12,
   },
 });
 
