@@ -1033,6 +1033,178 @@ const pcm = StyleSheet.create({
   confirmTxt: { fontFamily: "GoogleSans_700Bold", fontSize: 13, color: "#fff" },
 });
 
+// ─── EMPLOYEE LIST ────────────────────────────────────────────────────────────
+const EMPLOYEES = [
+  "ABAO, CHARITO GALOCHINO",
+  "ABELLA, SEP ALZEN PUNO",
+  "ACOT, MICHAEL CARVAJAL",
+  "ACTUB, JAN NIÑO FLORES",
+  "AGIR, RAMIL CARBELLIDA",
+  "ALING, ROSEMARIE",
+  "AMPUSTA, LOVELY JANE ALEMANIA",
+  "APOYA, EDGARDO DUHILAG",
+  "ARSUA, RUEL TOLIBAS",
+  "ASAY, IELYN GALABO",
+  "ATLAO, REAGAN BUHISAN",
+  "AUTOR, AMADO CONSTANTINE MALABANAN",
+  "AYAG, RHEGIE JOY BALURAN",
+  "AYCO, JOY VILLAMONTE",
+  "BAACLO, JURYLAN ABRAGAN",
+  "BABANTO, GRETCHEN MABALE",
+  "BAHAY, QUEEN ROMANILLOS",
+  "BAJUYO, SANNY JR L.",
+  "BALAGA, ROGELIO UGAT JR.",
+  "BALISTA, NIKKA JABAGAT",
+  "BALISTOY, ARMAE FE DECIERDO",
+  "BASADRE, MHELJUNE KIRT PALLOTO",
+  "BATARA, NINA FLOR BARRO",
+  "BAUTISTA, JOCELYN DUKA",
+  "BAYRON, SHELOU MAE ALCARAZ",
+  "BENDANILLO, IALENNE JAY",
+  "BENTUZAL, RUBY JEAN JABINIAR",
+  "BERNADAS, BERNADETH NICOMEDEZ",
+  "BILLONES, MA. THERESA",
+  "BONIAO, CYRIAN GALAMITON",
+  "BORROMEO, TIMOTHY JONAH E.",
+  "CABILLO, GERALD ABRIO",
+  "CABISO, JOY FE LEGASON",
+  "CADORNA, MICHAEL MAQUILING",
+  "CAGATAN, JENNY ANNE J.",
+  "CAGUIAT, THERENCE JOHN D.",
+  "CAIDIC, PRINCESS LANIE MAGALLANES",
+  "CAINGLET, HYACINTH BADILLA",
+  "CAINOY, ANGELICA",
+  "CANDEL, IRISH AGUILAR",
+  "CARCUEVA, CHARNELYN Q.",
+  "CASINILLO, ROWENA PESOLE",
+  "CHAVEZ, CHRISTOPHER JOHN CIERVO",
+  "CHUA, KENNETH POTULAN",
+  "COBRADOR, JHOANA ROSE R.",
+  "COQUILLA, KRISTEL VILLEGAS",
+  "CORRO, MICHELLE ALISOSO",
+  "CUMBA, BLESILDA LAGANG",
+  "CUTAMORA, CECILMAY A.",
+  "CUTOR, CORINNE MAE BAYRON",
+  "DABLIO, SHANE MYRTHEL U.",
+  "DAILO, REGIE",
+  "DAIRO, HANNAH LIEZEL M.",
+  "DAOMAR, AMOS GLENN GALVEZO",
+  "DAUG, IRISH CLAIRE",
+  "DE LOS SANTOS, CARLO JAMES ALAMBATIN",
+  "DELA PENA, REYMART RODELAS",
+  "DELOS REYES, ROMANITO UBANAN",
+  "DIAZ, ANGELLAN FE L.",
+  "DIAZ, RENAN PAGENTE",
+  "DILANGALEN, BAI FERDAUZIA ABDULRACHMAN",
+  "DIZON, DONNA MARIE MICHELLE CABATIC",
+  "EBO, MICHAEL PATRICK TUDTUD",
+  "EBAL, JERSON TOQUIB",
+  "ELICAN, ELMER MACOMAO",
+  "EMANO, RICHEL ANN EMBALSADO",
+  "ENTICE, MARK ANTHONY E",
+  "ESCABARTE, JEVELYN L.",
+  "ESTABAYA II, JACINTO",
+  "FABRIGAS, MA. ANTONETTE VILLAROSA",
+  "FACTURANAN, DEXTER JARDENICO",
+  "FALLE, DARYLL POTANE",
+  "FERRER, EDILEN O.",
+  "GABUT, CHERYLL MARIE CABEGUIN",
+  "GALINATO, MICHAEL KATIPUNAN",
+  "GALLA, CHERYL LIZA COLEGADO",
+  "GAMAO, MELGRAY ELISAN",
+  "GAMOLO, EZRA ALEA",
+  "GARCIA, JASON ANUNCIADO",
+  "GAUSIN, MIECHEL ASTILLERO",
+  "GETUABAN, ARCEIL DONTAR",
+  "GOPEZ, NICOLE CRE C.",
+  "GUARDIARIO, MA. ELIZABETH C.",
+  "GULANG, BERN CHARRIE MAÑUS",
+  "GUMAHAD, JASMIN JOY DAGUNO",
+  "ITEM, JUNEVIC RALLON",
+  "JAMERO, NICOLE",
+  "JARAULA, CIELO ANGELA AWATIN",
+  "JOPSON, LOUIE ROSALES",
+  "KATIPUNAN, MARLO DINSAG",
+  "KILAT, NICHOLE JAY GRAPE",
+  "LABANA, GOLDIE ANN PECCADOR",
+  "LABININAY, JANE PAULINE NISPEROS",
+  "LAGUE, LARRY PAUL SANTOS",
+  "LOKING, RUTH THELMA NATINDIM",
+  "LUMANTAS, LINDLEY NIEL CLARIN",
+  "LUNGAY, CHERRYME QUILANG",
+  "MABAO, ROLLY P.",
+  "MAGALLONES, MARIETTA VALLEDOR",
+  "MAGARIN, CHARLES LAGROSAS",
+  "MAGARO, MAYDILOU O.",
+  "MAGLUNSOD, FAITH ANN GARAY",
+  "MALINAO, FLOROSA BACON",
+  "MANGURAY, JEFFERSON PAJA",
+  "MAQUIDATO, RYAN DALE BAJA",
+  "MARQUEZ, MEA ANNE DYSERIE OGSID",
+  "MEDRANO, RONNEL B.",
+  "MINO, BRIZZA MAE REPULO",
+  "MORENO, PAOLO JOSEPH LACIERDA",
+  "NAGAC, JUSTINE FAITH LLAMAS",
+  "NALIPONGUIT, CHARED ABALDE",
+  "NAMOC, DONABELLE MAGHANOY",
+  "NEBREJA, MICHAEL CABUALAN",
+  "OCLIDA, THERESE ANNE M.",
+  "ODARVE, CYFRED UCAB",
+  "OLAPE, DIXIE GALE GALAMITON",
+  "ORTEGA, NANCY GONZALES",
+  "PAGAYON, JIA CARIZZA B.",
+  "PAGTULON-AN, ARVIE ROSE POLINAR",
+  "PAHUNANG, JOHN PATRICK",
+  "PALACAIN, PHILLIP EULLARAN",
+  "PAMINTAO, JAPPREY JARLATA",
+  "PAMISA, JERRICHO BORJA",
+  "PANILAG, CHARLYS CADIZ",
+  "PANTO, JEFREY REYES",
+  "PAO, FELYN PATAGOC",
+  "PASAYON, ELOIZA MARIE SABANAL",
+  "PEPANIA, REGINE DIALEL",
+  "PILONGO, JADE ANTHONY CLERIGO",
+  "PIQUERO, MARILETH LEGADOS",
+  "RABOY, NOEL DANLAG",
+  "RAMA, ERLYN BARRERA",
+  "RAMOS, MAYR JHOREY BASADRE",
+  "RANDA, EULYZA R.",
+  "REGODOS, ARIES AGUILAR",
+  "RETUERTO, JOHN KEITH SALVAN",
+  "REYES, RAY ANTHONY BULLECER",
+  "ROBRIL, MARICHELLE BARTE",
+  "ROMO, DONA CLAIRE ALINDAJAO",
+  "ROSALES, ALYSSA CINDE VALENZUELA",
+  "ROSAURO, RENER GUISONA",
+  "SABORNIDO, AMIE GRACE MANINGGO",
+  "SALIOT, RHEA LEGASPI",
+  "SALVADOR, MARIA RHEENA MAE PIEDAD",
+  "SALVANA, ARNOLD A.",
+  "SANAGA, SHIRANE BALABA",
+  "SANCHEZ, EIDNOLB TALINES",
+  "SANCHEZ, MILHEN CASTILLO",
+  "SANTOS, RINALYN PIVIDA",
+  "SENECA, MARIA THERESA LOPEZ",
+  "SERRAN, NICAILLA OBIENITA",
+  "SONOGAN, WILBUR BOLANDRES",
+  "SORIANO, GRACE",
+  "SULPOT, JANSHIN B.",
+  "SURIA, ANA MARIE MIER",
+  "TALIPAN, JBR EMMANUEL CHAVES",
+  "TAN, JOAN MARY ORAPA",
+  "TOLEDO, MIGUEL VICTOR OLANDRIA",
+  "TURNO, JODELYN BENSON",
+  "UCAB, PRINCESS DIANNE ONYOT",
+  "UNABIA, MICHELLE MAE BLANCO",
+  "VALDEZ, JONALFOR SORIANO",
+  "VALERIO, CHENDY F.",
+  "VALLAR, JAYCA L.",
+  "VILLACES, PATRIC MANUEL B.",
+  "VILLANUEVA, ALAIN REY REDONDO",
+  "VIRGULA, JULIETTE CALUMBAN",
+  "YBANEZ, MARY FRANCELLE NID V.",
+];
+
 // ─── CASHIER SCREEN ───────────────────────────────────────────────────────────
 const CashierScreen = ({
   items,
@@ -1047,6 +1219,8 @@ const CashierScreen = ({
   const [paymentMode, setPaymentMode] = useState("cash");
   const [memberName, setMemberName] = useState("");
   const [memberId, setMemberId] = useState("");
+  const [empSearch, setEmpSearch] = useState("");
+  const [empDropdownOpen, setEmpDropdownOpen] = useState(false);
   const [payModalVisible, setPayModalVisible] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
@@ -1098,6 +1272,8 @@ const CashierScreen = ({
     setCart({});
     setMemberName("");
     setMemberId("");
+    setEmpSearch("");
+    setEmpDropdownOpen(false);
   };
 
   // Called only after PaymentConfirmModal validates payment
@@ -1147,7 +1323,7 @@ const CashierScreen = ({
   const COLS = csIsWide ? 6 : 3;
 
   const CartContent = () => (
-    <View style={{ padding: csIsWide ? 0 : 12, gap: 8 }}>
+    <View style={{ padding: csIsWide ? 0 : 12, gap: 8, flex: 1, minHeight: 0 }}>
       {/* Payment mode selector */}
       <View style={{ gap: 4 }}>
         <Text
@@ -1170,7 +1346,11 @@ const CashierScreen = ({
             <TouchableOpacity
               key={mode}
               style={[cs.payTab, paymentMode === mode && cs.payTabActive]}
-              onPress={() => setPaymentMode(mode)}
+              onPress={() => {
+                setPaymentMode(mode);
+                setEmpDropdownOpen(false);
+                setEmpSearch("");
+              }}
               activeOpacity={0.8}
             >
               <Text style={{ fontSize: 13 }}>{icon}</Text>
@@ -1187,7 +1367,7 @@ const CashierScreen = ({
         </View>
       </View>
 
-      {/* Credit: member name input */}
+      {/* Credit: employee dropdown with search */}
       {paymentMode === "credit" && (
         <View style={{ gap: 4 }}>
           <Text
@@ -1199,22 +1379,181 @@ const CashierScreen = ({
               textTransform: "uppercase",
             }}
           >
-            Member Name *
+            Employee Name *
           </Text>
-          <TextInput
-            style={cs.amtInput}
-            value={memberName}
-            onChangeText={setMemberName}
-            placeholder="Full name / ID number"
-            placeholderTextColor="rgba(1,31,75,0.30)"
-          />
-          <TextInput
-            style={[cs.amtInput, { marginTop: 4 }]}
-            value={memberId}
-            onChangeText={setMemberId}
-            placeholder="Member ID (optional)"
-            placeholderTextColor="rgba(1,31,75,0.30)"
-          />
+          {/* Selected display / search trigger */}
+          <TouchableOpacity
+            style={[
+              cs.amtInput,
+              {
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              },
+            ]}
+            onPress={() => {
+              setEmpDropdownOpen((v) => !v);
+              setEmpSearch("");
+            }}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={{
+                fontFamily: "GoogleSans_400Regular",
+                fontSize: 12,
+                color: memberName ? "rgba(1,31,75,0.85)" : "rgba(1,31,75,0.30)",
+                flex: 1,
+              }}
+              numberOfLines={1}
+            >
+              {memberName || "Select employee..."}
+            </Text>
+            <MaterialIcons
+              name={
+                empDropdownOpen ? "keyboard-arrow-up" : "keyboard-arrow-down"
+              }
+              size={16}
+              color="rgba(1,31,75,0.45)"
+            />
+          </TouchableOpacity>
+          {/* Dropdown */}
+          {empDropdownOpen && (
+            <View
+              style={{
+                backgroundColor: "#fff",
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: "rgba(1,31,75,0.15)",
+                overflow: "hidden",
+                elevation: 6,
+                shadowColor: "#000",
+                shadowOpacity: 0.12,
+                shadowRadius: 8,
+              }}
+            >
+              {/* Search bar */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 8,
+                  paddingVertical: 6,
+                  borderBottomWidth: 1,
+                  borderColor: "rgba(1,31,75,0.08)",
+                  gap: 6,
+                }}
+              >
+                <MaterialIcons
+                  name="search"
+                  size={14}
+                  color="rgba(1,31,75,0.40)"
+                />
+                <TextInput
+                  style={{
+                    flex: 1,
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 12,
+                    color: "rgba(1,31,75,0.85)",
+                    paddingVertical: 2,
+                  }}
+                  value={empSearch}
+                  onChangeText={setEmpSearch}
+                  placeholder="Search employee..."
+                  placeholderTextColor="rgba(1,31,75,0.30)"
+                  autoFocus
+                />
+                {empSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setEmpSearch("")}>
+                    <MaterialIcons
+                      name="close"
+                      size={13}
+                      color="rgba(1,31,75,0.35)"
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+              {/* List */}
+              <ScrollView
+                style={{ maxHeight: 180 }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+              >
+                {EMPLOYEES.filter((e) =>
+                  e.toLowerCase().includes(empSearch.toLowerCase()),
+                ).map((emp) => (
+                  <TouchableOpacity
+                    key={emp}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                      borderBottomWidth: 1,
+                      borderColor: "rgba(1,31,75,0.05)",
+                      backgroundColor:
+                        memberName === emp
+                          ? "rgba(26,58,107,0.07)"
+                          : "transparent",
+                    }}
+                    onPress={() => {
+                      setMemberName(emp);
+                      setMemberId("");
+                      setEmpDropdownOpen(false);
+                      setEmpSearch("");
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={{
+                        fontFamily:
+                          memberName === emp
+                            ? "GoogleSans_700Bold"
+                            : "GoogleSans_400Regular",
+                        fontSize: 12,
+                        color:
+                          memberName === emp ? "#1a3a6b" : "rgba(1,31,75,0.75)",
+                      }}
+                    >
+                      {emp}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {EMPLOYEES.filter((e) =>
+                  e.toLowerCase().includes(empSearch.toLowerCase()),
+                ).length === 0 && (
+                  <Text
+                    style={{
+                      fontFamily: "GoogleSans_400Regular",
+                      fontSize: 11,
+                      color: "rgba(1,31,75,0.35)",
+                      textAlign: "center",
+                      padding: 12,
+                    }}
+                  >
+                    No employee found
+                  </Text>
+                )}
+              </ScrollView>
+            </View>
+          )}
+          {/* Clear selection */}
+          {memberName ? (
+            <TouchableOpacity
+              onPress={() => {
+                setMemberName("");
+                setMemberId("");
+              }}
+              style={{ alignSelf: "flex-end" }}
+            >
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_400Regular",
+                  fontSize: 10,
+                  color: "#e74c3c",
+                }}
+              >
+                ✕ Clear selection
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
 
@@ -1903,7 +2242,7 @@ const cs = StyleSheet.create({
   },
   cartItemsBox: {
     flex: 1,
-    minHeight: 50,
+    minHeight: 180,
     backgroundColor: "rgba(255,255,255,0.40)",
     borderRadius: 10,
     padding: 8,

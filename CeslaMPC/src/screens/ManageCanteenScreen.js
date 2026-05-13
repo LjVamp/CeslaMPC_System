@@ -83,6 +83,284 @@ const playOrderSound = async () => {
   }
 };
 
+// ─── MEMBER LIST ──────────────────────────────────────────────────────────────
+const MEMBERS = [
+  "ABAO, CHARITO GALOCHINO",
+  "ABELLA, SEP ALZEN PUNO",
+  "ACOT, MICHAEL CARVAJAL",
+  "ACTUB, JAN NIÑO FLORES",
+  "AGIR, RAMIL CARBELLIDA",
+  "ALING, ROSEMARIE",
+  "AMPUSTA, LOVELY JANE ALEMANIA",
+  "APOYA, EDGARDO DUHILAG",
+  "ARSUA, RUEL TOLIBAS",
+  "ASAY, IELYN GALABO",
+  "ATLAO, REAGAN BUHISAN",
+  "AUTOR, AMADO CONSTANTINE MALABANAN",
+  "AYAG, RHEGIE JOY BALURAN",
+  "AYCO, JOY VILLAMONTE",
+  "BAACLO, JURYLAN ABRAGAN",
+  "BABANTO, GRETCHEN MABALE",
+  "BAHAY, QUEEN ROMANILLOS",
+  "BAJUYO, SANNY JR L.",
+  "BALAGA, ROGELIO UGAT JR.",
+  "BALISTA, NIKKA JABAGAT",
+  "BALISTOY, ARMAE FE DECIERDO",
+  "BASADRE, MHELJUNE KIRT PALLOTO",
+  "BATARA, NINA FLOR BARRO",
+  "BAUTISTA, JOCELYN DUKA",
+  "BAYRON, SHELOU MAE ALCARAZ",
+  "BENDANILLO, IALENNE JAY",
+  "BENTUZAL, RUBY JEAN JABINIAR",
+  "BERNADAS, BERNADETH NICOMEDEZ",
+  "BILLONES, MA. THERESA",
+  "BONIAO, CYRIAN GALAMITON",
+  "BORROMEO, TIMOTHY JONAH E.",
+  "CABILLO, GERALD ABRIO",
+  "CABISO, JOY FE LEGASON",
+  "CADORNA, MICHAEL MAQUILING",
+  "CAGATAN, JENNY ANNE J.",
+  "CAGUIAT, THERENCE JOHN D.",
+  "CAIDIC, PRINCESS LANIE MAGALLANES",
+  "CAINGLET, HYACINTH BADILLA",
+  "CAINOY, ANGELICA",
+  "CANDEL, IRISH AGUILAR",
+  "CARCUEVA, CHARNELYN Q.",
+  "CASINILLO, ROWENA PESOLE",
+  "CHAVEZ, CHRISTOPHER JOHN CIERVO",
+  "CHUA, KENNETH POTULAN",
+  "COBRADOR, JHOANA ROSE R.",
+  "COQUILLA, KRISTEL VILLEGAS",
+  "CORRO, MICHELLE ALISOSO",
+  "CUMBA, BLESILDA LAGANG",
+  "CUTAMORA, CECILMAY A.",
+  "CUTOR, CORINNE MAE BAYRON",
+  "DABLIO, SHANE MYRTHEL U.",
+  "DAILO, REGIE",
+  "DAIRO, HANNAH LIEZEL M.",
+  "DAOMAR, AMOS GLENN GALVEZO",
+  "DAUG, IRISH CLAIRE",
+  "DE LOS SANTOS, CARLO JAMES ALAMBATIN",
+  "DELA PENA, REYMART RODELAS",
+  "DELOS REYES, ROMANITO UBANAN",
+  "DIAZ, ANGELLAN FE L.",
+  "DIAZ, RENAN PAGENTE",
+  "DILANGALEN, BAI FERDAUZIA ABDULRACHMAN",
+  "DIZON, DONNA MARIE MICHELLE CABATIC",
+  "EBO, MICHAEL PATRICK TUDTUD",
+  "EBAL, JERSON TOQUIB",
+  "ELICAN, ELMER MACOMAO",
+  "EMANO, RICHEL ANN EMBALSADO",
+  "ENTICE, MARK ANTHONY E",
+  "ESCABARTE, JEVELYN L.",
+  "ESTABAYA II, JACINTO",
+  "FABRIGAS, MA. ANTONETTE VILLAROSA",
+  "FACTURANAN, DEXTER JARDENICO",
+  "FALLE, DARYLL POTANE",
+  "FERRER, EDILEN O.",
+  "GABUT, CHERYLL MARIE CABEGUIN",
+  "GALINATO, MICHAEL KATIPUNAN",
+  "GALLA, CHERYL LIZA COLEGADO",
+  "GAMAO, MELGRAY ELISAN",
+  "GAMOLO, EZRA ALEA",
+  "GARCIA, JASON ANUNCIADO",
+  "GAUSIN, MIECHEL ASTILLERO",
+  "GETUABAN, ARCEIL DONTAR",
+  "GOPEZ, NICOLE CRE C.",
+  "GUARDIARIO, MA. ELIZABETH C.",
+  "GULANG, BERN CHARRIE MAÑUS",
+  "GUMAHAD, JASMIN JOY DAGUNO",
+  "ITEM, JUNEVIC RALLON",
+  "JAMERO, NICOLE",
+  "JARAULA, CIELO ANGELA AWATIN",
+  "JOPSON, LOUIE ROSALES",
+  "KATIPUNAN, MARLO DINSAG",
+  "KILAT, NICHOLE JAY GRAPE",
+  "LABANA, GOLDIE ANN PECCADOR",
+  "LABININAY, JANE PAULINE NISPEROS",
+  "LAGUE, LARRY PAUL SANTOS",
+  "LOKING, RUTH THELMA NATINDIM",
+  "LUMANTAS, LINDLEY NIEL CLARIN",
+  "LUNGAY, CHERRYME QUILANG",
+  "MABAO, ROLLY P.",
+  "MAGALLONES, MARIETTA VALLEDOR",
+  "MAGARIN, CHARLES LAGROSAS",
+  "MAGARO, MAYDILOU O.",
+  "MAGLUNSOD, FAITH ANN GARAY",
+  "MALINAO, FLOROSA BACON",
+  "MANGURAY, JEFFERSON PAJA",
+  "MAQUIDATO, RYAN DALE BAJA",
+  "MARQUEZ, MEA ANNE DYSERIE OGSID",
+  "MEDRANO, RONNEL B.",
+  "MINO, BRIZZA MAE REPULO",
+  "MORENO, PAOLO JOSEPH LACIERDA",
+  "NAGAC, JUSTINE FAITH LLAMAS",
+  "NALIPONGUIT, CHARED ABALDE",
+  "NAMOC, DONABELLE MAGHANOY",
+  "NEBREJA, MICHAEL CABUALAN",
+  "OCLIDA, THERESE ANNE M.",
+  "ODARVE, CYFRED UCAB",
+  "OLAPE, DIXIE GALE GALAMITON",
+  "ORTEGA, NANCY GONZALES",
+  "PAGAYON, JIA CARIZZA B.",
+  "PAGTULON-AN, ARVIE ROSE POLINAR",
+  "PAHUNANG, JOHN PATRICK",
+  "PALACAIN, PHILLIP EULLARAN",
+  "PAMINTAO, JAPPREY JARLATA",
+  "PAMISA, JERRICHO BORJA",
+  "PANILAG, CHARLYS CADIZ",
+  "PANTO, JEFREY REYES",
+  "PAO, FELYN PATAGOC",
+  "PASAYON, ELOIZA MARIE SABANAL",
+  "PEPANIA, REGINE DIALEL",
+  "PILONGO, JADE ANTHONY CLERIGO",
+  "PIQUERO, MARILETH LEGADOS",
+  "RABOY, NOEL DANLAG",
+  "RAMA, ERLYN BARRERA",
+  "RAMOS, MAYR JHOREY BASADRE",
+  "RANDA, EULYZA R.",
+  "REGODOS, ARIES AGUILAR",
+  "RETUERTO, JOHN KEITH SALVAN",
+  "REYES, RAY ANTHONY BULLECER",
+  "ROBRIL, MARICHELLE BARTE",
+  "ROMO, DONA CLAIRE ALINDAJAO",
+  "ROSALES, ALYSSA CINDE VALENZUELA",
+  "ROSAURO, RENER GUISONA",
+  "SABORNIDO, AMIE GRACE MANINGGO",
+  "SALIOT, RHEA LEGASPI",
+  "SALVADOR, MARIA RHEENA MAE PIEDAD",
+  "SALVANA, ARNOLD A.",
+  "SANAGA, SHIRANE BALABA",
+  "SANCHEZ, EIDNOLB TALINES",
+  "SANCHEZ, MILHEN CASTILLO",
+  "SANTOS, RINALYN PIVIDA",
+  "SENECA, MARIA THERESA LOPEZ",
+  "SERRAN, NICAILLA OBIENITA",
+  "SONOGAN, WILBUR BOLANDRES",
+  "SORIANO, GRACE",
+  "SULPOT, JANSHIN B.",
+  "SURIA, ANA MARIE MIER",
+  "TALIPAN, JBR EMMANUEL CHAVES",
+  "TAN, JOAN MARY ORAPA",
+  "TOLEDO, MIGUEL VICTOR OLANDRIA",
+  "TURNO, JODELYN BENSON",
+  "UCAB, PRINCESS DIANNE ONYOT",
+  "UNABIA, MICHELLE MAE BLANCO",
+  "VALDEZ, JONALFOR SORIANO",
+  "VALERIO, CHENDY F.",
+  "VALLAR, JAYCA L.",
+  "VILLACES, PATRIC MANUEL B.",
+  "VILLANUEVA, ALAIN REY REDONDO",
+  "VIRGULA, JULIETTE CALUMBAN",
+  "YBANEZ, MARY FRANCELLE NID V.",
+];
+
+// ─── MEMBER DROPDOWN COMPONENT ────────────────────────────────────────────────
+const MemberDropdown = ({ value, onChange, inputStyle }) => {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filtered = query.trim()
+    ? MEMBERS.filter((m) => m.toLowerCase().includes(query.toLowerCase()))
+    : MEMBERS;
+
+  const handleSelect = (name) => {
+    onChange(name);
+    setQuery(name);
+    setOpen(false);
+  };
+
+  const handleChangeText = (text) => {
+    setQuery(text);
+    onChange(text);
+    setOpen(true);
+  };
+
+  const handleFocus = () => {
+    setOpen(true);
+  };
+
+  const handleBlur = () => {
+    // slight delay so tap on item registers first
+    setTimeout(() => setOpen(false), 180);
+  };
+
+  return (
+    <View style={{ position: "relative", zIndex: 99 }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <TextInput
+          style={[inputStyle, { flex: 1, paddingRight: 28 }]}
+          value={query || value}
+          onChangeText={handleChangeText}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder="Search member name..."
+          placeholderTextColor="rgba(1,31,75,0.30)"
+        />
+        <MaterialIcons
+          name={open ? "arrow-drop-up" : "arrow-drop-down"}
+          size={20}
+          color="rgba(1,31,75,0.50)"
+          style={{ position: "absolute", right: 6 }}
+        />
+      </View>
+      {open && filtered.length > 0 && (
+        <View
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            backgroundColor: "#fff",
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: "rgba(1,31,75,0.15)",
+            maxHeight: 180,
+            overflow: "hidden",
+            shadowColor: "#000",
+            shadowOpacity: 0.12,
+            shadowRadius: 6,
+            shadowOffset: { width: 0, height: 3 },
+            elevation: 6,
+            zIndex: 999,
+          }}
+        >
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
+            {filtered.map((name) => (
+              <TouchableOpacity
+                key={name}
+                onPress={() => handleSelect(name)}
+                style={{
+                  paddingVertical: 9,
+                  paddingHorizontal: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "rgba(1,31,75,0.06)",
+                  backgroundColor:
+                    value === name ? "rgba(1,31,75,0.06)" : "#fff",
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "GoogleSans_400Regular",
+                    fontSize: 12,
+                    color: "#1a3a6b",
+                  }}
+                >
+                  {name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+};
+
 // ─── WEB SCROLL VIEW ──────────────────────────────────────────────────────────
 if (Platform.OS === "web" && typeof document !== "undefined") {
   const styleEl = document.createElement("style");
@@ -2342,6 +2620,68 @@ const CashierScreen = ({
           <Text style={cs.cartTitle}>
             🛒 CART {cartItems.length > 0 ? `(${cartItems.length})` : ""}
           </Text>
+
+          {/* Payment method chips — TOP */}
+          <View style={{ gap: 4 }}>
+            <Text
+              style={{
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 9,
+                color: "rgba(1,31,75,0.50)",
+                letterSpacing: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              Payment Method
+            </Text>
+            <View style={{ flexDirection: "row", gap: 4 }}>
+              {[
+                ["cash", "💵", "Cash"],
+                ["gcash", "📱", "GCash"],
+                ["credit", "🪙", "Credit"],
+              ].map(([mode, icon, label]) => (
+                <TouchableOpacity
+                  key={mode}
+                  style={[cs.payChip, paymentMode === mode && cs.payChipActive]}
+                  onPress={() => setPaymentMode(mode)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ fontSize: 13 }}>{icon}</Text>
+                  <Text
+                    style={[
+                      cs.payChipTxt,
+                      paymentMode === mode && cs.payChipTxtActive,
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {paymentMode === "credit" && (
+            <View style={{ gap: 4, zIndex: 99 }}>
+              <Text
+                style={{
+                  fontFamily: "GoogleSans_700Bold",
+                  fontSize: 9,
+                  color: "rgba(1,31,75,0.50)",
+                  letterSpacing: 1,
+                  textTransform: "uppercase",
+                }}
+              >
+                Member Name *
+              </Text>
+              <MemberDropdown
+                value={memberName}
+                onChange={setMemberName}
+                inputStyle={cs.amtInput}
+              />
+            </View>
+          )}
+
+          {/* Cart items — BOTTOM */}
           <View style={cs.cartItemsBox}>
             {cartItems.length === 0 ? (
               <Text style={cs.cartEmpty}>No items added yet</Text>
@@ -2382,75 +2722,6 @@ const CashierScreen = ({
             <Text style={cs.totalLbl}>TOTAL</Text>
             <Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text>
           </View>
-
-          {/* Payment method chips */}
-          <View style={{ gap: 4 }}>
-            <Text
-              style={{
-                fontFamily: "GoogleSans_700Bold",
-                fontSize: 9,
-                color: "rgba(1,31,75,0.50)",
-                letterSpacing: 1,
-                textTransform: "uppercase",
-              }}
-            >
-              Payment Method
-            </Text>
-            <View style={{ flexDirection: "row", gap: 4 }}>
-              {[
-                ["cash", "💵", "Cash"],
-                ["gcash", "📱", "GCash"],
-                ["credit", "🪙", "Credit"],
-              ].map(([mode, icon, label]) => (
-                <TouchableOpacity
-                  key={mode}
-                  style={[cs.payChip, paymentMode === mode && cs.payChipActive]}
-                  onPress={() => setPaymentMode(mode)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={{ fontSize: 13 }}>{icon}</Text>
-                  <Text
-                    style={[
-                      cs.payChipTxt,
-                      paymentMode === mode && cs.payChipTxtActive,
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {paymentMode === "credit" && (
-            <View style={{ gap: 4 }}>
-              <Text
-                style={{
-                  fontFamily: "GoogleSans_700Bold",
-                  fontSize: 9,
-                  color: "rgba(1,31,75,0.50)",
-                  letterSpacing: 1,
-                  textTransform: "uppercase",
-                }}
-              >
-                Member Name *
-              </Text>
-              <TextInput
-                style={cs.amtInput}
-                value={memberName}
-                onChangeText={setMemberName}
-                placeholder="Full name / ID number"
-                placeholderTextColor="rgba(1,31,75,0.30)"
-              />
-              <TextInput
-                style={[cs.amtInput, { marginTop: 4 }]}
-                value={memberId}
-                onChangeText={setMemberId}
-                placeholder="Member ID (optional)"
-                placeholderTextColor="rgba(1,31,75,0.30)"
-              />
-            </View>
-          )}
 
           <TouchableOpacity
             style={[
@@ -2581,6 +2852,70 @@ const CashierScreen = ({
                   contentContainerStyle={{ flexGrow: 1 }}
                 >
                   <View style={{ padding: 12, gap: 8 }}>
+                    {/* Payment method chips — TOP */}
+                    <View style={{ gap: 4 }}>
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_700Bold",
+                          fontSize: 9,
+                          color: "rgba(1,31,75,0.50)",
+                          letterSpacing: 1,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Payment Method
+                      </Text>
+                      <View style={{ flexDirection: "row", gap: 4 }}>
+                        {[
+                          ["cash", "💵", "Cash"],
+                          ["gcash", "📱", "GCash"],
+                          ["credit", "🪙", "Credit"],
+                        ].map(([mode, icon, label]) => (
+                          <TouchableOpacity
+                            key={mode}
+                            style={[
+                              cs.payChip,
+                              paymentMode === mode && cs.payChipActive,
+                            ]}
+                            onPress={() => setPaymentMode(mode)}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={{ fontSize: 13 }}>{icon}</Text>
+                            <Text
+                              style={[
+                                cs.payChipTxt,
+                                paymentMode === mode && cs.payChipTxtActive,
+                              ]}
+                            >
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+
+                    {paymentMode === "credit" && (
+                      <View style={{ gap: 4, zIndex: 99 }}>
+                        <Text
+                          style={{
+                            fontFamily: "GoogleSans_700Bold",
+                            fontSize: 9,
+                            color: "rgba(1,31,75,0.50)",
+                            letterSpacing: 1,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Member Name *
+                        </Text>
+                        <MemberDropdown
+                          value={memberName}
+                          onChange={setMemberName}
+                          inputStyle={cs.amtInput}
+                        />
+                      </View>
+                    )}
+
+                    {/* Cart items — BOTTOM */}
                     <View style={cs.cartItemsBox}>
                       {cartItems.length === 0 ? (
                         <Text style={cs.cartEmpty}>No items added yet</Text>
@@ -2626,78 +2961,6 @@ const CashierScreen = ({
                       <Text style={cs.totalLbl}>TOTAL</Text>
                       <Text style={cs.totalVal}>₱ {total.toFixed(2)}</Text>
                     </View>
-
-                    {/* Payment method chips */}
-                    <View style={{ gap: 4 }}>
-                      <Text
-                        style={{
-                          fontFamily: "GoogleSans_700Bold",
-                          fontSize: 9,
-                          color: "rgba(1,31,75,0.50)",
-                          letterSpacing: 1,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Payment Method
-                      </Text>
-                      <View style={{ flexDirection: "row", gap: 4 }}>
-                        {[
-                          ["cash", "💵", "Cash"],
-                          ["gcash", "📱", "GCash"],
-                          ["credit", "🪙", "Credit"],
-                        ].map(([mode, icon, label]) => (
-                          <TouchableOpacity
-                            key={mode}
-                            style={[
-                              cs.payChip,
-                              paymentMode === mode && cs.payChipActive,
-                            ]}
-                            onPress={() => setPaymentMode(mode)}
-                            activeOpacity={0.8}
-                          >
-                            <Text style={{ fontSize: 13 }}>{icon}</Text>
-                            <Text
-                              style={[
-                                cs.payChipTxt,
-                                paymentMode === mode && cs.payChipTxtActive,
-                              ]}
-                            >
-                              {label}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-
-                    {paymentMode === "credit" && (
-                      <View style={{ gap: 4 }}>
-                        <Text
-                          style={{
-                            fontFamily: "GoogleSans_700Bold",
-                            fontSize: 9,
-                            color: "rgba(1,31,75,0.50)",
-                            letterSpacing: 1,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          Member Name *
-                        </Text>
-                        <TextInput
-                          style={cs.amtInput}
-                          value={memberName}
-                          onChangeText={setMemberName}
-                          placeholder="Full name / ID number"
-                          placeholderTextColor="rgba(1,31,75,0.30)"
-                        />
-                        <TextInput
-                          style={[cs.amtInput, { marginTop: 4 }]}
-                          value={memberId}
-                          onChangeText={setMemberId}
-                          placeholder="Member ID (optional)"
-                          placeholderTextColor="rgba(1,31,75,0.30)"
-                        />
-                      </View>
-                    )}
 
                     <TouchableOpacity
                       style={[
@@ -3118,7 +3381,7 @@ const cs = StyleSheet.create({
   },
   cartItemsBox: {
     flex: 1,
-    minHeight: 50,
+    minHeight: 30,
     backgroundColor: "rgba(255,255,255,0.40)",
     borderRadius: 10,
     padding: 8,
