@@ -38,7 +38,13 @@
     "plugins": [
       "expo-font",
       "expo-sharing",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow CESLA Grocery to use your location to calculate delivery distance and fee."
+        }
+      ]
     ],
     "extra": {
       "eas": {

@@ -445,6 +445,755 @@ const ReceiptModal = ({
 };
 
 // ─── CART PANEL ───────────────────────────────────────────────────────────────
+// ─── CLIMBS BULUA STORE COORDINATES ───────────────────────────────────────────
+const STORE_LAT = 8.4748; // CLIMBS Bulua, Cagayan de Oro
+const STORE_LNG = 124.6474;
+const STORE_ADDRESS =
+  "CLIMBS Technology and Business Resource Center, Bulua, Cagayan de Oro";
+const DELIVERY_FLAT_FEE = 49; // ₱49 flat for first 2 km (FoodPanda-style)
+const DELIVERY_FLAT_KM = 2; // km covered by flat fee
+const DELIVERY_PER_KM = 10; // ₱10/km after flat distance
+const FREE_DELIVERY_RADIUS_KM = 0.3; // Free if within 300m of CLIMBS (within company)
+
+// Haversine distance in km
+const haversineKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+// ─── LAZY-LOAD react-native-maps (native only) ────────────────────────────────
+let MapView = null;
+let Marker = null;
+if (Platform.OS !== "web") {
+  try {
+    const RNMaps = require("react-native-maps");
+    MapView = RNMaps.default;
+    Marker = RNMaps.Marker;
+  } catch (_) {}
+}
+
+// ─── LEAFLET HTML (iframe for web) ────────────────────────────────────────────
+const LEAFLET_HTML = (lat, lng) => `<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body,#map { width:100%; height:100%; }
+  .leaflet-control-attribution { font-size:8px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  var initLat = ${lat || STORE_LAT};
+  var initLng = ${lng || STORE_LNG};
+  var cdoBounds = L.latLngBounds([[8.37, 124.55], [8.58, 124.78]]);
+  var map = L.map('map', { maxBounds: cdoBounds, maxBoundsViscosity: 1.0, minZoom: 12 })
+    .setView([initLat, initLng], ${lat ? 17 : 14});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+  }).addTo(map);
+  var icon = L.divIcon({
+    html: '<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;background:#e74c3c;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.35);transform:rotate(-45deg);"></div>',
+    iconSize:[26,26], iconAnchor:[13,26], className:''
+  });
+  var marker = null;
+  function setPin(lat, lng) {
+    if (marker) { marker.setLatLng([lat, lng]); }
+    else {
+      marker = L.marker([lat, lng], { icon: icon, draggable: true }).addTo(map);
+      marker.on('dragend', function(e) {
+        var ll = e.target.getLatLng();
+        window.parent.postMessage(JSON.stringify({ type:'coords', lat: ll.lat, lng: ll.lng }), '*');
+      });
+    }
+    window.parent.postMessage(JSON.stringify({ type:'coords', lat: lat, lng: lng }), '*');
+  }
+  ${lat ? `setPin(${lat}, ${lng});` : ""}
+  map.on('click', function(e) { setPin(e.latlng.lat, e.latlng.lng); map.panTo(e.latlng); });
+  window.addEventListener('message', function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+      if (msg.type === 'flyTo') { setPin(msg.lat, msg.lng); map.setView([msg.lat, msg.lng], 16); }
+    } catch(_) {}
+  });
+</script>
+</body>
+</html>`;
+
+// ─── DELIVERY MAP MODAL ────────────────────────────────────────────────────────
+const DEFAULT_REGION = {
+  latitude: STORE_LAT,
+  longitude: STORE_LNG,
+  latitudeDelta: 0.04,
+  longitudeDelta: 0.04,
+};
+const GEOAPIFY_KEY = "a331c3962fec4895bf75aa4947d35fbc";
+const CDO_LAT = 8.4822;
+const CDO_LNG = 124.6472;
+const CDO_BBOX = "124.55,8.37,124.78,8.58";
+
+const DeliveryMapModal = ({ visible, onConfirm, onClose }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(80)).current;
+
+  const [coords, setCoords] = useState(null);
+  const [address, setAddress] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [locLoading, setLocLoading] = useState(false);
+  const [region, setRegion] = useState(DEFAULT_REGION);
+  const [mapKey, setMapKey] = useState(0);
+  const iframeRef = useRef(null);
+  const searchTimer = useRef(null);
+
+  // Entrance animation
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 260,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 65,
+          friction: 11,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      fadeAnim.setValue(0);
+      slideAnim.setValue(80);
+      setSearchQuery("");
+      setSuggestions([]);
+      setCoords(null);
+      setAddress("");
+      setRegion(DEFAULT_REGION);
+    }
+  }, [visible]);
+
+  // Listen for pin coords from Leaflet iframe (web)
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const handler = async (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type !== "coords") return;
+        const { lat, lng } = msg;
+        setCoords({ lat, lng });
+        try {
+          const res = await fetch(
+            `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&lang=en&apiKey=${GEOAPIFY_KEY}`,
+          );
+          const data = await res.json();
+          const addr = data.features?.[0]?.properties?.formatted;
+          setAddress(addr || `${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+        } catch (_) {
+          setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+        }
+      } catch (_) {}
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  // Photon search (primary, free)
+  const searchPhoton = async (text) => {
+    const res = await fetch(
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(text)},Cagayan de Oro&lat=${CDO_LAT}&lon=${CDO_LNG}&limit=6&lang=en`,
+    );
+    const data = await res.json();
+    return (data.features || [])
+      .filter((f) => {
+        const [lng, lat] = f.geometry.coordinates;
+        return lat >= 8.37 && lat <= 8.58 && lng >= 124.55 && lng <= 124.78;
+      })
+      .map((f) => ({
+        display_name: [
+          f.properties.name,
+          f.properties.street,
+          f.properties.district,
+          f.properties.city,
+        ]
+          .filter(Boolean)
+          .join(", "),
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0],
+      }));
+  };
+
+  // Geoapify search (fallback)
+  const searchGeoapify = async (text) => {
+    const res = await fetch(
+      `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(text)}&bias=proximity:${CDO_LNG},${CDO_LAT}&filter=rect:${CDO_BBOX}&limit=6&lang=en&apiKey=${GEOAPIFY_KEY}`,
+    );
+    const data = await res.json();
+    return (data.features || []).map((f) => ({
+      display_name: f.properties.formatted,
+      lat: f.geometry.coordinates[1],
+      lng: f.geometry.coordinates[0],
+    }));
+  };
+
+  const handleSearchChange = (text) => {
+    setSearchQuery(text);
+    clearTimeout(searchTimer.current);
+    if (text.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        let results = await searchPhoton(text);
+        if (results.length === 0) results = await searchGeoapify(text);
+        setSuggestions(results);
+      } catch (_) {
+        try {
+          setSuggestions(await searchGeoapify(text));
+        } catch (__) {
+          setSuggestions([]);
+        }
+      }
+      setSearching(false);
+    }, 400);
+  };
+
+  const handleSelectSuggestion = (s) => {
+    setSearchQuery("");
+    setSuggestions([]);
+    setCoords({ lat: s.lat, lng: s.lng });
+    setAddress(s.display_name);
+    if (Platform.OS !== "web") {
+      setRegion({
+        latitude: s.lat,
+        longitude: s.lng,
+        latitudeDelta: 0.003,
+        longitudeDelta: 0.003,
+      });
+    } else {
+      setMapKey((k) => k + 1);
+    }
+  };
+
+  const handleGetLocation = async () => {
+    setLocLoading(true);
+    try {
+      let latitude, longitude;
+      if (Platform.OS === "web") {
+        if (!navigator.geolocation) {
+          Alert.alert("Not Supported", "Geolocation not supported.");
+          setLocLoading(false);
+          return;
+        }
+        await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(
+            (p) => {
+              latitude = p.coords.latitude;
+              longitude = p.coords.longitude;
+              res();
+            },
+            (e) => rej(e),
+            { enableHighAccuracy: true, timeout: 12000 },
+          ),
+        );
+      } else {
+        const Loc = require("expo-location");
+        const { status } = await Loc.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission Denied", "Location permission required.");
+          setLocLoading(false);
+          return;
+        }
+        const loc = await Loc.getCurrentPositionAsync({
+          accuracy: Loc.Accuracy.High,
+        });
+        latitude = loc.coords.latitude;
+        longitude = loc.coords.longitude;
+      }
+      setCoords({ lat: latitude, lng: longitude });
+      try {
+        const res = await fetch(
+          `https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&lang=en&apiKey=${GEOAPIFY_KEY}`,
+        );
+        const data = await res.json();
+        const addr = data.features?.[0]?.properties?.formatted;
+        setAddress(addr || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      } catch (_) {
+        setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      }
+      if (Platform.OS !== "web") {
+        setRegion({
+          latitude,
+          longitude,
+          latitudeDelta: 0.003,
+          longitudeDelta: 0.003,
+        });
+      } else {
+        setMapKey((k) => k + 1);
+      }
+    } catch (_) {
+      Alert.alert("Error", "Could not get location. Enable GPS and try again.");
+    }
+    setLocLoading(false);
+  };
+
+  const handleMarkerDrag = async (e) => {
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+    setCoords({ lat: latitude, lng: longitude });
+    try {
+      const res = await fetch(
+        `https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&lang=en&apiKey=${GEOAPIFY_KEY}`,
+      );
+      const data = await res.json();
+      const addr = data.features?.[0]?.properties?.formatted;
+      setAddress(addr || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+    } catch (_) {
+      setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+    }
+  };
+
+  const handleConfirm = () => {
+    if (!address.trim() || !coords) {
+      Alert.alert("No location", "Please set a delivery location first.");
+      return;
+    }
+    const distanceKm = haversineKm(
+      STORE_LAT,
+      STORE_LNG,
+      coords.lat,
+      coords.lng,
+    );
+    const isWithin = distanceKm <= FREE_DELIVERY_RADIUS_KM;
+    const deliveryFee = isWithin
+      ? 0
+      : distanceKm <= DELIVERY_FLAT_KM
+        ? DELIVERY_FLAT_FEE
+        : Math.ceil(
+            DELIVERY_FLAT_FEE +
+              (distanceKm - DELIVERY_FLAT_KM) * DELIVERY_PER_KM,
+          );
+    onConfirm({
+      lat: coords.lat,
+      lng: coords.lng,
+      address: address.trim(),
+      distanceKm,
+      deliveryFee,
+    });
+    onClose();
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      onRequestClose={onClose}
+    >
+      <Animated.View style={[lpStyles.overlay, { opacity: fadeAnim }]}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <Animated.View
+          style={[lpStyles.sheet, { transform: [{ translateY: slideAnim }] }]}
+        >
+          {/* Header */}
+          <View style={lpStyles.header}>
+            <Text style={lpStyles.headerIcon}>🛵</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={lpStyles.headerTitle}>Set Delivery Location</Text>
+              <Text style={lpStyles.headerSub}>
+                Search address or drop pin on map
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={lpStyles.closeBtn}>
+              <Text style={lpStyles.closeBtnTxt}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Search bar */}
+          <View style={lpStyles.searchWrap}>
+            <View style={lpStyles.searchRow}>
+              <Text style={lpStyles.searchIcon}>🔍</Text>
+              <TextInput
+                style={lpStyles.searchInput}
+                value={searchQuery}
+                onChangeText={handleSearchChange}
+                placeholder="Search address, landmark, place…"
+                placeholderTextColor="rgba(1,31,75,0.35)"
+                returnKeyType="search"
+              />
+              {searching && (
+                <Text style={{ fontSize: 11, color: "rgba(1,31,75,0.45)" }}>
+                  …
+                </Text>
+              )}
+              {searchQuery.length > 0 && !searching && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSearchQuery("");
+                    setSuggestions([]);
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: "rgba(1,31,75,0.40)",
+                      paddingHorizontal: 4,
+                    }}
+                  >
+                    ✕
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {suggestions.length > 0 && (
+              <View style={lpStyles.suggestions}>
+                {suggestions.map((s, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={[
+                      lpStyles.suggestionItem,
+                      i < suggestions.length - 1 && lpStyles.suggestionBorder,
+                    ]}
+                    onPress={() => handleSelectSuggestion(s)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={lpStyles.suggestionPin}>📍</Text>
+                    <Text style={lpStyles.suggestionTxt} numberOfLines={2}>
+                      {s.display_name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* GPS button */}
+          <TouchableOpacity
+            style={lpStyles.myLocBtn}
+            onPress={handleGetLocation}
+            activeOpacity={0.8}
+            disabled={locLoading}
+          >
+            <LinearGradient
+              colors={["#1a3a6b", "#2e5fa3"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={lpStyles.myLocGrad}
+            >
+              <Text style={lpStyles.myLocTxt}>
+                {locLoading
+                  ? "⏳  Getting your location…"
+                  : "📡  Use My Current Location"}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {/* Map */}
+          <View style={lpStyles.mapWrap}>
+            {Platform.OS !== "web" && MapView ? (
+              <>
+                <MapView
+                  style={{ flex: 1 }}
+                  region={region}
+                  onPress={(e) => {
+                    const { latitude, longitude } = e.nativeEvent.coordinate;
+                    setRegion((r) => ({ ...r, latitude, longitude }));
+                    handleMarkerDrag({
+                      nativeEvent: { coordinate: { latitude, longitude } },
+                    });
+                  }}
+                  showsUserLocation
+                  showsMyLocationButton={false}
+                >
+                  {coords && (
+                    <Marker
+                      coordinate={{
+                        latitude: coords.lat,
+                        longitude: coords.lng,
+                      }}
+                      draggable
+                      onDragEnd={handleMarkerDrag}
+                      pinColor="#e74c3c"
+                    />
+                  )}
+                </MapView>
+                <View style={lpStyles.mapHint} pointerEvents="none">
+                  <View style={lpStyles.mapHintBubble}>
+                    <Text style={lpStyles.mapHintTxt}>
+                      {coords
+                        ? "Drag pin to adjust"
+                        : "👆 Tap map to pin location"}
+                    </Text>
+                  </View>
+                </View>
+              </>
+            ) : Platform.OS === "web" ? (
+              <iframe
+                key={mapKey}
+                ref={iframeRef}
+                title="Delivery Map"
+                srcDoc={LEAFLET_HTML(coords?.lat, coords?.lng)}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  border: 0,
+                  borderRadius: 14,
+                }}
+                sandbox="allow-scripts allow-same-origin"
+              />
+            ) : (
+              <View style={lpStyles.mapPlaceholder}>
+                <Text style={{ fontSize: 36 }}>🗺️</Text>
+                <Text style={lpStyles.mapPlaceholderTxt}>
+                  Map unavailable. Use search or GPS.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Address row */}
+          <View style={lpStyles.addrRow}>
+            <Text style={lpStyles.addrPin}>📦</Text>
+            <TextInput
+              style={lpStyles.addrInput}
+              value={address}
+              onChangeText={setAddress}
+              placeholder="Delivery address will appear here…"
+              placeholderTextColor="rgba(1,31,75,0.35)"
+              multiline
+            />
+            {address.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setAddress("");
+                  setCoords(null);
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: "rgba(1,31,75,0.40)",
+                    paddingLeft: 4,
+                  }}
+                >
+                  ✕
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Confirm */}
+          <TouchableOpacity
+            style={[lpStyles.confirmBtn, !address.trim() && { opacity: 0.4 }]}
+            onPress={handleConfirm}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={["#1a3a6b", "#2e5fa3"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={lpStyles.confirmGrad}
+            >
+              <Text style={lpStyles.confirmTxt}>✅ Confirm Location</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+};
+
+const lpStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(1,15,40,0.60)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: "#f0f5f9",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 18,
+    gap: 10,
+    maxHeight: "92%",
+    shadowColor: "#000",
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    elevation: 20,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 2,
+  },
+  headerIcon: { fontSize: 26 },
+  headerTitle: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 15,
+    color: "#0f1e35",
+  },
+  headerSub: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.50)",
+    marginTop: 2,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    backgroundColor: "rgba(1,31,75,0.08)",
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeBtnTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 14,
+    color: "rgba(1,31,75,0.55)",
+  },
+  searchWrap: { position: "relative", zIndex: 99 },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(200,218,235,0.90)",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    gap: 8,
+  },
+  searchIcon: { fontSize: 15 },
+  searchInput: {
+    flex: 1,
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 13,
+    color: "#0f1e35",
+    paddingVertical: 9,
+  },
+  suggestions: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: "rgba(200,218,235,0.80)",
+    shadowColor: "#000",
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 12,
+    overflow: "hidden",
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 8,
+  },
+  suggestionBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(200,218,235,0.50)",
+  },
+  suggestionPin: { fontSize: 14, paddingTop: 1 },
+  suggestionTxt: {
+    flex: 1,
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 12,
+    color: "rgba(1,31,75,0.75)",
+    lineHeight: 17,
+  },
+  myLocBtn: { borderRadius: 11, overflow: "hidden" },
+  myLocGrad: { paddingVertical: 11, alignItems: "center" },
+  myLocTxt: { fontFamily: "GoogleSans_700Bold", fontSize: 13, color: "#fff" },
+  mapWrap: {
+    height: 230,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "rgba(200,218,235,0.30)",
+    borderWidth: 1,
+    borderColor: "rgba(200,218,235,0.70)",
+  },
+  mapHint: {
+    position: "absolute",
+    bottom: 10,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  mapHintBubble: {
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  mapHintTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "#fff",
+  },
+  mapPlaceholder: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  mapPlaceholderTxt: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 12,
+    color: "rgba(1,31,75,0.45)",
+    textAlign: "center",
+    paddingHorizontal: 24,
+  },
+  addrRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(200,218,235,0.90)",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    gap: 8,
+  },
+  addrPin: { fontSize: 18, paddingTop: 8 },
+  addrInput: {
+    flex: 1,
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 12,
+    color: "#0f1e35",
+    paddingVertical: 9,
+    minHeight: 38,
+    maxHeight: 72,
+  },
+  confirmBtn: { borderRadius: 12, overflow: "hidden" },
+  confirmGrad: { paddingVertical: 14, alignItems: "center" },
+  confirmTxt: { fontFamily: "GoogleSans_700Bold", fontSize: 14, color: "#fff" },
+});
+
 const CartPanel = ({
   cart,
   onAdd,
@@ -459,6 +1208,10 @@ const CartPanel = ({
 }) => {
   const [checked, setChecked] = useState({});
   const [paymentMode, setPaymentMode] = useState("cash");
+  const [orderType, setOrderType] = useState("pickup");
+  const [activeTab, setActiveTab] = useState("cart");
+  const [deliveryInfo, setDeliveryInfo] = useState(null); // {lat,lng,address,distanceKm,deliveryFee}
+  const [mapVisible, setMapVisible] = useState(false);
 
   const cartItems = Object.values(cart).filter((i) => i.qty > 0);
 
@@ -477,13 +1230,23 @@ const CartPanel = ({
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const checkedItems = cartItems.filter(({ item }) => checked[item.id]);
-  const total = checkedItems.reduce(
+  const subtotal = checkedItems.reduce(
     (s, { item, qty }) => s + item.price * qty,
     0,
   );
+  const deliveryFee =
+    orderType === "deliver" && deliveryInfo ? deliveryInfo.deliveryFee : 0;
+  const total = subtotal + deliveryFee;
 
   const handlePlaceOrder = () => {
     if (checkedItems.length === 0) return;
+    if (orderType === "deliver" && !deliveryInfo) {
+      Alert.alert(
+        "No delivery location",
+        "I-set una ang imong delivery location.",
+      );
+      return;
+    }
     const orderNo = Math.floor(1000 + Math.random() * 9000);
     const now = new Date();
     const time =
@@ -497,170 +1260,366 @@ const CartPanel = ({
     onPlaceOrder({
       items: checkedItems,
       total,
+      subtotal,
+      deliveryFee,
+      deliveryInfo: orderType === "deliver" ? deliveryInfo : null,
       amountPaid: total,
       change: 0,
       orderNo,
       time,
       paymentMode,
+      orderType,
     });
   };
 
   return (
     <View style={[styles.cartPanel, !isWide && styles.cartPanelMobile]}>
-      {!hideTitle && <Text style={styles.cartPanelTitle}>CART</Text>}
-
-      {/* Items list with checkboxes */}
-      <View style={styles.cartItemsBox}>
-        {cartItems.length === 0 ? (
-          <Text style={styles.cartEmpty}>Cart is empty.</Text>
-        ) : (
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            style={{ maxHeight: 200 }}
-          >
-            {cartItems.map(({ item, qty }) => (
-              <View key={item.id} style={styles.cartRow}>
-                {/* Checkbox */}
-                <TouchableOpacity
-                  style={[
-                    styles.checkbox,
-                    checked[item.id] && styles.checkboxChecked,
-                  ]}
-                  onPress={() => toggleCheck(item.id)}
-                >
-                  {checked[item.id] && <Text style={styles.checkmark}>✓</Text>}
-                </TouchableOpacity>
-                <Text style={styles.cartRowEmoji}>{item.emoji}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cartRowName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.cartRowSub}>
-                    x{qty} ₱{item.price * qty}
-                  </Text>
-                </View>
-                <View style={styles.cartRowQty}>
-                  <TouchableOpacity
-                    style={styles.cartQBtn}
-                    onPress={() => onRemove(item)}
-                  >
-                    <Text style={styles.cartQBtnText}>−</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.cartQBtn, styles.cartQBtnAdd]}
-                    onPress={() => onAdd(item)}
-                  >
-                    <Text style={[styles.cartQBtnText, { color: "#fff" }]}>
-                      +
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-        )}
-      </View>
-
-      {/* Total — based on checked items only */}
-      <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>Total :</Text>
-        <Text style={styles.totalValue}>₱ {total.toFixed(2)}</Text>
-      </View>
-
-      {/* Mode of Payment */}
-      <View style={styles.paymentModeBox}>
-        <Text style={styles.paymentModeLabel}>Mode of Payment</Text>
-        <View style={styles.paymentModeRow}>
+      {/* ── Tab switcher: Cart / Placed Orders ── */}
+      {!hideTitle && (
+        <View style={styles.cartTabRow}>
           <TouchableOpacity
-            style={styles.paymentModeOption}
-            onPress={() => setPaymentMode("cash")}
-            activeOpacity={0.8}
+            style={[
+              styles.cartTab,
+              activeTab === "cart" && styles.cartTabActive,
+            ]}
+            onPress={() => setActiveTab("cart")}
+            activeOpacity={0.85}
           >
-            <View
-              style={[
-                styles.radioOuter,
-                paymentMode === "cash" && styles.radioOuterActive,
-              ]}
-            >
-              {paymentMode === "cash" && <View style={styles.radioInner} />}
-            </View>
             <Text
               style={[
-                styles.paymentModeText,
-                paymentMode === "cash" && styles.paymentModeTextActive,
+                styles.cartTabText,
+                activeTab === "cart" && styles.cartTabTextActive,
               ]}
             >
-              💵 Cash
+              🛒 Cart
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.paymentModeOption}
-            onPress={() => setPaymentMode("gcash")}
-            activeOpacity={0.8}
+            style={[
+              styles.cartTab,
+              activeTab === "orders" && styles.cartTabActive,
+            ]}
+            onPress={() => setActiveTab("orders")}
+            activeOpacity={0.85}
           >
-            <View
-              style={[
-                styles.radioOuter,
-                paymentMode === "gcash" && styles.radioOuterActive,
-              ]}
-            >
-              {paymentMode === "gcash" && <View style={styles.radioInner} />}
-            </View>
             <Text
               style={[
-                styles.paymentModeText,
-                paymentMode === "gcash" && styles.paymentModeTextActive,
+                styles.cartTabText,
+                activeTab === "orders" && styles.cartTabTextActive,
               ]}
             >
-              📱 GCash
+              🧾 Placed Orders
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      )}
 
-      {/* ── Place Order button ── */}
-      <TouchableOpacity
-        style={[
-          styles.placeOrderBtn,
-          checkedItems.length === 0 && styles.placeOrderBtnDisabled,
-        ]}
-        onPress={handlePlaceOrder}
-        activeOpacity={checkedItems.length === 0 ? 1 : 0.8}
-      >
-        <LinearGradient
-          colors={
-            checkedItems.length > 0 ? ["#27ae60", "#2ecc71"] : ["#aaa", "#bbb"]
-          }
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.placeOrderGrad}
-        >
-          <Text style={styles.placeOrderIcon}>✅</Text>
-          <Text style={styles.placeOrderText}>
-            Place Order ({checkedItems.length})
-          </Text>
-        </LinearGradient>
-      </TouchableOpacity>
+      {activeTab === "orders" ? (
+        <View style={styles.cartItemsBox}>
+          <Text style={styles.cartEmpty}>No placed orders yet.</Text>
+        </View>
+      ) : (
+        <>
+          {/* ── Items list ── */}
+          <View style={styles.cartItemsBox}>
+            {cartItems.length === 0 ? (
+              <Text style={styles.cartEmpty}>Cart is empty.</Text>
+            ) : (
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                style={{ maxHeight: 200 }}
+              >
+                {cartItems.map(({ item, qty }) => (
+                  <View key={item.id} style={styles.cartRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.checkbox,
+                        checked[item.id] && styles.checkboxChecked,
+                      ]}
+                      onPress={() => toggleCheck(item.id)}
+                    >
+                      {checked[item.id] && (
+                        <Text style={styles.checkmark}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                    <Text style={styles.cartRowEmoji}>{item.emoji}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cartRowName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.cartRowSub}>
+                        x{qty} ₱{item.price * qty}
+                      </Text>
+                    </View>
+                    <View style={styles.cartRowQty}>
+                      <TouchableOpacity
+                        style={styles.cartQBtn}
+                        onPress={() => onRemove(item)}
+                      >
+                        <Text style={styles.cartQBtnText}>−</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.cartQBtn, styles.cartQBtnAdd]}
+                        onPress={() => onAdd(item)}
+                      >
+                        <Text style={[styles.cartQBtnText, { color: "#fff" }]}>
+                          +
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </View>
 
-      {/* ── Clear cart button ── */}
-      <TouchableOpacity
-        style={styles.clearBtn}
-        onPress={onClear}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.clearBtnIcon}>🗑️</Text>
-        <Text style={styles.clearBtnText}>Clear Cart</Text>
-      </TouchableOpacity>
+          {/* ── Subtotal + Delivery Fee + Total ── */}
+          <View style={styles.subtotalRow}>
+            <Text style={styles.subtotalLabel}>Subtotal :</Text>
+            <Text style={styles.subtotalValue}>₱ {subtotal.toFixed(2)}</Text>
+          </View>
+          {orderType === "deliver" && (
+            <View style={styles.subtotalRow}>
+              <Text style={styles.subtotalLabel}>Delivery Fee :</Text>
+              <Text style={[styles.subtotalValue, { color: "#27ae60" }]}>
+                {deliveryInfo ? `₱ ${deliveryFee}` : "—"}
+              </Text>
+            </View>
+          )}
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total :</Text>
+            <Text style={styles.totalValue}>₱ {total.toFixed(2)}</Text>
+          </View>
 
-      {/* ── Download Receipt button ── */}
-      <TouchableOpacity
-        style={[styles.printBtn, !lastOrder && { opacity: 0.45 }]}
-        onPress={lastOrder ? onShowReceipt : null}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.printBtnIcon}>⬇️</Text>
-        <Text style={styles.printBtnText}>Download Receipt</Text>
-      </TouchableOpacity>
+          {/* ── Mode of Payment ── */}
+          <View style={styles.paymentModeBox}>
+            <Text style={styles.paymentModeLabel}>Mode of Payment</Text>
+            <View style={styles.paymentModeRow}>
+              <TouchableOpacity
+                style={styles.paymentModeOption}
+                onPress={() => setPaymentMode("cash")}
+                activeOpacity={0.8}
+              >
+                <View
+                  style={[
+                    styles.radioOuter,
+                    paymentMode === "cash" && styles.radioOuterActive,
+                  ]}
+                >
+                  {paymentMode === "cash" && <View style={styles.radioInner} />}
+                </View>
+                <Text
+                  style={[
+                    styles.paymentModeText,
+                    paymentMode === "cash" && styles.paymentModeTextActive,
+                  ]}
+                >
+                  💵 Cash
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.paymentModeOption}
+                onPress={() => setPaymentMode("gcash")}
+                activeOpacity={0.8}
+              >
+                <View
+                  style={[
+                    styles.radioOuter,
+                    paymentMode === "gcash" && styles.radioOuterActive,
+                  ]}
+                >
+                  {paymentMode === "gcash" && (
+                    <View style={styles.radioInner} />
+                  )}
+                </View>
+                <Text
+                  style={[
+                    styles.paymentModeText,
+                    paymentMode === "gcash" && styles.paymentModeTextActive,
+                  ]}
+                >
+                  📱 GCash
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* ── Order Type ── */}
+          <View style={styles.orderTypeBox}>
+            <Text style={styles.orderTypeLabel}>Order Type</Text>
+            <View style={styles.orderTypeRow}>
+              <TouchableOpacity
+                style={[
+                  styles.orderTypeBtn,
+                  orderType === "pickup" && styles.orderTypeBtnActive,
+                ]}
+                onPress={() => {
+                  setOrderType("pickup");
+                  setDeliveryInfo(null);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.orderTypeBtnIcon}>🎫</Text>
+                <Text
+                  style={[
+                    styles.orderTypeBtnText,
+                    orderType === "pickup" && styles.orderTypeBtnTextActive,
+                  ]}
+                >
+                  Pick Up
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.orderTypeBtn,
+                  orderType === "deliver" && styles.orderTypeBtnActive,
+                ]}
+                onPress={() => setOrderType("deliver")}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.orderTypeBtnIcon}>🛵</Text>
+                <Text
+                  style={[
+                    styles.orderTypeBtnText,
+                    orderType === "deliver" && styles.orderTypeBtnTextActive,
+                  ]}
+                >
+                  Deliver
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Pickup info */}
+            {orderType === "pickup" && (
+              <View style={styles.pickupInfo}>
+                <Text style={styles.pickupInfoText}>
+                  📍 CLIMBS Bulua, Cagayan de Oro
+                </Text>
+                <Text style={styles.pickupInfoSub}>
+                  Please pick up at the store.
+                </Text>
+              </View>
+            )}
+
+            {/* Delivery location picker */}
+            {orderType === "deliver" && (
+              <View style={{ marginTop: 8, gap: 6 }}>
+                {deliveryInfo ? (
+                  <View style={styles.deliveryInfoCard}>
+                    <Text style={styles.deliveryInfoAddress} numberOfLines={2}>
+                      📍 {deliveryInfo.address}
+                    </Text>
+                    <View style={styles.deliveryInfoFeeRow}>
+                      <Text style={styles.deliveryInfoDist}>
+                        {deliveryInfo.distanceKm.toFixed(2)} km
+                      </Text>
+                      <Text
+                        style={[
+                          styles.deliveryInfoFee,
+                          deliveryInfo.deliveryFee === 0 && {
+                            color: "#27ae60",
+                          },
+                        ]}
+                      >
+                        {deliveryInfo.deliveryFee === 0
+                          ? "🎉 FREE delivery"
+                          : `₱${deliveryInfo.deliveryFee} fee`}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.changeLocationBtn}
+                      onPress={() => setMapVisible(true)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.changeLocationTxt}>
+                        ✏️ Change Location
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.setLocationBtn}
+                    onPress={() => setMapVisible(true)}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={["#1a3a6b", "#2e5fa3"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.setLocationGrad}
+                    >
+                      <Text style={styles.setLocationIcon}>🗺️</Text>
+                      <Text style={styles.setLocationText}>
+                        Set Delivery Location
+                      </Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+                <Text style={styles.deliveryFeeNote}>
+                  ₱49 flat (0–2 km) · ₱10/km after · free within CLIMBS
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Delivery Map Modal */}
+          <DeliveryMapModal
+            visible={mapVisible}
+            onClose={() => setMapVisible(false)}
+            onConfirm={(info) => {
+              setDeliveryInfo(info);
+              setMapVisible(false);
+            }}
+            deliveryType="deliver"
+          />
+
+          {/* ── Place Order button ── */}
+          <TouchableOpacity
+            style={[
+              styles.placeOrderBtn,
+              checkedItems.length === 0 && styles.placeOrderBtnDisabled,
+            ]}
+            onPress={handlePlaceOrder}
+            activeOpacity={checkedItems.length === 0 ? 1 : 0.8}
+          >
+            <LinearGradient
+              colors={
+                checkedItems.length > 0
+                  ? ["#27ae60", "#2ecc71"]
+                  : ["#aaa", "#bbb"]
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.placeOrderGrad}
+            >
+              <Text style={styles.placeOrderIcon}>✅</Text>
+              <Text style={styles.placeOrderText}>
+                Place Order ({checkedItems.length})
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {/* ── Clear cart button ── */}
+          <TouchableOpacity
+            style={styles.clearBtn}
+            onPress={onClear}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.clearBtnIcon}>🗑️</Text>
+            <Text style={styles.clearBtnText}>Clear Cart</Text>
+          </TouchableOpacity>
+
+          {/* ── Download Receipt button ── */}
+          <TouchableOpacity
+            style={[styles.printBtn, !lastOrder && { opacity: 0.45 }]}
+            onPress={lastOrder ? onShowReceipt : null}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.printBtnIcon}>⬇️</Text>
+            <Text style={styles.printBtnText}>Download Receipt</Text>
+          </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 };
@@ -2600,16 +3559,21 @@ const styles = StyleSheet.create({
 
   // RIGHT — Cart panel
   cartPanel: {
-    width: 230,
+    width: 260,
     backgroundColor: "rgba(255,255,255,0.22)",
-    borderRadius: 16,
+    borderRadius: 20,
     marginRight: 20,
     marginBottom: 16,
     padding: 14,
-    gap: 8,
+    gap: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.45)",
-    overflow: "hidden",
+    borderColor: "rgba(255,255,255,0.50)",
+    overflow: "visible",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   cartPanelMobile: {
     width: "100%",
@@ -2619,6 +3583,38 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     borderWidth: 0,
     padding: 14,
+  },
+  /* ── Tab switcher ── */
+  cartTabRow: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.55)",
+    borderRadius: 12,
+    padding: 3,
+    gap: 3,
+  },
+  cartTab: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cartTabActive: {
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  cartTabText: {
+    fontFamily: "GoogleSans_500Medium",
+    fontSize: 12,
+    color: "rgba(1,31,75,0.50)",
+  },
+  cartTabTextActive: {
+    fontFamily: "GoogleSans_700Bold",
+    color: "#1a3a6b",
   },
   cartPanelTitle: {
     fontFamily: "GoogleSans_700Bold",
@@ -2632,19 +3628,19 @@ const styles = StyleSheet.create({
     borderColor: "rgba(1,31,75,0.12)",
   },
   cartItemsBox: {
-    backgroundColor: "rgba(255,255,255,0.45)",
-    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.55)",
+    borderRadius: 12,
     padding: 10,
-    minHeight: 60,
+    minHeight: 80,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.65)",
+    borderColor: "rgba(255,255,255,0.75)",
   },
   cartEmpty: {
     fontFamily: "GoogleSans_400Regular",
     fontSize: 12,
-    color: "rgba(1,31,75,0.45)",
+    color: "rgba(1,31,75,0.40)",
     textAlign: "center",
-    paddingVertical: 8,
+    paddingVertical: 16,
   },
   cartRow: {
     flexDirection: "row",
@@ -2699,37 +3695,57 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
+  /* ── Subtotal / Total ── */
+  subtotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  subtotalLabel: {
+    fontFamily: "GoogleSans_500Medium",
+    fontSize: 13,
+    color: "rgba(1,31,75,0.65)",
+  },
+  subtotalValue: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 13,
+    color: "#0d1b3e",
+  },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
   },
   totalLabel: {
     fontFamily: "GoogleSans_500Medium",
-    fontSize: 13,
-    color: "rgba(1,31,75,0.75)",
+    fontSize: 14,
+    color: "rgba(1,31,75,0.80)",
   },
   totalValue: {
     fontFamily: "NotoSerif_700Bold",
-    fontSize: 15,
+    fontSize: 16,
     color: "#0d1b3e",
   },
+
+  /* ── Mode of Payment ── */
   paymentModeBox: {
-    backgroundColor: "rgba(255,255,255,0.30)",
-    borderRadius: 10,
-    padding: 10,
+    backgroundColor: "rgba(255,255,255,0.50)",
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.60)",
-    marginVertical: 4,
+    borderColor: "rgba(255,255,255,0.70)",
   },
   paymentModeLabel: {
     fontFamily: "GoogleSans_700Bold",
-    fontSize: 10,
-    color: "rgba(1,31,75,0.60)",
-    letterSpacing: 1.2,
+    fontSize: 9,
+    color: "rgba(1,31,75,0.55)",
+    letterSpacing: 1.5,
     textTransform: "uppercase",
-    marginBottom: 8,
+    marginBottom: 10,
   },
   paymentModeRow: { flexDirection: "row", gap: 10 },
   paymentModeOption: {
@@ -2739,9 +3755,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   radioOuter: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 2,
     borderColor: "rgba(1,31,75,0.30)",
     alignItems: "center",
@@ -2750,19 +3766,263 @@ const styles = StyleSheet.create({
   },
   radioOuterActive: { borderColor: "#1a3a6b" },
   radioInner: {
-    width: 9,
-    height: 9,
+    width: 10,
+    height: 10,
     borderRadius: 5,
     backgroundColor: "#1a3a6b",
   },
   paymentModeText: {
     fontFamily: "GoogleSans_400Regular",
-    fontSize: 12,
+    fontSize: 13,
     color: "rgba(1,31,75,0.55)",
   },
   paymentModeTextActive: {
     fontFamily: "GoogleSans_700Bold",
     color: "#1a3a6b",
+  },
+
+  /* ── Order Type ── */
+  orderTypeBox: {
+    backgroundColor: "rgba(255,255,255,0.50)",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.70)",
+  },
+  orderTypeLabel: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 9,
+    color: "rgba(1,31,75,0.55)",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    marginBottom: 10,
+  },
+  orderTypeRow: { flexDirection: "row", gap: 8 },
+  orderTypeBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.60)",
+    borderWidth: 1.5,
+    borderColor: "rgba(1,31,75,0.15)",
+  },
+  orderTypeBtnActive: {
+    backgroundColor: "#fff",
+    borderColor: "#1a3a6b",
+    shadowColor: "#1a3a6b",
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  orderTypeBtnIcon: { fontSize: 16 },
+  orderTypeBtnText: {
+    fontFamily: "GoogleSans_500Medium",
+    fontSize: 13,
+    color: "rgba(1,31,75,0.55)",
+  },
+  orderTypeBtnTextActive: {
+    fontFamily: "GoogleSans_700Bold",
+    color: "#1a3a6b",
+  },
+
+  /* ── Pickup info ── */
+  pickupInfo: {
+    marginTop: 10,
+    backgroundColor: "rgba(26,58,107,0.06)",
+    borderRadius: 8,
+    padding: 8,
+  },
+  pickupInfoText: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#1a3a6b",
+  },
+  pickupInfoSub: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 10,
+    color: "rgba(1,31,75,0.55)",
+    marginTop: 2,
+  },
+
+  /* ── Delivery location ── */
+  setLocationBtn: { borderRadius: 10, overflow: "hidden" },
+  setLocationGrad: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 11,
+  },
+  setLocationIcon: { fontSize: 16 },
+  setLocationText: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 13,
+    color: "#fff",
+  },
+  deliveryInfoCard: {
+    backgroundColor: "rgba(26,58,107,0.06)",
+    borderRadius: 10,
+    padding: 10,
+    gap: 4,
+  },
+  deliveryInfoAddress: {
+    fontFamily: "GoogleSans_500Medium",
+    fontSize: 11,
+    color: "#011f4b",
+    lineHeight: 16,
+  },
+  deliveryInfoFeeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 4,
+  },
+  deliveryInfoDist: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.60)",
+  },
+  deliveryInfoFee: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#27ae60",
+  },
+  changeLocationBtn: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(26,58,107,0.10)",
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  changeLocationTxt: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 11,
+    color: "#1a3a6b",
+  },
+  deliveryFeeNote: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 10,
+    color: "rgba(1,31,75,0.45)",
+    textAlign: "center",
+  },
+
+  /* ── Delivery Map Modal ── */
+  mapHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === "ios" ? 54 : 16,
+    paddingBottom: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderColor: "rgba(1,31,75,0.10)",
+  },
+  mapHeaderBack: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(1,31,75,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapHeaderTitle: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 15,
+    color: "#1a3a6b",
+  },
+  mapSearchRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderColor: "rgba(1,31,75,0.08)",
+  },
+  mapSearchInput: {
+    flex: 1,
+    backgroundColor: "rgba(1,31,75,0.06)",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 13,
+    color: "#011f4b",
+  },
+  mapSearchBtn: {
+    backgroundColor: "#1a3a6b",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapSearchBtnText: { fontSize: 16 },
+  mapBottom: {
+    backgroundColor: "#fff",
+    padding: 16,
+    gap: 8,
+    borderTopWidth: 1,
+    borderColor: "rgba(1,31,75,0.10)",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: -3 },
+    elevation: 8,
+  },
+  mapHint: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 13,
+    color: "rgba(1,31,75,0.55)",
+    textAlign: "center",
+    paddingVertical: 4,
+  },
+  mapAddressText: {
+    fontFamily: "GoogleSans_500Medium",
+    fontSize: 12,
+    color: "#011f4b",
+    lineHeight: 18,
+  },
+  mapFeeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderColor: "rgba(1,31,75,0.08)",
+  },
+  mapFeeLabel: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.55)",
+  },
+  mapFeeValue: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 16,
+    color: "#011f4b",
+  },
+  mapFeeNote: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 10,
+    color: "rgba(1,31,75,0.40)",
+    textAlign: "center",
+  },
+  mapConfirmBtn: { borderRadius: 12, overflow: "hidden" },
+  mapConfirmGrad: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+  },
+  mapConfirmText: {
+    fontFamily: "GoogleSans_700Bold",
+    fontSize: 14,
+    color: "#fff",
+    letterSpacing: 0.3,
   },
   visitorNote: {
     backgroundColor: "rgba(255,255,255,0.45)",
