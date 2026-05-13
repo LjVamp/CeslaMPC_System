@@ -1369,7 +1369,8 @@ const CashierScreen = ({
 
       {/* Credit: employee dropdown with search */}
       {paymentMode === "credit" && (
-        <View style={{ gap: 4 }}>
+        // position:relative here so the absolute dropdown is anchored to this container
+        <View style={{ gap: 4, zIndex: 999, position: "relative" }}>
           <Text
             style={{
               fontFamily: "GoogleSans_700Bold",
@@ -1416,19 +1417,24 @@ const CashierScreen = ({
               color="rgba(1,31,75,0.45)"
             />
           </TouchableOpacity>
-          {/* Dropdown */}
+          {/* Dropdown — absolutely positioned so it floats over the cart below */}
           {empDropdownOpen && (
             <View
               style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                right: 0,
                 backgroundColor: "#fff",
                 borderRadius: 10,
                 borderWidth: 1,
                 borderColor: "rgba(1,31,75,0.15)",
                 overflow: "hidden",
-                elevation: 6,
+                elevation: 20,
                 shadowColor: "#000",
-                shadowOpacity: 0.12,
-                shadowRadius: 8,
+                shadowOpacity: 0.18,
+                shadowRadius: 12,
+                zIndex: 999,
               }}
             >
               {/* Search bar */}
@@ -2229,7 +2235,7 @@ const cs = StyleSheet.create({
     padding: 10,
     gap: 6,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: "visible",
   },
   cartTitle: {
     fontFamily: "GoogleSans_700Bold",
@@ -3341,7 +3347,16 @@ const inv = StyleSheet.create({
 });
 
 // ─── ORDER HISTORY SCREEN ─────────────────────────────────────────────────────
-const OrderHistoryScreen = ({ orders }) => {
+// ─── ORDER STATUS MAP ─────────────────────────────────────────────────────────
+const ORDER_STATUSES = {
+  pending:   { label: "Pending",   bg: "rgba(230,126,34,0.12)",  color: "#e67e22" },
+  done:      { label: "Done",      bg: "rgba(39,174,96,0.12)",   color: "#27ae60" },
+  completed: { label: "Done",      bg: "rgba(39,174,96,0.12)",   color: "#27ae60" },
+  cancelled: { label: "Cancelled", bg: "rgba(231,76,60,0.12)",   color: "#e74c3c" },
+  voided:    { label: "Voided",    bg: "rgba(149,165,166,0.18)", color: "#7f8c8d" },
+};
+
+const OrderHistoryScreen = ({ orders = [] }) => {
   const todayCal = new Date();
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -3414,7 +3429,7 @@ const OrderHistoryScreen = ({ orders }) => {
 
   const selectedGroup = grouped.find((g) => g.key === selectedDate);
   const displayOrders = selectedGroup?.orders || [];
-  const dayTotal = displayOrders.reduce((s, o) => s + Number(o.total), 0);
+  const dayTotal = displayOrders.reduce((s, o) => s + Number(o.total || 0), 0);
 
   const formatLabel = (key) => {
     if (!key || key === "unknown") return "Unknown Date";
@@ -3741,9 +3756,21 @@ const CreditsScreen = () => {
     }
   };
 
-  const modalGroup = selectedMember
+  // ── Keep a stable snapshot of the modal data so the "No unpaid orders"
+  //    empty state never flashes during the close animation.
+  //    We update the ref only while the modal is actually open (selectedMember
+  //    is non-null), so closing merely freezes the last good data in place.
+  const modalGroupRef = useRef(null);
+  const activeModalGroup = selectedMember
     ? grouped.find((g) => (g.memberId || g.memberName) === selectedMember)
     : null;
+  if (activeModalGroup) {
+    modalGroupRef.current = activeModalGroup;
+  }
+  const modalGroup = selectedMember
+    ? (activeModalGroup ?? modalGroupRef.current)
+    : modalGroupRef.current;
+
   const unpaidOrders = modalGroup
     ? modalGroup.orders.filter((o) => o.settled !== true)
     : [];
@@ -3985,6 +4012,7 @@ const CreditsScreen = () => {
         visible={!!selectedMember}
         animationType="fade"
         onRequestClose={() => setSelectedMember(null)}
+        onDismiss={() => { modalGroupRef.current = null; }}
       >
         <View
           style={{
@@ -5468,7 +5496,7 @@ const OrderingMonitoring = ({ orders, items }) => {
           <Text style={[lp.tableHeadTxt, { width: 48, textAlign: "center" }]}>
             Pay
           </Text>
-          <Text style={[lp.tableHeadTxt, { width: 38, textAlign: "right" }]}>
+          <Text style={[lp.tableHeadTxt, { width: 58, textAlign: "right" }]}>
             Time
           </Text>
           <Text style={[lp.tableHeadTxt, { width: 50, textAlign: "right" }]}>
@@ -5512,6 +5540,16 @@ const OrderingMonitoring = ({ orders, items }) => {
                     <Text style={lp.orderId} numberOfLines={1}>
                       #{order.orderNo || order.id?.slice(-4) || "--"}
                     </Text>
+                    {/* Member name or Visitor tag */}
+                    {order.memberName ? (
+                      <Text style={lp.orderMember} numberOfLines={1}>
+                        👤 {order.memberName}
+                      </Text>
+                    ) : (
+                      <Text style={lp.orderVisitor} numberOfLines={1}>
+                        Visitor
+                      </Text>
+                    )}
                     <Text style={lp.orderItems} numberOfLines={1}>
                       {itemsList}
                     </Text>
@@ -5521,15 +5559,20 @@ const OrderingMonitoring = ({ orders, items }) => {
                       width: 48,
                       textAlign: "center",
                       fontFamily: "GoogleSans_700Bold",
-                      fontSize: 8,
-                      color: "rgba(1,31,75,0.60)",
+                      fontSize: 10,
+                      color:
+                        order.payment === "credit"
+                          ? "#c9a84c"
+                          : order.payment === "gcash"
+                            ? "#2980b9"
+                            : "rgba(1,31,75,0.60)",
                     }}
                     numberOfLines={1}
                   >
                     {payLabel}
                   </Text>
                   <Text
-                    style={[lp.orderTime, { width: 38, textAlign: "right" }]}
+                    style={[lp.orderTime, { width: 58, textAlign: "right" }]}
                     numberOfLines={1}
                   >
                     {fmtTime(order)}
@@ -5620,13 +5663,13 @@ const lp = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(26,58,107,0.10)",
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 7,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(26,58,107,0.12)",
   },
   tableHeadTxt: {
     fontFamily: "GoogleSans_700Bold",
-    fontSize: 8,
+    fontSize: 9,
     color: "rgba(1,31,75,0.50)",
     letterSpacing: 0.8,
     textTransform: "uppercase",
@@ -5635,25 +5678,38 @@ const lp = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 9,
     borderBottomColor: "rgba(26,58,107,0.07)",
   },
-  orderId: { fontFamily: "GoogleSans_700Bold", fontSize: 10, color: "#0d2540" },
+  orderId: { fontFamily: "GoogleSans_700Bold", fontSize: 13, color: "#0d2540" },
+  orderMember: {
+    fontFamily: "GoogleSans_500Medium",
+    fontSize: 11,
+    color: "#1a3a6b",
+    marginTop: 1,
+  },
+  orderVisitor: {
+    fontFamily: "GoogleSans_400Regular",
+    fontSize: 11,
+    color: "rgba(1,31,75,0.38)",
+    marginTop: 1,
+  },
   orderTime: {
     fontFamily: "GoogleSans_400Regular",
-    fontSize: 9,
+    fontSize: 11,
     color: "rgba(1,31,75,0.45)",
   },
   orderTotal: {
     fontFamily: "GoogleSans_700Bold",
-    fontSize: 11,
+    fontSize: 13,
     color: "#c9a84c",
   },
   orderItems: {
     fontFamily: "GoogleSans_400Regular",
-    fontSize: 9,
+    fontSize: 10,
     color: "rgba(1,31,75,0.55)",
-    lineHeight: 12,
+    lineHeight: 14,
+    marginTop: 2,
   },
 });
 
@@ -6639,6 +6695,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.40)",
-    overflow: "hidden",
+    overflow: "visible",
   },
 });

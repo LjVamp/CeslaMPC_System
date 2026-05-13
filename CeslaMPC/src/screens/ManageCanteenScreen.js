@@ -4882,7 +4882,8 @@ const EmployeeCreditsScreen = () => {
   const [creditOrders, setCreditOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selectedMember, setSelectedMember] = useState(null); // opens modal
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false); // controls open/close separately so content stays stable during fade-out
   const [activeModalTab, setActiveModalTab] = useState("unpaid");
   const [settlingId, setSettlingId] = useState(null);
 
@@ -4986,10 +4987,19 @@ const EmployeeCreditsScreen = () => {
     }
   };
 
-  // Get live data for selected member from grouped
-  const modalGroup = selectedMember
+  // ── Keep a stable snapshot of the modal data so the "No unpaid orders"
+  //    empty state never flashes during the close animation.
+  const modalGroupRef = useRef(null);
+  const activeModalGroup = selectedMember
     ? grouped.find((g) => (g.memberId || g.memberName) === selectedMember)
     : null;
+  if (activeModalGroup) {
+    modalGroupRef.current = activeModalGroup;
+  }
+  const modalGroup = modalVisible
+    ? (activeModalGroup ?? modalGroupRef.current)
+    : modalGroupRef.current;
+
   const unpaidOrders = modalGroup
     ? modalGroup.orders.filter((o) => o.settled !== true)
     : [];
@@ -5062,206 +5072,182 @@ const EmployeeCreditsScreen = () => {
         )}
       </View>
 
-      {/* Member list */}
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {filtered.length === 0 ? (
-          <View style={{ alignItems: "center", paddingVertical: 60 }}>
-            <Text style={{ fontSize: 48, marginBottom: 12 }}>🪙</Text>
+      {/* Member list — compact table style */}
+      {filtered.length === 0 ? (
+        <View style={{ alignItems: "center", paddingVertical: 60 }}>
+          <Text style={{ fontSize: 48, marginBottom: 12 }}>🪙</Text>
+          <Text
+            style={{
+              fontFamily: "GoogleSans_700Bold",
+              fontSize: 15,
+              color: "rgba(1,31,75,0.45)",
+              textAlign: "center",
+            }}
+          >
+            {search
+              ? "No members match your search."
+              : "No credit orders yet."}
+          </Text>
+        </View>
+      ) : (
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(255,255,255,0.55)",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.80)",
+            overflow: "hidden",
+            marginHorizontal: 16,
+            marginBottom: 16,
+          }}
+        >
+          {/* Table header */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "rgba(26,58,107,0.10)",
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderBottomWidth: 1,
+              borderBottomColor: "rgba(26,58,107,0.12)",
+            }}
+          >
+            <Text
+              style={{
+                flex: 1,
+                fontFamily: "GoogleSans_700Bold",
+                fontSize: 10,
+                color: "rgba(1,31,75,0.50)",
+                letterSpacing: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              Member
+            </Text>
             <Text
               style={{
                 fontFamily: "GoogleSans_700Bold",
-                fontSize: 15,
-                color: "rgba(1,31,75,0.45)",
-                textAlign: "center",
+                fontSize: 10,
+                color: "rgba(231,76,60,0.70)",
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                marginRight: 22,
               }}
             >
-              {search
-                ? "No members match your search."
-                : "No credit orders yet."}
+              Unpaid
             </Text>
           </View>
-        ) : (
-          filtered.map((group) => {
-            const unpaid = group.orders.filter((o) => o.settled !== true);
-            const paid = group.orders.filter((o) => o.settled === true);
-            const totalOwed = unpaid.reduce(
-              (s, o) => s + Number(o.total || 0),
-              0,
-            );
-            const isSettled = totalOwed === 0;
 
-            return (
-              <TouchableOpacity
-                key={group.memberId || group.memberName}
-                onPress={() => {
-                  setSelectedMember(group.memberId || group.memberName);
-                  setActiveModalTab("unpaid");
-                }}
-                activeOpacity={0.8}
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.55)",
-                  borderRadius: 14,
-                  marginBottom: 8,
-                  borderWidth: 1.5,
-                  borderColor: isSettled
-                    ? "rgba(39,174,96,0.35)"
-                    : "rgba(201,168,76,0.40)",
-                  shadowColor: "#011f4b",
-                  shadowOpacity: 0.06,
-                  shadowRadius: 5,
-                  elevation: 2,
-                  overflow: "hidden",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: 14,
-                  paddingLeft: 18,
-                }}
-              >
-                {/* Left accent */}
-                <View
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 4,
-                    backgroundColor: isSettled ? "#27ae60" : "#c9a84c",
+          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+            {filtered.map((group, idx) => {
+              const unpaid = group.orders.filter((o) => o.settled !== true);
+              const totalOwed = unpaid.reduce(
+                (s, o) => s + Number(o.total || 0),
+                0,
+              );
+              const isLast = idx === filtered.length - 1;
+              return (
+                <TouchableOpacity
+                  key={group.memberId || group.memberName}
+                  onPress={() => {
+                    setSelectedMember(group.memberId || group.memberName);
+                    setModalVisible(true);
+                    setActiveModalTab("unpaid");
                   }}
-                />
-
-                {/* Avatar */}
-                <View
+                  activeOpacity={0.7}
                   style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    backgroundColor: isSettled
-                      ? "rgba(39,174,96,0.15)"
-                      : "rgba(201,168,76,0.20)",
-                    borderWidth: 2,
-                    borderColor: isSettled ? "#27ae60" : "#c9a84c",
-                    justifyContent: "center",
+                    flexDirection: "row",
                     alignItems: "center",
-                    flexShrink: 0,
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    borderBottomWidth: isLast ? 0 : 1,
+                    borderBottomColor: "rgba(26,58,107,0.07)",
+                    backgroundColor:
+                      idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.35)",
                   }}
                 >
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_700Bold",
-                      fontSize: 15,
-                      color: isSettled ? "#27ae60" : "#c9a84c",
-                    }}
-                  >
-                    {(group.memberName || "?")
-                      .split(" ")
-                      .map((w) => w[0])
-                      .slice(0, 2)
-                      .join("")}
-                  </Text>
-                </View>
-
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_700Bold",
-                      fontSize: 14,
-                      color: "#0f1e35",
-                    }}
-                    numberOfLines={1}
-                  >
-                    {group.memberName}
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_400Regular",
-                      fontSize: 11,
-                      color: "rgba(1,31,75,0.50)",
-                      marginTop: 2,
-                    }}
-                  >
-                    {group.memberUserId || "—"}
-                  </Text>
-                  <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                  {/* Name + optional ID */}
+                  <View style={{ flex: 1, paddingRight: 8 }}>
                     <Text
+                      numberOfLines={1}
                       style={{
-                        fontFamily: "GoogleSans_400Regular",
-                        fontSize: 10,
-                        color: "#e67e22",
+                        fontFamily: "GoogleSans_500Medium",
+                        fontSize: 12,
+                        color: "#0f1e35",
                       }}
                     >
-                      ⏳ {unpaid.length} unpaid
+                      {group.memberName}
                     </Text>
-                    <Text
-                      style={{
-                        fontFamily: "GoogleSans_400Regular",
-                        fontSize: 10,
-                        color: "#27ae60",
-                      }}
-                    >
-                      ✅ {paid.length} paid
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={{ alignItems: "flex-end", gap: 4 }}>
-                  <Text
-                    style={{
-                      fontFamily: "NotoSerif_700Bold",
-                      fontSize: 18,
-                      color: isSettled ? "#27ae60" : "#c9a84c",
-                    }}
-                  >
-                    ₱ {totalOwed.toFixed(2)}
-                  </Text>
-                  {isSettled && (
-                    <View
-                      style={{
-                        backgroundColor: "rgba(39,174,96,0.15)",
-                        borderRadius: 10,
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        borderWidth: 1,
-                        borderColor: "rgba(39,174,96,0.40)",
-                      }}
-                    >
+                    {group.memberUserId ? (
                       <Text
+                        numberOfLines={1}
                         style={{
-                          fontFamily: "GoogleSans_700Bold",
-                          fontSize: 9,
-                          color: "#27ae60",
+                          fontFamily: "GoogleSans_400Regular",
+                          fontSize: 10,
+                          color: "rgba(1,31,75,0.40)",
+                          marginTop: 1,
                         }}
                       >
-                        ✓ SETTLED
+                        {group.memberUserId}
                       </Text>
-                    </View>
+                    ) : null}
+                  </View>
+
+                  {/* Unpaid amount — show ✓ if fully settled */}
+                  {unpaid.length > 0 ? (
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_700Bold",
+                        fontSize: 11,
+                        color: "#e74c3c",
+                        marginRight: 6,
+                      }}
+                    >
+                      ₱{totalOwed.toFixed(2)}{" "}
+                      <Text
+                        style={{
+                          fontFamily: "GoogleSans_400Regular",
+                          fontSize: 10,
+                          color: "rgba(231,76,60,0.55)",
+                        }}
+                      >
+                        ({unpaid.length})
+                      </Text>
+                    </Text>
+                  ) : (
+                    <Text
+                      style={{
+                        fontFamily: "GoogleSans_400Regular",
+                        fontSize: 12,
+                        color: "rgba(39,174,96,0.70)",
+                        marginRight: 6,
+                      }}
+                    >
+                      ✓
+                    </Text>
                   )}
-                  <Text
-                    style={{
-                      fontFamily: "GoogleSans_400Regular",
-                      fontSize: 11,
-                      color: "rgba(1,31,75,0.35)",
-                    }}
-                  >
-                    ›
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-      </ScrollView>
+
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={16}
+                    color="rgba(1,31,75,0.25)"
+                  />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* ── Floating Modal ─────────────────────────────────────────────────── */}
       <Modal
         transparent
-        visible={!!selectedMember}
+        visible={modalVisible}
         animationType="fade"
-        onRequestClose={() => setSelectedMember(null)}
+        onRequestClose={() => setModalVisible(false)}
+        onDismiss={() => { modalGroupRef.current = null; }}
       >
         <View
           style={{
@@ -5275,7 +5261,7 @@ const EmployeeCreditsScreen = () => {
           <TouchableOpacity
             style={{ ...StyleSheet.absoluteFillObject }}
             activeOpacity={1}
-            onPress={() => setSelectedMember(null)}
+            onPress={() => setModalVisible(false)}
           />
 
           <View
@@ -5350,7 +5336,7 @@ const EmployeeCreditsScreen = () => {
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => setSelectedMember(null)}
+                onPress={() => setModalVisible(false)}
                 style={{
                   width: 32,
                   height: 32,
