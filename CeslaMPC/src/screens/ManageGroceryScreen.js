@@ -1041,7 +1041,6 @@ const EMPLOYEES = [
   "ACTUB, JAN NIÑO FLORES",
   "AGIR, RAMIL CARBELLIDA",
   "ALING, ROSEMARIE",
-  "ALVAREZ, JOVANE",
   "AMPUSTA, LOVELY JANE ALEMANIA",
   "APOYA, EDGARDO DUHILAG",
   "ARSUA, RUEL TOLIBAS",
@@ -1051,10 +1050,7 @@ const EMPLOYEES = [
   "AYAG, RHEGIE JOY BALURAN",
   "AYCO, JOY VILLAMONTE",
   "BAACLO, JURYLAN ABRAGAN",
-  "BAAL, JENNYBELLE",
-  "BAAL, CHIMBEE",
   "BABANTO, GRETCHEN MABALE",
-  "BABIA, MARY GRACE",
   "BAHAY, QUEEN ROMANILLOS",
   "BAJUYO, SANNY JR L.",
   "BALAGA, ROGELIO UGAT JR.",
@@ -1081,7 +1077,6 @@ const EMPLOYEES = [
   "CANDEL, IRISH AGUILAR",
   "CARCUEVA, CHARNELYN Q.",
   "CASINILLO, ROWENA PESOLE",
-  "CAÑETE, ROCHELLE",
   "CHAVEZ, CHRISTOPHER JOHN CIERVO",
   "CHUA, KENNETH POTULAN",
   "COBRADOR, JHOANA ROSE R.",
@@ -1104,7 +1099,6 @@ const EMPLOYEES = [
   "DIZON, DONNA MARIE MICHELLE CABATIC",
   "EBO, MICHAEL PATRICK TUDTUD",
   "EBAL, JERSON TOQUIB",
-  "EGAMA, RICA MAE",
   "ELICAN, ELMER MACOMAO",
   "EMANO, RICHEL ANN EMBALSADO",
   "ENTICE, MARK ANTHONY E",
@@ -1136,7 +1130,6 @@ const EMPLOYEES = [
   "LABININAY, JANE PAULINE NISPEROS",
   "LAGUE, LARRY PAUL SANTOS",
   "LOKING, RUTH THELMA NATINDIM",
-  "LOQUIAS, SHAINA MARIE",
   "LUMANTAS, LINDLEY NIEL CLARIN",
   "LUNGAY, CHERRYME QUILANG",
   "MABAO, ROLLY P.",
@@ -1145,7 +1138,6 @@ const EMPLOYEES = [
   "MAGARO, MAYDILOU O.",
   "MAGLUNSOD, FAITH ANN GARAY",
   "MALINAO, FLOROSA BACON",
-  "MALINAO, JOHN REX",
   "MANGURAY, JEFFERSON PAJA",
   "MAQUIDATO, RYAN DALE BAJA",
   "MARQUEZ, MEA ANNE DYSERIE OGSID",
@@ -1186,8 +1178,6 @@ const EMPLOYEES = [
   "ROSAURO, RENER GUISONA",
   "SABORNIDO, AMIE GRACE MANINGGO",
   "SALIOT, RHEA LEGASPI",
-  "SALINAS, LORILYN",
-  "SALIENTES, LOREN GIEN",
   "SALVADOR, MARIA RHEENA MAE PIEDAD",
   "SALVANA, ARNOLD A.",
   "SANAGA, SHIRANE BALABA",
@@ -3672,6 +3662,13 @@ const OrderHistoryScreen = ({ orders = [] }) => {
 
 // ─── CREDITS SCREEN ───────────────────────────────────────────────────────────
 const CreditsScreen = () => {
+  const { height: winH } = useWindowDimensions();
+  // Hard pixel cap as a safety net — guarantees the list scrolls even if an
+  // ancestor container somewhere up the tree doesn't resolve to a bounded
+  // height (which silently breaks flex:1-based scrolling on web).
+  const listMaxHeight = Math.max(220, winH - 370);
+  const modalMaxHeight = Math.max(260, winH * 0.6);
+
   const [creditOrders, setCreditOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -3871,11 +3868,14 @@ const CreditsScreen = () => {
         <View
           style={{
             flex: 1,
+            minHeight: 0,
+            maxHeight: listMaxHeight,
             backgroundColor: "rgba(255,255,255,0.55)",
             borderRadius: 12,
             borderWidth: 1,
             borderColor: "rgba(255,255,255,0.80)",
             overflow: "hidden",
+            marginBottom: 28,
           }}
         >
           {/* Table header */}
@@ -3916,7 +3916,12 @@ const CreditsScreen = () => {
             </Text>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+          <ScrollView
+            showsVerticalScrollIndicator={true}
+            persistentScrollbar={true}
+            style={{ flex: 1, minHeight: 0 }}
+            contentContainerStyle={{ paddingBottom: 12 }}
+          >
             {filtered.map((group, idx) => {
               const unpaid = group.orders.filter((o) => o.settled !== true);
               const totalOwed = unpaid.reduce(
@@ -4221,8 +4226,15 @@ const CreditsScreen = () => {
             </View>
 
             <ScrollView
-              style={{ flex: 1, margin: 14, marginTop: 12 }}
-              showsVerticalScrollIndicator={false}
+              style={{
+                flex: 1,
+                minHeight: 0,
+                maxHeight: modalMaxHeight,
+                margin: 14,
+                marginTop: 12,
+              }}
+              showsVerticalScrollIndicator={true}
+              persistentScrollbar={true}
               nestedScrollEnabled
             >
               <View
